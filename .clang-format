@@ -1,0 +1,22 @@
+BasedOnStyle: Google
+ColumnLimit: 100
+MaxEmptyLinesToKeep: 2
+
+ContinuationIndentWidth: 2
+
+BinPackParameters: true
+BinPackArguments: true
+
+ConstructorInitializerAllOnOneLineOrOnePerLine: false
+
+AllowShortLoopsOnASingleLine: true
+AllowShortIfStatementsOnASingleLine: true
+
+TabWidth: 2
+# Never, ForIndentation, ForContinuationAndIndentation, Always
+# UseTab: Never
+
+# AlignOperands: true
+# Align, DontAlign, AlwaysBreak
+AlignAfterOpenBracket: Align
+# BreakBeforeBinaryOperators: true

@@ -1,0 +1,33 @@
+a point at the exact centre of the computation domain is given a larger rho ( 2*averho) by: 
+  SO.setPopRho(Ni / 2, Nj / 2, ConcConv.getLatticeRho(Conc_Ini * 2));
+it should be noted that the calculation order will slightly affect the sum of the array of type float(double):
+see the following example:
+----
+    static inline void Compute_rho(const T *f, T &rho) {
+    rho = T(0);
+    for (int i = 0; i < LatSet::q; i++) {
+      rho += f[i];
+    }
+  }
+----
+--SO.pop[20603]
+f[5]
+0.10000000000000001
+0.050000000000000003
+0.050000000000000003
+0.050000000000000003
+0.10000000000000001
+rho
+0.35000000000000003
+--SO.pop[20605]
+f[5]
+0.10000000000000001
+0.10000000000000001
+0.050000000000000003
+0.050000000000000003
+0.050000000000000003
+rho
+0.34999999999999998
+
+however, the difference is very small and could be ignored.
+

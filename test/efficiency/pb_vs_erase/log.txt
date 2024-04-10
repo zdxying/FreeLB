@@ -1,0 +1,180 @@
+
+size of Remain_Thread: 16
+using parallel pushback
+Get_Remain_pushback: 0.012036
+RemainSize: 964607
+using parallel erase
+Get_Remain_erase: 3.50097
+
+[details]:
+pushback_time: 0.011097
+pushback_merge_time: 0.000577
+erase_time: 3.50021
+erase_merge_time: 0
+erase_divide_time: 0.001124
+
+
+Get_Remain_pushback: 0.00144
+RemainSize: 964607
+using parallel erase
+Get_Remain_erase: 3.51361
+
+--------------------------------
+Get_Remain_pushback: 0.000199
+RemainSize: 85995
+Get_Remain_erase: 3.25561
+RemainSize: 0
+
+Get_Remain_pushback: 0.000253
+RemainSize: 85995
+using parallel erase
+Get_Remain_erase: 0.028274
+RemainSize: 0
+
+---------------------------------
+Get_Remain_pushback: 0.126134
+RemainSize: 96818483
+
+size of Remain_Thread: 16
+using parallel pushback
+Get_Remain_pushback: 1.13939
+RemainSize: 96818483
+
+size of Remain_Thread: 8
+using parallel pushback
+Get_Remain_pushback: 1.83525
+RemainSize: 96818483
+
+size of Remain_Thread: 4
+using parallel pushback
+Get_Remain_pushback: 1.99227
+RemainSize: 96818483
+
+size of Remain_Thread: 2
+using parallel pushback
+Get_Remain_pushback: 3.48828
+RemainSize: 96818483
+
+
+Get_Remain_pushback: 0.128041
+RemainSize: 96818483
+[details]:
+pushback_time: 0.12785
+
+---chunk
+size of Remain_Thread: 16
+using parallel pushback
+Get_Remain_pushback: 0.24319
+RemainSize: 96818483
+[details]:
+pushback_time: 0.169166
+pushback_merge_time: 0.073625
+
+size of Remain_Thread: 16
+using parallel pushback
+Get_Remain_pushback: 0.226963
+RemainSize: 96818483
+size of Remain_Thread: 8
+using parallel pushback
+Get_Remain_pushback: 0.257057
+RemainSize: 96818483
+size of Remain_Thread: 4
+using parallel pushback
+Get_Remain_pushback: 0.268519
+RemainSize: 96818483
+size of Remain_Thread: 2
+using parallel pushback
+Get_Remain_pushback: 0.298578
+RemainSize: 96818483
+
+---------------------
+size of Remain_Thread: 16
+using parallel pushback
+Get_Remain_pushback: 2.79094
+RemainSize: 996638483
+pushback_time: 1.57492
+pushback_merge_time: 1.21567
+
+Get_Remain_pushback: 1.40146
+RemainSize: 996638483
+
+-------------------
+Get_Remain_pushback: 0.001363
+RemainSize: 964607
+[details]:
+pushback_time: 0.001319
+
+size of Remain_Thread: 16
+using parallel pushback
+Get_Remain_pushback: 0.002665
+RemainSize: 964607
+[details]:
+pushback_time: 0.001839
+pushback_merge_time: 0.000697
+
+--------------------------------3000
+size of Remain_Thread: 32
+using parallel pushback
+Get_Remain_pushback: 0.204074
+RemainSize: 8705327
+using parallel erase
+Get_Remain_erase: 12.3949
+RemainSize: 0
+--
+Get_Remain_pushback: 0.040304
+RemainSize: 8705327
+using parallel erase
+Get_Remain_erase: 12.6274
+RemainSize: 0
+--------------------------------1000
+size of Remain_Thread: 32
+using parallel pushback
+Get_Remain_pushback: 0.055278
+RemainSize: 964607
+using parallel erase
+Get_Remain_erase: 0.112627
+RemainSize: 0
+--
+Get_Remain_pushback: 0.003854
+RemainSize: 964607
+using parallel erase
+Get_Remain_erase: 0.094325
+RemainSize: 0
+--------------------------------300
+size of Remain_Thread: 32
+using parallel pushback
+Get_Remain_pushback: 0.006604
+RemainSize: 85995
+using parallel erase
+Get_Remain_erase: 0.002643
+RemainSize: 0
+--
+Get_Remain_pushback: 0.000462
+RemainSize: 85995
+using parallel erase
+Get_Remain_erase: 0.003247
+RemainSize: 0
+
+-----------------------------------expan
+size of Remain_Thread: 16
+using parallel pushback
+Get_Remain_pushback: 0.221607
+RemainSize: 96818483
+using parallel pushback
+expand_Get_Remain_pushback: 0.157808
+RemainSize: 96818483
+[details]:
+pushback_time: 0.149366
+pushback_merge_time: 0.071901
+expand_pushback_time: 0.118341
+expand_pushback_merge_time: 0.03896
+
+Get_Remain_pushback: 0.126949
+RemainSize: 96818483
+expand_Get_Remain_pushback: 0.095238
+RemainSize: 96818483
+[details]:
+pushback_time: 0.126801
+pushback_merge_time: 0
+expand_pushback_time: 0.095014
+expand_pushback_merge_time: 0

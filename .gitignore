@@ -1,0 +1,58 @@
+# Prerequisites
+*.d
+
+# Compiled Object files
+*.slo
+*.lo
+*.o
+*.obj
+
+# Precompiled Headers
+*.gch
+*.pch
+
+# Compiled Dynamic libraries
+*.so
+*.dylib
+*.dll
+
+# Fortran module files
+*.mod
+*.smod
+
+# Compiled Static libraries
+*.lai
+*.la
+*.a
+*.lib
+
+# Executables
+*.exe
+*.out
+*.app
+
+# ignore any directory named temp at any depth
+# **/temp/
+**/output/
+**/.vscode/
+
+# ignore all directories with the name temp including their files
+temp/
+
+
+# vtk
+*.vti
+*.vtm
+*.pvd
+*.vtk
+
+# dat
+*.dat
+*.json
+#build/
+
+# geometry
+*.FCStd
+# *.STL
+*.FCBak
+# *.stl
