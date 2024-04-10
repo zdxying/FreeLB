@@ -4,6 +4,14 @@ This code(FreeLB) aims to facilitate the free dissemination and advancement of k
 
 FreeLB should be helpful for beginners who know the basic of LBM but have not started to implement it yet, especially, for those who want to build their own LBM program.
 
+The following picture shows the capability of FreeLB to couple with CA method 
+
+![Concentration_Field](https://github.com/zdxying/FreeLB/blob/main/Concentration_Field_of_a_Solidifying_Dendrite_with_Block_Structure.png "Concentration Field of a Solidifying Dendrite with Block Structure")
+
+The following picture shows the developing feature of adaptive mesh refinement(AMR) in FreeLB
+
+![Streamline](https://github.com/zdxying/FreeLB/blob/main/Streamline_of_Lid_Driven_Cavity_with_Refined_Block_Structure.png "Streamline of Lid-Driven Cavity with Refined Block Structure.png")
+
 The author is inspired by OpenLB project, but provides a more concise and clear code structure, also, a relatively direct data access pattern, which is more suitable for beginners to understand and modify the code. The following files are modified from OpenLB project: 
   > - 'src/data_struct/octree.h' 
   > - 'src/data_struct/octree.hh' 
