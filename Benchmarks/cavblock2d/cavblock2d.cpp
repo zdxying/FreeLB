@@ -113,36 +113,43 @@ int main() {
                     Vector<T, 2>(T((Ni - 1) * Cell_Len), T(Nj * Cell_Len)));
   BlockGeometry2D<T> Geo(Ni, Nj, Thread_Num, cavity, Cell_Len);
 
-  Geo.SetupBoundary<LatSet>(AABBFlag, BouncebackFlag);
-  Geo.setFlag(toplid, BouncebackFlag, BBMovingWallFlag);
-
-
-  vtmwriter::ScalerWriter GeoFlagWriter("flag", Geo.getGeoFlags());
-  vtmwriter::vtmWriter<T, LatSet::d> GeoWriter("GeoFlag", Geo);
-  GeoWriter.addWriterSet(&GeoFlagWriter);
-  GeoWriter.Write();
   // ------------------ define lattice ------------------
   // velocity field
-  BlockVectFieldAOS<T, 2> Velocity(Geo.getBlockSizes());
-  // set initial value of field
-  Geo.forEachVoxel(toplid, BBMovingWallFlag, [&Velocity](int id, int blockid) {
-    Velocity.getBlockField(blockid).SetField(id, U_Wall);
-  });
+  BlockFieldManager<VectorFieldAOS<T, 2>, T, 2> VelocityFM(Geo);
+
   // lattice
-  BlockLatticeManager<T, LatSet> LatMan(Geo, BaseConv, Velocity);
+  BlockLatticeManager<T, LatSet> LatMan(Geo, BaseConv, VelocityFM);
   LatMan.EnableToleranceU();
   T res = 1;
 
+  // ------------------ define flag field ------------------
+  BlockFieldManager<FlagField, T, 2> FlagF(Geo, VoidFlag);
+  FlagF.forEach(cavity, [&](FlagField& field, std::size_t id) { field.SetField(id, AABBFlag); });
+  FlagF.template SetupBoundary<LatSet>(cavity, BouncebackFlag);
+  FlagF.forEach(toplid, [&](FlagField& field, std::size_t id) {
+    if (util::isFlag(field.get(id), BouncebackFlag)) field.SetField(id, BBMovingWallFlag);
+  });
+
+  vtmwriter::ScalerWriter FlagWriter("flag", FlagF);
+  vtmwriter::vtmWriter<T, 2> GeoWriter("GeoFlag", Geo);
+  GeoWriter.addWriterSet(&FlagWriter);
+  GeoWriter.WriteBinary();
+
+  // set initial value of field
+  VelocityFM.forEach(
+    toplid, FlagF, BBMovingWallFlag,
+    [&](VectorFieldAOS<T, 2>& field, std::size_t id) { field.SetField(id, U_Wall); });
+
   // bcs
-  BBLikeBlockFixedBdManager<T, LatSet, BounceBackLikeMethod<T, LatSet>::normal_bounceback> NS_BB(
-    "NS_BB", LatMan, BouncebackFlag, VoidFlag);
-  BBLikeBlockFixedBdManager<T, LatSet, BounceBackLikeMethod<T, LatSet>::movingwall_bounceback>
-    NS_BBMW("NS_BBMW", LatMan, BBMovingWallFlag, VoidFlag);
+  BBLikeFixedBlockBdManager<T, LatSet, BounceBackLikeMethod<T, LatSet>::normal_bounceback> NS_BB(
+    "NS_BB", LatMan, FlagF, BouncebackFlag, VoidFlag);
+  BBLikeFixedBlockBdManager<T, LatSet, BounceBackLikeMethod<T, LatSet>::movingwall_bounceback>
+    NS_BBMW("NS_BBMW", LatMan, FlagF, BBMovingWallFlag, VoidFlag);
   BlockBoundaryManager BM(&NS_BB, &NS_BBMW);
 
   // writers
-  vtmwriter::ScalerWriter RhoWriter("Rho", LatMan.getRhoField());
-  vtmwriter::VectorWriter VecWriter("Velocity", Velocity);
+  vtmwriter::ScalerWriter RhoWriter("Rho", LatMan.getRhoFM());
+  vtmwriter::VectorWriter VecWriter("Velocity", VelocityFM);
   vtmwriter::vtmWriter<T, LatSet::d> NSWriter("cavityblock2d", Geo);
   NSWriter.addWriterSet(&RhoWriter, &VecWriter);
 
@@ -154,10 +161,10 @@ int main() {
   Printer::Print_BigBanner(std::string("Start Calculation..."));
 
   while (MainLoopTimer() < MaxStep && res > tol) {
-    LatMan.UpdateRho(MainLoopTimer(), std::uint8_t(AABBFlag));
-    LatMan.UpdateU(MainLoopTimer(), std::uint8_t(AABBFlag));
+    LatMan.UpdateRho(MainLoopTimer(), AABBFlag, FlagF);
+    LatMan.UpdateU(MainLoopTimer(), AABBFlag, FlagF);
     LatMan.template BGK<Equilibrium<T, LatSet>::SecondOrder>(
-      MainLoopTimer(), std::uint8_t(AABBFlag | BouncebackFlag | BBMovingWallFlag));
+      MainLoopTimer(), std::uint8_t(AABBFlag | BouncebackFlag | BBMovingWallFlag), FlagF);
 
     // to communicate before stream, non-overlapped vtm writer should be used
     LatMan.Stream(MainLoopTimer());

@@ -151,9 +151,9 @@ int main() {
   T res = 1;
 
   // bcs
-  BBLikeBlockFixedBdManager<T, LatSet, BounceBackLikeMethod<T, LatSet>::normal_bounceback> NS_BB(
+  BBLikeFixedBlockBdManager<T, LatSet, BounceBackLikeMethod<T, LatSet>::normal_bounceback> NS_BB(
     "NS_BB", LatMan, BouncebackFlag, VoidFlag);
-  BBLikeBlockFixedBdManager<T, LatSet, BounceBackLikeMethod<T, LatSet>::movingwall_bounceback> NS_BBMW(
+  BBLikeFixedBlockBdManager<T, LatSet, BounceBackLikeMethod<T, LatSet>::movingwall_bounceback> NS_BBMW(
     "NS_BBMW", LatMan, BBMovingWallFlag, VoidFlag);
   BlockBoundaryManager BM(&NS_BB, &NS_BBMW);
 

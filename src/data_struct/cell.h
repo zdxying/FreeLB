@@ -26,7 +26,7 @@
 #include <cstddef>
 #include <type_traits>
 
-#include "data_struct/field.h"
+#include "data_struct/field_struct.h"
 #include "lbm/equilibrium.h"
 #include "lbm/unit_converter.h"
 

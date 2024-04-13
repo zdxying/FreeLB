@@ -1,5 +1,5 @@
 BasedOnStyle: Google
-ColumnLimit: 100
+ColumnLimit: 90
 MaxEmptyLinesToKeep: 2
 
 ContinuationIndentWidth: 2

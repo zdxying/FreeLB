@@ -1,21 +1,21 @@
 /* This file is part of FreeLB
- * 
+ *
  * Copyright (C) 2024 Yuan Man
  * E-mail contact: ymmanyuan@outlook.com
  * The most recent progress of FreeLB will be updated at
  * <https://github.com/zdxying/FreeLB>
- * 
+ *
  * FreeLB is free software: you can redistribute it and/or modify it under the terms of the GNU
  * General Public License as published by the Free Software Foundation, either version 3 of the
  * License, or (at your option) any later version.
- * 
- * FreeLB is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the
- * implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public
- * License for more details.
- * 
+ *
+ * FreeLB is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
+ * without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+ * See the GNU General Public License for more details.
+ *
  * You should have received a copy of the GNU General Public License along with FreeLB. If not, see
  * <https://www.gnu.org/licenses/>.
- * 
+ *
  */
 
 // basic_geometry.h
@@ -24,7 +24,7 @@
 
 #include <limits>
 
-#include "data_struct/field.h"
+#include "data_struct/field_struct.h"
 #include "data_struct/interpolation.h"
 #include "parallel/communicator.h"
 
@@ -252,26 +252,16 @@ class BasicBlock : public AABB<T, D> {
   void getLocIdxRange(const AABB<T, D>& AABBs, Vector<int, D>& idx_min,
                       Vector<int, D>& idx_max) const;
 
-  // lambda functions take LOCAL index
+  // lambda functions take LOCAL index: func(std::size_t idx)
   template <typename Func>
   void forEach(const AABB<T, D>& AABBs, Func func);
 
   // lambda functions take LOCAL index, for cells with specific flag
-  template <typename Func>
-  void forEach(const AABB<T, D>& AABBs, const FlagArray& flag, std::uint8_t fromflag, Func func);
+  template <typename flagtype, typename Func>
+  void forEach(const AABB<T, D>& AABBs, const GenericArray<flagtype>& flag, std::uint8_t fromflag, Func func);
 
-  template <typename Func>
-  void forEach(const FlagArray& flag, std::uint8_t fromflag, Func func);
-
-  // for block structure
-  template <typename Func>
-  void forEachBlock(const AABB<T, D>& AABBs, Func func);
-  template <typename Func>
-  void forEachBlock(const AABB<T, D>& AABBs, const FlagArray& flag, std::uint8_t fromflag,
-                    Func func);
-
-  template <typename Func>
-  void forEachBlock(const FlagArray& flag, std::uint8_t fromflag, Func func);
+  template <typename flagtype, typename Func>
+  void forEach(const GenericArray<flagtype>& flag, std::uint8_t fromflag, Func func);
 
   // get certain cells' indices(usually in an overlapped AABB) in the block
   // similar to void getOverlappedCellIdx(const AABB<int, D>& aabb, std::vector<int>& cellIdx)
@@ -279,54 +269,41 @@ class BasicBlock : public AABB<T, D> {
   // always call on extended BasicBlock
   // base could be the base blockaabb or the extended blockaabb
   // cellIdx will be cleared before adding new indices
-  void getCellIdx(const AABB<T, D>& base, const AABB<T, D>& AABBs, std::vector<std::size_t>& cellIdx) const;
+  void getCellIdx(const AABB<T, D>& base, const AABB<T, D>& AABBs,
+                  std::vector<std::size_t>& cellIdx) const;
 };
 
 // communication structure for block geometry
 template <typename T, unsigned int D>
-struct BlockCommStru {
+struct BlockComm {
   std::vector<std::size_t> SendCells;  // index in sendblock
   std::vector<std::size_t> RecvCells;  // index in recvblock
   Block<T, D>* SendBlock;
 
-  BlockCommStru(Block<T, D>* block) : SendBlock(block) {}
-  BlockCommStru(Block<T, D>* block, int size) : SendBlock(block) {
-    SendCells.reserve(size);
-    RecvCells.reserve(size);
-  }
+  BlockComm(Block<T, D>* block) : SendBlock(block) {}
+  // SendBlock->getBlockId();
+  int getSendId() const { return SendBlock->getBlockId(); }
 };
 
 // communication structure for blocks of different (refine) levels
 // heterogeneous communication/ interpolation
 template <typename T, unsigned int D>
-struct InterpBlockCommStru {
+struct InterpBlockComm {
   // index in sendblock
   std::vector<InterpSource<D>> SendCells;
   // interp weight
   std::vector<InterpWeight<T, D>> InterpWeights;
-  // uniform weight
-  T UniformWeight;
   // index in recvblock
   std::vector<std::size_t> RecvCells;
   // receive data from sendblock
   Block<T, D>* SendBlock;
 
-  InterpBlockCommStru(Block<T, D>* block) : SendBlock(block) {
-    if constexpr (D == 2) {
-      UniformWeight = T(0.25);
-    } else if constexpr (D == 3) {
-      UniformWeight = T(0.125);
-    }
-  }
-  InterpBlockCommStru(Block<T, D>* block, int size) : SendBlock(block) {
-    SendCells.reserve(size);
-    RecvCells.reserve(size);
-    if constexpr (D == 2) {
-      UniformWeight = T(0.25);
-    } else if constexpr (D == 3) {
-      UniformWeight = T(0.125);
-    }
-  }
+  InterpBlockComm(Block<T, D>* block) : SendBlock(block) {}
+
+  // SendBlock->getBlockId()
+  int getSendId() const { return SendBlock->getBlockId(); }
+  constexpr int getSourceNum() const { return (D == 2) ? 4 : 8; }
+  constexpr T getUniformWeight() const { return (D == 2) ? T(0.25) : T(0.125); }
 };
 
 

@@ -21,7 +21,7 @@
 // 2D finite difference solver
 #pragma once
 
-#include "data_struct/field.h"
+#include "data_struct/field_struct.h"
 #include "util.h"
 // taylor expansion of f(x,y) at (x0,y0):
 // f(x,y) = f(x0,y0) +

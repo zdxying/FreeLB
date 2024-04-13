@@ -152,9 +152,9 @@ int main(int argc, char* argv[]) {
   mpi::MPIBlockBufferInit(Geo.getMPIBlockComm(), BlockLat.getMPIBlockBuffer(), LatSet::q);
   BlockLat.EnableToleranceU();
   // bcs
-  BBLikeBlockFixedBdManager<T, LatSet, BounceBackLikeMethod<T, LatSet>::normal_bounceback> NS_BB(
+  BBLikeFixedBlockBdManager<T, LatSet, BounceBackLikeMethod<T, LatSet>::normal_bounceback> NS_BB(
     "NS_BB", {&BlockLat}, BouncebackFlag, VoidFlag);
-  BBLikeBlockFixedBdManager<T, LatSet, BounceBackLikeMethod<T, LatSet>::movingwall_bounceback> NS_BBMW(
+  BBLikeFixedBlockBdManager<T, LatSet, BounceBackLikeMethod<T, LatSet>::movingwall_bounceback> NS_BBMW(
     "NS_BBMW", {&BlockLat}, BBMovingWallFlag, VoidFlag);
   BlockBoundaryManager BM(&NS_BB, &NS_BBMW);
 

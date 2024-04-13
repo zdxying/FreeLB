@@ -217,17 +217,17 @@ int main() {
 
   // --------------------- BCs ---------------------
   // NS
-  BBLikeBlockFixedBdManager<T, LatSet0, BounceBackLikeMethod<T, LatSet0>::normal_bounceback> NS_BB(
+  BBLikeFixedBlockBdManager<T, LatSet0, BounceBackLikeMethod<T, LatSet0>::normal_bounceback> NS_BB(
     "NS_BB", NSLattice, BouncebackFlag, voidflag);
 
-  BBLikeBlockMovingBdManager<T, LatSet0, BounceBackLikeMethod<T, LatSet0>::normal_bounceback>
+  BBLikeMovingBlockBdManager<T, LatSet0, BounceBackLikeMethod<T, LatSet0>::normal_bounceback>
     NS_MBB("NS_MBB", NSLattice, CA.getInterfaces(), CA::CAType::Solid);
 
   // Conc
-  BBLikeBlockFixedBdManager<T, LatSet1, BounceBackLikeMethod<T, LatSet1>::normal_bounceback> SO_BB(
+  BBLikeFixedBlockBdManager<T, LatSet1, BounceBackLikeMethod<T, LatSet1>::normal_bounceback> SO_BB(
     "SO_BB", SOLattice, BouncebackFlag, voidflag);
 
-  BBLikeBlockMovingBdManager<T, LatSet1, BounceBackLikeMethod<T, LatSet1>::normal_bounceback>
+  BBLikeMovingBlockBdManager<T, LatSet1, BounceBackLikeMethod<T, LatSet1>::normal_bounceback>
     SO_MBB("SO_MBB", SOLattice, CA.getInterfaces(), CA::CAType::Solid);
 
 

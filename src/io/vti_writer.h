@@ -23,7 +23,7 @@
 #pragma once
 
 #include "data_struct/Vector.h"
-#include "data_struct/lattice.h"
+#include "data_struct/block_lattice.h"
 #include "io/base64.h"
 #include "io/basic_writer.h"
 

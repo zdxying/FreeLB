@@ -368,8 +368,8 @@ void BasicBlock<T, D>::forEach(const AABB<T, D>& AABBs, Func func) {
 }
 
 template <typename T, unsigned int D>
-template <typename Func>
-void BasicBlock<T, D>::forEach(const AABB<T, D>& AABBs, const FlagArray& flag,
+template <typename flagtype, typename Func>
+void BasicBlock<T, D>::forEach(const AABB<T, D>& AABBs, const GenericArray<flagtype>& flag,
                                std::uint8_t fromflag, Func func) {
   Vector<int, D> idx_min;
   Vector<int, D> idx_max;
@@ -396,8 +396,8 @@ void BasicBlock<T, D>::forEach(const AABB<T, D>& AABBs, const FlagArray& flag,
 }
 
 template <typename T, unsigned int D>
-template <typename Func>
-void BasicBlock<T, D>::forEach(const FlagArray& flag, std::uint8_t fromflag, Func func) {
+template <typename flagtype, typename Func>
+void BasicBlock<T, D>::forEach(const GenericArray<flagtype>& flag, std::uint8_t fromflag, Func func) {
   if constexpr (D == 2) {
     for (int j = 0; j < Mesh[1]; ++j) {
       for (int i = 0; i < Mesh[0]; ++i) {
@@ -411,81 +411,6 @@ void BasicBlock<T, D>::forEach(const FlagArray& flag, std::uint8_t fromflag, Fun
         for (int i = 0; i < Mesh[0]; ++i) {
           std::size_t id = getIndex(Vector<int, 3>{i, j, k});
           if (util::isFlag(flag[id], fromflag)) func(id);
-        }
-      }
-    }
-  }
-}
-
-template <typename T, unsigned int D>
-template <typename Func>
-void BasicBlock<T, D>::forEachBlock(const AABB<T, D>& AABBs, Func func) {
-  Vector<int, D> idx_min;
-  Vector<int, D> idx_max;
-  getLocIdxRange(AABBs, idx_min, idx_max);
-  if constexpr (D == 2) {
-    for (int j = idx_min[1]; j <= idx_max[1]; ++j) {
-      for (int i = idx_min[0]; i <= idx_max[0]; ++i) {
-        const Vector<T, 2> pt = MinCenter + (VoxelSize * Vector<T, 2>{T(i), T(j)});
-        if (AABBs.isInside(pt)) func(getIndex(Vector<int, 2>{i, j}), BlockId);
-      }
-    }
-  } else if constexpr (D == 3) {
-    for (int k = idx_min[2]; k <= idx_max[2]; ++k) {
-      for (int j = idx_min[1]; j <= idx_max[1]; ++j) {
-        for (int i = idx_min[0]; i <= idx_max[0]; ++i) {
-          const Vector<T, 3> pt = MinCenter + (VoxelSize * Vector<T, 3>{T(i), T(j), T(k)});
-          if (AABBs.isInside(pt)) func(getIndex(Vector<int, 3>{i, j, k}), BlockId);
-        }
-      }
-    }
-  }
-}
-
-template <typename T, unsigned int D>
-template <typename Func>
-void BasicBlock<T, D>::forEachBlock(const AABB<T, D>& AABBs, const FlagArray& flag,
-                                    std::uint8_t fromflag, Func func) {
-  Vector<int, D> idx_min;
-  Vector<int, D> idx_max;
-  getLocIdxRange(AABBs, idx_min, idx_max);
-  if constexpr (D == 2) {
-    for (int j = idx_min[1]; j <= idx_max[1]; ++j) {
-      for (int i = idx_min[0]; i <= idx_max[0]; ++i) {
-        const Vector<T, 2> pt = MinCenter + (VoxelSize * Vector<T, 2>{T(i), T(j)});
-        std::size_t id = getIndex(Vector<int, 2>{i, j});
-        if (AABBs.isInside(pt) && util::isFlag(flag[id], fromflag)) func(id, BlockId);
-      }
-    }
-  } else if constexpr (D == 3) {
-    for (int k = idx_min[2]; k <= idx_max[2]; ++k) {
-      for (int j = idx_min[1]; j <= idx_max[1]; ++j) {
-        for (int i = idx_min[0]; i <= idx_max[0]; ++i) {
-          const Vector<T, 3> pt = MinCenter + (VoxelSize * Vector<T, 3>{T(i), T(j), T(k)});
-          std::size_t id = getIndex(Vector<int, 3>{i, j, k});
-          if (AABBs.isInside(pt) && util::isFlag(flag[id], fromflag)) func(id, BlockId);
-        }
-      }
-    }
-  }
-}
-
-template <typename T, unsigned int D>
-template <typename Func>
-void BasicBlock<T, D>::forEachBlock(const FlagArray& flag, std::uint8_t fromflag, Func func) {
-  if constexpr (D == 2) {
-    for (int j = 0; j < Mesh[1]; ++j) {
-      for (int i = 0; i < Mesh[0]; ++i) {
-        std::size_t id = getIndex(Vector<int, 2>{i, j});
-        if (util::isFlag(flag[id], fromflag)) func(id, BlockId);
-      }
-    }
-  } else if constexpr (D == 3) {
-    for (int k = 0; k < Mesh[2]; ++k) {
-      for (int j = 0; j < Mesh[1]; ++j) {
-        for (int i = 0; i < Mesh[0]; ++i) {
-          std::size_t id = getIndex(Vector<int, 3>{i, j, k});
-          if (util::isFlag(flag[id], fromflag)) func(id, BlockId);
         }
       }
     }

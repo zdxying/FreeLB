@@ -23,7 +23,7 @@
 #pragma once
 
 #include "geometry/basic_geometry.h"
-#include "data_struct/field.h"
+#include "data_struct/field_struct.h"
 #include "io/stlreader.h"
 
 template <typename T>

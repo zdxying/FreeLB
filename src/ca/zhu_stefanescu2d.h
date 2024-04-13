@@ -1,21 +1,21 @@
 /* This file is part of FreeLB
- * 
+ *
  * Copyright (C) 2024 Yuan Man
  * E-mail contact: ymmanyuan@outlook.com
  * The most recent progress of FreeLB will be updated at
  * <https://github.com/zdxying/FreeLB>
- * 
- * FreeLB is free software: you can redistribute it and/or modify it under the terms of the GNU
- * General Public License as published by the Free Software Foundation, either version 3 of the
- * License, or (at your option) any later version.
- * 
- * FreeLB is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the
- * implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public
- * License for more details.
- * 
- * You should have received a copy of the GNU General Public License along with FreeLB. If not, see
- * <https://www.gnu.org/licenses/>.
- * 
+ *
+ * FreeLB is free software: you can redistribute it and/or modify it under the terms of
+ * the GNU General Public License as published by the Free Software Foundation, either
+ * version 3 of the License, or (at your option) any later version.
+ *
+ * FreeLB is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
+ * without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
+ * PURPOSE. See the GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License along with FreeLB. If
+ * not, see <https://www.gnu.org/licenses/>.
+ *
  */
 
 // Zhu-Stefanescu (Z-S) model for dendrite growth
@@ -241,9 +241,10 @@ class ZhuStefanescu2D {
 template <typename T, typename LatSet>
 struct BlockZSCommStru {
   BlockZhuStefanescu2D<T, LatSet>* SendBlock;
-  BlockCommStru<T, LatSet::d>* Comm;
+  BlockComm<T, LatSet::d>* Comm;
 
-  BlockZSCommStru(BlockZhuStefanescu2D<T, LatSet>* sblock, BlockCommStru<T, LatSet::d>* blockcomm)
+  BlockZSCommStru(BlockZhuStefanescu2D<T, LatSet>* sblock,
+                  BlockComm<T, LatSet::d>* blockcomm)
       : SendBlock(sblock), Comm(blockcomm) {}
 
   std::vector<std::size_t>& getSends() { return Comm->SendCells; }
@@ -253,19 +254,16 @@ struct BlockZSCommStru {
 template <typename T, typename LatSet>
 class BlockZhuStefanescu2D {
  private:
-  int Ni;
-  int Nj;
-  std::size_t N;
   // preferred growth angle to x-axis, manually chosen
   T Theta;
-  // nucleation sites
-  std::size_t SiteId;
   // anisotropy coefficient, manually chosen
   T delta;
   // Gibbs-Thomson coefficient
   T GT;
   // initial composition C0
   T C0;
+  // low limit of temperature
+  T Tl;
   // equilibrium liquidus temperature at the initial composition C0
   T Tl_eq;
   // slope of liquidus line
@@ -280,30 +278,31 @@ class BlockZhuStefanescu2D {
 
   Block2D<T>& Geo;
   ZSConverter<T>& ConvCA;
-  RhoLattice<T>& lbmSO;
-  RhoLattice<T>& lbmTH;
+
+  ScalerField<T>& Conc;
+  ScalerField<T>& Temp;
 
   VectorFieldAOS<T, 2>& Velocity;
   // COMM
   std::vector<BlockZSCommStru<T, LatSet>> Communicators;
 
   // state field std::uint8_t
-  ScalerField<CAType> State;
-  // flag field std::uint8_t
-  ScalerField<CAFlag> Flag;
+  ScalerField<CAType>& State;
   // solid fraction
-  ScalerField<T> Fs;
+  ScalerField<T>& Fs;
   // delta solid fraction
-  ScalerField<T> Delta_Fs;
+  ScalerField<T>& Delta_Fs;
   // curvature of Solid-Liquid interface
-  ScalerField<T> Curvature;
+  ScalerField<T>& Curvature;
   // Solid phase composition
-  ScalerField<T> C_Solids;
+  ScalerField<T>& C_Solids;
   // excess rho
   // cyclic array is used to prevent race condition
-  PopulationField<T, LatSet::q> ExcessC;
+  // PopulationField<T, LatSet::q> ExcessC;
+  // pre streamed excess C field
+  ScalerField<T>& PreExcessC;
   // colleted excess rho
-  ScalerField<T> ExcessC_;
+  ScalerField<T>& ExcessC;
   // solid count
   std::size_t SolidCount;
 
@@ -311,9 +310,13 @@ class BlockZhuStefanescu2D {
   std::array<int, LatSet::q> Delta_Index;
 
  public:
-  BlockZhuStefanescu2D(VectorFieldAOS<T, 2>& velo, ZSConverter<T>& convca, RhoLattice<T>& lbmso,
-                       RhoLattice<T>& lbmth, Block2D<T>& geo, T delta_, T theta, std::size_t siteid,
-                       bool setup = false, int num = LatSet::q);
+  BlockZhuStefanescu2D(BlockField<VectorFieldAOS<T, 2>, T, 2>& veloFM,
+                       ZSConverter<T>& convca, BlockRhoLattice<T>& latso,
+                       BlockRhoLattice<T>& latth, ScalerField<CAType>& state,
+                       ScalerField<T>& fs, ScalerField<T>& delta_fs,
+                       ScalerField<T>& curvature, ScalerField<T>& csolids,
+                       ScalerField<T>& preexcessc, ScalerField<T>& excessc, T delta,
+                       T theta, std::size_t siteid, int num = LatSet::q);
   ~BlockZhuStefanescu2D() {}
 
   Block2D<T>& getGeo() { return Geo; }
@@ -322,18 +325,15 @@ class BlockZhuStefanescu2D {
   std::uint8_t getLevel() const { return Geo.getLevel(); }
   std::size_t getSolidCount() const { return SolidCount; }
 
-  RhoLattice<T>& getLBMConc() { return lbmSO; }
-  RhoLattice<T>& getLBMTemp() { return lbmTH; }
   // get field data
   std::vector<std::size_t>& getInterface() { return Interface; }
   ScalerField<CAType>& getState() { return State; }
-  ScalerField<CAFlag>& getFlag() { return Flag; }
   ScalerField<T>& getFs() { return Fs; }
   ScalerField<T>& getDeltaFs() { return Delta_Fs; }
   ScalerField<T>& getCurvature() { return Curvature; }
   ScalerField<T>& getCSolids() { return C_Solids; }
-  PopulationField<T, LatSet::q>& getExcessC() { return ExcessC; }
-  ScalerField<T>& getExcessC_() { return ExcessC_; }
+  ScalerField<T>& getPreExcessC() { return PreExcessC; }
+  ScalerField<T>& getExcessC() { return ExcessC; }
   // setup
   void Setup(std::size_t id, int num);
   void UpdateInterface();
@@ -349,16 +349,13 @@ class BlockZhuStefanescu2D {
   // grow, omp parallel is enabled, no erase operation
   // if cells are large, use Grow_erase_s may improve performance
   void Grow();
-  void DistributeExcessC(std::size_t id, T excessC);
-  void CollectExcessC();
+  // this function should be called after communication
+  void DistributeExcessC();
   void SimpleCapture();
 
-  void TypeConversion();
-
   void apply_SimpleCapture() {
-    CollectExcessC();
+    DistributeExcessC();
     SimpleCapture();
-    // TypeConversion();
   }
 
   void apply_grow() {
@@ -366,13 +363,11 @@ class BlockZhuStefanescu2D {
     UpdateCurvature();
     UpdateDeltaFs();
     Grow();
-    // CollectExcessC();
   }
 
   void communicate();
 
   bool hasNeighborType(std::size_t id, std::uint8_t type) const;
-  bool hasNeighborFlag(std::size_t id, std::uint8_t flag) const;
 };
 
 template <typename T, typename CALatSet>
@@ -380,19 +375,12 @@ class BlockZhuStefanescu2DManager {
  private:
   std::vector<BlockZhuStefanescu2D<T, CALatSet>> BlockZS;
 
-  std::vector<ScalerField<CAType>*> States;
-
-  std::vector<ScalerField<T>*> ExcessC_s;
-
   std::vector<std::vector<std::size_t>*> Interfaces;
 
   BlockGeometry2D<T>& BlockGeo;
 
-
   // preferred growth angle to x-axis, manually chosen
   T Theta;
-  // nucleation sites
-  std::size_t SiteId;
   // anisotropy coefficient, manually chosen
   T delta;
   // Gibbs-Thomson coefficient
@@ -408,35 +396,67 @@ class BlockZhuStefanescu2DManager {
   // (1 - partition coefficient)
   T _Part_Coef;
 
+  // --- CA Field ---
+  // state field
+  BlockFieldManager<ScalerField<CAType>, T, 2> StateFM;
+  // solid fraction field
+  BlockFieldManager<ScalerField<T>, T, 2> FsFM;
+  // delta solid fraction field
+  BlockFieldManager<ScalerField<T>, T, 2> DeltaFsFM;
+  // curvature of Solid-Liquid interface
+  BlockFieldManager<ScalerField<T>, T, 2> CurvFM;
+  // Solid phase composition
+  BlockFieldManager<ScalerField<T>, T, 2> CSolidsFM;
+  // pre streamed excess C field
+  // BlockFieldManager<PopulationField<T, CALatSet::q> ,T , 2> ExcessCFM;
+  // comapared with population field, the excess C field has less data exchange, use
+  // scalar field instead
+  BlockFieldManager<ScalerField<T>, T, 2> PreExcessCFM;
+  // collected excess C field
+  BlockFieldManager<ScalerField<T>, T, 2> ExcessCFM;
+
  public:
-  BlockZhuStefanescu2DManager(BlockVectFieldAOS<T, 2>& velos, ZSConverter<T>& convca,
-                              std::vector<RhoLattice<T>*> lbmsos,
-                              std::vector<RhoLattice<T>*> lbmths, BlockGeometry2D<T>& blockgeo,
-                              T delta_, T theta, std::size_t siteid, int num = CALatSet::q)
-      : BlockGeo(blockgeo), Theta(theta), SiteId(siteid), delta(delta_), GT(0.1), C0(0.1),
-        Tl_eq(0.1), m_l(0.1), Part_Coef(0.1), _Part_Coef(1 - Part_Coef) {
+  BlockFieldManager<ScalerField<CAType>, T, 2>& getStateFM() { return StateFM; }
+  BlockFieldManager<ScalerField<T>, T, 2>& getFsFM() { return FsFM; }
+  BlockFieldManager<ScalerField<T>, T, 2>& getDeltaFsFM() { return DeltaFsFM; }
+  BlockFieldManager<ScalerField<T>, T, 2>& getCurvFM() { return CurvFM; }
+  BlockFieldManager<ScalerField<T>, T, 2>& getCSolidsFM() { return CSolidsFM; }
+  BlockFieldManager<ScalerField<T>, T, 2>& getPreExcessCFM() { return PreExcessCFM; }
+  BlockFieldManager<ScalerField<T>, T, 2>& getExcessCFM() { return ExcessCFM; }
+
+  template <typename LatSet0, typename LatSet1>
+  BlockZhuStefanescu2DManager(BlockFieldManager<VectorFieldAOS<T, 2>, T, 2>& veloFM,
+                              ZSConverter<T>& convca,
+                              BlockLatticeManager<T, LatSet0>& LatSos,
+                              BlockLatticeManager<T, LatSet1>& LatThs, T delta_, T theta,
+                              std::size_t SiteId, int num = CALatSet::q)
+      : BlockGeo(veloFM.getGeo()), Theta(theta), delta(delta_), GT(0.1), C0(0.1),
+        Tl_eq(0.1), m_l(0.1), Part_Coef(0.1), _Part_Coef(1 - Part_Coef),
+        StateFM(veloFM.getGeo(), CAType::Boundary), FsFM(veloFM.getGeo(), T(0)),
+        DeltaFsFM(veloFM.getGeo(), T(0)), CurvFM(veloFM.getGeo(), T(0)),
+        CSolidsFM(veloFM.getGeo(), T(0)), PreExcessCFM(veloFM.getGeo(), T(0)),
+        ExcessCFM(veloFM.getGeo(), T(0)) {
     // find block to setup
     std::vector<std::size_t> blockids;
-    blockids.resize(blockgeo.getBlockNum(), 0);
-    std::vector<bool> setup;
-    setup.resize(blockgeo.getBlockNum(), false);
+    blockids.resize(BlockGeo.getBlockNum(), std::size_t(0));
 
     Vector<T, 2> loc_t = BlockGeo.getLoc_t(SiteId);
-    for (std::size_t i = 0; i < blockgeo.getBlockNum(); ++i) {
-      if (blockgeo.getBlock(i).isInside(loc_t)) {
-        blockids[i] = blockgeo.getBlock(i).getIndex_t(loc_t);
-        setup[i] = true;
+    for (std::size_t i = 0; i < BlockGeo.getBlockNum(); ++i) {
+      if (BlockGeo.getBlock(i).getBaseBlock().isInside(loc_t)) {
+        blockids[i] = BlockGeo.getBlock(i).getIndex_t(loc_t);
       }
     }
     // create BlockZhuStefanescu2D
-    for (std::size_t i = 0; i < blockgeo.getBlockNum(); ++i) {
-      BlockZS.emplace_back(velos.getBlockField(i), convca, *lbmsos[i], *lbmths[i],
-                           blockgeo.getBlock(i), delta_, theta, blockids[i], setup[i], num);
+    for (std::size_t i = 0; i < BlockGeo.getBlockNum(); ++i) {
+      BlockZS.emplace_back(
+        veloFM.getBlockField(i), convca, LatSos.getBlockLat(i), LatThs.getBlockLat(i),
+        StateFM.getBlockField(i).getField(), FsFM.getBlockField(i).getField(),
+        DeltaFsFM.getBlockField(i).getField(), CurvFM.getBlockField(i).getField(),
+        CSolidsFM.getBlockField(i).getField(), PreExcessCFM.getBlockField(i).getField(),
+        ExcessCFM.getBlockField(i).getField(), delta_, theta, blockids[i], num);
     }
     // init States, ExcessC_s, Interfaces
     for (auto& zs : BlockZS) {
-      States.push_back(&(zs.getState()));
-      ExcessC_s.push_back(&(zs.getExcessC_()));
       Interfaces.push_back(&(zs.getInterface()));
     }
     InitCommunicators();
@@ -446,7 +466,8 @@ class BlockZhuStefanescu2DManager {
   void FreezeBlockCells(BlockGeometryHelper2D<T>& GeoHelper) {
 #pragma omp parallel for num_threads(Thread_Num)
     for (BasicBlock<T, 2>& block : GeoHelper.getBlockCells()) {
-      if (util::isFlag(GeoHelper.getBlockCellTag(block.getBlockId()), BlockCellTag::Solid)) {
+      if (util::isFlag(GeoHelper.getBlockCellTag(block.getBlockId()),
+                       BlockCellTag::Solid)) {
         continue;
       }
       Vector<T, 2> centre = block.getCenter();
@@ -482,9 +503,9 @@ class BlockZhuStefanescu2DManager {
     }
   }
 
-  std::vector<ScalerField<CAType>*>& getStates() { return States; }
-  std::vector<ScalerField<T>*>& getExcessC_s() { return ExcessC_s; }
+
   std::vector<std::vector<std::size_t>*>& getInterfaces() { return Interfaces; }
+
   std::size_t getInterfaceNum() {
     std::size_t num = 0;
     for (auto& vec : Interfaces) {
@@ -516,8 +537,8 @@ class BlockZhuStefanescu2DManager {
     for (auto& zs : BlockZS) {
       Block2D<T>& Geo = zs.getGeo();
       std::vector<BlockZSCommStru<T, CALatSet>>& Communicators = zs.getCommunicators();
-      for (BlockCommStru<T, CALatSet::d>& comm : Geo.getCommunicators()) {
-        Communicators.emplace_back(&BlockZS[comm.SendBlock->getBlockId()], &comm);
+      for (BlockComm<T, CALatSet::d>& comm : Geo.getCommunicators()) {
+        Communicators.emplace_back(&BlockZS[comm.getSendId()], &comm);
       }
     }
   }

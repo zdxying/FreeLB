@@ -1,21 +1,21 @@
 /* This file is part of FreeLB
- * 
+ *
  * Copyright (C) 2024 Yuan Man
  * E-mail contact: ymmanyuan@outlook.com
  * The most recent progress of FreeLB will be updated at
  * <https://github.com/zdxying/FreeLB>
- * 
+ *
  * FreeLB is free software: you can redistribute it and/or modify it under the terms of the GNU
  * General Public License as published by the Free Software Foundation, either version 3 of the
  * License, or (at your option) any later version.
- * 
- * FreeLB is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the
- * implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public
- * License for more details.
- * 
+ *
+ * FreeLB is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even
+ * the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General
+ * Public License for more details.
+ *
  * You should have received a copy of the GNU General Public License along with FreeLB. If not, see
  * <https://www.gnu.org/licenses/>.
- * 
+ *
  */
 
 // physical field
@@ -140,6 +140,8 @@ class GenericField {
   void Init(T value) {
     for (unsigned int i = 0; i < D; ++i) _Data[i].Init(value);
   }
+
+  unsigned int Size() const { return D; }
 };
 
 // template <typename T>
@@ -348,38 +350,6 @@ class CyclicArray {
   }
 };
 
-template <typename FieldType, typename T>
-class BlockFieldStruct {
- private:
-  // block field data
-  std::vector<FieldType> _Data;
-  // block field size
-  std::vector<std::size_t> _Sizes;
-
- public:
-  BlockFieldStruct(std::vector<std::size_t> size) : _Sizes(size) {
-    for (int i = 0; i < _Sizes.size(); ++i) _Data.emplace_back(_Sizes[i]);
-  }
-  BlockFieldStruct(std::vector<std::size_t> size, T initvalue) : _Sizes(size) {
-    for (int i = 0; i < _Sizes.size(); ++i) _Data.emplace_back(_Sizes[i], initvalue);
-  }
-  std::size_t getBlockNum() const { return _Sizes.size(); }
-  FieldType& getBlockField(int i) { return _Data[i]; }
-  const FieldType& getBlockField(int i) const { return _Data[i]; }
-  void Erase(int i) {
-    _Data.erase(_Data.begin() + i);
-    _Sizes.erase(_Sizes.begin() + i);
-  }
-  void Pushback(std::size_t size) {
-    _Sizes.push_back(size);
-    _Data.emplace_back(size);
-  }
-  void Pushback(std::size_t size, T initvalue) {
-    _Sizes.push_back(size);
-    _Data.emplace_back(size, initvalue);
-  }
-};
-
 template <typename T, unsigned int D>
 class BasicBlock;
 
@@ -389,17 +359,146 @@ void InterpolationtoCell2D(GenericField<ArrayType<T>, D>& coarseF,
                            GenericField<ArrayType<T>, D>& fineC,
                            const BasicBlock<T, 2>& coarseFBlock,
                            const BasicBlock<T, 2>& fineCBlock) {
-  int shift = 0;
-  if (coarseFBlock.getLevel() > std::uint8_t(0)) {
-    shift = 1;
-  }
   for (unsigned int iArr = 0; iArr < D; ++iArr) {
     ArrayType<T>& coarseFArray = coarseF.getField(iArr);
     ArrayType<T>& fineCArray = fineC.getField(iArr);
-    Vector<T,2> Shift_t = fineCBlock.getMin() - coarseFBlock.getMin();
+    Vector<T, 2> Shift_t = fineCBlock.getMin() - coarseFBlock.getMin();
+    // start index of coarse field
     int xshift = static_cast<int>(Shift_t[0] / coarseFBlock.getVoxelSize()) - 1;
     int yshift = static_cast<int>(Shift_t[1] / coarseFBlock.getVoxelSize()) - 1;
+    std::size_t shiftindex = yshift * coarseFBlock.getNx() + xshift;
+    // location of start point of coarse field
+    Vector<T, 2> coarseFStart =
+      coarseFBlock.getMinCenter() + Vector<int, 2>{xshift, yshift} * coarseFBlock.getVoxelSize();
+    // location of start point of fine field
+    Vector<T, 2> fineCStart = fineCBlock.getMinCenter();
+    // interpolation
+    for (int iy = 0; iy < fineCBlock.getNy(); ++iy) {
+      for (int ix = 0; ix < fineCBlock.getNx(); ++ix) {
+        // location of fine cell
+        Vector<T, 2> fineCCell = fineCStart + Vector<int, 2>{ix, iy} * fineCBlock.getVoxelSize();
+        // dist to coarse field start point
+        Vector<T, 2> dist = fineCCell - coarseFStart;
+        // left bottom coarse cell index
+        int x = static_cast<int>(dist[0] / coarseFBlock.getVoxelSize());
+        int y = static_cast<int>(dist[1] / coarseFBlock.getVoxelSize());
+        T remx = dist[0] - x * coarseFBlock.getVoxelSize();
+        T remy = dist[1] - y * coarseFBlock.getVoxelSize();
+        int scheme = 0;
+        if (remx < fineCBlock.getVoxelSize()) {
+          scheme += 1;
+        }
+        if (remy < fineCBlock.getVoxelSize()) {
+          scheme += 2;
+        }
+        /*
+        2 3
+        0 1
+        */
+        std::size_t Cid0 = y * coarseFBlock.getNx() + x + shiftindex;
+        std::size_t Cid1 = Cid0 + 1;
+        std::size_t Cid2 = Cid0 + coarseFBlock.getNx();
+        std::size_t Cid3 = Cid2 + 1;
+        std::size_t Fid = iy * fineCBlock.getNx() + ix;
+        // interpolate from coarse to fine
+        switch (scheme) {
+          case 0: {
+            fineCArray[Fid] = coarseFArray[Cid0] * T(0.0625) + coarseFArray[Cid1] * T(0.1875) +
+                              coarseFArray[Cid2] * T(0.1875) + coarseFArray[Cid3] * T(0.5625);
+          } break;
+          case 1: {
+            fineCArray[Fid] = coarseFArray[Cid0] * T(0.1875) + coarseFArray[Cid1] * T(0.0625) +
+                              coarseFArray[Cid2] * T(0.5625) + coarseFArray[Cid3] * T(0.1875);
+          } break;
+          case 2: {
+            fineCArray[Fid] = coarseFArray[Cid0] * T(0.1875) + coarseFArray[Cid1] * T(0.5625) +
+                              coarseFArray[Cid2] * T(0.0625) + coarseFArray[Cid3] * T(0.1875);
+          } break;
+          case 3: {
+            fineCArray[Fid] = coarseFArray[Cid0] * T(0.5625) + coarseFArray[Cid1] * T(0.1875) +
+                              coarseFArray[Cid2] * T(0.1875) + coarseFArray[Cid3] * T(0.0625);
+          } break;
+        }
+      }
+    }
+  }
+}
 
+// field data communication: average from fine to coarse cell
+template <template <typename> class ArrayType, typename T, unsigned int D>
+void AveragetoCell2D(GenericField<ArrayType<T>, D>& fineF, GenericField<ArrayType<T>, D>& CoarseC,
+                     const BasicBlock<T, 2>& fineFBlock, const BasicBlock<T, 2>& CoarseCBlock) {
+  for (unsigned int iArr = 0; iArr < D; ++iArr) {
+    ArrayType<T>& fineFArray = fineF.getField(iArr);
+    ArrayType<T>& CoarseCArray = CoarseC.getField(iArr);
+    Vector<T, 2> shift_t = CoarseCBlock.getMin() - fineFBlock.getMin();
+    // start index of fine field
+    int xshift = static_cast<int>(shift_t[0] / fineFBlock.getVoxelSize());
+    int yshift = static_cast<int>(shift_t[1] / fineFBlock.getVoxelSize());
+    std::size_t shiftindex = yshift * fineFBlock.getNx() + xshift;
+    // average
+    for (int iy = 0; iy < CoarseCBlock.getNy(); ++iy) {
+      for (int ix = 0; ix < CoarseCBlock.getNx(); ++ix) {
+        std::size_t Cid = iy * CoarseCBlock.getNx() + ix;
+        // left bottom corner fid
+        std::size_t Fid0 = (iy * 2) * fineFBlock.getNx() + ix * 2 + shiftindex;
+        // ids
+        std::size_t Fid1 = Fid0 + 1;
+        std::size_t Fid2 = Fid0 + fineFBlock.getNx();
+        std::size_t Fid3 = Fid2 + 1;
+        // average from fine to coarse
+        CoarseCArray[Cid] =
+          (fineFArray[Fid0] + fineFArray[Fid1] + fineFArray[Fid2] + fineFArray[Fid3]) * T(0.25);
+      }
+    }
+  }
+}
+
+// field data communication: same level communication, simple copy to cell
+template <template <typename> class ArrayType, typename T, unsigned int D>
+void CopytoCell2D(GenericField<ArrayType<T>, D>& Field, GenericField<ArrayType<T>, D>& Cell,
+                  const BasicBlock<T, 2>& FieldBlock, const BasicBlock<T, 2>& CellBlock) {
+  for (unsigned int iArr = 0; iArr < D; ++iArr) {
+    ArrayType<T>& FieldArray = Field.getField(iArr);
+    ArrayType<T>& CellArray = Cell.getField(iArr);
+    Vector<T, 2> Shift_t = CellBlock.getMin() - FieldBlock.getMin();
+    // start index of cell
+    int xshift = static_cast<int>(Shift_t[0] / FieldBlock.getVoxelSize());
+    int yshift = static_cast<int>(Shift_t[1] / FieldBlock.getVoxelSize());
+    // copy
+    for (int iy = 0; iy < CellBlock.getNy(); ++iy) {
+      // start index of Cell
+      std::size_t CellStart = iy * CellBlock.getNx();
+      // start index of Field
+      std::size_t FieldStart = (iy + yshift) * FieldBlock.getNx() + xshift;
+      std::copy(FieldArray.getdataPtr(FieldStart),
+                FieldArray.getdataPtr(FieldStart + CellBlock.getNx()),
+                CellArray.getdataPtr(CellStart));
+    }
+  }
+}
+
+// field data communication: same level communication, simple copy to field
+template <template <typename> class ArrayType, typename T, unsigned int D>
+void CopytoField2D(GenericField<ArrayType<T>, D>& Field, GenericField<ArrayType<T>, D>& Cell,
+                   const BasicBlock<T, 2>& FieldBlock, const BasicBlock<T, 2>& CellBlock) {
+  for (unsigned int iArr = 0; iArr < D; ++iArr) {
+    ArrayType<T>& FieldArray = Field.getField(iArr);
+    ArrayType<T>& CellArray = Cell.getField(iArr);
+    Vector<T, 2> Shift_t = CellBlock.getMin() - FieldBlock.getMin();
+    // start index of cell
+    int xshift = static_cast<int>(Shift_t[0] / FieldBlock.getVoxelSize());
+    int yshift = static_cast<int>(Shift_t[1] / FieldBlock.getVoxelSize());
+    // copy
+    for (int iy = 0; iy < CellBlock.getNy(); ++iy) {
+      // start index of Cell
+      std::size_t CellStart = iy * CellBlock.getNx();
+      // start index of Field
+      std::size_t FieldStart = (iy + yshift) * FieldBlock.getNx() + xshift;
+      std::copy(CellArray.getdataPtr(CellStart),
+                CellArray.getdataPtr(CellStart + CellBlock.getNx()),
+                FieldArray.getdataPtr(FieldStart));
+    }
   }
 }
 

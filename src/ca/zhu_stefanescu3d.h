@@ -27,7 +27,7 @@
 #include <atomic>
 #include <vector>
 
-#include "data_struct/field.h"
+#include "data_struct/field_struct.h"
 #include "ca/cazs.h"
 #include "lbm/lattice_set.h"
 #include "legacy/legacy_lattice/legacyfield3D.h"

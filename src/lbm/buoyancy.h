@@ -1,21 +1,21 @@
 /* This file is part of FreeLB
- * 
+ *
  * Copyright (C) 2024 Yuan Man
  * E-mail contact: ymmanyuan@outlook.com
  * The most recent progress of FreeLB will be updated at
  * <https://github.com/zdxying/FreeLB>
- * 
- * FreeLB is free software: you can redistribute it and/or modify it under the terms of the GNU
- * General Public License as published by the Free Software Foundation, either version 3 of the
- * License, or (at your option) any later version.
- * 
- * FreeLB is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the
- * implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public
- * License for more details.
- * 
- * You should have received a copy of the GNU General Public License along with FreeLB. If not, see
- * <https://www.gnu.org/licenses/>.
- * 
+ *
+ * FreeLB is free software: you can redistribute it and/or modify it under the terms of
+ * the GNU General Public License as published by the Free Software Foundation, either
+ * version 3 of the License, or (at your option) any later version.
+ *
+ * FreeLB is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
+ * without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
+ * PURPOSE. See the GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License along with FreeLB. If
+ * not, see <https://www.gnu.org/licenses/>.
+ *
  */
 
 // buoyancy.h
@@ -29,7 +29,7 @@ class BlockBuoyancy {
   // NS lattice
   BlockLattice<T, LatSet> &NSLat;
   // source lattice, e.g., thermal and solute lattice
-  std::vector<RhoLattice<T> *> Source;
+  std::vector<BlockRhoLattice<T> *> Source;
   VectorFieldAOS<T, LatSet::d> &Velocity;
   ScalerField<T> Force;
   // omega
@@ -44,11 +44,11 @@ class BlockBuoyancy {
       : NSLat(lat), Velocity(velocity), Omega(lat.getOmega()), _Omega(lat.get_Omega()),
         fOmega(T(1) - lat.getOmega() * T(0.5)), Force(lat.getN(), T(0)) {}
   template <typename... Args>
-  void AddSource(RhoLattice<T> *lat, Args... args) {
+  void AddSource(BlockRhoLattice<T> *lat, Args... args) {
     Source.push_back(lat);
     AddSource(args...);
   }
-  void AddSource(RhoLattice<T> *lat) { Source.push_back(lat); }
+  void AddSource(BlockRhoLattice<T> *lat) { Source.push_back(lat); }
 
   std::uint8_t getLevel() const { return NSLat.getLevel(); }
 
@@ -56,7 +56,7 @@ class BlockBuoyancy {
     // reset force
     Force.getField(0).Init(T(0));
     // add to buoyancy
-    for (RhoLattice<T> *lat : Source) {
+    for (BlockRhoLattice<T> *lat : Source) {
       T latRhoInit = lat->getLatRhoInit();
       T latgbeta = lat->getLatgBeta();
       for (int id : NSLat.getIndex()) {
@@ -69,7 +69,7 @@ class BlockBuoyancy {
     // reset force
     Force.getField(0).Init(T(0));
     // add to buoyancy
-    for (RhoLattice<T> *lat : Source) {
+    for (BlockRhoLattice<T> *lat : Source) {
       T latRhoInit = lat->getLatRhoInit();
       T latgbeta = lat->getLatgBeta();
       for (int id = 0; id < NSLat.getN(); ++id) {
@@ -124,11 +124,13 @@ class BlockBuoyancyManager {
   BlockLatticeManager<T, LatSet> &NSLatMan;
 
  public:
-  BlockBuoyancyManager(BlockLatticeManager<T, LatSet> &nsLatMan,
-                       BlockVectFieldAOS<T, LatSet::d> &Velocity)
+  BlockBuoyancyManager(
+    BlockLatticeManager<T, LatSet> &nsLatMan,
+    BlockFieldManager<VectorFieldAOS<T, LatSet::d>, T, LatSet::d> &Velocity)
       : NSLatMan(nsLatMan) {
     for (int i = 0; i < NSLatMan.getBlockLats().size(); ++i) {
-      _Buoyancys.emplace_back(NSLatMan.getBlockLat(i), Velocity.getBlockField(i));
+      _Buoyancys.emplace_back(NSLatMan.getBlockLat(i),
+                              Velocity.getBlockField(i).getField());
     }
   }
   BlockBuoyancyManager(BlockLatticeManager<T, LatSet> &nsLatMan,
@@ -163,36 +165,42 @@ class BlockBuoyancyManager {
   }
 
   template <typename flagtype>
-  void GetBuoyancy(std::int64_t count, std::vector<ScalerField<flagtype> *> flagarrs,
-                   std::uint8_t flag) {
+  void GetBuoyancy(std::int64_t count, std::uint8_t flag,
+                   const BlockFieldManager<ScalerField<flagtype>, T, LatSet::d> &BFM) {
     std::uint8_t MaxLevel = NSLatMan.getMaxLevel();
 #pragma omp parallel for num_threads(Thread_Num)
     for (int i = 0; i < _Buoyancys.size(); ++i) {
-      if (count % (static_cast<int>(pow(2, int(MaxLevel - _Buoyancys[i].getLevel())))) == 0)
-        _Buoyancys[i].GetBuoyancy(flagarrs[i]->getField(), flag);
+      if (count % (static_cast<int>(pow(2, int(MaxLevel - _Buoyancys[i].getLevel())))) ==
+          0)
+        _Buoyancys[i].GetBuoyancy(BFM.getBlockField(i).getField().getField(0), flag);
     }
   }
 
   template <void (*GetFeq)(std::array<T, LatSet::q> &, const Vector<T, LatSet::d> &, T),
             typename flagtype>
-  void BGK_U(std::int64_t count, std::vector<ScalerField<flagtype> *> flagarrs,
-             std::uint8_t flag) {
+  void BGK_U(std::int64_t count, std::uint8_t flag,
+             const BlockFieldManager<ScalerField<flagtype>, T, LatSet::d> &BFM) {
     std::uint8_t MaxLevel = NSLatMan.getMaxLevel();
 #pragma omp parallel for num_threads(Thread_Num)
     for (int i = 0; i < _Buoyancys.size(); ++i) {
-      if (count % (static_cast<int>(pow(2, int(MaxLevel - _Buoyancys[i].getLevel())))) == 0)
-        _Buoyancys[i].template BGK_U<GetFeq>(flagarrs[i]->getField(), flag);
+      if (count % (static_cast<int>(pow(2, int(MaxLevel - _Buoyancys[i].getLevel())))) ==
+          0)
+        _Buoyancys[i].template BGK_U<GetFeq>(BFM.getBlockField(i).getField().getField(0),
+                                             flag);
     }
   }
 
   template <void (*GetFeq)(std::array<T, LatSet::q> &, const Vector<T, LatSet::d> &, T),
             typename flagtype>
-  void BGK(std::int64_t count, std::vector<ScalerField<flagtype> *> flagarrs, std::uint8_t flag) {
+  void BGK(std::int64_t count, std::uint8_t flag,
+           const BlockFieldManager<ScalerField<flagtype>, T, LatSet::d> &BFM) {
     std::uint8_t MaxLevel = NSLatMan.getMaxLevel();
 #pragma omp parallel for num_threads(Thread_Num)
     for (int i = 0; i < _Buoyancys.size(); ++i) {
-      if (count % (static_cast<int>(pow(2, int(MaxLevel - _Buoyancys[i].getLevel())))) == 0)
-        _Buoyancys[i].template BGK<GetFeq>(flagarrs[i]->getField(), flag);
+      if (count % (static_cast<int>(pow(2, int(MaxLevel - _Buoyancys[i].getLevel())))) ==
+          0)
+        _Buoyancys[i].template BGK<GetFeq>(BFM.getBlockField(i).getField().getField(0),
+                                           flag);
     }
   }
 };

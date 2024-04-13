@@ -1,21 +1,21 @@
 /* This file is part of FreeLB
- * 
+ *
  * Copyright (C) 2024 Yuan Man
  * E-mail contact: ymmanyuan@outlook.com
  * The most recent progress of FreeLB will be updated at
  * <https://github.com/zdxying/FreeLB>
- * 
+ *
  * FreeLB is free software: you can redistribute it and/or modify it under the terms of the GNU
  * General Public License as published by the Free Software Foundation, either version 3 of the
  * License, or (at your option) any later version.
- * 
- * FreeLB is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the
- * implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public
- * License for more details.
- * 
+ *
+ * FreeLB is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
+ * without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+ * See the GNU General Public License for more details.
+ *
  * You should have received a copy of the GNU General Public License along with FreeLB. If not, see
  * <https://www.gnu.org/licenses/>.
- * 
+ *
  */
 
 // block_geometry2d.h
@@ -31,21 +31,19 @@ class Block2D : public BasicBlock<T, 2> {
  private:
   // base block
   BasicBlock<T, 2> _BaseBlock;
+
+  // --- communication structure ---
   // neighbor block
   std::vector<Block2D<T>*> _Neighbors;
   // conmmunicate with same level block
-  std::vector<BlockCommStru<T, 2>> Communicators;
+  std::vector<BlockComm<T, 2>> Communicators;
   // average block comm, get from higher level block
-  std::vector<InterpBlockCommStru<T, 2>> AverageComm;
+  std::vector<InterpBlockComm<T, 2>> AverageComm;
   // interp block comm, get from lower level block
-  std::vector<InterpBlockCommStru<T, 2>> InterpComm;
+  std::vector<InterpBlockComm<T, 2>> InterpComm;
+
   // overlap
   int _overlap;
-  // flag
-  std::uint8_t _AABBflag;
-  std::uint8_t _voidflag;
-  // geometry flag field
-  FlagField GeometryFlag;
 
 #ifdef MPI_ENABLED
   int _Rank;
@@ -59,17 +57,14 @@ class Block2D : public BasicBlock<T, 2> {
 
  public:
   // construct directly from basicblock
-  Block2D(const BasicBlock<T, 2>& baseblock, std::uint8_t AABBflag = std::uint8_t(2),
-          std::uint8_t voidflag = std::uint8_t(1), int olap = 1);
+  Block2D(const BasicBlock<T, 2>& baseblock, int olap = 1);
 
   // block2d for uniform block structure
   Block2D(const AABB<T, 2>& block, const AABB<int, 2>& idxblock, int blockid, T voxelSize = T(1),
-          std::uint8_t AABBflag = std::uint8_t(2), std::uint8_t voidflag = std::uint8_t(1),
           int olap = 1);
 #ifdef MPI_ENABLED
   Block2D(int rank, int blockid, const AABB<T, 2>& block, const AABB<int, 2>& idxblock,
-          T voxelSize = T(1), std::uint8_t AABBflag = std::uint8_t(2),
-          std::uint8_t voidflag = std::uint8_t(1), int olap = 1);
+          T voxelSize = T(1), int olap = 1);
 #endif
 
   ~Block2D() = default;
@@ -78,45 +73,28 @@ class Block2D : public BasicBlock<T, 2> {
   const BasicBlock<T, 2>& getBaseBlock() const { return _BaseBlock; }
   BasicBlock<T, 2>& getBaseBlock() { return _BaseBlock; }
 
-  std::uint8_t getAABBflag() const { return _AABBflag; }
-  std::uint8_t getVoidflag() const { return _voidflag; }
   int getOverlap() const { return _overlap; }
 
-  FlagField& getGeoFlagField() { return GeometryFlag; }
-  const FlagField& getGeoFlagField() const { return GeometryFlag; }
-  FlagField* getGeoFlagFieldPtr() { return &GeometryFlag; }
-  std::uint8_t getGeoFlag(std::size_t id) const { return GeometryFlag.get(id); }
-
-  // read from AABBs
-  void ReadAABBs(const AABB<T, 2>& AABBs, std::uint8_t AABBflag = std::uint8_t(2));
   // setup boundary
-  template <typename LatSet>
-  void SetupBoundary(const AABB<T, 2>& AABBs, std::uint8_t AABBflag, std::uint8_t boundaryflag);
-  // set flag in a region defined by AABBs
-  void setFlag(const AABB<T, 2>& AABBs, std::uint8_t flag);
-  void setFlag(const AABB<T, 2>& AABBs, std::uint8_t fromflag, std::uint8_t flag);
+  template <typename FieldType, typename datatype, typename LatSet>
+  void SetupBoundary(const AABB<T, 2>& block, FieldType& field, datatype bdvalue);
 
   // refine block
   void Refine(std::uint8_t deltalevel = std::uint8_t(1));
   // coarsen block
   void Coarsen(std::uint8_t deltalevel = std::uint8_t(1));
 
-  template <typename LatSet>
-  std::size_t getNeighborId(std::size_t id, int dir) const {
-    return id + LatSet::c[dir][0] + LatSet::c[dir][1] * BasicBlock<T, 2>::Mesh[0];
-  }
-
   std::vector<Block2D<T>*>& getNeighbors() { return _Neighbors; }
   const Block2D<T>& getNeighbor(int id) const { return *_Neighbors[id]; }
 
-  std::vector<BlockCommStru<T, 2>>& getCommunicators() { return Communicators; }
-  BlockCommStru<T, 2>& getCommunicator(int id) { return Communicators[id]; }
+  std::vector<BlockComm<T, 2>>& getCommunicators() { return Communicators; }
+  BlockComm<T, 2>& getCommunicator(int id) { return Communicators[id]; }
 
-  std::vector<InterpBlockCommStru<T, 2>>& getInterpBlockComm() { return InterpComm; }
-  InterpBlockCommStru<T, 2>& getInterpBlockComm(int id) { return InterpComm[id]; }
+  std::vector<InterpBlockComm<T, 2>>& getInterpBlockComm() { return InterpComm; }
+  InterpBlockComm<T, 2>& getInterpBlockComm(int id) { return InterpComm[id]; }
 
-  std::vector<InterpBlockCommStru<T, 2>>& getAverageBlockComm() { return AverageComm; }
-  InterpBlockCommStru<T, 2>& getAverageBlockComm(int id) { return AverageComm[id]; }
+  std::vector<InterpBlockComm<T, 2>>& getAverageBlockComm() { return AverageComm; }
+  InterpBlockComm<T, 2>& getAverageBlockComm(int id) { return AverageComm[id]; }
 
 #ifdef MPI_ENABLED
   int getRank() const { return _Rank; }
@@ -147,9 +125,7 @@ class BlockGeometry2D : public BasicBlock<T, 2> {
   // TODO: _BlockAABBs may be removed
   std::vector<AABB<int, 2>> _BlockAABBs;
   std::vector<Block2D<T>> _Blocks;
-  // flag
-  std::uint8_t _AABBflag;
-  std::uint8_t _voidflag;
+
   // ext(overlap) of the whole domain
   int _overlap;
   // max level
@@ -157,18 +133,15 @@ class BlockGeometry2D : public BasicBlock<T, 2> {
 
  public:
   BlockGeometry2D(int Nx, int Ny, int blocknum, const AABB<T, 2>& block, T voxelSize = T(1),
-                  std::uint8_t AABBflag = std::uint8_t(2), std::uint8_t voidflag = std::uint8_t(1),
                   int overlap = 1, bool refine = false);
-  BlockGeometry2D(BlockGeometryHelper2D<T>& GeoHelper, const AABB<T, 2>& block,
-                  std::uint8_t AABBflag = std::uint8_t(2), std::uint8_t voidflag = std::uint8_t(1));
+  BlockGeometry2D(BlockGeometryHelper2D<T>& GeoHelper);
   ~BlockGeometry2D() = default;
 
   void UpdateMaxLevel();
   inline std::uint8_t getMaxLevel() const { return _MaxLevel; }
-  // get
-  std::uint8_t getAABBflag() const { return _AABBflag; }
-  std::uint8_t getVoidflag() const { return _voidflag; }
+
   int getBlockNum() const { return _BlockNum; }
+  void UpdateBlockNum() { _BlockNum = _Blocks.size(); }
   // get total number of cells, overlapped cells included
   int getTotalCellNum() const;
   // get total number of cells, overlapped cells not included
@@ -194,23 +167,6 @@ class BlockGeometry2D : public BasicBlock<T, 2> {
   // init all commuicators
   void InitAllComm();
 
-  void ReadAABBs(const AABB<T, 2>& AABBs, std::uint8_t AABBflag = std::uint8_t(2));
-  template <typename LatSet>
-  void SetupBoundary(std::uint8_t AABBflag = std::uint8_t(2),
-                     std::uint8_t boundaryflag = std::uint8_t(4));
-  void setFlag(const AABB<T, 2>& AABBs, std::uint8_t flag);
-  void setFlag(const AABB<T, 2>& AABBs, std::uint8_t fromflag, std::uint8_t flag);
-  // lambda function set flag
-  // call: setFlag<LatSet>(AABBs, [](std::size_t id){func(id);});
-  template <typename Func>
-  void forEachVoxel(const AABB<T, 2>& AABBs, Func func);
-  template <typename Func>
-  void forEachVoxel(const AABB<T, 2>& AABBs, std::uint8_t fromflag, Func func);
-  template <typename Func>
-  void forEachVoxel(std::uint8_t fromflag, Func func);
-  template <typename Func>
-  void forEachBlock(Func func);
-
   const BasicBlock<T, 2>& getSelfBlock() const { return *this; }
   const BasicBlock<T, 2>& getBaseBlock() const { return _BaseBlock; }
 
@@ -220,36 +176,11 @@ class BlockGeometry2D : public BasicBlock<T, 2> {
   Block2D<T>& getBlock(int id) { return _Blocks[id]; }
   const Block2D<T>& getBlock(int id) const { return _Blocks[id]; }
 
-  // void RefineBlock(const AABB<T, 2>& AABBs, std::uint8_t deltalevel = std::uint8_t(1));
-
   // get size of each block
-  std::vector<FlagField*> getGeoFlags();
-  std::vector<Vector<int, 2>*> getGeoMeshes();
   std::vector<std::size_t> getBlockSizes() const {
     std::vector<std::size_t> sizes;
     for (const Block2D<T>& block : _Blocks) sizes.push_back(block.getN());
     return sizes;
-  }
-
-  // dynamic block geometry
-  // func is a user defined function to initialize dynamic block geometry
-  template <typename Func>
-  void InitDynamicBlockGeometry(BlockGeometryHelper2D<T>& GeoHelper, Func func) {
-    // create blocks from GeoHelper
-    _Blocks.clear();
-    std::vector<BasicBlock<T, 2>>& BaseBlocks = GeoHelper.getBasicBlocks();
-    for (BasicBlock<T, 2>& baseblock : BaseBlocks) {
-      int overlap = 1;
-      if (baseblock.getLevel() != std::uint8_t(0)) {
-        overlap = 2;
-      }
-      _Blocks.emplace_back(baseblock, _AABBflag, _voidflag, overlap);
-    }
-    _BlockNum = _Blocks.size();
-    SetupNbrs();
-    InitAllComm();
-    // user defined function
-    func();
   }
 };
 
@@ -337,9 +268,6 @@ class BlockGeometryMPIHelper2D : public BasicBlock<T, 2> {
   std::vector<AABB<int, 2>> _BlockAABBs;
   // base blocks
   std::vector<BasicBlock<T, 2>> _Blocks;
-  // flag
-  std::uint8_t _AABBflag;
-  std::uint8_t _voidflag;
 
   int _overlap;
 
@@ -347,9 +275,7 @@ class BlockGeometryMPIHelper2D : public BasicBlock<T, 2> {
 
  public:
   BlockGeometryMPIHelper2D(int Nx, int Ny, int blocknum, const AABB<T, 2>& AABBs,
-                           T voxelSize = T(1), std::uint8_t AABBflag = std::uint8_t(2),
-                           std::uint8_t voidflag = std::uint8_t(1), int overlap = 1,
-                           bool refine = false);
+                           T voxelSize = T(1), int overlap = 1, bool refine = false);
   ~BlockGeometryMPIHelper2D() = default;
 
   // get

@@ -1,21 +1,21 @@
 /* This file is part of FreeLB
- * 
+ *
  * Copyright (C) 2024 Yuan Man
  * E-mail contact: ymmanyuan@outlook.com
  * The most recent progress of FreeLB will be updated at
  * <https://github.com/zdxying/FreeLB>
- * 
- * FreeLB is free software: you can redistribute it and/or modify it under the terms of the GNU
- * General Public License as published by the Free Software Foundation, either version 3 of the
- * License, or (at your option) any later version.
- * 
- * FreeLB is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the
- * implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public
- * License for more details.
- * 
- * You should have received a copy of the GNU General Public License along with FreeLB. If not, see
- * <https://www.gnu.org/licenses/>.
- * 
+ *
+ * FreeLB is free software: you can redistribute it and/or modify it under the terms of
+ * the GNU General Public License as published by the Free Software Foundation, either
+ * version 3 of the License, or (at your option) any later version.
+ *
+ * FreeLB is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
+ * without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
+ * PURPOSE. See the GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License along with FreeLB. If
+ * not, see <https://www.gnu.org/licenses/>.
+ *
  */
 
 // block_lattice.hh
@@ -26,29 +26,20 @@
 #include "data_struct/block_lattice.h"
 
 template <typename T, typename LatSet>
-BlockLattice<T, LatSet>::BlockLattice(Block<T, LatSet::d>& blockgeo, AbstractConverter<T>& conv,
+BlockLattice<T, LatSet>::BlockLattice(BlockField<ScalerField<T>, T, LatSet::d>& blockF,
+                                      AbstractConverter<T>& conv,
                                       VectorFieldAOS<T, LatSet::d>& velocity)
-    : BlockGeometry(blockgeo), Velocity(velocity),
-      Omega(RefineConverter<T>::getOmegaF(conv.GetOMEGA(), blockgeo.getLevel())),
-      Pops(blockgeo.getN()), RhoLattice<T>(conv, blockgeo.getN()) {
+    : BlockGeo(blockF.getBlock()), Velocity(velocity),
+      Omega(RefineConverter<T>::getOmegaF(conv.GetOMEGA(), blockF.getBlock().getLevel())),
+      Pops(blockF.getBlock().getN()), BlockRhoLattice<T>(conv, blockF.getField()) {
   _Omega = T(1) - Omega;
   fOmega = T(1) - T(0.5) * Omega;
-  Delta_Index = make_Array<int, LatSet::q>([&](int i) { return LatSet::c[i] * getProjection(); });
+  Delta_Index =
+    make_Array<int, LatSet::q>([&](int i) { return LatSet::c[i] * getProjection(); });
   // init populations
   for (int i = 0; i < LatSet::q; ++i) {
     Pops.getField(i).Init(this->Lattice_Rho_Init * LatSet::w[i]);
   }
-}
-
-template <typename T, typename LatSet>
-void BlockLattice<T, LatSet>::Refine(bool refinevelo, std::uint8_t deltalevel) {
-  BlockGeometry.Refine(deltalevel);
-  Delta_Index = make_Array<int, LatSet::q>([&](int i) { return LatSet::c[i] * getProjection(); });
-  this->Rho.Resize(getN());
-  if (refinevelo) {
-    Velocity.Resize(getN());
-  }
-  // get refined pop field from interpolation
 }
 
 template <typename T, typename LatSet>
@@ -75,7 +66,7 @@ void BlockLattice<T, LatSet>::avercommunicate() {
   for (InterpBlockLatCommStru<T, LatSet>& comm : AverageComm) {
     BlockLattice<T, LatSet>* nBlockLat = comm.SendBlock;
     int size = comm.getRecvs().size();
-    T weight = comm.Comm->UniformWeight;
+    T weight = comm.Comm->getUniformWeight();
     T OmegaF = nBlockLat->getOmega();
     for (int i = 0; i < size; ++i) {
       std::size_t idrecv = comm.getRecvs()[i];
@@ -86,12 +77,15 @@ void BlockLattice<T, LatSet>::avercommunicate() {
       GenericArray<T>& nRhoF = nBlockLat->getRhoField().getField(0);
       GenericArray<Vector<T, LatSet::d>>& nUF = nBlockLat->getVelocityField().getField(0);
       if constexpr (LatSet::d == 2) {
-        averRho =
-          (nRhoF[idsends[0]] + nRhoF[idsends[1]] + nRhoF[idsends[2]] + nRhoF[idsends[3]]) * weight;
-        averU = (nUF[idsends[0]] + nUF[idsends[1]] + nUF[idsends[2]] + nUF[idsends[3]]) * weight;
+        averRho = (nRhoF[idsends[0]] + nRhoF[idsends[1]] + nRhoF[idsends[2]] +
+                   nRhoF[idsends[3]]) *
+                  weight;
+        averU = (nUF[idsends[0]] + nUF[idsends[1]] + nUF[idsends[2]] + nUF[idsends[3]]) *
+                weight;
       } else if constexpr (LatSet::d == 3) {
-        averRho = (nRhoF[idsends[0]] + nRhoF[idsends[1]] + nRhoF[idsends[2]] + nRhoF[idsends[3]] +
-                   nRhoF[idsends[4]] + nRhoF[idsends[5]] + nRhoF[idsends[6]] + nRhoF[idsends[7]]) *
+        averRho = (nRhoF[idsends[0]] + nRhoF[idsends[1]] + nRhoF[idsends[2]] +
+                   nRhoF[idsends[3]] + nRhoF[idsends[4]] + nRhoF[idsends[5]] +
+                   nRhoF[idsends[6]] + nRhoF[idsends[7]]) *
                   weight;
         averU = (nUF[idsends[0]] + nUF[idsends[1]] + nUF[idsends[2]] + nUF[idsends[3]] +
                  nUF[idsends[4]] + nUF[idsends[5]] + nUF[idsends[6]] + nUF[idsends[7]]) *
@@ -107,14 +101,14 @@ void BlockLattice<T, LatSet>::avercommunicate() {
         T averpop;
         // get averaged(interpolated) pop, rho and u
         if constexpr (LatSet::d == 2) {
-          averpop =
-            (nPopsk[idsends[0]] + nPopsk[idsends[1]] + nPopsk[idsends[2]] + nPopsk[idsends[3]]) *
-            weight;
+          averpop = (nPopsk[idsends[0]] + nPopsk[idsends[1]] + nPopsk[idsends[2]] +
+                     nPopsk[idsends[3]]) *
+                    weight;
         } else if constexpr (LatSet::d == 3) {
-          averpop =
-            (nPopsk[idsends[0]] + nPopsk[idsends[1]] + nPopsk[idsends[2]] + nPopsk[idsends[3]] +
-             nPopsk[idsends[4]] + nPopsk[idsends[5]] + nPopsk[idsends[6]] + nPopsk[idsends[7]]) *
-            weight;
+          averpop = (nPopsk[idsends[0]] + nPopsk[idsends[1]] + nPopsk[idsends[2]] +
+                     nPopsk[idsends[3]] + nPopsk[idsends[4]] + nPopsk[idsends[5]] +
+                     nPopsk[idsends[6]] + nPopsk[idsends[7]]) *
+                    weight;
         }
         // convert from fine to coarse
         T popC = RefineConverter<T>::getPopC(averpop, feq[k], OmegaF);
@@ -237,7 +231,8 @@ void BlockLattice<T, LatSet>::MPIcommunicate(MPIBlockCommStru& MPIComm) {
 
 template <typename T, typename LatSet>
 template <typename flagtype>
-void BlockLattice<T, LatSet>::UpdateRho(const GenericArray<flagtype>& flagarr, std::uint8_t flag) {
+void BlockLattice<T, LatSet>::UpdateRho(const GenericArray<flagtype>& flagarr,
+                                        std::uint8_t flag) {
   for (std::size_t id = 0; id < getN(); ++id) {
     if (util::isFlag(flagarr[id], flag)) {
       BasicCell<T, LatSet> cell(id, *this);
@@ -249,7 +244,8 @@ void BlockLattice<T, LatSet>::UpdateRho(const GenericArray<flagtype>& flagarr, s
 template <typename T, typename LatSet>
 template <typename flagtype>
 void BlockLattice<T, LatSet>::UpdateRho_Source(const GenericArray<flagtype>& flagarr,
-                                               std::uint8_t flag, const GenericArray<T>& source) {
+                                               std::uint8_t flag,
+                                               const GenericArray<T>& source) {
   for (std::size_t id = 0; id < getN(); ++id) {
     if (util::isFlag(flagarr[id], flag)) {
       BasicCell<T, LatSet> cell(id, *this);
@@ -260,7 +256,8 @@ void BlockLattice<T, LatSet>::UpdateRho_Source(const GenericArray<flagtype>& fla
 
 template <typename T, typename LatSet>
 template <typename flagtype>
-void BlockLattice<T, LatSet>::UpdateU(const GenericArray<flagtype>& flagarr, std::uint8_t flag) {
+void BlockLattice<T, LatSet>::UpdateU(const GenericArray<flagtype>& flagarr,
+                                      std::uint8_t flag) {
   for (std::size_t id = 0; id < getN(); ++id) {
     if (util::isFlag(flagarr[id], flag)) {
       BasicCell<T, LatSet> cell(id, *this);
@@ -272,7 +269,8 @@ void BlockLattice<T, LatSet>::UpdateU(const GenericArray<flagtype>& flagarr, std
 template <typename T, typename LatSet>
 template <void (*GetFeq)(std::array<T, LatSet::q>&, const Vector<T, LatSet::d>&, T),
           typename flagtype>
-void BlockLattice<T, LatSet>::BGK(const GenericArray<flagtype>& flagarr, std::uint8_t flag) {
+void BlockLattice<T, LatSet>::BGK(const GenericArray<flagtype>& flagarr,
+                                  std::uint8_t flag) {
   for (std::size_t id = 0; id < getN(); ++id) {
     if (util::isFlag(flagarr[id], flag)) {
       BCell<T, LatSet> cell(id, *this);
@@ -284,7 +282,8 @@ void BlockLattice<T, LatSet>::BGK(const GenericArray<flagtype>& flagarr, std::ui
 template <typename T, typename LatSet>
 template <void (*GetFeq)(std::array<T, LatSet::q>&, const Vector<T, LatSet::d>&, T),
           typename flagtype>
-void BlockLattice<T, LatSet>::BGK_Source(const GenericArray<flagtype>& flagarr, std::uint8_t flag,
+void BlockLattice<T, LatSet>::BGK_Source(const GenericArray<flagtype>& flagarr,
+                                         std::uint8_t flag,
                                          const GenericArray<T>& source) {
   T fOmega = T(1) - Omega * T(0.5);
 #pragma omp parallel for num_threads(Thread_Num) schedule(static)
@@ -414,13 +413,15 @@ T BlockLattice<T, LatSet>::getTolU(int shift) {
 // BlockLatticeManager
 
 template <typename T, typename LatSet>
-BlockLatticeManager<T, LatSet>::BlockLatticeManager(BlockGeometry<T, LatSet::d>& blockgeo,
-                                                    AbstractConverter<T>& conv,
-                                                    BlockVectFieldAOS<T, LatSet::d>& blockvelocity)
-    : BlockGeo(blockgeo), BlockVelocity(blockvelocity) {
+BlockLatticeManager<T, LatSet>::BlockLatticeManager(
+  BlockGeometry<T, LatSet::d>& blockgeo, AbstractConverter<T>& conv,
+  BlockFieldManager<VectorFieldAOS<T, LatSet::d>, T, LatSet::d>& blockvelocity)
+    : BlockGeo(blockgeo), BlockVelocity(blockvelocity), Conv(conv),
+      RhoFM(blockgeo, conv.getLatRhoInit()) {
   // init block lattices
   for (int i = 0; i < BlockGeo.getBlocks().size(); ++i) {
-    BlockLats.emplace_back(BlockGeo.getBlock(i), conv, BlockVelocity.getBlockField(i));
+    BlockLats.emplace_back(RhoFM.getBlockField(i), conv,
+                           BlockVelocity.getBlockField(i).getField());
   }
   InitCommunicators();
   InitAverComm();
@@ -435,8 +436,8 @@ void BlockLatticeManager<T, LatSet>::InitCommunicators() {
     Block<T, LatSet::d>& block = BlockLat.getGeo();
     std::vector<BlockLatCommStru<T, LatSet>>& latcomm = BlockLat.getCommunicators();
     latcomm.clear();
-    for (BlockCommStru<T, LatSet::d>& comm : block.getCommunicators()) {
-      latcomm.emplace_back(&BlockLats[comm.SendBlock->getBlockId()], &comm);
+    for (BlockComm<T, LatSet::d>& comm : block.getCommunicators()) {
+      latcomm.emplace_back(&BlockLats[comm.getSendId()], &comm);
     }
   }
 }
@@ -447,8 +448,8 @@ void BlockLatticeManager<T, LatSet>::InitAverComm() {
     Block<T, LatSet::d>& block = BlockLat.getGeo();
     std::vector<InterpBlockLatCommStru<T, LatSet>>& latcomm = BlockLat.getAverageComm();
     latcomm.clear();
-    for (InterpBlockCommStru<T, LatSet::d>& comm : block.getAverageBlockComm()) {
-      latcomm.emplace_back(&BlockLats[comm.SendBlock->getBlockId()], &comm);
+    for (InterpBlockComm<T, LatSet::d>& comm : block.getAverageBlockComm()) {
+      latcomm.emplace_back(&BlockLats[comm.getSendId()], &comm);
     }
   }
 }
@@ -459,132 +460,84 @@ void BlockLatticeManager<T, LatSet>::InitIntpComm() {
     Block<T, LatSet::d>& block = BlockLat.getGeo();
     std::vector<InterpBlockLatCommStru<T, LatSet>>& latcomm = BlockLat.getInterpComm();
     latcomm.clear();
-    for (InterpBlockCommStru<T, LatSet::d>& comm : block.getInterpBlockComm()) {
-      latcomm.emplace_back(&BlockLats[comm.SendBlock->getBlockId()], &comm);
+    for (InterpBlockComm<T, LatSet::d>& comm : block.getInterpBlockComm()) {
+      latcomm.emplace_back(&BlockLats[comm.getSendId()], &comm);
     }
   }
 }
 
 template <typename T, typename LatSet>
-std::vector<RhoLattice<T>*> BlockLatticeManager<T, LatSet>::getRhoLattices() {
-  std::vector<RhoLattice<T>*> RhoLatticeVec;
-  RhoLatticeVec.reserve(BlockLats.size());
-  for (BlockLattice<T, LatSet>& BLat : BlockLats) {
-    RhoLatticeVec.push_back(&BLat);
+template <typename flagtype>
+void BlockLatticeManager<T, LatSet>::UpdateRho(
+  std::int64_t count, std::uint8_t flag,
+  const BlockFieldManager<ScalerField<flagtype>, T, LatSet::d>& BFM) {
+#pragma omp parallel for num_threads(Thread_Num)
+  for (int i = 0; i < BlockLats.size(); ++i) {
+    const int deLevel = static_cast<int>(getMaxLevel() - BlockLats[i].getLevel());
+    if (count % (static_cast<int>(pow(2, deLevel))) == 0)
+      BlockLats[i].UpdateRho(BFM.getBlockField(i).getField().getField(0), flag);
   }
-  return RhoLatticeVec;
-}
-template <typename T, typename LatSet>
-std::vector<ScalerField<T>*> BlockLatticeManager<T, LatSet>::getRhoField() {
-  std::vector<ScalerField<T>*> RhoFieldVec;
-  RhoFieldVec.reserve(BlockLats.size());
-  for (BlockLattice<T, LatSet>& BLat : BlockLats) {
-    RhoFieldVec.push_back(&(BLat.getRhoField()));
-  }
-  return RhoFieldVec;
 }
 
-template <typename T, typename LatSet>
-std::vector<PopulationField<T, LatSet::q>*> BlockLatticeManager<T, LatSet>::getPopField() {
-  std::vector<PopulationField<T, LatSet::q>*> PopFieldVec;
-  PopFieldVec.reserve(BlockLats.size());
-  for (BlockLattice<T, LatSet>& BLat : BlockLats) {
-    PopFieldVec.push_back(&(BLat.getPopField()));
-  }
-  return PopFieldVec;
-}
 
 template <typename T, typename LatSet>
 template <typename flagtype>
-void BlockLatticeManager<T, LatSet>::UpdateRho(std::int64_t count,
-                                               std::vector<ScalerField<flagtype>*>& field,
-                                               std::uint8_t flag) {
+void BlockLatticeManager<T, LatSet>::UpdateRho_Source(
+  std::int64_t count, std::uint8_t flag,
+  const BlockFieldManager<ScalerField<flagtype>, T, LatSet::d>& BFM,
+  const BlockFieldManager<ScalerField<T>, T, LatSet::d>& source) {
 #pragma omp parallel for num_threads(Thread_Num)
   for (int i = 0; i < BlockLats.size(); ++i) {
-    if (count % (static_cast<int>(pow(2, int(getMaxLevel() - BlockLats[i].getLevel())))) == 0)
-      BlockLats[i].UpdateRho(field[i]->getField(), flag);
-  }
-}
-
-template <typename T, typename LatSet>
-void BlockLatticeManager<T, LatSet>::UpdateRho(std::int64_t count, std::uint8_t flag) {
-#pragma omp parallel for num_threads(Thread_Num)
-  for (BlockLattice<T, LatSet>& BLat : BlockLats) {
-    if (count % (static_cast<int>(pow(2, int(getMaxLevel() - BLat.getLevel())))) == 0)
-      BLat.UpdateRho(BLat.getGeo().getGeoFlagField().getField(), flag);
+    const int deLevel = static_cast<int>(getMaxLevel() - BlockLats[i].getLevel());
+    if (count % (static_cast<int>(pow(2, deLevel))) == 0)
+      BlockLats[i].UpdateRho_Source(BFM.getBlockField(i).getField().getField(0), flag,
+                                    source.getBlockField(i).getField().getField(0));
   }
 }
 
 template <typename T, typename LatSet>
 template <typename flagtype>
-void BlockLatticeManager<T, LatSet>::UpdateRho_Source(std::int64_t count,
-                                                      std::vector<ScalerField<flagtype>*>& field,
-                                                      std::uint8_t flag,
-                                                      std::vector<ScalerField<T>*>& source) {
+void BlockLatticeManager<T, LatSet>::UpdateU(
+  std::int64_t count, std::uint8_t flag,
+  const BlockFieldManager<ScalerField<flagtype>, T, LatSet::d>& BFM) {
 #pragma omp parallel for num_threads(Thread_Num)
   for (int i = 0; i < BlockLats.size(); ++i) {
-    if (count % (static_cast<int>(pow(2, int(getMaxLevel() - BlockLats[i].getLevel())))) == 0)
-      BlockLats[i].UpdateRho_Source(field[i]->getField(), flag, source[i]->getField());
-  }
-}
-
-template <typename T, typename LatSet>
-template <typename flagtype>
-void BlockLatticeManager<T, LatSet>::UpdateU(std::int64_t count,
-                                             std::vector<ScalerField<flagtype>*>& field,
-                                             std::uint8_t flag) {
-#pragma omp parallel for num_threads(Thread_Num)
-  for (int i = 0; i < BlockLats.size(); ++i) {
-    if (count % (static_cast<int>(pow(2, int(getMaxLevel() - BlockLats[i].getLevel())))) == 0)
-      BlockLats[i].UpdateU(field[i]->getField(), flag);
-  }
-}
-
-template <typename T, typename LatSet>
-void BlockLatticeManager<T, LatSet>::UpdateU(std::int64_t count, std::uint8_t flag) {
-#pragma omp parallel for num_threads(Thread_Num)
-  for (BlockLattice<T, LatSet>& BLat : BlockLats) {
-    if (count % (static_cast<int>(pow(2, int(getMaxLevel() - BLat.getLevel())))) == 0)
-      BLat.UpdateU(BLat.getGeo().getGeoFlagField().getField(), flag);
+    const int deLevel = static_cast<int>(getMaxLevel() - BlockLats[i].getLevel());
+    if (count % (static_cast<int>(pow(2, deLevel))) == 0)
+      BlockLats[i].UpdateU(BFM.getBlockField(i).getField().getField(0), flag);
   }
 }
 
 template <typename T, typename LatSet>
 template <void (*GetFeq)(std::array<T, LatSet::q>&, const Vector<T, LatSet::d>&, T),
           typename flagtype>
-void BlockLatticeManager<T, LatSet>::BGK(std::int64_t count,
-                                         std::vector<ScalerField<flagtype>*>& field,
-                                         std::uint8_t flag) {
+void BlockLatticeManager<T, LatSet>::BGK(
+  std::int64_t count, std::uint8_t flag,
+  const BlockFieldManager<ScalerField<flagtype>, T, LatSet::d>& BFM) {
 #pragma omp parallel for num_threads(Thread_Num)
   for (int i = 0; i < BlockLats.size(); ++i) {
-    if (count % (static_cast<int>(pow(2, int(getMaxLevel() - BlockLats[i].getLevel())))) == 0)
-      BlockLats[i].template BGK<GetFeq, flagtype>(field[i]->getField(), flag);
+    const int deLevel = static_cast<int>(getMaxLevel() - BlockLats[i].getLevel());
+    if (count % (static_cast<int>(pow(2, deLevel))) == 0)
+      BlockLats[i].template BGK<GetFeq, flagtype>(
+        BFM.getBlockField(i).getField().getField(0), flag);
   }
 }
+
 
 template <typename T, typename LatSet>
 template <void (*GetFeq)(std::array<T, LatSet::q>&, const Vector<T, LatSet::d>&, T),
           typename flagtype>
-void BlockLatticeManager<T, LatSet>::BGK(std::int64_t count, std::uint8_t flag) {
-#pragma omp parallel for num_threads(Thread_Num) schedule(static)
-  for (BlockLattice<T, LatSet>& BLat : BlockLats) {
-    if (count % (static_cast<int>(pow(2, int(getMaxLevel() - BLat.getLevel())))) == 0)
-      BLat.template BGK<GetFeq, flagtype>(BLat.getGeo().getGeoFlagField().getField(), flag);
-  }
-}
-
-template <typename T, typename LatSet>
-template <void (*GetFeq)(std::array<T, LatSet::q>&, const Vector<T, LatSet::d>&, T),
-          typename flagtype>
-void BlockLatticeManager<T, LatSet>::BGK_Source(std::int64_t count,
-                                                std::vector<ScalerField<flagtype>*>& field,
-                                                std::uint8_t flag,
-                                                std::vector<ScalerField<T>*>& source) {
+void BlockLatticeManager<T, LatSet>::BGK_Source(
+  std::int64_t count, std::uint8_t flag,
+  const BlockFieldManager<ScalerField<flagtype>, T, LatSet::d>& BFM,
+  const BlockFieldManager<ScalerField<T>, T, LatSet::d>& source) {
 #pragma omp parallel for num_threads(Thread_Num)
   for (int i = 0; i < BlockLats.size(); ++i) {
-    if (count % (static_cast<int>(pow(2, int(getMaxLevel() - BlockLats[i].getLevel())))) == 0)
-      BlockLats[i].template BGK_Source<GetFeq, flagtype>(field[i]->getField(), flag,
-                                                         source[i]->getField());
+    const int deLevel = static_cast<int>(getMaxLevel() - BlockLats[i].getLevel());
+    if (count % (static_cast<int>(pow(2, deLevel))) == 0)
+      BlockLats[i].template BGK_Source<GetFeq, flagtype>(
+        BFM.getBlockField(i).getField().getField(0), flag,
+        source.getBlockField(i).getField().getField(0));
   }
 }
 
@@ -721,7 +674,8 @@ void DynamicBlockLatticeHelper2D<T, LatSet>::UpdateMaxGradNorm2() {
 }
 
 template <typename T, typename LatSet>
-void DynamicBlockLatticeHelper2D<T, LatSet>::GeoRefineAndCoarsen(int OptProcNum, int MaxProcNum,
+void DynamicBlockLatticeHelper2D<T, LatSet>::GeoRefineAndCoarsen(int OptProcNum,
+                                                                 int MaxProcNum,
                                                                  bool enforce) {
   ComputeGradNorm2();
   UpdateMaxGradNorm2();
@@ -744,8 +698,82 @@ void DynamicBlockLatticeHelper2D<T, LatSet>::GeoRefineAndCoarsen(int OptProcNum,
 }
 
 template <typename T, typename LatSet>
-void DynamicBlockLatticeHelper2D<T, LatSet>::LatticeRefineAndCoarsen() {
-  // lattice data operation
+void DynamicBlockLatticeHelper2D<T, LatSet>::FieldDataTransfer() {
+  // field data transfer
+  for (BasicBlock<T, 2>& block : BlockGeoHelper.getBlockCells()) {
+    std::uint8_t Celllevel = block.getLevel();
+    // resize buffer
+    _PopCellFields[block.getBlockId()].Resize(block.getN());
+    // find corresponding old block field
+    Vector<T, 2> centre = block.getCenter();
+    int j = 0;
+    for (BlockLattice<T, LatSet>& blocklat : BlockLatMan.getBlockLats()) {
+      if (blocklat.getGeo().getBaseBlock().isInside(centre)) {
+        break;
+      } else {
+        ++j;
+      }
+    }
+    // copy field
+    BlockLattice<T, LatSet>& blockLat = BlockLatMan.getBlockLat(j);
+    std::uint8_t Fieldlevel = blockLat.getGeo().getLevel();
+    if (Celllevel > Fieldlevel) {
+      InterpolationtoCell2D(blockLat.getPopField(), _PopCellFields[block.getBlockId()],
+                            blockLat.getGeo(), block);
+    } else if (Celllevel < Fieldlevel) {
+      AveragetoCell2D(blockLat.getPopField(), _PopCellFields[block.getBlockId()],
+                      blockLat.getGeo(), block);
+    } else {
+      CopytoCell2D(blockLat.getPopField(), _PopCellFields[block.getBlockId()],
+                   blockLat.getGeo(), block);
+    }
+  }
+  // reInit BlockGeometry should started after all field data transfer to CellFields
+}
+
+template <typename T, typename LatSet>
+void DynamicBlockLatticeHelper2D<T, LatSet>::InitDynamicBlockGeometry() {
+  std::vector<Block2D<T>>& Blocks = BlockGeo.getBlocks();
+  // create blocks from GeoHelper
+  Blocks.clear();
+  for (BasicBlock<T, 2>& baseblock : BlockGeoHelper.getBasicBlocks()) {
+    int overlap = 1;
+    if (baseblock.getLevel() != std::uint8_t(0)) {
+      overlap = 2;
+    }
+    Blocks.emplace_back(baseblock, overlap);
+  }
+  BlockGeo.UpdateBlockNum();
+  BlockGeo.SetupNbrs();
+  BlockGeo.InitAllComm();
+}
+
+template <typename T, typename LatSet>
+void DynamicBlockLatticeHelper2D<T, LatSet>::InitDynamicBlockLattice() {
+  // remove all old block lattices
+  std::vector<BlockLattice<T, LatSet>>& BlockLats = BlockLatMan.getBlockLats();
+  BlockLats.clear();
+  // remove all old block velocity field
+  BlockVectFieldAOS<T, 2>& BlockVelocityVec = BlockLatMan.getBlockVelocity();
+  BlockVelocityVec.Clear();
+  // init block lattices
+  for (Block2D<T>& block : BlockGeo.getBlocks()) {
+    // resize block velocity field
+    BlockVelocityVec.Pushback(block.getN(), Vector<T, 2>{});
+    // init block lattice
+    BlockLats.emplace_back(block, BlockLatMan.getConverter(),
+                           BlockVelocityVec.getBlockField(block.getBlockId()));
+    // init block lattice populations
+    BlockLattice<T, LatSet>& BlockLat = BlockLats.back();
+    PopulationField<T, LatSet::q>& PopField = BlockLat.getPopField();
+    for (BasicBlock<T, 2>& blockcell : BlockGeoHelper.getBlockCells()) {
+      Vector<T, 2> centre = blockcell.getCenter();
+      if (BlockLat.getGeo().getBaseBlock().isInside(centre)) {
+        CopytoField2D(PopField, _PopCellFields[block.getBlockId()], BlockLat.getGeo(),
+                      blockcell);
+      }
+    }
+  }
 }
 
 // template <typename T, typename LatSet>

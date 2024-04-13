@@ -153,10 +153,11 @@ void readParam() {
 }
 
 int main() {
-  std::uint8_t voidflag = std::uint8_t(1);
-  std::uint8_t AABBflag = std::uint8_t(2);
+  std::uint8_t voidFlag = std::uint8_t(1);
+  std::uint8_t AABBFlag = std::uint8_t(2);
   std::uint8_t BouncebackFlag = std::uint8_t(4);
-  std::uint8_t FI_Flag = static_cast<std::uint8_t>(CA::CAType::Fluid | CA::CAType::Interface);
+  std::uint8_t FI_Flag =
+    static_cast<std::uint8_t>(CA::CAType::Fluid | CA::CAType::Interface);
 
   Printer::Print_BigBanner(std::string("Initializing..."));
 
@@ -178,8 +179,8 @@ int main() {
   ConcConv.ConvertConc_withCExpan(Cl, Ch, Diff_Liq, Solutal_Expan_Coeff);
   // ConcConv.Enable_Non_Uniform_TimeStep(100);
 
-  ZSConverter<T> CAConv(BaseConv, TempConv, ConcConv, T_Melt, T_Eute, m_Solidus, m_Liquidus,
-                        GT_Coeff);
+  ZSConverter<T> CAConv(BaseConv, TempConv, ConcConv, T_Melt, T_Eute, m_Solidus,
+                        m_Liquidus, GT_Coeff);
   // Conv.ConvertLatentHeat(LatHeat);
 
   // PhaseDiagramConverter<T> PDConv(TempConv, ConcConv, T_Melt, T_Eute,
@@ -189,108 +190,118 @@ int main() {
   ConvManager.Check_and_Print();
 
   // ------------------ define geometry ------------------
-  AABB<T, 2> cavity(Vector<T, 2>(T(0), T(0)), Vector<T, 2>(T(Ni * Cell_Len), T(Nj * Cell_Len)));
+  AABB<T, 2> cavity(Vector<T, 2>(T(0), T(0)),
+                    Vector<T, 2>(T(Ni * Cell_Len), T(Nj * Cell_Len)));
 
   // geometry helper
   BlockGeometryHelper2D<T> GeoHelper(Ni, Nj, Ni / BlockCellNx, cavity, Cell_Len);
   GeoHelper.CreateBlocks();
   GeoHelper.AdaptiveOptimization(Thread_Num);
 
-  // NS geometry
-  BlockGeometry2D<T> Geo0(GeoHelper, cavity, AABBflag, voidflag);
-  Geo0.SetupBoundary<LatSet0>(AABBflag, BouncebackFlag);
-  // thermal geometry
-  BlockGeometry2D<T> Geo1(GeoHelper, cavity, AABBflag, voidflag);
-  Geo1.SetupBoundary<LatSet1>(AABBflag, BouncebackFlag);
-
-  vtmwriter::ScalerWriter GeoFlagWriter("flag", Geo0.getGeoFlags());
-  vtmwriter::vtmWriter<T, 2> GeoWriter("GeoFlag", Geo0);
-  GeoWriter.addWriterSet(&GeoFlagWriter);
-  GeoWriter.Write();
+  // geometry
+  BlockGeometry2D<T> Geo(GeoHelper);
 
   // ------------------ define lattice ------------------
   // velocity field
-  BlockVectFieldAOS<T, 2> Velocity(Geo0.getBlockSizes());
+  BlockFieldManager<VectorFieldAOS<T, 2>, T, 2> VelocityFM(Geo);
+
   // lbm
-  BlockLatticeManager<T, LatSet0> NSLattice(Geo0, BaseConv, Velocity);
+  BlockLatticeManager<T, LatSet0> NSLattice(Geo, BaseConv, VelocityFM);
 
-  BlockLatticeManager<T, LatSet1> SOLattice(Geo1, ConcConv, Velocity);
+  BlockLatticeManager<T, LatSet1> SOLattice(Geo, ConcConv, VelocityFM);
 
-  BlockLatticeManager<T, LatSet1> THLattice(Geo1, TempConv, Velocity);
+  BlockLatticeManager<T, LatSet1> THLattice(Geo, TempConv, VelocityFM);
+
+  // ------------------ define flag field ------------------
+  BlockFieldManager<FlagField, T, 2> FlagF(Geo, voidFlag);
+  FlagF.forEach(cavity,
+                [&](FlagField& field, std::size_t id) { field.SetField(id, AABBFlag); });
+  FlagF.template SetupBoundary<LatSet0>(cavity, BouncebackFlag);
+
+  vtmwriter::ScalerWriter FlagWriter("flag", FlagF);
+  vtmwriter::vtmWriter<T, 2> GeoWriter("GeoFlag", Geo);
+  GeoWriter.addWriterSet(&FlagWriter);
+  GeoWriter.WriteBinary();
 
   // --------------------- dynamic lattice ---------------------
-  DynamicBlockLatticeHelper2D<T, LatSet1> DynLatHelper(SOLattice, GeoHelper, std::vector<T>{T(0)},
-                                                       std::vector<T>{T(0)});
+  DynamicBlockLatticeHelper2D<T, LatSet1> DynLatHelper(
+    SOLattice, GeoHelper, std::vector<T>{T(0)}, std::vector<T>{T(0)});
 
-  vtkWriter::FieldScalerWriter<T> GradNormRhoW(
-    "GradNormRho", DynLatHelper.getMaxGradNorm2s().data(), DynLatHelper.getMaxGradNorm2s().size());
-  vtkStruPointsWriter<T, 2> GradNormRhoWriter("GradNormRho", Cell_Len*BlockCellNx, Vector<T, 2>{},
-                                              GeoHelper.getCellsNx(), GeoHelper.getCellsNy());
-  GradNormRhoWriter.addtoWriteList(&GradNormRhoW);
+  vtkWriter::FieldScalerWriter<T> GradNormRho("GradNormRho",
+                                              DynLatHelper.getMaxGradNorm2s().data(),
+                                              DynLatHelper.getMaxGradNorm2s().size());
+  vtkStruPointsWriter<T, 2> GradNormRhoWriter("GradNormRho", Cell_Len * BlockCellNx,
+                                              Vector<T, 2>{}, GeoHelper.getCellsNx(),
+                                              GeoHelper.getCellsNy());
+  GradNormRhoWriter.addtoWriteList(&GradNormRho);
 
-  // vtiwriter::ScalerWriter GradNormRhoVTI("GradNormRho", DynLatHelper.getGradNorm2F().getField(0));
-  // vtiwriter::vtiManager GradNormRhoWVTI("GradNormRhoF", Geo0.getBaseBlock());
+  // vtiwriter::ScalerWriter GradNormRhoVTI("GradNormRho",
+  // DynLatHelper.getGradNorm2F().getField(0)); vtiwriter::vtiManager
+  // GradNormRhoWVTI("GradNormRhoF", Geo.getBaseBlock());
   // GradNormRhoWVTI.addWriter(&GradNormRhoVTI);
 
   // --------------------- CA ---------------------
   CA::BlockZhuStefanescu2DManager<T, LatSetCA> CA(
-    Velocity, CAConv, SOLattice.getRhoLattices(), THLattice.getRhoLattices(), Geo0, Delta,
-    pref_Orine, Geo0.getIndex(Vector<int, 2>{Ni / 2, Nj / 2}));
+    VelocityFM, CAConv, SOLattice, THLattice, Delta, pref_Orine,
+    Geo.getIndex(Vector<int, 2>{Ni / 2, Nj / 2}));
 
   // --------------------- BCs ---------------------
   // NS
-  BBLikeBlockFixedBdManager<T, LatSet0, BounceBackLikeMethod<T, LatSet0>::normal_bounceback> NS_BB(
-    "NS_BB", NSLattice, BouncebackFlag, voidflag);
+  BBLikeFixedBlockBdManager<T, LatSet0,
+                            BounceBackLikeMethod<T, LatSet0>::normal_bounceback>
+    NS_BB("NS_BB", NSLattice, FlagF, BouncebackFlag, voidFlag);
 
-  BBLikeBlockMovingBdManager<T, LatSet0, BounceBackLikeMethod<T, LatSet0>::normal_bounceback>
-    NS_MBB("NS_MBB", NSLattice, CA.getInterfaces(), CA::CAType::Solid);
+  BBLikeMovingBlockBdManager<T, LatSet0,
+                             BounceBackLikeMethod<T, LatSet0>::normal_bounceback>
+    NS_MBB("NS_MBB", NSLattice, CA.getInterfaces(), FlagF, CA::CAType::Solid);
 
   // Conc
-  BBLikeBlockFixedBdManager<T, LatSet1, BounceBackLikeMethod<T, LatSet1>::normal_bounceback> SO_BB(
-    "SO_BB", SOLattice, BouncebackFlag, voidflag);
+  BBLikeFixedBlockBdManager<T, LatSet1,
+                            BounceBackLikeMethod<T, LatSet1>::normal_bounceback>
+    SO_BB("SO_BB", SOLattice, FlagF, BouncebackFlag, voidFlag);
 
-  BBLikeBlockMovingBdManager<T, LatSet1, BounceBackLikeMethod<T, LatSet1>::normal_bounceback>
-    SO_MBB("SO_MBB", SOLattice, CA.getInterfaces(), CA::CAType::Solid);
+  BBLikeMovingBlockBdManager<T, LatSet1,
+                             BounceBackLikeMethod<T, LatSet1>::normal_bounceback>
+    SO_MBB("SO_MBB", SOLattice, CA.getInterfaces(), FlagF, CA::CAType::Solid);
 
 
-  BlockBuoyancyManager<T, LatSet0> Force(NSLattice, Velocity);
+  BlockBuoyancyManager<T, LatSet0> Force(NSLattice, VelocityFM);
   Force.AddSource(SOLattice);
   Force.AddSource(THLattice);
 
   // writer
-  vtmwriter::ScalerWriter CWriter("Rho", SOLattice.getRhoField());
-  vtmwriter::ScalerWriter StateWriter("State", CA.getStates());
-  vtmwriter::VectorWriter VecWriter("Velocity", Velocity);
-  vtmwriter::vtmWriter<T, 2> NCWriter("cavityblock2d", Geo0);
-  NCWriter.addWriterSet(&CWriter, &StateWriter, &VecWriter);
+  vtmwriter::ScalerWriter CWriter("Rho", SOLattice.getRhoFM());
+  vtmwriter::ScalerWriter StateWriter("State", CA.getStateFM());
+  vtmwriter::VectorWriter VecWriter("VelocityFM", VelocityFM);
+  vtmwriter::vtmWriter<T, 2> MainWriter("cavityblock2d", Geo);
+  MainWriter.addWriterSet(&CWriter, &StateWriter, &VecWriter);
 
   /*count and timer*/
   Timer MainLoopTimer;
   Timer OutputTimer;
 
   Printer::Print_BigBanner(std::string("Start Calculation..."));
-  NCWriter.WriteBinary(MainLoopTimer());
+  MainWriter.WriteBinary(MainLoopTimer());
 
-  DynLatHelper.ComputeGradNorm2();
-  DynLatHelper.UpdateMaxGradNorm2();
   GradNormRhoWriter.Write(MainLoopTimer());
   // GradNormRhoWVTI.WriteBinary(MainLoopTimer());
 
   while (MainLoopTimer() < MaxStep) {
-    NSLattice.UpdateRho(MainLoopTimer(), CA.getStates(), FI_Flag);
-    SOLattice.UpdateRho_Source(MainLoopTimer(), CA.getStates(), FI_Flag, CA.getExcessC_s());
+    NSLattice.UpdateRho(MainLoopTimer(), FI_Flag, SOLattice.getRhoFM());
+    SOLattice.UpdateRho_Source(MainLoopTimer(), FI_Flag, CA.getStateFM(),
+                               CA.getExcessCFM());
 
     CA.apply_SimpleCapture();
 
-    Force.GetBuoyancy(MainLoopTimer(), CA.getStates(), FI_Flag);
+    Force.GetBuoyancy(MainLoopTimer(), FI_Flag, CA.getStateFM());
 
-    Force.BGK_U<Equilibrium<T, LatSet0>::SecondOrder>(MainLoopTimer(), CA.getStates(),
-                                                      CA::CAType::Fluid);
-    Force.BGK<Equilibrium<T, LatSet0>::SecondOrder>(MainLoopTimer(), CA.getStates(),
-                                                    CA::CAType::Interface);
+    Force.BGK_U<Equilibrium<T, LatSet0>::SecondOrder>(MainLoopTimer(), CA::CAType::Fluid,
+                                                      CA.getStateFM());
+    Force.BGK<Equilibrium<T, LatSet0>::SecondOrder>(
+      MainLoopTimer(), CA::CAType::Interface, CA.getStateFM());
 
-    SOLattice.BGK_Source<Equilibrium<T, LatSet1>::SecondOrder>(MainLoopTimer(), CA.getStates(),
-                                                               FI_Flag, CA.getExcessC_s());
+    SOLattice.BGK_Source<Equilibrium<T, LatSet1>::SecondOrder>(
+      MainLoopTimer(), FI_Flag, CA.getStateFM(), CA.getExcessCFM());
 
     // comm here is ok
 
@@ -311,21 +322,20 @@ int main() {
     ++OutputTimer;
 
     if (MainLoopTimer() % OutputStep == 0) {
-      OutputTimer.Print_InnerLoopPerformance(Geo0.getTotalCellNum(), OutputStep);
+      OutputTimer.Print_InnerLoopPerformance(Geo.getTotalCellNum(), OutputStep);
       Printer::Print<std::size_t>("Interface", CA.getInterfaceNum());
-      Printer::Print<T>("Solid%", T(CA.getSolidCount()) * 100 / Geo0.getTotalCellNum());
-      NCWriter.WriteBinary(MainLoopTimer());
+      Printer::Print<T>("Solid%", T(CA.getSolidCount()) * 100 / Geo.getTotalCellNum());
+      MainWriter.WriteBinary(MainLoopTimer());
 
-      DynLatHelper.ComputeGradNorm2();
-      DynLatHelper.UpdateMaxGradNorm2();
+      DynLatHelper.LatticeRefineAndCoarsen(Thread_Num);
+      DynLatHelper.InitDynamicBlockGeometry();
       GradNormRhoWriter.Write(MainLoopTimer());
       // GradNormRhoWVTI.WriteBinary(MainLoopTimer());
     }
   }
-  NCWriter.WriteBinary(MainLoopTimer());
+  MainWriter.WriteBinary(MainLoopTimer());
 
-  DynLatHelper.ComputeGradNorm2();
-  DynLatHelper.UpdateMaxGradNorm2();
+  DynLatHelper.LatticeRefineAndCoarsen(Thread_Num);
   GradNormRhoWriter.Write(MainLoopTimer());
   // GradNormRhoWVTI.WriteBinary(MainLoopTimer());
 

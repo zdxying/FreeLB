@@ -101,11 +101,10 @@ class CyclicArray;
 template <typename FieldType, typename T>
 class BlockFieldStruct;
 
-using FlagArray = GenericArray<std::uint8_t>;
-using FlagField = GenericField<FlagArray, 1>;
-
 template <typename T>
 using ScalerField = GenericField<GenericArray<T>, 1>;
+
+using FlagField = ScalerField<std::uint8_t>;
 
 // array of structure version of vector field
 // access: getField()[index][ith component]

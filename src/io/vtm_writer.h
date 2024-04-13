@@ -1,21 +1,21 @@
 /* This file is part of FreeLB
- * 
+ *
  * Copyright (C) 2024 Yuan Man
  * E-mail contact: ymmanyuan@outlook.com
  * The most recent progress of FreeLB will be updated at
  * <https://github.com/zdxying/FreeLB>
- * 
+ *
  * FreeLB is free software: you can redistribute it and/or modify it under the terms of the GNU
  * General Public License as published by the Free Software Foundation, either version 3 of the
  * License, or (at your option) any later version.
- * 
- * FreeLB is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the
- * implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public
- * License for more details.
- * 
+ *
+ * FreeLB is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even
+ * the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General
+ * Public License for more details.
+ *
  * You should have received a copy of the GNU General Public License along with FreeLB. If not, see
  * <https://www.gnu.org/licenses/>.
- * 
+ *
  */
 
 // vtm_writer.h
@@ -192,72 +192,97 @@ class vtmWriter {
   }
 };
 
-template <template <typename> class ArrayType, typename T>
+// ArrayType<T> &Array 
+template <template <typename> class ArrayType, typename datatype>
 class ScalerWriter : public vtiwriter::AbstWriterSet {
  private:
-  std::vector<vtiwriter::ScalerWriter<ArrayType, T>> _scalerwriters;
+  std::vector<vtiwriter::ScalerWriter<ArrayType, datatype>> _scalerwriters;
 
  public:
-  ScalerWriter(std::string varname, const BlockFStruct<ArrayType, T, 1>& field) {
+  ScalerWriter(std::string varname, const BlockFStruct<ArrayType, datatype, 1>& field) {
     for (int i = 0; i < field.getBlockNum(); ++i) {
       _scalerwriters.emplace_back(varname, field.getBlockField(i).getField(0));
     }
   }
-  ScalerWriter(std::string varname, std::vector<GenericField<ArrayType<T>, 1>*> field) {
+  template <typename T, unsigned int Dim>
+  ScalerWriter(std::string varname, const BlockFieldManager<GenericField<ArrayType<datatype>, 1>, T, Dim>& blockFM) {
+    for (const BlockField<GenericField<ArrayType<datatype>, 1>, T, Dim>& blockF : blockFM.getBlockFields()) {
+      _scalerwriters.emplace_back(varname, blockF.getField().getField(0));
+    }
+  }
+  ScalerWriter(std::string varname, std::vector<GenericField<ArrayType<datatype>, 1>*> field) {
     for (int i = 0; i < field.size(); ++i) {
       _scalerwriters.emplace_back(varname, field[i]->getField(0));
     }
   }
   // create a writer for a single field
-  ScalerWriter(std::string varname, GenericField<ArrayType<T>, 1>& field) {
+  ScalerWriter(std::string varname, GenericField<ArrayType<datatype>, 1>& field) {
     _scalerwriters.emplace_back(varname, field.getField(0));
   }
 
   vtiwriter::AbstractWriter* getWriter(int i) override { return &_scalerwriters[i]; }
 };
 
-template <typename T, unsigned int D>
+// GenericArray<Vector<datatype, D>> &Array
+template <typename datatype, unsigned int D>
 class VectorWriter : public vtiwriter::AbstWriterSet {
  private:
-  std::vector<vtiwriter::VectorWriter<T, D>> _vectorwriters;
+  std::vector<vtiwriter::VectorWriter<datatype, D>> _vectorwriters;
 
  public:
-  VectorWriter(std::string varname, const BlockVectFieldAOS<T, D>& field) {
+  VectorWriter(std::string varname, const BlockVectFieldAOS<datatype, D>& field) {
     for (int i = 0; i < field.getBlockNum(); ++i) {
       _vectorwriters.emplace_back(varname, field.getBlockField(i).getField(0));
     }
   }
-  VectorWriter(std::string varname, std::vector<VectorFieldAOS<T, D>*> field) {
+  template <typename T, unsigned int Dim>
+  VectorWriter(std::string varname, const BlockFieldManager<VectorFieldAOS<datatype, D>, T, Dim>& blockFM) {
+    for (const BlockField<VectorFieldAOS<datatype, D>, T, Dim>& blockF : blockFM.getBlockFields()) {
+      _vectorwriters.emplace_back(varname, blockF.getField().getField(0));
+    }
+  }
+  VectorWriter(std::string varname, std::vector<VectorFieldAOS<datatype, D>*> field) {
     for (int i = 0; i < field.size(); ++i) {
       _vectorwriters.emplace_back(varname, field[i]->getField(0));
     }
   }
   // create a writer for a single field
-  VectorWriter(std::string varname, VectorFieldAOS<T, D>& field) {
+  VectorWriter(std::string varname, VectorFieldAOS<datatype, D>& field) {
     _vectorwriters.emplace_back(varname, field.getField(0));
   }
 
   vtiwriter::AbstractWriter* getWriter(int i) override { return &_vectorwriters[i]; }
 };
 
-template <template <typename> class ArrayType, typename T, unsigned int D>
+// GenericField<ArrayType<datatype>, D>
+template <template <typename> class ArrayType, typename datatype, unsigned int D>
 class VectorSOAWriter : public vtiwriter::AbstWriterSet {
  private:
-  std::vector<vtiwriter::VectorSOAWriter<ArrayType, T, D>> _vectorsoawriters;
+  std::vector<vtiwriter::VectorSOAWriter<ArrayType, datatype, D>> _vectorsoawriters;
 
  public:
-  VectorSOAWriter(std::string varname, const BlockFStruct<ArrayType, T, D>& field) {
+  VectorSOAWriter(std::string varname, const BlockFStruct<ArrayType, datatype, D>& field) {
     for (int i = 0; i < field.getBlockNum(); ++i) {
       _vectorsoawriters.emplace_back(varname, field.getBlockField(i));
     }
   }
-  VectorSOAWriter(std::string varname, std::vector<GenericField<ArrayType<T>, D>*> field) {
+
+  template <typename T, unsigned int Dim>
+  VectorSOAWriter(std::string varname,
+                  const BlockFieldManager<GenericField<ArrayType<datatype>, D>, T, Dim>& blockFM) {
+    for (const BlockField<GenericField<ArrayType<datatype>, D>, T, Dim>& blockF : blockFM.getBlockFields()) {
+      _vectorsoawriters.emplace_back(varname, blockF.getField());
+    }
+  }
+
+  VectorSOAWriter(std::string varname, std::vector<GenericField<ArrayType<datatype>, D>*> field) {
     for (int i = 0; i < field.size(); ++i) {
       _vectorsoawriters.emplace_back(varname, &field[i]);
     }
   }
+
   // create a writer for a single field
-  VectorSOAWriter(std::string varname, GenericField<ArrayType<T>, D>& field) {
+  VectorSOAWriter(std::string varname, GenericField<ArrayType<datatype>, D>& field) {
     _vectorsoawriters.emplace_back(varname, &field);
   }
 
