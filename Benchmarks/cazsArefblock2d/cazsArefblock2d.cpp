@@ -242,8 +242,13 @@ int main() {
 
   // --------------------- CA ---------------------
   CA::BlockZhuStefanescu2DManager<T, LatSetCA> CA(
-    VelocityFM, CAConv, SOLattice, THLattice, Delta, pref_Orine,
-    Geo.getIndex(Vector<int, 2>{Ni / 2, Nj / 2}));
+    VelocityFM, CAConv, SOLattice, THLattice, Delta, pref_Orine
+    );
+  // set CA State field
+  CA.getStateFM().forEach(FlagF, AABBFlag, [&](auto& field, std::size_t id) {
+    field.SetField(id, CA::CAType::Fluid);
+  });
+  CA.Setup(Geo.getIndex(Vector<int, 2>{Ni / 2, Nj / 2}));
 
   // --------------------- BCs ---------------------
   // NS
@@ -291,7 +296,7 @@ int main() {
     SOLattice.UpdateRho_Source(MainLoopTimer(), FI_Flag, CA.getStateFM(),
                                CA.getExcessCFM());
 
-    CA.apply_SimpleCapture();
+    CA.Apply_SimpleCapture();
 
     Force.GetBuoyancy(MainLoopTimer(), FI_Flag, CA.getStateFM());
 

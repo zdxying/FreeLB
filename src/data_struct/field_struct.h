@@ -5,16 +5,16 @@
  * The most recent progress of FreeLB will be updated at
  * <https://github.com/zdxying/FreeLB>
  *
- * FreeLB is free software: you can redistribute it and/or modify it under the terms of the GNU
- * General Public License as published by the Free Software Foundation, either version 3 of the
- * License, or (at your option) any later version.
+ * FreeLB is free software: you can redistribute it and/or modify it under the terms of
+ * the GNU General Public License as published by the Free Software Foundation, either
+ * version 3 of the License, or (at your option) any later version.
  *
  * FreeLB is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
- * without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
- * See the GNU General Public License for more details.
+ * without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
+ * PURPOSE. See the GNU General Public License for more details.
  *
- * You should have received a copy of the GNU General Public License along with FreeLB. If not, see
- * <https://www.gnu.org/licenses/>.
+ * You should have received a copy of the GNU General Public License along with FreeLB. If
+ * not, see <https://www.gnu.org/licenses/>.
  *
  */
 
@@ -75,7 +75,8 @@ struct BlockFieldComm {
   BlockField<FieldType, FloatType, Dim>* BlockF;
   BlockComm<FloatType, Dim>* Comm;
 
-  BlockFieldComm(BlockField<FieldType, FloatType, Dim>* blockF, BlockComm<FloatType, Dim>* comm)
+  BlockFieldComm(BlockField<FieldType, FloatType, Dim>* blockF,
+                 BlockComm<FloatType, Dim>* comm)
       : BlockF(blockF), Comm(comm) {}
 
   const std::vector<std::size_t>& getSends() const { return Comm->SendCells; }
@@ -138,7 +139,9 @@ class BlockField {
   const Block<FloatType, Dim>& getBlock() const { return _Block; }
 
   std::vector<BlockFieldComm<FieldType, FloatType, Dim>>& getComms() { return Comms; }
-  std::vector<InterpBlockFieldComm<FieldType, FloatType, Dim>>& getAverComms() { return AverComms; }
+  std::vector<InterpBlockFieldComm<FieldType, FloatType, Dim>>& getAverComms() {
+    return AverComms;
+  }
   std::vector<InterpBlockFieldComm<FieldType, FloatType, Dim>>& getInterpComms() {
     return InterpComms;
   }
@@ -206,7 +209,8 @@ class BlockFieldManager {
   BlockGeometry<FloatType, Dim>& _BlockGeo;
 
  public:
-  BlockFieldManager(BlockGeometry<FloatType, Dim>& blockgeometry) : _BlockGeo(blockgeometry) {
+  BlockFieldManager(BlockGeometry<FloatType, Dim>& blockgeometry)
+      : _BlockGeo(blockgeometry) {
     for (Block<FloatType, Dim>& block : _BlockGeo.getBlocks()) {
       _Fields.emplace_back(block);
     }
@@ -226,7 +230,9 @@ class BlockFieldManager {
   const BlockGeometry<FloatType, Dim>& getGeo() const { return _BlockGeo; }
 
   BlockField<FieldType, FloatType, Dim>& getBlockField(int i) { return _Fields[i]; }
-  const BlockField<FieldType, FloatType, Dim>& getBlockField(int i) const { return _Fields[i]; }
+  const BlockField<FieldType, FloatType, Dim>& getBlockField(int i) const {
+    return _Fields[i];
+  }
 
   std::vector<BlockField<FieldType, FloatType, Dim>>& getBlockFields() { return _Fields; }
   const std::vector<BlockField<FieldType, FloatType, Dim>>& getBlockFields() const {
@@ -283,7 +289,7 @@ class BlockFieldManager {
       blockgeo.template SetupBoundary<FieldType, datatype, LatSet>(block, field, bdvalue);
       ++iblock;
     }
-    normalcommunicate(0);
+    NormalCommunicate(0);
   }
 
   // call forEach(AABBs, [&](FieldType& field, std::size_t id){});
@@ -299,38 +305,43 @@ class BlockFieldManager {
 
   // call forEach(AABBs, FlagFManager, flag, [&](FieldType& field, std::size_t id){});
   template <typename flagtype, typename Func>
-  void forEach(const AABB<FloatType, Dim>& AABBs,
-               const BlockFieldManager<ScalerField<flagtype>, FloatType, Dim>& FlagFManager,
-               std::uint8_t flag, Func func) {
+  void forEach(
+    const AABB<FloatType, Dim>& AABBs,
+    const BlockFieldManager<ScalerField<flagtype>, FloatType, Dim>& FlagFManager,
+    std::uint8_t flag, Func func) {
     int iblock = 0;
     for (Block<FloatType, Dim>& blockgeo : _BlockGeo.getBlocks()) {
       FieldType& field = _Fields[iblock].getField();
       const GenericArray<flagtype>& flagarr =
         FlagFManager.getBlockField(iblock).getField().getField(0);
-      blockgeo.forEach(AABBs, flagarr, flag, [&field, &func](std::size_t id) { func(field, id); });
+      blockgeo.forEach(AABBs, flagarr, flag,
+                       [&field, &func](std::size_t id) { func(field, id); });
       ++iblock;
     }
   }
 
   // call forEach(FlagFManager, flag, [&](FieldType& field, std::size_t id){});
   template <typename flagtype, typename Func>
-  void forEach(const BlockFieldManager<ScalerField<flagtype>, FloatType, Dim>& FlagFManager,
-               std::uint8_t flag, Func func) {
+  void forEach(
+    const BlockFieldManager<ScalerField<flagtype>, FloatType, Dim>& FlagFManager,
+    std::uint8_t flag, Func func) {
     int iblock = 0;
     for (Block<FloatType, Dim>& blockgeo : _BlockGeo.getBlocks()) {
       FieldType& field = _Fields[iblock].getField();
       const GenericArray<flagtype>& flagarr =
         FlagFManager.getBlockField(iblock).getField().getField(0);
-      blockgeo.forEach(flagarr, flag, [&field, &func](std::size_t id) { func(field, id); });
+      blockgeo.forEach(flagarr, flag,
+                       [&field, &func](std::size_t id) { func(field, id); });
       ++iblock;
     }
   }
 
   // communication
-  void normalcommunicate(std::int64_t count) {
+  void NormalCommunicate(std::int64_t count) {
 #pragma omp parallel for num_threads(Thread_Num)
     for (BlockField<FieldType, FloatType, Dim>& blockF : _Fields) {
-      const int deLevel = static_cast<int>(_BlockGeo.getMaxLevel() - blockF.getBlock().getLevel());
+      const int deLevel =
+        static_cast<int>(_BlockGeo.getMaxLevel() - blockF.getBlock().getLevel());
       if (count % (static_cast<int>(pow(2, deLevel))) == 0) {
         blockF.normalcommunicate();
       }
@@ -338,10 +349,11 @@ class BlockFieldManager {
   }
 
   // average communicate, do not use this function for pop field communication
-  void avercommunicate(std::int64_t count) {
+  void AverCommunicate(std::int64_t count) {
 #pragma omp parallel for num_threads(Thread_Num)
     for (BlockField<FieldType, FloatType, Dim>& blockF : _Fields) {
-      const int deLevel = static_cast<int>(_BlockGeo.getMaxLevel() - blockF.getBlock().getLevel());
+      const int deLevel =
+        static_cast<int>(_BlockGeo.getMaxLevel() - blockF.getBlock().getLevel());
       if (count % (static_cast<int>(pow(2, deLevel))) == 0) {
         blockF.avercommunicate();
       }
@@ -349,19 +361,44 @@ class BlockFieldManager {
   }
 
   // interp communicate, do not use this function for pop field communication
-  void interpcommunicate(std::int64_t count) {
+  void InterpCommunicate(std::int64_t count) {
 #pragma omp parallel for num_threads(Thread_Num)
     for (BlockField<FieldType, FloatType, Dim>& blockF : _Fields) {
-      const int deLevel = static_cast<int>(_BlockGeo.getMaxLevel() - blockF.getBlock().getLevel());
+      const int deLevel =
+        static_cast<int>(_BlockGeo.getMaxLevel() - blockF.getBlock().getLevel());
       if (count % (static_cast<int>(pow(2, deLevel))) == 0) {
         blockF.interpcommunicate();
       }
     }
   }
 
-  void Communicate(std::int64_t count) {
-    normalcommunicate(count);
-    avercommunicate(count);
-    interpcommunicate(count);
+  void CommunicateAll(std::int64_t count) {
+    NormalCommunicate(count);
+    AverCommunicate(count);
+    InterpCommunicate(count);
+  }
+
+  void NormalCommunicate() {
+#pragma omp parallel for num_threads(Thread_Num)
+    for (BlockField<FieldType, FloatType, Dim>& blockF : _Fields) {
+      blockF.normalcommunicate();
+    }
+  }
+  void AverCommunicate() {
+#pragma omp parallel for num_threads(Thread_Num)
+    for (BlockField<FieldType, FloatType, Dim>& blockF : _Fields) {
+      blockF.avercommunicate();
+    }
+  }
+  void InterpCommunicate() {
+#pragma omp parallel for num_threads(Thread_Num)
+    for (BlockField<FieldType, FloatType, Dim>& blockF : _Fields) {
+      blockF.interpcommunicate();
+    }
+  }
+  void CommunicateAll() {
+    NormalCommunicate();
+    AverCommunicate();
+    InterpCommunicate();
   }
 };

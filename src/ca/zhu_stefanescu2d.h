@@ -234,22 +234,11 @@ class ZhuStefanescu2D {
   bool hasNeighborFlag(int id, std::uint8_t flag) const;
 };
 
+
 // --------------------------------------------------------------------
 // -------------------------BlockZhuStefanescu2D-----------------------
 // --------------------------------------------------------------------
 
-template <typename T, typename LatSet>
-struct BlockZSCommStru {
-  BlockZhuStefanescu2D<T, LatSet>* SendBlock;
-  BlockComm<T, LatSet::d>* Comm;
-
-  BlockZSCommStru(BlockZhuStefanescu2D<T, LatSet>* sblock,
-                  BlockComm<T, LatSet::d>* blockcomm)
-      : SendBlock(sblock), Comm(blockcomm) {}
-
-  std::vector<std::size_t>& getSends() { return Comm->SendCells; }
-  std::vector<std::size_t>& getRecvs() { return Comm->RecvCells; }
-};
 
 template <typename T, typename LatSet>
 class BlockZhuStefanescu2D {
@@ -283,8 +272,6 @@ class BlockZhuStefanescu2D {
   ScalerField<T>& Temp;
 
   VectorFieldAOS<T, 2>& Velocity;
-  // COMM
-  std::vector<BlockZSCommStru<T, LatSet>> Communicators;
 
   // state field std::uint8_t
   ScalerField<CAType>& State;
@@ -316,11 +303,10 @@ class BlockZhuStefanescu2D {
                        ScalerField<T>& fs, ScalerField<T>& delta_fs,
                        ScalerField<T>& curvature, ScalerField<T>& csolids,
                        ScalerField<T>& preexcessc, ScalerField<T>& excessc, T delta,
-                       T theta, std::size_t siteid, int num = LatSet::q);
+                       T theta);
   ~BlockZhuStefanescu2D() {}
 
   Block2D<T>& getGeo() { return Geo; }
-  std::vector<BlockZSCommStru<T, LatSet>>& getCommunicators() { return Communicators; }
 
   std::uint8_t getLevel() const { return Geo.getLevel(); }
   std::size_t getSolidCount() const { return SolidCount; }
@@ -353,19 +339,13 @@ class BlockZhuStefanescu2D {
   void DistributeExcessC();
   void SimpleCapture();
 
-  void apply_SimpleCapture() {
-    DistributeExcessC();
-    SimpleCapture();
-  }
-
   void apply_grow() {
     UpdateInterface();
     UpdateCurvature();
     UpdateDeltaFs();
     Grow();
+    DistributeExcessC();
   }
-
-  void communicate();
 
   bool hasNeighborType(std::size_t id, std::uint8_t type) const;
 };
@@ -397,10 +377,15 @@ class BlockZhuStefanescu2DManager {
   T _Part_Coef;
 
   // --- CA Field ---
+  // communication needed:
   // state field
   BlockFieldManager<ScalerField<CAType>, T, 2> StateFM;
   // solid fraction field
   BlockFieldManager<ScalerField<T>, T, 2> FsFM;
+  // collected excess C field
+  BlockFieldManager<ScalerField<T>, T, 2> ExcessCFM;
+
+  // block-local field:
   // delta solid fraction field
   BlockFieldManager<ScalerField<T>, T, 2> DeltaFsFM;
   // curvature of Solid-Liquid interface
@@ -408,12 +393,7 @@ class BlockZhuStefanescu2DManager {
   // Solid phase composition
   BlockFieldManager<ScalerField<T>, T, 2> CSolidsFM;
   // pre streamed excess C field
-  // BlockFieldManager<PopulationField<T, CALatSet::q> ,T , 2> ExcessCFM;
-  // comapared with population field, the excess C field has less data exchange, use
-  // scalar field instead
   BlockFieldManager<ScalerField<T>, T, 2> PreExcessCFM;
-  // collected excess C field
-  BlockFieldManager<ScalerField<T>, T, 2> ExcessCFM;
 
  public:
   BlockFieldManager<ScalerField<CAType>, T, 2>& getStateFM() { return StateFM; }
@@ -428,24 +408,13 @@ class BlockZhuStefanescu2DManager {
   BlockZhuStefanescu2DManager(BlockFieldManager<VectorFieldAOS<T, 2>, T, 2>& veloFM,
                               ZSConverter<T>& convca,
                               BlockLatticeManager<T, LatSet0>& LatSos,
-                              BlockLatticeManager<T, LatSet1>& LatThs, T delta_, T theta,
-                              std::size_t SiteId, int num = CALatSet::q)
+                              BlockLatticeManager<T, LatSet1>& LatThs, T delta_, T theta)
       : BlockGeo(veloFM.getGeo()), Theta(theta), delta(delta_), GT(0.1), C0(0.1),
         Tl_eq(0.1), m_l(0.1), Part_Coef(0.1), _Part_Coef(1 - Part_Coef),
         StateFM(veloFM.getGeo(), CAType::Boundary), FsFM(veloFM.getGeo(), T(0)),
         DeltaFsFM(veloFM.getGeo(), T(0)), CurvFM(veloFM.getGeo(), T(0)),
         CSolidsFM(veloFM.getGeo(), T(0)), PreExcessCFM(veloFM.getGeo(), T(0)),
         ExcessCFM(veloFM.getGeo(), T(0)) {
-    // find block to setup
-    std::vector<std::size_t> blockids;
-    blockids.resize(BlockGeo.getBlockNum(), std::size_t(0));
-
-    Vector<T, 2> loc_t = BlockGeo.getLoc_t(SiteId);
-    for (std::size_t i = 0; i < BlockGeo.getBlockNum(); ++i) {
-      if (BlockGeo.getBlock(i).getBaseBlock().isInside(loc_t)) {
-        blockids[i] = BlockGeo.getBlock(i).getIndex_t(loc_t);
-      }
-    }
     // create BlockZhuStefanescu2D
     for (std::size_t i = 0; i < BlockGeo.getBlockNum(); ++i) {
       BlockZS.emplace_back(
@@ -453,13 +422,32 @@ class BlockZhuStefanescu2DManager {
         StateFM.getBlockField(i).getField(), FsFM.getBlockField(i).getField(),
         DeltaFsFM.getBlockField(i).getField(), CurvFM.getBlockField(i).getField(),
         CSolidsFM.getBlockField(i).getField(), PreExcessCFM.getBlockField(i).getField(),
-        ExcessCFM.getBlockField(i).getField(), delta_, theta, blockids[i], num);
+        ExcessCFM.getBlockField(i).getField(), delta_, theta);
     }
     // init States, ExcessC_s, Interfaces
     for (auto& zs : BlockZS) {
       Interfaces.push_back(&(zs.getInterface()));
     }
-    InitCommunicators();
+  }
+
+  void Setup(std::size_t SiteId, int num = CALatSet::q) {
+    // find block to setup
+    std::size_t blockid;
+    std::vector<int> nums;
+    nums.resize(BlockGeo.getBlockNum(), 0);
+
+    Vector<T, 2> loc_t = BlockGeo.getLoc_t(SiteId);
+    for (int i = 0; i < BlockGeo.getBlockNum(); ++i) {
+      if (BlockGeo.getBlock(i).getBaseBlock().isInside(loc_t)) {
+        blockid = BlockGeo.getBlock(i).getIndex_t(loc_t);
+        nums[i] = num;
+        break;
+      }
+    }
+
+    for (int i = 0; i < BlockGeo.getBlockNum(); ++i) {
+      BlockZS[i].Setup(blockid, nums[i]);
+    }
   }
 
   // freeze cells based on CA field(if all points are solid, freeze the blockcell)
@@ -503,8 +491,48 @@ class BlockZhuStefanescu2DManager {
     }
   }
 
-
   std::vector<std::vector<std::size_t>*>& getInterfaces() { return Interfaces; }
+
+
+
+  void Apply_SimpleCapture() {
+#pragma omp parallel for num_threads(Thread_Num)
+    for (auto& zs : BlockZS) {
+      zs.apply_grow();
+    }
+    Communicate();
+#pragma omp parallel for num_threads(Thread_Num)
+    for (auto& zs : BlockZS) {
+      zs.SimpleCapture();
+    }
+  }
+
+  void Communicate() {
+    // State field
+    StateFM.NormalCommunicate();
+    // Fs field
+    FsFM.NormalCommunicate();
+    // ExcessC field
+    ExcessCFM.NormalCommunicate();
+    // ExcessC field post communication
+    // Reversed Communicate
+
+#pragma omp parallel for num_threads(Thread_Num)
+    for (BlockField<ScalerField<T>, T, 2>& blockF : ExcessCFM.getBlockFields()) {
+      // data in Recvs is sent from blockF to Sends of nblockF
+      for (BlockFieldComm<ScalerField<T>, T, 2>& comm : blockF.getComms()) {
+        BlockField<ScalerField<T>, T, 2>* nblockF = comm.BlockF;
+        std::size_t size = comm.getRecvs().size();
+        for (int iArr = 0; iArr < blockF.getField().Size(); ++iArr) {
+          auto& nArray = nblockF->getField().getField(iArr);
+          const auto& Array = blockF.getField().getField(iArr);
+          for (std::size_t id = 0; id < size; ++id) {
+            nArray[comm.getSend(id)] += Array[comm.getRecv(id)];
+          }
+        }
+      }
+    }
+  }
 
   std::size_t getInterfaceNum() {
     std::size_t num = 0;
@@ -519,35 +547,6 @@ class BlockZhuStefanescu2DManager {
       count += zs.getSolidCount();
     }
     return count;
-  }
-
-  void apply_SimpleCapture() {
-#pragma omp parallel for num_threads(Thread_Num)
-    for (auto& zs : BlockZS) {
-      zs.apply_grow();
-    }
-    Communicate();
-#pragma omp parallel for num_threads(Thread_Num)
-    for (auto& zs : BlockZS) {
-      zs.apply_SimpleCapture();
-    }
-  }
-
-  void InitCommunicators() {
-    for (auto& zs : BlockZS) {
-      Block2D<T>& Geo = zs.getGeo();
-      std::vector<BlockZSCommStru<T, CALatSet>>& Communicators = zs.getCommunicators();
-      for (BlockComm<T, CALatSet::d>& comm : Geo.getCommunicators()) {
-        Communicators.emplace_back(&BlockZS[comm.getSendId()], &comm);
-      }
-    }
-  }
-
-  void Communicate() {
-#pragma omp parallel for num_threads(Thread_Num)
-    for (auto& zs : BlockZS) {
-      zs.communicate();
-    }
   }
 };
 }  // namespace CA

@@ -292,7 +292,7 @@ BlockZhuStefanescu2D<T, LatSet>::BlockZhuStefanescu2D(
   BlockRhoLattice<T> &latso, BlockRhoLattice<T> &latth, ScalerField<CAType> &state,
   ScalerField<T> &fs, ScalerField<T> &delta_fs, ScalerField<T> &curvature,
   ScalerField<T> &csolids, ScalerField<T> &preexcessc, ScalerField<T> &excessc, T delta,
-  T theta, std::size_t siteid, int num)
+  T theta)
     : Geo(veloFM.getBlock()), ConvCA(convca), Conc(latso.getRhoField()),
       Temp(latth.getRhoField()), delta(delta), Theta(theta),
       GT(convca.Lattice_GT_Coef * pow(2, int(veloFM.getBlock().getLevel()))),
@@ -305,18 +305,14 @@ BlockZhuStefanescu2D<T, LatSet>::BlockZhuStefanescu2D(
   Delta_Index =
     make_Array<int, LatSet::q>([&](int i) { return LatSet::c[i] * Geo.getProjection(); });
   Interface.reserve(4 * (Geo.getNx() + Geo.getNy()));
-
-  // set state field from geometry flag
-  // Geo.forEach(Geo.getGeoFlagField().getField(), Geo.getAABBflag(),
-  //             [&](std::size_t id) { State.SetField(id, CAType::Fluid); });
-
-  if (siteid != 0) {
-    Setup(siteid, num);
-  }
 }
 
 template <typename T, typename LatSet>
 void BlockZhuStefanescu2D<T, LatSet>::Setup(std::size_t id, int num) {
+  if (num == 0) {
+    return;
+  }
+
   std::cout << "[Zhu-Stefanescu 2D CA]" << std::endl;
   // get preferred growth angle to x-axis
   std::cout << "preferred growth angle: " << Theta / M_PI << " Pi" << std::endl;
@@ -368,6 +364,8 @@ void BlockZhuStefanescu2D<T, LatSet>::UpdateInterface() {
       if (util::isFlag(State.get(id), CAType::Interface)) Interface.push_back(id);
     }
   }
+  // clear excessC
+  ExcessC.Init(T(0));
 }
 
 template <typename T, typename LatSet>
@@ -449,7 +447,6 @@ void BlockZhuStefanescu2D<T, LatSet>::Grow() {
       // get modified delta_Fs
       delta_Fs = T(1) - Fs.get(id);
       Fs.SetField(id, T(1));
-      Delta_Fs.SetField(id, T(0));
       C_Solids.get(id) += Part_Coef * delta_Fs * Conc.get(id);
       // pre streamed excess solute to neighbors
       PreExcessC.SetField(id, _Part_Coef * delta_Fs * Conc.get(id));
@@ -491,7 +488,7 @@ void BlockZhuStefanescu2D<T, LatSet>::DistributeExcessC() {
         }
       }
       // reset preExcessC
-      PreExcessC.SetField(id, T(-1));
+      PreExcessC.SetField(id, T(0));
     }
   }
 }
@@ -518,35 +515,6 @@ bool BlockZhuStefanescu2D<T, LatSet>::hasNeighborType(std::size_t id,
     if (util::isFlag(State.get(id + Delta_Index[i]), type)) return true;
   }
   return false;
-}
-
-template <typename T, typename LatSet>
-void BlockZhuStefanescu2D<T, LatSet>::communicate() {
-  // same level communication
-  for (BlockZSCommStru<T, LatSet> &comm : Communicators) {
-    BlockZhuStefanescu<T, LatSet> *nZSBlock = comm.SendBlock;
-    // const GenericArray<CAFlag> &nFlag = nZSBlock->getFlag().getField();
-    const GenericArray<CAType> &nState = nZSBlock->getState().getField();
-    const GenericArray<T> &nFs = nZSBlock->getFs().getField();
-    // state field, Fs field， rho field communication
-    int size = comm.getRecvs().size();
-    for (int i = 0; i < size; ++i) {
-      std::size_t idrecv = comm.getRecvs()[i];
-      std::size_t idsend = comm.getSends()[i];
-      State.SetField(idrecv, nState[idsend]);
-      Fs.SetField(idrecv, nFs[idsend]);
-    }
-    // ExcessC field communication
-    // for (int k = 0; k < LatSet::q; ++k) {
-    //   const CyclicArray<T> &nExcessCk = nZSBlock->getExcessC().getField(k);
-    //   CyclicArray<T> &ExcessCk = ExcessC.getField(k);
-    //   for (int i = 0; i < size; ++i) {
-    //     std::size_t idrecv = comm.getRecvs()[i];
-    //     std::size_t idsend = comm.getSends()[i];
-    //     ExcessCk.set(idrecv, nExcessCk[idsend]);
-    //   }
-    // }
-  }
 }
 
 }  // namespace CA

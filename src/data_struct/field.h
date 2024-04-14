@@ -141,7 +141,7 @@ class GenericField {
     for (unsigned int i = 0; i < D; ++i) _Data[i].Init(value);
   }
 
-  unsigned int Size() const { return D; }
+  constexpr unsigned int Size() const { return D; }
 };
 
 // template <typename T>
