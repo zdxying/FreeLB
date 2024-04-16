@@ -68,6 +68,8 @@ class Vector {
     }
   }
 
+  ~Vector() = default;
+
   // return pointer of the first element
   constexpr T *data() { return _data.data(); }
   constexpr const T* data() const { return _data.data(); }

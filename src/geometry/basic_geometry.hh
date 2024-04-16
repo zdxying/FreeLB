@@ -146,6 +146,9 @@ std::size_t AABB<T, D>::getLocIdx(const Vector<int, D>& pt, const Vector<int, D>
 
 template <typename T, unsigned int D>
 void AABB<T, D>::divide(int Nx, int Ny, std::vector<AABB<int, 2>>& subAABBs) const {
+  if (Nx == 0 || Ny == 0){
+    return;
+  }
   int Nx_child = 0;
   int Ny_child = 0;
 

@@ -192,9 +192,16 @@ int main() {
   // ------------------ define geometry ------------------
   AABB<T, 2> cavity(Vector<T, 2>(T(0), T(0)),
                     Vector<T, 2>(T(Ni * Cell_Len), T(Nj * Cell_Len)));
+  AABB<T, 2> seedcavity(Vector<T, 2>(T((Ni/2-5) * Cell_Len), T((Nj/2-5) * Cell_Len)),
+                    Vector<T, 2>(T((Ni/2+5) * Cell_Len), T((Nj/2+5) * Cell_Len)));
 
   // geometry helper
   BlockGeometryHelper2D<T> GeoHelper(Ni, Nj, Ni / BlockCellNx, cavity, Cell_Len);
+  GeoHelper.forEachBlockCell([&](BasicBlock<T, 2>& block) {
+    if (isOverlapped(block, seedcavity)) {
+      block.refine();
+    }
+  });
   GeoHelper.CreateBlocks();
   GeoHelper.AdaptiveOptimization(Thread_Num);
 
@@ -227,7 +234,7 @@ int main() {
   DynamicBlockLatticeHelper2D<T, LatSet0> NSDynLatHelper(
     NSLattice, GeoHelper, VelocityFM, std::vector<T>{T(0)}, std::vector<T>{T(0)});
   DynamicBlockLatticeHelper2D<T, LatSet1> SODynLatHelper(
-    SOLattice, GeoHelper, VelocityFM, std::vector<T>{T(0)}, std::vector<T>{T(0)});
+    SOLattice, GeoHelper, VelocityFM, std::vector<T>{T(0.005)}, std::vector<T>{T(0), T(0.001)});
 
   vtkWriter::FieldScalerWriter<T> GradNormRho("GradNormRho",
                                               SODynLatHelper.getMaxGradNorm2s().data(),

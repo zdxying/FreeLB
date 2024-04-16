@@ -162,11 +162,11 @@ class GenericArray {
   T* data;
 
  public:
-  GenericArray() : count(0), data(nullptr) {}
+  GenericArray() = delete;
   // GenericArray() = delete;
   GenericArray(std::size_t size) : count(size), data(new T[size]{}) {
-    std::fill(data, data + size, T{});
-  }
+  std::fill(data, data + size, T{});
+}
 
   GenericArray(std::size_t size, T InitValue) : count(size), data(new T[size]{}) {
     std::fill(data, data + size, InitValue);
@@ -246,7 +246,8 @@ class CyclicArray {
   std::ptrdiff_t lastOffset;
 
  public:
-  CyclicArray() : count(0), data(nullptr), shift(0), remainder(0), lastOffset(0) {}
+  CyclicArray() = delete;
+  // CyclicArray() : count(0), data(nullptr), shift(0), remainder(0), lastOffset(0) {}
   CyclicArray(std::size_t size)
       : count(size), data(new T[size]{}), shift(0), remainder(size), lastOffset(0) {
     std::fill(data, data + size, T{});

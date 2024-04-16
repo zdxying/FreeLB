@@ -327,7 +327,7 @@ class DynamicBlockLatticeHelper2D {
   // lattice coarsen threshold
   std::vector<T> _CoarsenThresholds;
   // uer defined max refine level
-  std::uint8_t _MaxRefineLevel;
+  std::uint8_t _MaxRefineLevel = 2;
 
   // experimental
   std::vector<T> _MaxGradNorm2s;

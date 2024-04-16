@@ -536,7 +536,7 @@ void BlockGeometryHelper2D<T>::CreateBlocks() {
       Vector<int, 2> max = min + Ext - Vector<int, 2>{1};
       AABB<int, 2> idxblock(min, max);
       Vector<T, 2> MIN = _BlockCells[id].getMin();
-      Vector<T, 2> MAX = Ext + MIN;
+      Vector<T, 2> MAX = Ext * voxsize + MIN;
       AABB<T, 2> block(MIN, MAX);
       _BasicBlocks.emplace_back(level, voxsize, blockid, block, idxblock, NewMesh);
       blockid++;

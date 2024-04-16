@@ -646,12 +646,11 @@ void DynamicBlockLatticeHelper2D<T, LatSet>::ComputeGradNorm2() {
     // block centre
     Vector<T, 2> centre = block.getCenter();
     // find corresponding block
-    int j = 0;
+    int j = -1;
     for (BlockLattice<T, LatSet>& blocklat : BlockLatMan.getBlockLats()) {
+      ++j;
       if (blocklat.getGeo().getBaseBlock().isInside(centre)) {
         break;
-      } else {
-        ++j;
       }
     }
     // get rho field and block2d
