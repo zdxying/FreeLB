@@ -89,6 +89,7 @@ class iniReader {
     }
   }
 
+  // get value from section and key
   template <typename T>
   T getValue(const std::string& section, const std::string& name) {
     std::string value = iniContent[section][name];
@@ -96,6 +97,17 @@ class iniReader {
     T val;
     is_value >> val;
     return val;
+  }
+
+  // get all values from a section
+  template <typename T>
+  void getVector(const std::string& section, std::vector<T>& vec) {
+    for (auto& it : iniContent[section]) {
+      std::istringstream is_value(it.second);
+      T val;
+      is_value >> val;
+      vec.push_back(val);
+    }
   }
 };
 

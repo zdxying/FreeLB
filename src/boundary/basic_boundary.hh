@@ -135,9 +135,20 @@ void BlockFixedBoundary<T, LatSet, flagType>::addtoBd(std::size_t id) {
 
 template <typename T, typename LatSet, typename flagType>
 void BlockFixedBoundary<T, LatSet, flagType>::Setup() {
+  std::size_t reserveSize;
+  if constexpr (LatSet::d == 2) {
+    reserveSize = (Lat.getGeo().getNx() + Lat.getGeo().getNy())*2;
+  } else if constexpr (LatSet::d == 3) {
+    reserveSize = (Lat.getGeo().getNx()*Lat.getGeo().getNy() +
+                   Lat.getGeo().getNx()*Lat.getGeo().getNz() +
+                   Lat.getGeo().getNy()*Lat.getGeo().getNz())*2;
+  }
+  BdCells.reserve(reserveSize);
   for (std::size_t id = 0; id < Lat.getGeo().getN(); ++id) {
     if (util::isFlag(Field[id], BdCellFlag)) addtoBd(id);
   }
+  // shrink capacity to actual size
+  BdCells.shrink_to_fit();
 }
 
 // --------------------------------------------------------------------------------

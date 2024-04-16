@@ -151,6 +151,21 @@ template <typename T, typename U, unsigned int D>
 Vector<decltype(T{} + U{}), D> operator+(T a, const Vector<U, D> &b) {
   return Vector<T, D>(a) + b;
 }
+// +=: return type will be deduced by decltype(c++11)
+template <typename T, typename U, unsigned int D>
+constexpr Vector<decltype(T{} + U{}), D> &operator+=(Vector<T, D> &a, const Vector<U, D> &b) {
+  for (unsigned int i = 0; i < D; ++i) {
+    a[i] += b[i];
+  }
+  return a;
+}
+template <typename T, typename U, unsigned int D>
+constexpr Vector<decltype(T{} + U{}), D> &operator+=(Vector<T, D> &a, U b) {
+  for (unsigned int i = 0; i < D; ++i) {
+    a[i] += b;
+  }
+  return a;
+}
 // -: return type will be deduced by decltype(c++11)
 template <typename T, typename U, unsigned int D>
 constexpr Vector<decltype(T{} - U{}), D> operator-(const Vector<T, D> &a, const Vector<U, D> &b) {

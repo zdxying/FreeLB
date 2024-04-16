@@ -297,7 +297,7 @@ class BlockZhuStefanescu2D {
   std::array<int, LatSet::q> Delta_Index;
 
  public:
-  BlockZhuStefanescu2D(BlockField<VectorFieldAOS<T, 2>, T, 2>& veloFM,
+  BlockZhuStefanescu2D(Block2D<T>& geo, BlockField<VectorFieldAOS<T, 2>, T, 2>& veloFM,
                        ZSConverter<T>& convca, BlockRhoLattice<T>& latso,
                        BlockRhoLattice<T>& latth, ScalerField<CAType>& state,
                        ScalerField<T>& fs, ScalerField<T>& delta_fs,
@@ -418,11 +418,12 @@ class BlockZhuStefanescu2DManager {
     // create BlockZhuStefanescu2D
     for (std::size_t i = 0; i < BlockGeo.getBlockNum(); ++i) {
       BlockZS.emplace_back(
-        veloFM.getBlockField(i), convca, LatSos.getBlockLat(i), LatThs.getBlockLat(i),
-        StateFM.getBlockField(i).getField(), FsFM.getBlockField(i).getField(),
-        DeltaFsFM.getBlockField(i).getField(), CurvFM.getBlockField(i).getField(),
-        CSolidsFM.getBlockField(i).getField(), PreExcessCFM.getBlockField(i).getField(),
-        ExcessCFM.getBlockField(i).getField(), delta_, theta);
+        BlockGeo.getBlock(i), veloFM.getBlockField(i), convca, LatSos.getBlockLat(i),
+        LatThs.getBlockLat(i), StateFM.getBlockField(i).getField(),
+        FsFM.getBlockField(i).getField(), DeltaFsFM.getBlockField(i).getField(),
+        CurvFM.getBlockField(i).getField(), CSolidsFM.getBlockField(i).getField(),
+        PreExcessCFM.getBlockField(i).getField(), ExcessCFM.getBlockField(i).getField(),
+        delta_, theta);
     }
     // init States, ExcessC_s, Interfaces
     for (auto& zs : BlockZS) {
@@ -462,7 +463,7 @@ class BlockZhuStefanescu2DManager {
       // find block
       int blockFid = 0;
       for (auto& zs : BlockZS) {
-        if (zs.getGeo().isInside(centre)) {
+        if (zs.getGeo().getBaseBlock().isInside(centre)) {
           blockFid = zs.getGeo().getBlockId();
           break;
         }
@@ -492,7 +493,6 @@ class BlockZhuStefanescu2DManager {
   }
 
   std::vector<std::vector<std::size_t>*>& getInterfaces() { return Interfaces; }
-
 
 
   void Apply_SimpleCapture() {

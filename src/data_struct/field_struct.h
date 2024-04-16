@@ -117,7 +117,7 @@ class BlockField {
   FieldType _Field;
   // block(geometry) structure of the field
   // obj of _Block may be destroyed
-  Block<FloatType, Dim>& _Block;
+  BasicBlock<FloatType, Dim>& _Block;
 
   std::vector<BlockFieldComm<FieldType, FloatType, Dim>> Comms;
   // average block comm, get from higher level block
@@ -126,17 +126,17 @@ class BlockField {
   std::vector<InterpBlockFieldComm<FieldType, FloatType, Dim>> InterpComms;
 
  public:
-  BlockField(Block<FloatType, Dim>& block) : _Block(block), _Field(block.getN()) {}
+  BlockField(BasicBlock<FloatType, Dim>& block) : _Block(block), _Field(block.getN()) {}
   template <typename datatype>
-  BlockField(Block<FloatType, Dim>& block, datatype initvalue)
+  BlockField(BasicBlock<FloatType, Dim>& block, datatype initvalue)
       : _Block(block), _Field(block.getN(), initvalue) {}
   ~BlockField() = default;
 
   FieldType& getField() { return _Field; }
   const FieldType& getField() const { return _Field; }
 
-  Block<FloatType, Dim>& getBlock() { return _Block; }
-  const Block<FloatType, Dim>& getBlock() const { return _Block; }
+  BasicBlock<FloatType, Dim>& getBlock() { return _Block; }
+  const BasicBlock<FloatType, Dim>& getBlock() const { return _Block; }
 
   std::vector<BlockFieldComm<FieldType, FloatType, Dim>>& getComms() { return Comms; }
   std::vector<InterpBlockFieldComm<FieldType, FloatType, Dim>>& getAverComms() {
@@ -240,8 +240,10 @@ class BlockFieldManager {
   }
 
   void InitComm() {
+    int blockid = 0;
     for (BlockField<FieldType, FloatType, Dim>& blockF : _Fields) {
-      Block<FloatType, Dim>& block = blockF.getBlock();
+      Block<FloatType, Dim>& block = _BlockGeo.getBlock(blockid);
+      ++blockid;
       // normal communication
       std::vector<BlockFieldComm<FieldType, FloatType, Dim>>& Fcomms = blockF.getComms();
       Fcomms.clear();
@@ -279,6 +281,47 @@ class BlockFieldManager {
       _Fields.emplace_back(block, initvalue);
     }
     InitComm();
+  }
+  // construct new field with Geohelper and copy data from old field, then swap
+  // _BlockGeo should keep unchanged before calling this function(old geo info is needed)
+  void Init(BlockGeometryHelper<FloatType, Dim>& GeoHelper) {
+    std::vector<BlockField<FieldType, FloatType, Dim>> NewFields;
+    for (BasicBlock<FloatType, Dim>& baseblock : GeoHelper.getBasicBlocks()) {
+      int overlap = (baseblock.getLevel() != std::uint8_t(0)) ? 2 : 1;
+      BasicBlock<FloatType, Dim> block = baseblock.getExtBlock(overlap);
+      NewFields.emplace_back(block);
+    }
+    // copy from old field to new field
+#pragma omp parallel for num_threads(Thread_Num)
+    for (int inewblock = 0; inewblock < NewFields.size(); ++inewblock) {
+      BlockField<FieldType, FloatType, Dim>& NewField = NewFields[inewblock];
+      const BasicBlock<FloatType, Dim>& newbaseblock = GeoHelper.getBasicBlock(inewblock);
+      const BasicBlock<FloatType, Dim>& newblock = NewField.getBlock();
+      std::uint8_t Level = newblock.getLevel();
+      // find overlapped old block field
+      for (int iblock = 0; iblock < _BlockGeo.getBlockNum(); ++iblock) {
+        const BasicBlock<FloatType, Dim>& baseblock =
+          _BlockGeo.getBlock(iblock).getBaseBlock();
+        if (isOverlapped(newbaseblock, baseblock)) {
+          const BlockField<FieldType, FloatType, Dim>& Field = _Fields[iblock];
+          const BasicBlock<FloatType, Dim>& block = Field.getBlock();
+          if (Level == block.getLevel()) {
+            // copy
+            FieldCopy2D(Field.getField(), NewField.getField(), block, baseblock, newblock,
+                        newbaseblock);
+          } else if (Level > block.getLevel()) {
+            // interp
+            FieldInterpolation2D(Field.getField(), NewField.getField(), block, baseblock,
+                                 newblock, newbaseblock);
+          } else if (Level < block.getLevel()) {
+            // average
+            FieldAverage2D(Field.getField(), NewField.getField(), block, baseblock,
+                           newblock, newbaseblock);
+          }
+        }
+      }
+    }
+    _Fields.swap(NewFields);
   }
 
   template <typename LatSet, typename datatype>

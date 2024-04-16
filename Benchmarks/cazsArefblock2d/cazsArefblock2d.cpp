@@ -224,26 +224,27 @@ int main() {
   GeoWriter.WriteBinary();
 
   // --------------------- dynamic lattice ---------------------
-  DynamicBlockLatticeHelper2D<T, LatSet1> DynLatHelper(
-    SOLattice, GeoHelper, std::vector<T>{T(0)}, std::vector<T>{T(0)});
+  DynamicBlockLatticeHelper2D<T, LatSet0> NSDynLatHelper(
+    NSLattice, GeoHelper, VelocityFM, std::vector<T>{T(0)}, std::vector<T>{T(0)});
+  DynamicBlockLatticeHelper2D<T, LatSet1> SODynLatHelper(
+    SOLattice, GeoHelper, VelocityFM, std::vector<T>{T(0)}, std::vector<T>{T(0)});
 
   vtkWriter::FieldScalerWriter<T> GradNormRho("GradNormRho",
-                                              DynLatHelper.getMaxGradNorm2s().data(),
-                                              DynLatHelper.getMaxGradNorm2s().size());
+                                              SODynLatHelper.getMaxGradNorm2s().data(),
+                                              SODynLatHelper.getMaxGradNorm2s().size());
   vtkStruPointsWriter<T, 2> GradNormRhoWriter("GradNormRho", Cell_Len * BlockCellNx,
                                               Vector<T, 2>{}, GeoHelper.getCellsNx(),
                                               GeoHelper.getCellsNy());
   GradNormRhoWriter.addtoWriteList(&GradNormRho);
 
   // vtiwriter::ScalerWriter GradNormRhoVTI("GradNormRho",
-  // DynLatHelper.getGradNorm2F().getField(0)); vtiwriter::vtiManager
+  // SODynLatHelper.getGradNorm2F().getField(0)); vtiwriter::vtiManager
   // GradNormRhoWVTI("GradNormRhoF", Geo.getBaseBlock());
   // GradNormRhoWVTI.addWriter(&GradNormRhoVTI);
 
   // --------------------- CA ---------------------
-  CA::BlockZhuStefanescu2DManager<T, LatSetCA> CA(
-    VelocityFM, CAConv, SOLattice, THLattice, Delta, pref_Orine
-    );
+  CA::BlockZhuStefanescu2DManager<T, LatSetCA> CA(VelocityFM, CAConv, SOLattice,
+                                                  THLattice, Delta, pref_Orine);
   // set CA State field
   CA.getStateFM().forEach(FlagF, AABBFlag, [&](auto& field, std::size_t id) {
     field.SetField(id, CA::CAType::Fluid);
@@ -327,25 +328,50 @@ int main() {
     ++OutputTimer;
 
     if (MainLoopTimer() % OutputStep == 0) {
-      OutputTimer.Print_InnerLoopPerformance(Geo.getTotalCellNum(), OutputStep);
+      // Velocity and Conc Field Communication for output
+      VelocityFM.CommunicateAll();
+      SOLattice.getRhoFM().CommunicateAll();
+
+      OutputTimer.Print_InnerLoopPerformance(Geo.getN(), OutputStep);
       Printer::Print<std::size_t>("Interface", CA.getInterfaceNum());
-      Printer::Print<T>("Solid%", T(CA.getSolidCount()) * 100 / Geo.getTotalCellNum());
+      Printer::Print<T>("Solid%", T(CA.getSolidCount()) * 100 / Geo.getN());
       MainWriter.WriteBinary(MainLoopTimer());
 
-      DynLatHelper.LatticeRefineAndCoarsen(Thread_Num);
-      DynLatHelper.InitDynamicBlockGeometry();
+      // ----- adaptive mesh refinement -----
+      SODynLatHelper.GeoRefineAndCoarsen(Thread_Num);
+
+      VelocityFM.Init(GeoHelper);
+      SODynLatHelper.PopFieldDataTransfer();
+      NSDynLatHelper.PopFieldDataTransfer();
+
+      Geo.Init(GeoHelper);
+      NSLattice.Init();
+      SOLattice.Init();
+
+      // field reconstruction
+      FlagF.Init(voidFlag);
+      FlagF.forEach(
+        cavity, [&](FlagField& field, std::size_t id) { field.SetField(id, AABBFlag); });
+      FlagF.template SetupBoundary<LatSet0>(cavity, BouncebackFlag);
+
+      // Bcs init
+      NS_BB.Init();
+      NS_MBB.Init();
+      SO_BB.Init();
+      SO_MBB.Init();
+
       GradNormRhoWriter.Write(MainLoopTimer());
       // GradNormRhoWVTI.WriteBinary(MainLoopTimer());
     }
   }
   MainWriter.WriteBinary(MainLoopTimer());
 
-  DynLatHelper.LatticeRefineAndCoarsen(Thread_Num);
+
   GradNormRhoWriter.Write(MainLoopTimer());
   // GradNormRhoWVTI.WriteBinary(MainLoopTimer());
 
   Printer::Print_BigBanner(std::string("Calculation Complete!"));
-  MainLoopTimer.Print_MainLoopPerformance(Ni, Nj);
+  MainLoopTimer.Print_MainLoopPerformance(Geo.getN());
   Printer::Print("Total PhysTime", BaseConv.getPhysTime(MainLoopTimer()));
   Printer::End();
   return 0;

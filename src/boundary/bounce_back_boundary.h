@@ -165,7 +165,7 @@ class BBLikeFixedBlockBdManager final : public AbstractBlockBoundary {
     BlockFieldManager<GenericField<GenericArray<flagType>, 1>, T, LatSet::d> &BlockFM,
     std::uint8_t cellflag, std::uint8_t voidflag = std::uint8_t(1));
 
-  void Setup();
+  void Init();
   void Apply(std::int64_t count) override;
   void UpdateRho(std::int64_t count) override;
   void UpdateU(std::int64_t count) override;
@@ -197,10 +197,14 @@ class BBLikeMovingBlockBdManager final : public AbstractBlockBoundary {
   // boundary flag
   std::uint8_t voidFlag;
   BlockLatticeManager<T, LatSet> &LatMan;
+  // ids
+  std::vector<std::vector<std::size_t> *>& IDss;
+
+  BlockFieldManager<ScalerField<flagType>, T, LatSet::d> &BlockFManager;
 
  public:
   BBLikeMovingBlockBdManager(std::string name, BlockLatticeManager<T, LatSet> &lat,
-                             std::vector<std::vector<std::size_t> *> idss,
+                             std::vector<std::vector<std::size_t> *>& idss,
                              BlockFieldManager<ScalerField<flagType>, T, LatSet::d> &BlockFM,
                              std::uint8_t voidflag,
                              std::uint8_t cellflag = std::uint8_t(0));
@@ -209,7 +213,7 @@ class BBLikeMovingBlockBdManager final : public AbstractBlockBoundary {
   // std::vector<std::vector<std::size_t>*> idss,
   //                           std::uint8_t cellflag, std::uint8_t voidflag = std::uint8_t(0));
 
-  // void Setup(std::vector<BlockLattice<T, LatSet> *> lats);
+  void Init();
   void Apply(std::int64_t count) override;
   void UpdateRho(std::int64_t count) override;
   void UpdateU(std::int64_t count) override;

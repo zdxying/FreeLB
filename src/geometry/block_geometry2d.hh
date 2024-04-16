@@ -154,8 +154,8 @@ BlockGeometry2D<T>::BlockGeometry2D(int Nx, int Ny, int blocknum, const AABB<T, 
     : BasicBlock<T, 2>(voxelSize, block.getExtended(Vector<T, 2>{voxelSize}),
                        AABB<int, 2>(Vector<int, 2>{0}, Vector<int, 2>{Nx + 1, Ny + 1})),
       _BaseBlock(voxelSize, block, AABB<int, 2>(Vector<int, 2>{1}, Vector<int, 2>{Nx, Ny})),
-      _BlockNum(blocknum), _overlap(overlap) {
-  DivideBlocks(_BlockNum);
+      _overlap(overlap) {
+  DivideBlocks(blocknum);
   CreateBlocks();
   SetupNbrs();
   if (!refine) {
@@ -168,17 +168,26 @@ BlockGeometry2D<T>::BlockGeometry2D(BlockGeometryHelper2D<T> &GeoHelper)
     : _BaseBlock(GeoHelper.getBaseBlock()), BasicBlock<T, 2>(GeoHelper),
       _overlap(GeoHelper.getExt()) {
   // create blocks from GeoHelper
-  std::vector<BasicBlock<T, 2>> &BaseBlocks = GeoHelper.getBasicBlocks();
-  for (BasicBlock<T, 2> &baseblock : BaseBlocks) {
-    int overlap = 1;
-    if (baseblock.getLevel() != std::uint8_t(0)) {
-      overlap = 2;
-    }
+  for (BasicBlock<T, 2> &baseblock : GeoHelper.getBasicBlocks()) {
+    int overlap = (baseblock.getLevel() != std::uint8_t(0)) ? 2 : 1;
     _Blocks.emplace_back(baseblock, overlap);
   }
-  _BlockNum = _Blocks.size();
   SetupNbrs();
   InitAllComm();
+  UpdateMaxLevel();
+}
+
+template <typename T>
+void BlockGeometry2D<T>::Init(BlockGeometryHelper2D<T>& GeoHelper){;
+  _Blocks.clear();
+  // create blocks from GeoHelper
+  for (BasicBlock<T, 2>& baseblock : GeoHelper.getBasicBlocks()) {
+    int overlap = (baseblock.getLevel() != std::uint8_t(0)) ? 2 : 1;
+    _Blocks.emplace_back(baseblock, overlap);
+  }
+  SetupNbrs();
+  InitAllComm();
+  UpdateMaxLevel();
 }
 
 template <typename T>
@@ -248,7 +257,7 @@ void BlockGeometry2D<T>::SetupNbrs() {
 
 template <typename T>
 void BlockGeometry2D<T>::InitCommunicators() {
-  for (int i = 0; i < _BlockNum; ++i) {
+  for (int i = 0; i < _Blocks.size(); ++i) {
     // getCellIdx() called from ext block
     Block2D<T> &block = _Blocks[i];
     // get the first layer of overlapped cells(counted from inside to outside)
@@ -271,7 +280,7 @@ void BlockGeometry2D<T>::InitCommunicators() {
 
 template <typename T>
 void BlockGeometry2D<T>::InitAverComm(int highlevelovlap) {
-  for (int i = 0; i < _BlockNum; ++i) {
+  for (int i = 0; i < _Blocks.size(); ++i) {
     // getCellIdx() called from ext block
     Block2D<T> &block = _Blocks[i];
     // get the first layer of overlapped cells(counted from inside to outside)
@@ -318,7 +327,7 @@ void BlockGeometry2D<T>::InitAverComm(int highlevelovlap) {
 
 template <typename T>
 void BlockGeometry2D<T>::InitIntpComm() {
-  for (int i = 0; i < _BlockNum; ++i) {
+  for (int i = 0; i < _Blocks.size(); ++i) {
     // getCellIdx() called from ext block
     Block2D<T> &block = _Blocks[i];
     std::uint8_t blocklevel = block.getLevel();
@@ -800,7 +809,7 @@ void BlockGeometryMPIHelper2D<T>::InitMPIBlockCommStru(MPIBlockCommStru &BlockCo
 
 // template <typename T>
 // void BlockGeometry2D<T>::InitAverComm2() {
-//   for (int i = 0; i < _BlockNum; ++i) {
+//   for (int i = 0; i < _Blocks.size(); ++i) {
 //     // getCellIdx() called from ext block
 //     Block2D<T> &block = _Blocks[i];
 //     BasicBlock<T, 2> baseblock_ext1 = block.getBaseBlock().getExtBlock(1);
@@ -851,7 +860,7 @@ void BlockGeometryMPIHelper2D<T>::InitMPIBlockCommStru(MPIBlockCommStru &BlockCo
 
 // template <typename T>
 // void BlockGeometry2D<T>::InitExtpComm() {
-//   for (int i = 0; i < _BlockNum; ++i) {
+//   for (int i = 0; i < _Blocks.size(); ++i) {
 //     // getCellIdx() called from ext block
 //     Block2D<T> &block = _Blocks[i];
 //     std::uint8_t blocklevel = block.getLevel();

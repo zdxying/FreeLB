@@ -90,7 +90,7 @@ class BlockLattice : public BlockRhoLattice<T> {
   // geometry
   Block<T, LatSet::d>& BlockGeo;
   // populations
-  PopulationField<T, LatSet::q> Pops;
+  PopulationField<T, LatSet::q>& Pops;
   // velocity field
   VectorFieldAOS<T, LatSet::d>& Velocity;
 
@@ -123,8 +123,9 @@ class BlockLattice : public BlockRhoLattice<T> {
 #endif
 
  public:
-  BlockLattice(BlockField<ScalerField<T>, T, LatSet::d>& blockF,
-               AbstractConverter<T>& conv, VectorFieldAOS<T, LatSet::d>& velocity);
+  BlockLattice(Block<T, LatSet::d>& block, ScalerField<T>& rho,
+               VectorFieldAOS<T, LatSet::d>& velocity,
+               PopulationField<T, LatSet::q>& pops, AbstractConverter<T>& conv);
 
   void InitPop(int Id, T rho) {
     for (int i = 0; i < LatSet::q; ++i) Pops.getField(i)[Id] = rho * LatSet::w[i];
@@ -222,16 +223,20 @@ class BlockLatticeManager {
  private:
   std::vector<BlockLattice<T, LatSet>> BlockLats;
   BlockGeometry<T, LatSet::d>& BlockGeo;
-  BlockFieldManager<VectorFieldAOS<T, LatSet::d>, T, LatSet::d>& BlockVelocity;
+  BlockFieldManager<VectorFieldAOS<T, LatSet::d>, T, LatSet::d>& VelocityFM;
   AbstractConverter<T>& Conv;
 
   // Rho Field
   BlockFieldManager<ScalerField<T>, T, LatSet::d> RhoFM;
+  // Population Field
+  BlockFieldManager<PopulationField<T, LatSet::q>, T, LatSet::d> PopsFM;
 
  public:
   BlockLatticeManager(
     BlockGeometry<T, LatSet::d>& blockgeo, AbstractConverter<T>& conv,
     BlockFieldManager<VectorFieldAOS<T, LatSet::d>, T, LatSet::d>& blockvelocity);
+  
+  void Init();
 
   AbstractConverter<T>& getConverter() { return Conv; }
 
@@ -247,6 +252,22 @@ class BlockLatticeManager {
     return RhoFM;
   }
 
+  BlockFieldManager<PopulationField<T, LatSet::q>, T, LatSet::d>& getPopsFM() {
+    return PopsFM;
+  }
+  const BlockFieldManager<PopulationField<T, LatSet::q>, T, LatSet::d>& getPopsFM()
+    const {
+    return PopsFM;
+  }
+
+  BlockFieldManager<VectorFieldAOS<T, LatSet::d>, T, LatSet::d>& getVelocityFM() {
+    return VelocityFM;
+  }
+  const BlockFieldManager<VectorFieldAOS<T, LatSet::d>, T, LatSet::d>& getVelocityFM()
+    const {
+    return VelocityFM;
+  }
+
   BlockLattice<T, LatSet>& getBlockLat(int i) { return BlockLats[i]; }
   const BlockLattice<T, LatSet>& getBlockLat(int i) const { return BlockLats[i]; }
 
@@ -256,13 +277,6 @@ class BlockLatticeManager {
   BlockGeometry<T, LatSet::d>& getGeo() { return BlockGeo; }
   const BlockGeometry<T, LatSet::d>& getGeo() const { return BlockGeo; }
 
-  BlockFieldManager<VectorFieldAOS<T, LatSet::d>, T, LatSet::d>& getBlockVelocity() {
-    return BlockVelocity;
-  }
-  const BlockFieldManager<VectorFieldAOS<T, LatSet::d>, T, LatSet::d>& getBlockVelocity()
-    const {
-    return BlockVelocity;
-  }
 
   template <typename flagtype = std::uint8_t>
   void UpdateRho(std::int64_t count, std::uint8_t flag,
@@ -315,21 +329,21 @@ class DynamicBlockLatticeHelper2D {
   // uer defined max refine level
   std::uint8_t _MaxRefineLevel;
 
-  // block cell field for data transfer
-  std::vector<PopulationField<T, LatSet::q>> _PopCellFields;
-
   // experimental
   std::vector<T> _MaxGradNorm2s;
   // ScalerField<T> _GradNorm2F;
+
+  BlockFieldManager<VectorFieldAOS<T, 2>, T, 2>& VelocityFM;
 
 
  public:
   DynamicBlockLatticeHelper2D(BlockLatticeManager<T, LatSet>& blocklatman,
                               BlockGeometryHelper2D<T>& geohelper,
+                              BlockFieldManager<VectorFieldAOS<T, 2>, T, 2>& velocityfm,
                               const std::vector<T>& refineth,
                               const std::vector<T>& coarsenth)
       : BlockLatMan(blocklatman), BlockGeo(blocklatman.getGeo()),
-        BlockGeoHelper(geohelper), _RefineThresholds(refineth),
+        BlockGeoHelper(geohelper), VelocityFM(velocityfm), _RefineThresholds(refineth),
         _CoarsenThresholds(coarsenth)
   // ,_GradNorm2F(BlockGeo.getBaseBlock().getN(), T(0)) {
   {
@@ -337,27 +351,38 @@ class DynamicBlockLatticeHelper2D {
     for (BasicBlock<T, 2>& block : BlockGeoHelper.getBlockCells()) {
       _GradNorm2s.emplace_back(block.getN(), T(0));
       _MaxGradNorm2s.push_back(T(0));
-      _PopCellFields.emplace_back(block.getN(), T(0));
     }
   }
 
   void ComputeGradNorm2();
   void UpdateMaxGradNorm2();
 
-  void LatticeRefineAndCoarsen(int OptProcNum, int MaxProcNum = -1, bool enforce = true) {
-    GeoRefineAndCoarsen(OptProcNum, MaxProcNum, enforce);
-    FieldDataTransfer();
-  }
+  // void LatticeRefineAndCoarsen(int OptProcNum, int MaxProcNum = -1, bool enforce =
+  // true) {
+  //   GeoRefineAndCoarsen(OptProcNum, MaxProcNum, enforce);
+  // }
   // refine and coarsen based on gradient of rho
   void GeoRefineAndCoarsen(int OptProcNum, int MaxProcNum = -1, bool enforce = true);
-  // set field data transfer based on GeoRefineAndCoarsen
-  void FieldDataTransfer();
+  // field data transfer based on GeoHelper, before re-init geometry
+  // pop date transfer between blocks with different level should be treated separately
+  // other field data like rho and velo transfer should use Init() in BlockFieldManager
+  // you should transfer pop data after other field data hs been transferred
+  void PopFieldDataTransfer();
 
 
-  void InitDynamicBlockGeometry();
+  void PopConversionFineToCoarse(const ScalerField<T>& RhoF,
+                                 const VectorFieldAOS<T, LatSet::d>& VelocityF,
+                                 PopulationField<T, LatSet::q>& PopsF,
+                                 const BasicBlock<T, 2>& FBaseBlock,
+                                 const BasicBlock<T, 2>& CBlock,
+                                 const BasicBlock<T, 2>& CBaseBlock, T OmegaF);
 
-  // this function should be called after InitDynamicBlockGeometry
-  void InitDynamicBlockLattice();
+  void PopConversionCoarseToFine(const ScalerField<T>& RhoF,
+                                 const VectorFieldAOS<T, LatSet::d>& VelocityF,
+                                 PopulationField<T, LatSet::q>& PopsF,
+                                 const BasicBlock<T, 2>& CBaseBlock,
+                                 const BasicBlock<T, 2>& FBlock,
+                                 const BasicBlock<T, 2>& FBaseBlock, T OmegaC);
 
   // experimental
   std::vector<T>& getMaxGradNorm2s() { return _MaxGradNorm2s; }

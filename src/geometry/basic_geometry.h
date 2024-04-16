@@ -122,12 +122,12 @@ static AABB<T, D> getIntersection(const AABB<T, D>& aabb0, const AABB<T, D>& aab
 template <typename T, typename U, unsigned int D>
 bool isOverlapped(const AABB<T, D>& aabb0, const AABB<U, D>& aabb1) {
   if constexpr (D == 2) {
-    return (aabb0.getMin()[0] <= aabb1.getMax()[0] && aabb0.getMax()[0] >= aabb1.getMin()[0] &&
-            aabb0.getMin()[1] <= aabb1.getMax()[1] && aabb0.getMax()[1] >= aabb1.getMin()[1]);
+    return (aabb0.getMin()[0] < aabb1.getMax()[0] && aabb0.getMax()[0] > aabb1.getMin()[0] &&
+            aabb0.getMin()[1] < aabb1.getMax()[1] && aabb0.getMax()[1] > aabb1.getMin()[1]);
   } else {
-    return (aabb0.getMin()[0] <= aabb1.getMax()[0] && aabb0.getMax()[0] >= aabb1.getMin()[0] &&
-            aabb0.getMin()[1] <= aabb1.getMax()[1] && aabb0.getMax()[1] >= aabb1.getMin()[1] &&
-            aabb0.getMin()[2] <= aabb1.getMax()[2] && aabb0.getMax()[2] >= aabb1.getMin()[2]);
+    return (aabb0.getMin()[0] < aabb1.getMax()[0] && aabb0.getMax()[0] > aabb1.getMin()[0] &&
+            aabb0.getMin()[1] < aabb1.getMax()[1] && aabb0.getMax()[1] > aabb1.getMin()[1] &&
+            aabb0.getMin()[2] < aabb1.getMax()[2] && aabb0.getMax()[2] > aabb1.getMin()[2]);
   }
 }
 

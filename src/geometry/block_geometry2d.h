@@ -120,8 +120,6 @@ class BlockGeometry2D : public BasicBlock<T, 2> {
  private:
   // base block
   BasicBlock<T, 2> _BaseBlock;
-  // blocks
-  int _BlockNum;
   // TODO: _BlockAABBs may be removed
   std::vector<AABB<int, 2>> _BlockAABBs;
   std::vector<Block2D<T>> _Blocks;
@@ -137,11 +135,12 @@ class BlockGeometry2D : public BasicBlock<T, 2> {
   BlockGeometry2D(BlockGeometryHelper2D<T>& GeoHelper);
   ~BlockGeometry2D() = default;
 
+  void Init(BlockGeometryHelper2D<T>& GeoHelper);
+
   void UpdateMaxLevel();
   inline std::uint8_t getMaxLevel() const { return _MaxLevel; }
 
-  int getBlockNum() const { return _BlockNum; }
-  void UpdateBlockNum() { _BlockNum = _Blocks.size(); }
+  int getBlockNum() const { return _Blocks.size(); }
   // get total number of cells, overlapped cells included
   int getTotalCellNum() const;
   // get total number of cells, overlapped cells not included
@@ -223,8 +222,11 @@ class BlockGeometryHelper2D : public BasicBlock<T, 2> {
   BasicBlock<T, 2>& getBaseBlock() { return _BaseBlock; }
   BasicBlock<T, 2>& getBlockCell(int id) { return _BlockCells[id]; }
   std::vector<BasicBlock<T, 2>>& getBlockCells() { return _BlockCells; }
+
   BasicBlock<T, 2>& getBasicBlock(int id) { return _BasicBlocks[id]; }
+  const BasicBlock<T, 2>& getBasicBlock(int id) const { return _BasicBlocks[id]; }
   std::vector<BasicBlock<T, 2>>& getBasicBlocks() { return _BasicBlocks; }
+
   BlockCellTag& getBlockCellTag(int id) { return _BlockCellTags[id]; }
   std::vector<BlockCellTag>& getBlockCellTags() { return _BlockCellTags; }
 

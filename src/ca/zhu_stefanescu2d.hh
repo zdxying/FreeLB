@@ -287,15 +287,15 @@ bool ZhuStefanescu2D<T, LatSet>::hasNeighborFlag(int id, std::uint8_t flag) cons
 // ------------------------------------------------------------------
 
 template <typename T, typename LatSet>
-BlockZhuStefanescu2D<T, LatSet>::BlockZhuStefanescu2D(
+BlockZhuStefanescu2D<T, LatSet>::BlockZhuStefanescu2D(Block2D<T>& geo, 
   BlockField<VectorFieldAOS<T, 2>, T, 2> &veloFM, ZSConverter<T> &convca,
   BlockRhoLattice<T> &latso, BlockRhoLattice<T> &latth, ScalerField<CAType> &state,
   ScalerField<T> &fs, ScalerField<T> &delta_fs, ScalerField<T> &curvature,
   ScalerField<T> &csolids, ScalerField<T> &preexcessc, ScalerField<T> &excessc, T delta,
   T theta)
-    : Geo(veloFM.getBlock()), ConvCA(convca), Conc(latso.getRhoField()),
+    : Geo(geo), ConvCA(convca), Conc(latso.getRhoField()),
       Temp(latth.getRhoField()), delta(delta), Theta(theta),
-      GT(convca.Lattice_GT_Coef * pow(2, int(veloFM.getBlock().getLevel()))),
+      GT(convca.Lattice_GT_Coef * pow(2, int(geo.getLevel()))),
       C0(latso.getLatRhoInit()), Tl(latth.getLatRhoInit()),
       Tl_eq(convca.get_LatTliq(latso.getLatRhoInit())), m_l(convca.Lattice_m_Liq),
       Part_Coef(convca.Part_Coef), _Part_Coef(T(1) - convca.Part_Coef),

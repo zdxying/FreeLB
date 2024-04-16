@@ -26,12 +26,12 @@
 #include "data_struct/block_lattice.h"
 
 template <typename T, typename LatSet>
-BlockLattice<T, LatSet>::BlockLattice(BlockField<ScalerField<T>, T, LatSet::d>& blockF,
-                                      AbstractConverter<T>& conv,
-                                      VectorFieldAOS<T, LatSet::d>& velocity)
-    : BlockGeo(blockF.getBlock()), Velocity(velocity),
-      Omega(RefineConverter<T>::getOmegaF(conv.GetOMEGA(), blockF.getBlock().getLevel())),
-      Pops(blockF.getBlock().getN()), BlockRhoLattice<T>(conv, blockF.getField()) {
+BlockLattice<T, LatSet>::BlockLattice(Block<T, LatSet::d>& block, ScalerField<T>& rho,
+                                      VectorFieldAOS<T, LatSet::d>& velocity,
+                                      PopulationField<T, LatSet::q>& pops,
+                                      AbstractConverter<T>& conv)
+    : BlockGeo(block), BlockRhoLattice<T>(conv, rho), Velocity(velocity), Pops(pops),
+      Omega(RefineConverter<T>::getOmegaF(conv.GetOMEGA(), block.getLevel())) {
   _Omega = T(1) - Omega;
   fOmega = T(1) - T(0.5) * Omega;
   Delta_Index =
@@ -120,7 +120,7 @@ void BlockLattice<T, LatSet>::avercommunicate() {
 
 template <typename T, typename LatSet>
 void BlockLattice<T, LatSet>::interpcommunicate() {
-  // average communication, low level get from high level
+  // interp communication, high level get from low level
   for (InterpBlockLatCommStru<T, LatSet>& comm : InterpComm) {
     BlockLattice<T, LatSet>* nBlockLat = comm.SendBlock;
     int size = comm.getRecvs().size();
@@ -416,12 +416,27 @@ template <typename T, typename LatSet>
 BlockLatticeManager<T, LatSet>::BlockLatticeManager(
   BlockGeometry<T, LatSet::d>& blockgeo, AbstractConverter<T>& conv,
   BlockFieldManager<VectorFieldAOS<T, LatSet::d>, T, LatSet::d>& blockvelocity)
-    : BlockGeo(blockgeo), BlockVelocity(blockvelocity), Conv(conv),
-      RhoFM(blockgeo, conv.getLatRhoInit()) {
+    : BlockGeo(blockgeo), VelocityFM(blockvelocity), Conv(conv),
+      RhoFM(blockgeo, conv.getLatRhoInit()), PopsFM(blockgeo) {
   // init block lattices
   for (int i = 0; i < BlockGeo.getBlocks().size(); ++i) {
-    BlockLats.emplace_back(RhoFM.getBlockField(i), conv,
-                           BlockVelocity.getBlockField(i).getField());
+    BlockLats.emplace_back(BlockGeo.getBlock(i), RhoFM.getBlockField(i).getField(),
+                           VelocityFM.getBlockField(i).getField(),
+                           PopsFM.getBlockField(i).getField(), Conv);
+  }
+  InitCommunicators();
+  InitAverComm();
+  InitIntpComm();
+  UpdateMaxLevel();
+}
+
+template <typename T, typename LatSet>
+void BlockLatticeManager<T, LatSet>::Init() {
+  BlockLats.clear();
+  for (int i = 0; i < BlockGeo.getBlocks().size(); ++i) {
+    BlockLats.emplace_back(BlockGeo.getBlock(i), RhoFM.getBlockField(i).getField(),
+                           VelocityFM.getBlockField(i).getField(),
+                           PopsFM.getBlockField(i).getField(), Conv);
   }
   InitCommunicators();
   InitAverComm();
@@ -697,84 +712,123 @@ void DynamicBlockLatticeHelper2D<T, LatSet>::GeoRefineAndCoarsen(int OptProcNum,
   BlockGeoHelper.AdaptiveOptimization(OptProcNum, MaxProcNum, enforce);
 }
 
-template <typename T, typename LatSet>
-void DynamicBlockLatticeHelper2D<T, LatSet>::FieldDataTransfer() {
-  // field data transfer
-  for (BasicBlock<T, 2>& block : BlockGeoHelper.getBlockCells()) {
-    std::uint8_t Celllevel = block.getLevel();
-    // resize buffer
-    _PopCellFields[block.getBlockId()].Resize(block.getN());
-    // find corresponding old block field
-    Vector<T, 2> centre = block.getCenter();
-    int j = 0;
-    for (BlockLattice<T, LatSet>& blocklat : BlockLatMan.getBlockLats()) {
-      if (blocklat.getGeo().getBaseBlock().isInside(centre)) {
-        break;
-      } else {
-        ++j;
-      }
-    }
-    // copy field
-    BlockLattice<T, LatSet>& blockLat = BlockLatMan.getBlockLat(j);
-    std::uint8_t Fieldlevel = blockLat.getGeo().getLevel();
-    if (Celllevel > Fieldlevel) {
-      InterpolationtoCell2D(blockLat.getPopField(), _PopCellFields[block.getBlockId()],
-                            blockLat.getGeo(), block);
-    } else if (Celllevel < Fieldlevel) {
-      AveragetoCell2D(blockLat.getPopField(), _PopCellFields[block.getBlockId()],
-                      blockLat.getGeo(), block);
-    } else {
-      CopytoCell2D(blockLat.getPopField(), _PopCellFields[block.getBlockId()],
-                   blockLat.getGeo(), block);
-    }
-  }
-  // reInit BlockGeometry should started after all field data transfer to CellFields
-}
 
 template <typename T, typename LatSet>
-void DynamicBlockLatticeHelper2D<T, LatSet>::InitDynamicBlockGeometry() {
-  std::vector<Block2D<T>>& Blocks = BlockGeo.getBlocks();
-  // create blocks from GeoHelper
-  Blocks.clear();
-  for (BasicBlock<T, 2>& baseblock : BlockGeoHelper.getBasicBlocks()) {
-    int overlap = 1;
-    if (baseblock.getLevel() != std::uint8_t(0)) {
-      overlap = 2;
-    }
-    Blocks.emplace_back(baseblock, overlap);
-  }
-  BlockGeo.UpdateBlockNum();
-  BlockGeo.SetupNbrs();
-  BlockGeo.InitAllComm();
-}
+void DynamicBlockLatticeHelper2D<T, LatSet>::PopFieldDataTransfer() {
+  // rho field data transfer could be done here
+  BlockLatMan.getRhoFM().Init(BlockGeoHelper);
+  // pop field data, this assumes that other fields like rho and velocity have been
+  // transfered
+  BlockLatMan.getPopsFM().Init(BlockGeoHelper);
+  // now pops field data is transferred, but conversion of distribution function
+  // between blocks of different refinement levels is not done yet
+#pragma omp parallel for num_threads(Thread_Num)
+  for (int inewblock = 0; inewblock < BlockLatMan.getPopsFM().getBlockFields().size();
+       ++inewblock) {
+    BlockField<PopulationField<T, LatSet::q>, T, LatSet::d>& PopsField =
+      BlockLatMan.getPopsFM().getBlockField(inewblock);
+    const BlockField<ScalerField<T>, T, LatSet::d>& RhoField =
+      BlockLatMan.getRhoFM().getBlockField(inewblock);
+    const BlockField<VectorFieldAOS<T, LatSet::d>, T, LatSet::d>& VelocityField =
+      BlockLatMan.getVelocityFM().getBlockField(inewblock);
 
-template <typename T, typename LatSet>
-void DynamicBlockLatticeHelper2D<T, LatSet>::InitDynamicBlockLattice() {
-  // remove all old block lattices
-  std::vector<BlockLattice<T, LatSet>>& BlockLats = BlockLatMan.getBlockLats();
-  BlockLats.clear();
-  // remove all old block velocity field
-  BlockVectFieldAOS<T, 2>& BlockVelocityVec = BlockLatMan.getBlockVelocity();
-  BlockVelocityVec.Clear();
-  // init block lattices
-  for (Block2D<T>& block : BlockGeo.getBlocks()) {
-    // resize block velocity field
-    BlockVelocityVec.Pushback(block.getN(), Vector<T, 2>{});
-    // init block lattice
-    BlockLats.emplace_back(block, BlockLatMan.getConverter(),
-                           BlockVelocityVec.getBlockField(block.getBlockId()));
-    // init block lattice populations
-    BlockLattice<T, LatSet>& BlockLat = BlockLats.back();
-    PopulationField<T, LatSet::q>& PopField = BlockLat.getPopField();
-    for (BasicBlock<T, 2>& blockcell : BlockGeoHelper.getBlockCells()) {
-      Vector<T, 2> centre = blockcell.getCenter();
-      if (BlockLat.getGeo().getBaseBlock().isInside(centre)) {
-        CopytoField2D(PopField, _PopCellFields[block.getBlockId()], BlockLat.getGeo(),
-                      blockcell);
+    const BasicBlock<T, 2>& newbaseblock = BlockGeoHelper.getBasicBlock(inewblock);
+    const BasicBlock<T, 2>& newblock = PopsField.getBlock();
+    std::uint8_t Level = newblock.getLevel();
+    // find overlapped old block field
+    for (int iblock = 0; iblock < BlockGeo.getBlockNum(); ++iblock) {
+      const BasicBlock<T, 2>& block = BlockGeo.getBlock(iblock);
+      const BasicBlock<T, 2>& baseblock = BlockGeo.getBlock(iblock).getBaseBlock();
+      if (isOverlapped(newbaseblock, baseblock)) {
+        // get omega
+        T omega = BlockLatMan.getBlockLat(iblock).getOmega();
+        if (Level > block.getLevel()) {
+          PopConversionCoarseToFine(RhoField.getField(), VelocityField.getField(),
+                                    PopsField.getField(), baseblock, newblock,
+                                    newbaseblock, omega);
+        } else if (Level < block.getLevel()) {
+          PopConversionFineToCoarse(RhoField.getField(), VelocityField.getField(),
+                                    PopsField.getField(), baseblock, newblock,
+                                    newbaseblock, omega);
+        }
       }
     }
   }
 }
+
+template <typename T, typename LatSet>
+void DynamicBlockLatticeHelper2D<T, LatSet>::PopConversionFineToCoarse(
+  const ScalerField<T>& RhoF, const VectorFieldAOS<T, LatSet::d>& VelocityF,
+  PopulationField<T, LatSet::q>& PopsF, const BasicBlock<T, 2>& FBaseBlock,
+  const BasicBlock<T, 2>& CBlock, const BasicBlock<T, 2>& CBaseBlock, T OmegaF) {
+  // get intersection
+  const AABB<T, 2> intsec = getIntersection(CBaseBlock, FBaseBlock);
+  int Nx = intsec.getExtension()[0] / CBlock.getVoxelSize();
+  int Ny = intsec.getExtension()[1] / CBlock.getVoxelSize();
+  // get start index of intsec in CBlock
+  Vector<T, 2> startC = intsec.getMin() - CBlock.getMin();
+  int startx = static_cast<int>(startC[0] / CBlock.getVoxelSize());
+  int starty = static_cast<int>(startC[1] / CBlock.getVoxelSize());
+  // end index
+  int endx = startx + Nx;
+  int endy = starty + Ny;
+
+  const GenericArray<T>& RhoArr = RhoF.getField(0);
+  const GenericArray<Vector<T, 2>>& VelocityArr = VelocityF.getField(0);
+
+  for (int iy = starty; iy < endy; ++iy) {
+    for (int ix = startx; ix < endx; ++ix) {
+      std::size_t id = iy * CBlock.getNx() + ix;
+      std::array<T*, LatSet::q> Pops = PopsF.template getArray<T>(id);
+      // get feq, peparing for pop conversion
+      std::array<T, LatSet::q> feq{};
+      Equilibrium<T, LatSet>::SecondOrder(feq, VelocityArr[id], RhoArr[id]);
+      // convert from fine to coarse
+      for (unsigned int iArr = 0; iArr < LatSet::q; ++iArr) {
+        T popC = RefineConverter<T>::getPopC(*(Pops[iArr]), feq[iArr], OmegaF);
+        *(Pops[iArr]) = popC;
+      }
+    }
+  }
+}
+
+
+template <typename T, typename LatSet>
+void DynamicBlockLatticeHelper2D<T, LatSet>::PopConversionCoarseToFine(
+  const ScalerField<T>& RhoF, const VectorFieldAOS<T, LatSet::d>& VelocityF,
+  PopulationField<T, LatSet::q>& PopsF, const BasicBlock<T, 2>& CBaseBlock,
+  const BasicBlock<T, 2>& FBlock, const BasicBlock<T, 2>& FBaseBlock, T OmegaC) {
+  // get intersection
+  const AABB<T, 2> intsec = getIntersection(CBaseBlock, FBaseBlock);
+  int Nx = intsec.getExtension()[0] / FBlock.getVoxelSize();
+  int Ny = intsec.getExtension()[1] / FBlock.getVoxelSize();
+  // get start index of intsec in FBlock
+  Vector<T, 2> startF = intsec.getMin() - FBlock.getMin();
+  int startx = static_cast<int>(startF[0] / FBlock.getVoxelSize());
+  int starty = static_cast<int>(startF[1] / FBlock.getVoxelSize());
+  // end index
+  int endx = startx + Nx;
+  int endy = starty + Ny;
+
+  const GenericArray<T>& RhoArr = RhoF.getField(0);
+  const GenericArray<Vector<T, 2>>& VelocityArr = VelocityF.getField(0);
+
+  for (int iy = starty; iy < endy; ++iy) {
+    for (int ix = startx; ix < endx; ++ix) {
+      std::size_t id = iy * FBlock.getNx() + ix;
+      std::array<T*, LatSet::q> Pops = PopsF.template getArray<T>(id);
+      // get feq, peparing for pop conversion
+      std::array<T, LatSet::q> feq{};
+      Equilibrium<T, LatSet>::SecondOrder(feq, VelocityArr[id], RhoArr[id]);
+      // convert from fine to coarse
+      for (unsigned int iArr = 0; iArr < LatSet::q; ++iArr) {
+        T popF = RefineConverter<T>::getPopF(*(Pops[iArr]), feq[iArr], OmegaC);
+        *(Pops[iArr]) = popF;
+      }
+    }
+  }
+}
+
 
 // template <typename T, typename LatSet>
 // void DynamicBlockLatticeHelper2D<T, LatSet>::UpdateGradNorm2F() {

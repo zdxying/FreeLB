@@ -69,9 +69,6 @@ struct Timer : public Counter {
   // get time elapsed in seconds(s) but no END_TIMER()
   double GetTimeElapsed_Only() { return GetDurationCount_Only() / double(1000); }
 
-  void Print_MainLoopPerformance(std::size_t ni, std::size_t nj, std::size_t nk = 1) {
-    Print_MainLoopPerformance(ni * nj * nk);
-  }
   void Print_MainLoopPerformance(std::size_t n) {
     MPI_RANK(0)
     std::int64_t count = this->operator()();  // this->operator()() or (*this)()
@@ -87,11 +84,8 @@ struct Timer : public Counter {
     std::cout << "MLUPs/Thread: " << MLUPs / Thread_Num << std::endl;
 #endif
   }
-  void Print_InnerLoopPerformance(std::size_t steps, std::size_t ni, std::size_t nj,
-                                  std::size_t nk = 1) {
-    Print_InnerLoopPerformance(steps, ni * nj * nk);
-  }
-  void Print_InnerLoopPerformance(std::size_t steps, std::size_t n) {
+
+  void Print_InnerLoopPerformance(std::size_t n, std::size_t steps) {
     MPI_RANK(0)
     std::int64_t count = this->operator()();  // this->operator()() or (*this)()
     double MLUPs = static_cast<double>(steps) * static_cast<double>(n) /

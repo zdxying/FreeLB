@@ -75,12 +75,20 @@ template <typename T, unsigned int D>
 using BlockGeometry = std::conditional_t<D == 2, BlockGeometry2D<T>, BlockGeometry3D<T>>;
 
 template <typename T>
+class BlockGeometryHelper2D;
+template <typename T>
+class BlockGeometryHelper3D;
+template <typename T, unsigned int D>
+using BlockGeometryHelper = std::conditional_t<D == 2, BlockGeometryHelper2D<T>, BlockGeometryHelper3D<T>>;
+
+// legacy alias
+template <typename T>
 class VoxelGeometry2D;
 template <typename T>
 class VoxelGeometry3D;
 template <typename T, unsigned int D>
 using VoxelGeometry = std::conditional_t<D == 2, VoxelGeometry2D<T>, VoxelGeometry3D<T>>;
-
+// legacy alias
 template <typename T>
 class RefinedGeometry2D;
 template <typename T>
@@ -97,9 +105,6 @@ class GenericArray;
 
 template <typename T>
 class CyclicArray;
-
-template <typename FieldType, typename T>
-class BlockFieldStruct;
 
 template <typename T>
 using ScalerField = GenericField<GenericArray<T>, 1>;
@@ -119,6 +124,10 @@ using VectorFieldSoA = GenericField<GenericArray<T>, D>;
 template <typename T, unsigned int q>
 using PopulationField = GenericField<CyclicArray<T>, q>;
 
+// ---------block field alias-----------
+template <typename FieldType, typename T>
+class BlockFieldStruct;
+
 template <typename T, unsigned int D>
 using BlockVectFieldAOS = BlockFieldStruct<VectorFieldAOS<T, D>, Vector<T, D>>;
 
@@ -127,6 +136,8 @@ using BlockScalerField = BlockFieldStruct<ScalerField<T>, T>;
 
 template <template <typename> class ArrayType, typename T, unsigned int D>
 using BlockFStruct = BlockFieldStruct<GenericField<ArrayType<T>, D>, T>;
+
+
 
 namespace CA {
 template <typename T, typename LatSet>
