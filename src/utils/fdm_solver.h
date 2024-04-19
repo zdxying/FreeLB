@@ -42,10 +42,10 @@ class FDM2D {
   // neighbor index {1, Ni, -1, -Ni, Ni + 1, Ni - 1, -Ni + 1, -Ni - 1}
   int Nbr[8];
   // cell length is assumed to be 1
-  GenericArray<T> &f;
+  const GenericArray<T> &f;
 
  public:
-  FDM2D(int ni, int nj, GenericArray<T> &f_)
+  FDM2D(int ni, int nj, const GenericArray<T> &f_)
       : Ni(ni), Nj(nj), Nbr{1, Ni, -1, -Ni, Ni + 1, Ni - 1, -Ni + 1, -Ni - 1}, f(f_) {}
   ~FDM2D() {}
   // FDM parser

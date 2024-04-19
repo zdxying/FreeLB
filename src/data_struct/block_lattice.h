@@ -323,13 +323,12 @@ class DynamicBlockLatticeHelper2D {
   // square norm of gradient of rho field, each BlockCell corresponds to a scalar field
   std::vector<ScalerField<T>> _GradNorm2s;
   // lattice refine threshold
-  std::vector<T> _RefineThresholds;
+  std::vector<T> _RefineTholds;
   // lattice coarsen threshold
-  std::vector<T> _CoarsenThresholds;
+  std::vector<T> _CoarsenTholds;
   // uer defined max refine level
-  std::uint8_t _MaxRefineLevel = 2;
+  int _MaxRefineLevel;
 
-  // experimental
   std::vector<T> _MaxGradNorm2s;
   // ScalerField<T> _GradNorm2F;
 
@@ -341,12 +340,14 @@ class DynamicBlockLatticeHelper2D {
                               BlockGeometryHelper2D<T>& geohelper,
                               BlockFieldManager<VectorFieldAOS<T, 2>, T, 2>& velocityfm,
                               const std::vector<T>& refineth,
-                              const std::vector<T>& coarsenth)
+                              const std::vector<T>& coarsenth, int MaxRefineLevel = 2)
       : BlockLatMan(blocklatman), BlockGeo(blocklatman.getGeo()),
-        BlockGeoHelper(geohelper), VelocityFM(velocityfm), _RefineThresholds(refineth),
-        _CoarsenThresholds(coarsenth)
+        BlockGeoHelper(geohelper), VelocityFM(velocityfm), _RefineTholds(refineth),
+        _CoarsenTholds(coarsenth), _MaxRefineLevel(MaxRefineLevel)
   // ,_GradNorm2F(BlockGeo.getBaseBlock().getN(), T(0)) {
   {
+    int minsize = std::min(_RefineTholds.size(), _CoarsenTholds.size());
+    _MaxRefineLevel = std::min(_MaxRefineLevel, minsize);
     // init gradnorm2
     for (BasicBlock<T, 2>& block : BlockGeoHelper.getBlockCells()) {
       _GradNorm2s.emplace_back(block.getN(), T(0));
@@ -357,17 +358,17 @@ class DynamicBlockLatticeHelper2D {
   void ComputeGradNorm2();
   void UpdateMaxGradNorm2();
 
-  // void LatticeRefineAndCoarsen(int OptProcNum, int MaxProcNum = -1, bool enforce =
-  // true) {
-  //   GeoRefineAndCoarsen(OptProcNum, MaxProcNum, enforce);
-  // }
-  // refine and coarsen based on gradient of rho
-  void GeoRefineAndCoarsen(int OptProcNum, int MaxProcNum = -1, bool enforce = true);
+  bool WillRefineOrCoarsen();
+
+  void GeoRefineOrCoarsen(int OptProcNum, int MaxProcNum = -1, bool enforce = true);
+
   // field data transfer based on GeoHelper, before re-init geometry
   // pop date transfer between blocks with different level should be treated separately
   // other field data like rho and velo transfer should use Init() in BlockFieldManager
   // you should transfer pop data after other field data hs been transferred
   void PopFieldDataTransfer();
+  // init comm and comm
+  void PopFieldDataInitComm();
 
 
   void PopConversionFineToCoarse(const ScalerField<T>& RhoF,

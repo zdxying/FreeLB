@@ -359,22 +359,14 @@ class BlockZhuStefanescu2DManager {
 
   BlockGeometry2D<T>& BlockGeo;
 
+  BlockFieldManager<VectorFieldAOS<T, 2>, T, 2>& VelocityFM;
+
+  ZSConverter<T>& ConvCA;
+
   // preferred growth angle to x-axis, manually chosen
   T Theta;
   // anisotropy coefficient, manually chosen
   T delta;
-  // Gibbs-Thomson coefficient
-  T GT;
-  // initial composition C0
-  T C0;
-  // equilibrium liquidus temperature at the initial composition C0
-  T Tl_eq;
-  // slope of liquidus line
-  T m_l;
-  // partition coefficient
-  T Part_Coef;
-  // (1 - partition coefficient)
-  T _Part_Coef;
 
   // --- CA Field ---
   // communication needed:
@@ -409,23 +401,68 @@ class BlockZhuStefanescu2DManager {
                               ZSConverter<T>& convca,
                               BlockLatticeManager<T, LatSet0>& LatSos,
                               BlockLatticeManager<T, LatSet1>& LatThs, T delta_, T theta)
-      : BlockGeo(veloFM.getGeo()), Theta(theta), delta(delta_), GT(0.1), C0(0.1),
-        Tl_eq(0.1), m_l(0.1), Part_Coef(0.1), _Part_Coef(1 - Part_Coef),
-        StateFM(veloFM.getGeo(), CAType::Boundary), FsFM(veloFM.getGeo(), T(0)),
-        DeltaFsFM(veloFM.getGeo(), T(0)), CurvFM(veloFM.getGeo(), T(0)),
-        CSolidsFM(veloFM.getGeo(), T(0)), PreExcessCFM(veloFM.getGeo(), T(0)),
-        ExcessCFM(veloFM.getGeo(), T(0)) {
+      : VelocityFM(veloFM), ConvCA(convca), BlockGeo(veloFM.getGeo()), Theta(theta),
+        delta(delta_), StateFM(veloFM.getGeo(), CAType::Boundary),
+        FsFM(veloFM.getGeo(), T(0)), DeltaFsFM(veloFM.getGeo(), T(0)),
+        CurvFM(veloFM.getGeo(), T(0)), CSolidsFM(veloFM.getGeo(), T(0)),
+        PreExcessCFM(veloFM.getGeo(), T(0)), ExcessCFM(veloFM.getGeo(), T(0)) {
     // create BlockZhuStefanescu2D
     for (std::size_t i = 0; i < BlockGeo.getBlockNum(); ++i) {
       BlockZS.emplace_back(
-        BlockGeo.getBlock(i), veloFM.getBlockField(i), convca, LatSos.getBlockLat(i),
+        BlockGeo.getBlock(i), VelocityFM.getBlockField(i), ConvCA, LatSos.getBlockLat(i),
         LatThs.getBlockLat(i), StateFM.getBlockField(i).getField(),
         FsFM.getBlockField(i).getField(), DeltaFsFM.getBlockField(i).getField(),
         CurvFM.getBlockField(i).getField(), CSolidsFM.getBlockField(i).getField(),
         PreExcessCFM.getBlockField(i).getField(), ExcessCFM.getBlockField(i).getField(),
-        delta_, theta);
+        delta, Theta);
     }
-    // init States, ExcessC_s, Interfaces
+    // init Interfaces
+    for (auto& zs : BlockZS) {
+      Interfaces.push_back(&(zs.getInterface()));
+    }
+  }
+
+  void CAFieldDataTransfer(BlockGeometryHelper2D<T>& GeoHelper) {
+    // data transfer
+    StateFM.FieldDataAverTransfer(GeoHelper, CAType::Boundary);
+    FsFM.FieldDataTransfer(GeoHelper);
+    CSolidsFM.FieldDataTransfer(GeoHelper);
+    ExcessCFM.FieldDataTransfer(GeoHelper);
+
+    // field init without data transfer
+    DeltaFsFM.Init(GeoHelper, T(0));
+    CurvFM.Init(GeoHelper, T(0));
+    PreExcessCFM.Init(GeoHelper, T(0));
+  }
+
+  void CAFieldDataInitComm(){
+    StateFM.InitComm();
+    StateFM.NormalCommunicate();
+
+    FsFM.InitAndCommAll();
+    CSolidsFM.InitAndCommAll();
+    ExcessCFM.InitAndCommAll();
+
+    DeltaFsFM.InitAndCommAll();
+    CurvFM.InitAndCommAll();
+    PreExcessCFM.InitAndCommAll();
+  }
+
+  template <typename LatSet0, typename LatSet1>
+  void Init(BlockLatticeManager<T, LatSet0>& LatSos,
+            BlockLatticeManager<T, LatSet1>& LatThs) {
+    BlockZS.clear();
+    for (std::size_t i = 0; i < BlockGeo.getBlockNum(); ++i) {
+      BlockZS.emplace_back(
+        BlockGeo.getBlock(i), VelocityFM.getBlockField(i), ConvCA, LatSos.getBlockLat(i),
+        LatThs.getBlockLat(i), StateFM.getBlockField(i).getField(),
+        FsFM.getBlockField(i).getField(), DeltaFsFM.getBlockField(i).getField(),
+        CurvFM.getBlockField(i).getField(), CSolidsFM.getBlockField(i).getField(),
+        PreExcessCFM.getBlockField(i).getField(), ExcessCFM.getBlockField(i).getField(),
+        delta, Theta);
+    }
+    // init Interfaces
+    Interfaces.clear();
     for (auto& zs : BlockZS) {
       Interfaces.push_back(&(zs.getInterface()));
     }

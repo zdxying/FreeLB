@@ -45,54 +45,46 @@ class GenericField {
  private:
   // field data
   std::array<ArrayType, D> _Data;
-  // std::vector<ArrayType> _Data;
 
  public:
-  GenericField() = delete;
-  // std::vector<ArrayType> _Data:
-  // it should be NOTED that DO NOT copy an ArrayType object if the copy
-  // constructor of ArrayType is not defined.
-  // both the original and the copy will point to the same data. When one of
-  // them is destroyed, it will delete data, and then when the other is
-  // destroyed, it will try to delete data again, causing a double delete error.
-  // i.e., try use emplace_back(size) instead of push_back(ArrayType(size))
-  // but push_back(ArrayType(size)) is ok if ArrayType has a copy constructor
-  // std::array<ArrayType, D> _Data;
-  // ArrayType must have a default constructor and a copy constructor
-  // 23/12/12:
-  // at this moment using std::vector<ArrayType> _Data is better
-  // because std::vector<ArrayType> _Data will call the default constructor of
-  // ArrayType, and then call the copy constructor of ArrayType to copy the
-  // ArrayType(size, initialValue) to _Data[i]
-  // 23/12/13:
-  // using std::array<ArrayType, D> which is more comlex but avoid calling the
-  // copy constructor of ArrayType
-  // ---this is old version of 2 constructors
-  // GenericField(std::size_t size) {
-  //   for (unsigned int i = 0; i < D; ++i) _Data[i] = ArrayType(size);
-  //   // _Data.emplace_back(size);
-  // }
-  // template <typename T>
-  // GenericField(std::size_t size, T initialValue) {
-  //   for (unsigned int i = 0; i < D; ++i)
-  //     _Data[i] = ArrayType(size, initialValue);
-  //   // _Data.emplace_back(size, initialValue);
-  // }
-  // ---end of old version
-
+  GenericField() : _Data{} {}
   GenericField(std::size_t size)
       : _Data(make_array<ArrayType, D>([&]() { return ArrayType(size); })) {}
-
   template <typename T>
   GenericField(std::size_t size, T initialValue)
       : _Data(make_array<ArrayType, D>([&]() { return ArrayType(size, initialValue); })) {
   }
-  ~GenericField() = default;
+  // Copy constructor
+  GenericField(const GenericField& genF) : _Data{} {
+    for (unsigned int i = 0; i < D; ++i) _Data[i] = genF._Data[i];
+  }
+  // Move constructor
+  GenericField(GenericField&& genF) noexcept {
+    // manually moving each element of the array
+    for (unsigned int i = 0; i < D; ++i) {
+      _Data[i] = std::move(genF._Data[i]);
+    }
+    // Reset moved-from _Data
+    genF._Data = {};
+  }
+  // Copy assignment operator
   GenericField& operator=(const GenericField& genF) {
     if (&genF == this) return *this;
     for (unsigned int i = 0; i < D; ++i) _Data[i] = genF._Data[i];
     return *this;
   }
+  // Move assignment operator
+  GenericField& operator=(GenericField&& genF) noexcept {
+    if (&genF == this) return *this;
+    for (unsigned int i = 0; i < D; ++i) {
+      _Data[i] = std::move(genF._Data[i]);
+    }
+    // Reset moved-from _Data
+    genF._Data = {};
+    return *this;
+  }
+
+  ~GenericField() = default;
 
   ArrayType& getField(std::size_t i = 0) { return _Data[i]; }
   const ArrayType& getField(std::size_t i = 0) const { return _Data[i]; }
@@ -162,21 +154,23 @@ class GenericArray {
   T* data;
 
  public:
-  GenericArray() = delete;
-  // GenericArray() = delete;
+  GenericArray() : count(0), data(nullptr) {}
   GenericArray(std::size_t size) : count(size), data(new T[size]{}) {
-  std::fill(data, data + size, T{});
-}
-
+    std::fill(data, data + size, T{});
+  }
   GenericArray(std::size_t size, T InitValue) : count(size), data(new T[size]{}) {
     std::fill(data, data + size, InitValue);
   }
-  // it is recommended to define a copy constructor in case of double free
-  // copy constructor
+  // Copy constructor
   GenericArray(const GenericArray& arr) : count(arr.count), data(new T[arr.count]{}) {
     std::copy(arr.data, arr.data + count, data);
   }
-  void Init(T InitValue) { std::fill(data, data + count, InitValue); }
+  // Move constructor
+  GenericArray(GenericArray&& arr) noexcept : count(arr.count), data(arr.data) {
+    // Reset 'arr'
+    arr.count = 0;
+    arr.data = nullptr;
+  }
   // Copy assignment operator
   GenericArray& operator=(const GenericArray& arr) {
     if (&arr == this) return *this;
@@ -186,14 +180,29 @@ class GenericArray {
     std::copy(arr.data, arr.data + count, data);
     return *this;
   }
+  // Move assignment operator
+  GenericArray& operator=(GenericArray&& arr) noexcept {
+    if (&arr == this) return *this;
+    delete[] data;
+    // Steal the data from 'arr'
+    count = arr.count;
+    data = arr.data;
+    // Reset 'arr'
+    arr.count = 0;
+    arr.data = nullptr;
+    return *this;
+  }
+
+  ~GenericArray() { delete[] data; }
+
+  void Init(T InitValue) { std::fill(data, data + count, InitValue); }
+
   void Resize(std::size_t size) {
     if (size == count) return;
     delete[] data;
     data = new T[size]{};
     count = size;
   }
-
-  ~GenericArray() { delete[] data; }
 
   const T& operator[](std::size_t i) const { return data[i]; }
   T& operator[](std::size_t i) { return data[i]; }
@@ -246,8 +255,8 @@ class CyclicArray {
   std::ptrdiff_t lastOffset;
 
  public:
-  CyclicArray() = delete;
-  // CyclicArray() : count(0), data(nullptr), shift(0), remainder(0), lastOffset(0) {}
+  CyclicArray()
+      : count(0), data(nullptr), shift(0), remainder(0), lastOffset(0), start{} {}
   CyclicArray(std::size_t size)
       : count(size), data(new T[size]{}), shift(0), remainder(size), lastOffset(0) {
     std::fill(data, data + size, T{});
@@ -258,14 +267,32 @@ class CyclicArray {
     std::fill(data, data + size, InitValue);
     refresh();
   }
-  // copy constructor
+  // Copy constructor
   CyclicArray(const CyclicArray& arr)
       : count(arr.count), data(new T[arr.count]{}), shift(arr.shift),
         remainder(arr.remainder), lastOffset(arr.lastOffset) {
     std::copy(arr.data, arr.data + count, data);
     refresh();
   }
-  void Init(T InitValue) { std::fill(data, data + count, InitValue); }
+  // Move constructor
+  CyclicArray(CyclicArray&& arr) noexcept
+      : count(0), data(nullptr), shift(0), remainder(0), lastOffset(0), start{} {
+    // Steal the data from 'arr'
+    count = arr.count;
+    data = arr.data;
+    shift = arr.shift;
+    remainder = arr.remainder;
+    lastOffset = arr.lastOffset;
+    start = arr.start;
+    refresh();
+    // Reset 'arr'
+    arr.count = 0;
+    arr.data = nullptr;
+    arr.shift = 0;
+    arr.remainder = 0;
+    arr.lastOffset = 0;
+    arr.start = {};
+  }
   // Copy assignment operator
   CyclicArray& operator=(const CyclicArray& arr) {
     if (&arr == this) return *this;
@@ -279,6 +306,30 @@ class CyclicArray {
     refresh();
     return *this;
   }
+  // Move assignment operator
+  CyclicArray& operator=(CyclicArray&& arr) noexcept {
+    if (&arr == this) return *this;
+    delete[] data;
+    // Steal the data from 'arr'
+    count = arr.count;
+    data = arr.data;
+    shift = arr.shift;
+    remainder = arr.remainder;
+    lastOffset = arr.lastOffset;
+    start = arr.start;
+    // Reset 'arr'
+    arr.count = 0;
+    arr.data = nullptr;
+    arr.shift = 0;
+    arr.remainder = 0;
+    arr.lastOffset = 0;
+    arr.start = {};
+    refresh();
+    return *this;
+  }
+
+  void Init(T InitValue) { std::fill(data, data + count, InitValue); }
+
   void Resize(std::size_t size) {
     if (size == count) return;
     delete[] data;
@@ -368,21 +419,23 @@ void FieldInterpolation2D(const GenericField<ArrayType<datatype>, D>& CField,
                           const BasicBlock<FloatType, 2>& CBaseBlock,
                           const BasicBlock<FloatType, 2>& FBlock,
                           const BasicBlock<FloatType, 2>& FBaseBlock) {
+  const FloatType Cvoxsize = CBlock.getVoxelSize();
+  const FloatType Fvoxsize = FBlock.getVoxelSize();                          
   // get intersection
   const AABB<FloatType, 2> intsec = getIntersection(CBaseBlock, FBaseBlock);
-  int CNx = intsec.getExtension()[0] / CBlock.getVoxelSize();
-  int CNy = intsec.getExtension()[1] / CBlock.getVoxelSize();
+  int CNx = static_cast<int>(std::round(intsec.getExtension()[0] / Cvoxsize));
+  int CNy = static_cast<int>(std::round(intsec.getExtension()[1] / Cvoxsize));
   // get start index of intsec in CBlock
   Vector<FloatType, 2> startC = intsec.getMin() - CBlock.getMin();
-  int startCx_ = static_cast<int>(startC[0] / CBlock.getVoxelSize());
-  int startCy_ = static_cast<int>(startC[1] / CBlock.getVoxelSize());
+  int startCx_ = static_cast<int>(std::round(startC[0] / Cvoxsize));
+  int startCy_ = static_cast<int>(std::round(startC[1] / Cvoxsize));
   // shift 1 voxel to left bottom for interpolation
   int startCx = startCx_ - 1;
   int startCy = startCy_ - 1;
   // start index of intsec in FBlock
   Vector<FloatType, 2> startF = intsec.getMin() - FBlock.getMin();
-  int startFx = static_cast<int>(startF[0] / FBlock.getVoxelSize());
-  int startFy = static_cast<int>(startF[1] / FBlock.getVoxelSize());
+  int startFx = static_cast<int>(std::round(startF[0] / Fvoxsize));
+  int startFy = static_cast<int>(std::round(startF[1] / Fvoxsize));
   // shift 1 voxel to right top for interpolation
   int startFx_ = startFx + 1;
   int startFy_ = startFy + 1;
@@ -455,18 +508,20 @@ void FieldAverage2D(const GenericField<ArrayType<datatype>, D>& FField,
                     const BasicBlock<FloatType, 2>& FBaseBlock,
                     const BasicBlock<FloatType, 2>& CBlock,
                     const BasicBlock<FloatType, 2>& CBaseBlock) {
+  const FloatType Cvoxsize = CBlock.getVoxelSize();
+  const FloatType Fvoxsize = FBlock.getVoxelSize();
   // get intersection
   const AABB<FloatType, 2> intsec = getIntersection(CBaseBlock, FBaseBlock);
-  int CNx = intsec.getExtension()[0] / CBlock.getVoxelSize();
-  int CNy = intsec.getExtension()[1] / CBlock.getVoxelSize();
+  int CNx = static_cast<int>(std::round(intsec.getExtension()[0] / Cvoxsize));
+  int CNy = static_cast<int>(std::round(intsec.getExtension()[1] / Cvoxsize));
   // get start index of intsec in CBlock
   Vector<FloatType, 2> startC = intsec.getMin() - CBlock.getMin();
-  int startCx = static_cast<int>(startC[0] / CBlock.getVoxelSize());
-  int startCy = static_cast<int>(startC[1] / CBlock.getVoxelSize());
+  int startCx = static_cast<int>(std::round(startC[0] / Cvoxsize));
+  int startCy = static_cast<int>(std::round(startC[1] / Cvoxsize));
   // start index of intsec in FBlock
   Vector<FloatType, 2> startF = intsec.getMin() - FBlock.getMin();
-  int startFx = static_cast<int>(startF[0] / FBlock.getVoxelSize());
-  int startFy = static_cast<int>(startF[1] / FBlock.getVoxelSize());
+  int startFx = static_cast<int>(std::round(startF[0] / Fvoxsize));
+  int startFy = static_cast<int>(std::round(startF[1] / Fvoxsize));
 
   for (unsigned int iArr = 0; iArr < D; ++iArr) {
     ArrayType<datatype>& CArray = CField.getField(iArr);
@@ -495,18 +550,19 @@ void FieldCopy2D(const GenericField<ArrayType<datatype>, D>& FromField,
                  const BasicBlock<FloatType, 2>& FromBaseBlock,
                  const BasicBlock<FloatType, 2>& ToBlock,
                  const BasicBlock<FloatType, 2>& ToBaseBlock) {
+  const FloatType voxsize = FromBlock.getVoxelSize();
   // get intersection
   const AABB<FloatType, 2> intsec = getIntersection(FromBaseBlock, ToBaseBlock);
-  int Nx = intsec.getExtension()[0] / FromBlock.getVoxelSize();
-  int Ny = intsec.getExtension()[1] / FromBlock.getVoxelSize();
+  int Nx = static_cast<int>(std::round(intsec.getExtension()[0] / voxsize));
+  int Ny = static_cast<int>(std::round(intsec.getExtension()[1] / voxsize));
   // get start index of intsec in FromBlock
   Vector<FloatType, 2> startFrom = intsec.getMin() - FromBlock.getMin();
-  int startFromx = static_cast<int>(startFrom[0] / FromBlock.getVoxelSize());
-  int startFromy = static_cast<int>(startFrom[1] / FromBlock.getVoxelSize());
+  int startFromx = static_cast<int>(std::round(startFrom[0] / voxsize));
+  int startFromy = static_cast<int>(std::round(startFrom[1] / voxsize));
   // start index of intsec in ToBlock
   Vector<FloatType, 2> startTo = intsec.getMin() - ToBlock.getMin();
-  int startTox = static_cast<int>(startTo[0] / ToBlock.getVoxelSize());
-  int startToy = static_cast<int>(startTo[1] / ToBlock.getVoxelSize());
+  int startTox = static_cast<int>(std::round(startTo[0] / voxsize));
+  int startToy = static_cast<int>(std::round(startTo[1] / voxsize));
 
   for (unsigned int iArr = 0; iArr < D; ++iArr) {
     ArrayType<datatype>& ToArray = ToField.getField(iArr);

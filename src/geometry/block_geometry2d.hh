@@ -536,7 +536,8 @@ void BlockGeometryHelper2D<T>::CreateBlocks() {
       Vector<int, 2> max = min + Ext - Vector<int, 2>{1};
       AABB<int, 2> idxblock(min, max);
       Vector<T, 2> MIN = _BlockCells[id].getMin();
-      Vector<T, 2> MAX = Ext * voxsize + MIN;
+      int ratio = static_cast<int>(std::pow(2, static_cast<int>(level)));
+      Vector<T, 2> MAX = Ext * voxsize * ratio + MIN;
       AABB<T, 2> block(MIN, MAX);
       _BasicBlocks.emplace_back(level, voxsize, blockid, block, idxblock, NewMesh);
       blockid++;
@@ -577,7 +578,6 @@ void BlockGeometryHelper2D<T>::AdaptiveOptimization(int OptProcNum, int MaxProcN
     std::vector<BasicBlock<T, 2>> Blocks = _BasicBlocks;
     Optimize(Blocks, i, enforce);
     StdDevs.push_back(ComputeStdDev(Blocks));
-    // std::cout << "Optimize: " << i << ", StdDev: " << StdDevs.back() << std::endl;
   }
   // find shcemes with minimum stddev
   std::vector<int> bestSchemesvec;
@@ -603,7 +603,7 @@ void BlockGeometryHelper2D<T>::AdaptiveOptimization(int OptProcNum, int MaxProcN
   }
   // apply the best scheme
   Optimize(bestScheme, enforce);
-  std::cout << "Optimize with " << bestScheme << " Blocks with stdDev: " << minStdDev << std::endl;
+  std::cout << "Optimization result: " << _BasicBlocks.size() << " Blocks with stdDev: " << minStdDev << std::endl;
 }
 
 template <typename T>
@@ -615,12 +615,12 @@ template <typename T>
 void BlockGeometryHelper2D<T>::Optimize(std::vector<BasicBlock<T, 2>> &Blocks, int ProcessNum,
                                         bool enforce) {
   // get total number of points
-  int Total = 0;
+  std::size_t Total = 0;
   for (const BasicBlock<T, 2> &block : Blocks) {
     Total += block.getN();
   }
   // get number of points per process
-  int NumPerProcess = Total / ProcessNum;
+  std::size_t NumPerProcess = Total / ProcessNum;
 
   // divide large blocks
   // T threshold = static_cast<T>(ProcessNum) / size;

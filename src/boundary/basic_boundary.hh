@@ -137,16 +137,42 @@ template <typename T, typename LatSet, typename flagType>
 void BlockFixedBoundary<T, LatSet, flagType>::Setup() {
   std::size_t reserveSize;
   if constexpr (LatSet::d == 2) {
-    reserveSize = (Lat.getGeo().getNx() + Lat.getGeo().getNy())*2;
+    reserveSize = (Lat.getGeo().getNx() + Lat.getGeo().getNy()) * 2;
   } else if constexpr (LatSet::d == 3) {
-    reserveSize = (Lat.getGeo().getNx()*Lat.getGeo().getNy() +
-                   Lat.getGeo().getNx()*Lat.getGeo().getNz() +
-                   Lat.getGeo().getNy()*Lat.getGeo().getNz())*2;
+    reserveSize = (Lat.getGeo().getNx() * Lat.getGeo().getNy() +
+                   Lat.getGeo().getNx() * Lat.getGeo().getNz() +
+                   Lat.getGeo().getNy() * Lat.getGeo().getNz()) *
+                  2;
   }
   BdCells.reserve(reserveSize);
-  for (std::size_t id = 0; id < Lat.getGeo().getN(); ++id) {
-    if (util::isFlag(Field[id], BdCellFlag)) addtoBd(id);
+  // add inner cells
+  // in overlapped region, access neighbor cells may s
+  if constexpr (LatSet::d == 2) {
+    for (int iy = Lat.getGeo().getOverlap();
+         iy < Lat.getGeo().getNy() - Lat.getGeo().getOverlap(); ++iy) {
+      for (int ix = Lat.getGeo().getOverlap();
+           ix < Lat.getGeo().getNx() - Lat.getGeo().getOverlap(); ++ix) {
+        std::size_t id = ix + iy * Lat.getGeo().getNx();
+        if (util::isFlag(Field[id], BdCellFlag)) addtoBd(id);
+      }
+    }
+  } else if constexpr (LatSet::d == 3) {
+    for (int iz = Lat.getGeo().getOverlap();
+         iz < Lat.getGeo().getNz() - Lat.getGeo().getOverlap(); ++iz) {
+      for (int iy = Lat.getGeo().getOverlap();
+           iy < Lat.getGeo().getNy() - Lat.getGeo().getOverlap(); ++iy) {
+        for (int ix = Lat.getGeo().getOverlap();
+             ix < Lat.getGeo().getNx() - Lat.getGeo().getOverlap(); ++ix) {
+          std::size_t id = ix + iy * Lat.getGeo().getProjection()[1] +
+                           iz * Lat.getGeo().getProjection()[2];
+          if (util::isFlag(Field[id], BdCellFlag)) addtoBd(id);
+        }
+      }
+    }
   }
+  // for (std::size_t id = 0; id < Lat.getGeo().getN(); ++id) {
+  //   if (util::isFlag(Field[id], BdCellFlag)) addtoBd(id);
+  // }
   // shrink capacity to actual size
   BdCells.shrink_to_fit();
 }

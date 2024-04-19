@@ -79,7 +79,7 @@ struct Timer : public Counter {
               << "Time Elapsed: " << GetTimeElapsed() << " s"
               << "\n"
               << "Total Step:   " << count << "\n"
-              << "Ave_MLUPs:    " << MLUPs << "\n";
+              << "Ave_MLUPs:    " << MLUPs << std::endl;
 #ifdef _OPENMP
     std::cout << "MLUPs/Thread: " << MLUPs / Thread_Num << std::endl;
 #endif
@@ -90,7 +90,7 @@ struct Timer : public Counter {
     std::int64_t count = this->operator()();  // this->operator()() or (*this)()
     double MLUPs = static_cast<double>(steps) * static_cast<double>(n) /
                    GetDurationCount() / double(1000);
-    std::cout << "\n[Step: " << count << "]  "
+    std::cout << "[Step: " << count << "]  "
               << "MLUPs: " << MLUPs << "  ";
     // this->reset();
     START_TIMER();

@@ -5,16 +5,16 @@
  * The most recent progress of FreeLB will be updated at
  * <https://github.com/zdxying/FreeLB>
  *
- * FreeLB is free software: you can redistribute it and/or modify it under the terms of the GNU
- * General Public License as published by the Free Software Foundation, either version 3 of the
- * License, or (at your option) any later version.
+ * FreeLB is free software: you can redistribute it and/or modify it under the terms of
+ * the GNU General Public License as published by the Free Software Foundation, either
+ * version 3 of the License, or (at your option) any later version.
  *
  * FreeLB is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
- * without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
- * See the GNU General Public License for more details.
+ * without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
+ * PURPOSE. See the GNU General Public License for more details.
  *
- * You should have received a copy of the GNU General Public License along with FreeLB. If not, see
- * <https://www.gnu.org/licenses/>.
+ * You should have received a copy of the GNU General Public License along with FreeLB. If
+ * not, see <https://www.gnu.org/licenses/>.
  *
  */
 
@@ -67,7 +67,8 @@ class AABB {
         _center(aabb.getCenter()) {}
   AABB() : _min(T(0)), _max(T(0)), _extension(T(0)), _center(T(0)) {}
 
-  // check if a point Vector<S, D> is inside the AABB, with additional template parameter S
+  // check if a point Vector<S, D> is inside the AABB, with additional template parameter
+  // S
   template <typename S>
   bool IsInside(const Vector<S, D>& pt) const;
   // check if a point Vector<T, D> is inside the AABB
@@ -119,15 +120,23 @@ static AABB<T, D> getIntersection(const AABB<T, D>& aabb0, const AABB<T, D>& aab
   }
 }
 
+// contiguous blocks(share a common edge or face) are NOT overlapped
 template <typename T, typename U, unsigned int D>
 bool isOverlapped(const AABB<T, D>& aabb0, const AABB<U, D>& aabb1) {
+  static_assert(D == 2 || D == 3, "Error: Dimension is not supported!");
+  const T eps = std::numeric_limits<T>::epsilon();
   if constexpr (D == 2) {
-    return (aabb0.getMin()[0] < aabb1.getMax()[0] && aabb0.getMax()[0] > aabb1.getMin()[0] &&
-            aabb0.getMin()[1] < aabb1.getMax()[1] && aabb0.getMax()[1] > aabb1.getMin()[1]);
-  } else {
-    return (aabb0.getMin()[0] < aabb1.getMax()[0] && aabb0.getMax()[0] > aabb1.getMin()[0] &&
-            aabb0.getMin()[1] < aabb1.getMax()[1] && aabb0.getMax()[1] > aabb1.getMin()[1] &&
-            aabb0.getMin()[2] < aabb1.getMax()[2] && aabb0.getMax()[2] > aabb1.getMin()[2]);
+    return ((aabb0.getMin()[0] + eps) < aabb1.getMax()[0] &&
+            (aabb0.getMin()[1] + eps) < aabb1.getMax()[1] &&
+            (aabb1.getMin()[0] + eps) < aabb0.getMax()[0] &&
+            (aabb1.getMin()[1] + eps) < aabb0.getMax()[1]);
+  } else if constexpr (D == 3) {
+    return ((aabb0.getMin()[0] + eps) < aabb1.getMax()[0] &&
+            (aabb0.getMin()[1] + eps) < aabb1.getMax()[1] &&
+            (aabb0.getMin()[2] + eps) < aabb1.getMax()[2] &&
+            (aabb1.getMin()[0] + eps) < aabb0.getMax()[0] &&
+            (aabb1.getMin()[1] + eps) < aabb0.getMax()[1] &&
+            (aabb1.getMin()[2] + eps) < aabb0.getMax()[2]);
   }
 }
 
@@ -170,7 +179,9 @@ class BasicBlock : public AABB<T, D> {
   std::uint8_t _level;
 
  public:
-  BasicBlock(T voxsize, const AABB<T, D>& aabb, const AABB<int, D>& idxblock, int blockid = 1)
+  BasicBlock() = default;
+  BasicBlock(T voxsize, const AABB<T, D>& aabb, const AABB<int, D>& idxblock,
+             int blockid = 1)
       : VoxelSize(voxsize), AABB<T, D>(aabb),
         MinCenter(aabb.getMin() + Vector<T, D>{T(0.5) * voxsize}), IndexBlock(idxblock),
         Mesh(idxblock.getExtension() + Vector<int, D>{1}), BlockId(blockid),
@@ -183,13 +194,13 @@ class BasicBlock : public AABB<T, D> {
       Projection = Vector<int, 3>{1, Mesh[0], Mesh[0] * Mesh[1]};
     }
   }
-  // for refined block, voxelsize should satisfy: newvoxsize = parent_voxsize / 2; indexblock is the
-  // GLOBAL index block
+  // for refined block, voxelsize should satisfy: newvoxsize = parent_voxsize / 2;
+  // indexblock is the GLOBAL index block
   BasicBlock(std::uint8_t level, T newvoxsize, int blockid, const AABB<T, D>& aabb,
              const AABB<int, D>& idxblock, const Vector<int, D>& mesh)
       : VoxelSize(newvoxsize), _level(level), AABB<T, D>(aabb), BlockId(blockid),
-        MinCenter(aabb.getMin() + Vector<T, D>{T(0.5) * newvoxsize}), IndexBlock(idxblock),
-        Mesh(mesh) {
+        MinCenter(aabb.getMin() + Vector<T, D>{T(0.5) * newvoxsize}),
+        IndexBlock(idxblock), Mesh(mesh) {
     if constexpr (D == 2) {
       N = Mesh[0] * Mesh[1];
       Projection = Vector<int, 2>{1, Mesh[0]};
@@ -258,16 +269,16 @@ class BasicBlock : public AABB<T, D> {
 
   // lambda functions take LOCAL index, for cells with specific flag
   template <typename flagtype, typename Func>
-  void forEach(const AABB<T, D>& AABBs, const GenericArray<flagtype>& flag, std::uint8_t fromflag, Func func);
+  void forEach(const AABB<T, D>& AABBs, const GenericArray<flagtype>& flag,
+               std::uint8_t fromflag, Func func);
 
   template <typename flagtype, typename Func>
   void forEach(const GenericArray<flagtype>& flag, std::uint8_t fromflag, Func func);
 
   // get certain cells' indices(usually in an overlapped AABB) in the block
-  // similar to void getOverlappedCellIdx(const AABB<int, D>& aabb, std::vector<int>& cellIdx)
-  // const; but this function is designed to recieve an AABB<T, D>
-  // always call on extended BasicBlock
-  // base could be the base blockaabb or the extended blockaabb
+  // similar to void getOverlappedCellIdx(const AABB<int, D>& aabb, std::vector<int>&
+  // cellIdx) const; but this function is designed to recieve an AABB<T, D> always call on
+  // extended BasicBlock base could be the base blockaabb or the extended blockaabb
   // cellIdx will be cleared before adding new indices
   void getCellIdx(const AABB<T, D>& base, const AABB<T, D>& AABBs,
                   std::vector<std::size_t>& cellIdx) const;
@@ -310,7 +321,8 @@ struct InterpBlockComm {
 template <typename T>
 static void DivideBlock2D(BasicBlock<T, 2>& block, int blocknum,
                           std::vector<AABB<int, 2>>& blocksvec) {
-  DivideBlock2D<T>(block.getNx(), block.getNy(), blocknum, block.getIdxBlock(), blocksvec);
+  DivideBlock2D<T>(block.getNx(), block.getNy(), blocknum, block.getIdxBlock(),
+                   blocksvec);
 }
 
 template <typename T>
@@ -379,8 +391,12 @@ static void DivideBlock2D(int NX, int NY, int blocknum, const AABB<int, 2>& idxA
     int rest_blocknum = Xblocks * (Yblocks - rest);
     T bestVolume = (T)NX * NY * rest_blocknum / (T)blocknum;
     int seg_Y = (int)(bestVolume / (T)NX);
-    AABB<int, 2> Child_0(Vector<int, 2>(1, 1), Vector<int, 2>(NX, seg_Y));
-    AABB<int, 2> Child_1(Vector<int, 2>(1, 1 + seg_Y), Vector<int, 2>(NX, NY));
+    Vector<int,2> min0 = idxAABBs.getMin();
+    Vector<int,2> max0 = Vector<int,2>{idxAABBs.getMax()[0], min0[1] + seg_Y - 1};
+    Vector<int,2> min1 = Vector<int,2>{min0[0], min0[1] + seg_Y};
+    Vector<int,2> max1 = idxAABBs.getMax();
+    AABB<int, 2> Child_0(min0, max0);
+    AABB<int, 2> Child_1(min1, max1);
     Child_0.divide(Xblocks, Yblocks - rest, blocksvec);
     Child_1.divide(Xblocks + 1, rest, blocksvec);
   } else {
@@ -388,8 +404,12 @@ static void DivideBlock2D(int NX, int NY, int blocknum, const AABB<int, 2>& idxA
     int rest_blocknum = Yblocks * (Xblocks - rest);
     T bestVolume = (T)NX * NY * rest_blocknum / (T)blocknum;
     int seg_X = (int)(bestVolume / (T)NY + 0.9999);
-    AABB<int, 2> Child_0(Vector<int, 2>(1, 1), Vector<int, 2>(seg_X, NY));
-    AABB<int, 2> Child_1(Vector<int, 2>(1 + seg_X, 1), Vector<int, 2>(NX, NY));
+    Vector<int,2> min0 = idxAABBs.getMin();
+    Vector<int,2> max0 = Vector<int,2>{min0[0] + seg_X - 1, idxAABBs.getMax()[1]};
+    Vector<int,2> min1 = Vector<int,2>{min0[0] + seg_X, min0[1]};
+    Vector<int,2> max1 = idxAABBs.getMax();
+    AABB<int, 2> Child_0(min0, max0);
+    AABB<int, 2> Child_1(min1, max1);
     Child_0.divide(Xblocks - rest, Yblocks, blocksvec);
     Child_1.divide(rest, Yblocks + 1, blocksvec);
   }

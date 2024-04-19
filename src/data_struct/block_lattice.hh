@@ -285,7 +285,6 @@ template <void (*GetFeq)(std::array<T, LatSet::q>&, const Vector<T, LatSet::d>&,
 void BlockLattice<T, LatSet>::BGK_Source(const GenericArray<flagtype>& flagarr,
                                          std::uint8_t flag,
                                          const GenericArray<T>& source) {
-  T fOmega = T(1) - Omega * T(0.5);
 #pragma omp parallel for num_threads(Thread_Num) schedule(static)
   for (std::size_t id = 0; id < getN(); ++id) {
     if (util::isFlag(flagarr[id], flag)) {
@@ -636,42 +635,41 @@ T BlockLatticeManager<T, LatSet>::getToleranceU(int shift) {
 template <typename T, typename LatSet>
 void DynamicBlockLatticeHelper2D<T, LatSet>::ComputeGradNorm2() {
 #pragma omp parallel for num_threads(Thread_Num) schedule(static)
-  for (int i = 0; i < BlockGeoHelper.getBlockCells().size(); ++i) {
+  for (int icell = 0; icell < BlockGeoHelper.getBlockCells().size(); ++icell) {
     // rho field
-    GenericArray<T>& GradNorm2 = _GradNorm2s[i].getField(0);
-    // basic block
-    BasicBlock<T, 2>& block = BlockGeoHelper.getBlockCell(i);
-    Vector<T, 2> minCentre = block.getMinCenter();
-    T voxsize = block.getVoxelSize();
-    // block centre
-    Vector<T, 2> centre = block.getCenter();
-    // find corresponding block
-    int j = -1;
-    for (BlockLattice<T, LatSet>& blocklat : BlockLatMan.getBlockLats()) {
-      ++j;
-      if (blocklat.getGeo().getBaseBlock().isInside(centre)) {
-        break;
-      }
-    }
-    // get rho field and block2d
-    ScalerField<T>& RhoF = BlockLatMan.getBlockLat(j).getRhoField();
-    Block2D<T>& block2d = BlockLatMan.getBlockLat(j).getGeo();
-    FDM2D<T> FDM(block2d.getNx(), block2d.getNy(), RhoF.getField(0));
-    // start index of block in block2d
-    Vector<T, 2> Ext = minCentre - block2d.getMinCenter();
-    int x = static_cast<int>(std::round(Ext[0] / voxsize));
-    int y = static_cast<int>(std::round(Ext[1] / voxsize));
-    // get gradnorm2
-    for (int iy = 0; iy < block.getNy(); ++iy) {
-      for (int ix = 0; ix < block.getNx(); ++ix) {
-        std::size_t id = iy * block.getNx() + ix;
-        std::size_t idF = (iy + y) * block2d.getNx() + ix + x;
-        GradNorm2[id] = FDM.gradnorm2(idF);
+    GenericArray<T>& GradNorm2 = _GradNorm2s[icell].getField(0);
+
+    const BasicBlock<T, 2>& cellblock = BlockGeoHelper.getBlockCell(icell);
+    T voxsize = cellblock.getVoxelSize();
+    // find corresponding cellblock
+    for (int iblock = 0; iblock < BlockGeo.getBlockNum(); ++iblock) {
+      const BasicBlock<T, 2>& block = BlockGeo.getBlock(iblock);
+      const BasicBlock<T, 2>& baseblock = BlockGeo.getBlock(iblock).getBaseBlock();
+      if (isOverlapped(cellblock, baseblock)) {
+        const ScalerField<T>& RhoF = BlockLatMan.getBlockLat(iblock).getRhoField();
+        FDM2D<T> FDM(block.getNx(), block.getNy(), RhoF.getField(0));
+        const AABB<T, 2> intsec = getIntersection(cellblock, baseblock);
+        int Nx = static_cast<int>(std::round(intsec.getExtension()[0] / voxsize));
+        int Ny = static_cast<int>(std::round(intsec.getExtension()[1] / voxsize));
+        // cell start
+        Vector<T, 2> cellstart = intsec.getMin() - cellblock.getMin();
+        int cellstartx = static_cast<int>(std::round(cellstart[0] / voxsize));
+        int cellstarty = static_cast<int>(std::round(cellstart[1] / voxsize));
+        // block start
+        Vector<T, 2> blockstart = intsec.getMin() - block.getMin();
+        int blockstartx = static_cast<int>(std::round(blockstart[0] / voxsize));
+        int blockstarty = static_cast<int>(std::round(blockstart[1] / voxsize));
+
+        for (int iy = 0; iy < Ny; ++iy) {
+          for (int ix = 0; ix < Nx; ++ix) {
+            std::size_t idcell = (iy + cellstarty) * cellblock.getNx() + ix + cellstartx;
+            std::size_t idblock = (iy + blockstarty) * block.getNx() + ix + blockstartx;
+            GradNorm2[idcell] = FDM.gradnorm2(idblock);
+          }
+        }
       }
     }
   }
-  // experimental
-  // UpdateGradNorm2F();
 }
 
 template <typename T, typename LatSet>
@@ -680,7 +678,7 @@ void DynamicBlockLatticeHelper2D<T, LatSet>::UpdateMaxGradNorm2() {
     GenericArray<T>& GradNorm2A = _GradNorm2s[i].getField(0);
     // get max of gradnorm2
     T maxGradNorm2 = T(0);
-    for (std::size_t id = 0; id < GradNorm2A.size(); ++id) {
+    for (int id = 0; id < GradNorm2A.size(); ++id) {
       if (GradNorm2A[id] > maxGradNorm2) maxGradNorm2 = GradNorm2A[id];
     }
     _MaxGradNorm2s[i] = maxGradNorm2;
@@ -688,37 +686,65 @@ void DynamicBlockLatticeHelper2D<T, LatSet>::UpdateMaxGradNorm2() {
 }
 
 template <typename T, typename LatSet>
-void DynamicBlockLatticeHelper2D<T, LatSet>::GeoRefineAndCoarsen(int OptProcNum,
-                                                                 int MaxProcNum,
-                                                                 bool enforce) {
+bool DynamicBlockLatticeHelper2D<T, LatSet>::WillRefineOrCoarsen(){
   ComputeGradNorm2();
   UpdateMaxGradNorm2();
-
+  // statistics
+  int refineNum = 0;
+  int coarsenNum = 0;
   for (int i = 0; i < _GradNorm2s.size(); ++i) {
     BasicBlock<T, 2>& block = BlockGeoHelper.getBlockCell(i);
     int level = static_cast<int>(block.getLevel());
-
-    if (_MaxGradNorm2s[i] > _RefineThresholds[level] && level < _MaxRefineLevel) {
-      block.refine();
-    } else if (_MaxGradNorm2s[i] < _CoarsenThresholds[level] && level > 0) {
-      block.coarsen();
+    if (level < _MaxRefineLevel) {
+      if (_MaxGradNorm2s[i] > _RefineTholds[level]) {
+        block.refine();
+        ++refineNum;
+      }
+    } else if (level > 0) {
+      if (_MaxGradNorm2s[i] < _CoarsenTholds[level - 1]) {
+        block.coarsen();
+        ++coarsenNum;
+      }
     }
   }
+
+  if (refineNum > 0 || coarsenNum > 0) {
+    MPI_RANK(0)
+    std::cout << "Block Cell RefineNum: " << refineNum << " CoarsenNum: " << coarsenNum
+              << std::endl;
+    return true;
+  } else {
+    return false;
+  }
+}
+
+template <typename T, typename LatSet>
+void DynamicBlockLatticeHelper2D<T, LatSet>::GeoRefineOrCoarsen(int OptProcNum,
+                                                                 int MaxProcNum,
+                                                                 bool enforce) {
   // post refine
   BlockGeoHelper.PostRefine();
   // update _BasicBlocks in GeoHelper
   BlockGeoHelper.CreateBlocks();
   BlockGeoHelper.AdaptiveOptimization(OptProcNum, MaxProcNum, enforce);
+
+  _GradNorm2s.clear();
+  _MaxGradNorm2s.clear();
+  // init gradnorm2
+  for (BasicBlock<T, 2>& block : BlockGeoHelper.getBlockCells()) {
+    _GradNorm2s.emplace_back(block.getN(), T(0));
+    _MaxGradNorm2s.push_back(T(0));
+  }
 }
 
 
 template <typename T, typename LatSet>
 void DynamicBlockLatticeHelper2D<T, LatSet>::PopFieldDataTransfer() {
   // rho field data transfer could be done here
-  BlockLatMan.getRhoFM().Init(BlockGeoHelper);
+  BlockLatMan.getRhoFM().FieldDataTransfer(BlockGeoHelper);
   // pop field data, this assumes that other fields like rho and velocity have been
   // transfered
-  BlockLatMan.getPopsFM().Init(BlockGeoHelper);
+  BlockLatMan.getPopsFM().FieldDataTransfer(BlockGeoHelper);
   // now pops field data is transferred, but conversion of distribution function
   // between blocks of different refinement levels is not done yet
 #pragma omp parallel for num_threads(Thread_Num)
@@ -756,6 +782,12 @@ void DynamicBlockLatticeHelper2D<T, LatSet>::PopFieldDataTransfer() {
 }
 
 template <typename T, typename LatSet>
+void DynamicBlockLatticeHelper2D<T, LatSet>::PopFieldDataInitComm() {
+  BlockLatMan.getRhoFM().InitAndCommAll();
+  BlockLatMan.getPopsFM().InitAndCommAll();
+}
+
+template <typename T, typename LatSet>
 void DynamicBlockLatticeHelper2D<T, LatSet>::PopConversionFineToCoarse(
   const ScalerField<T>& RhoF, const VectorFieldAOS<T, LatSet::d>& VelocityF,
   PopulationField<T, LatSet::q>& PopsF, const BasicBlock<T, 2>& FBaseBlock,
@@ -763,20 +795,19 @@ void DynamicBlockLatticeHelper2D<T, LatSet>::PopConversionFineToCoarse(
   // get intersection
   const AABB<T, 2> intsec = getIntersection(CBaseBlock, FBaseBlock);
   int Nx = intsec.getExtension()[0] / CBlock.getVoxelSize();
+  Nx = Nx == 0 ? 1 : Nx;
   int Ny = intsec.getExtension()[1] / CBlock.getVoxelSize();
+  Ny = Ny == 0 ? 1 : Ny;
   // get start index of intsec in CBlock
   Vector<T, 2> startC = intsec.getMin() - CBlock.getMin();
   int startx = static_cast<int>(startC[0] / CBlock.getVoxelSize());
   int starty = static_cast<int>(startC[1] / CBlock.getVoxelSize());
-  // end index
-  int endx = startx + Nx;
-  int endy = starty + Ny;
 
   const GenericArray<T>& RhoArr = RhoF.getField(0);
   const GenericArray<Vector<T, 2>>& VelocityArr = VelocityF.getField(0);
 
-  for (int iy = starty; iy < endy; ++iy) {
-    for (int ix = startx; ix < endx; ++ix) {
+  for (int iy = starty; iy < starty + Ny; ++iy) {
+    for (int ix = startx; ix < startx + Nx; ++ix) {
       std::size_t id = iy * CBlock.getNx() + ix;
       std::array<T*, LatSet::q> Pops = PopsF.template getArray<T>(id);
       // get feq, peparing for pop conversion
@@ -800,20 +831,19 @@ void DynamicBlockLatticeHelper2D<T, LatSet>::PopConversionCoarseToFine(
   // get intersection
   const AABB<T, 2> intsec = getIntersection(CBaseBlock, FBaseBlock);
   int Nx = intsec.getExtension()[0] / FBlock.getVoxelSize();
+  Nx = Nx == 0 ? 1 : Nx;
   int Ny = intsec.getExtension()[1] / FBlock.getVoxelSize();
+  Ny = Ny == 0 ? 1 : Ny;
   // get start index of intsec in FBlock
   Vector<T, 2> startF = intsec.getMin() - FBlock.getMin();
   int startx = static_cast<int>(startF[0] / FBlock.getVoxelSize());
   int starty = static_cast<int>(startF[1] / FBlock.getVoxelSize());
-  // end index
-  int endx = startx + Nx;
-  int endy = starty + Ny;
 
   const GenericArray<T>& RhoArr = RhoF.getField(0);
   const GenericArray<Vector<T, 2>>& VelocityArr = VelocityF.getField(0);
 
-  for (int iy = starty; iy < endy; ++iy) {
-    for (int ix = startx; ix < endx; ++ix) {
+  for (int iy = starty; iy < starty + Ny; ++iy) {
+    for (int ix = startx; ix < startx + Nx; ++ix) {
       std::size_t id = iy * FBlock.getNx() + ix;
       std::array<T*, LatSet::q> Pops = PopsF.template getArray<T>(id);
       // get feq, peparing for pop conversion

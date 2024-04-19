@@ -277,7 +277,7 @@ struct TempConverter final : public AbstractConverter<T> {
   T getLatticeDTemp(T dT_phys) { return dT_phys / Conv_dT; }
   T getPhysDTemp(T Lattice_dT) { return Lattice_dT * Conv_dT; }
   TempConverter(T cs2_, BaseConverter<T> &baseconv, T init)
-      : cs2(cs2_), BaseConv(baseconv), TInit(init) {}
+      : cs2(cs2_), TInit(init), BaseConv(baseconv)  {}
   /*--------------------Converters--------------------*/
   void Converter(T Tl_, T Th_, T TDiff_) {
     Tl = Tl_;
@@ -397,7 +397,7 @@ struct ConcConverter final : public AbstractConverter<T> {
   T getPhysRho(T Lattice_Conc) const override { return Lattice_Conc * Conv_dC + Cl; }
 
   ConcConverter(T cs2_, BaseConverter<T> &baseconv, T init)
-      : cs2(cs2_), BaseConv(baseconv), CInit(init) {}
+      : cs2(cs2_), CInit(init), BaseConv(baseconv) {}
   /*--------------------Converters--------------------*/
   void Converter(T Cl_, T Ch_, T CDiff_) {
     Cl = Cl_;
@@ -488,8 +488,8 @@ struct ZSConverter final : public PhaseDiagramConverter<T> {
   BaseConverter<T> &BaseConv;
   ZSConverter(BaseConverter<T> &BaseConv_, TempConverter<T> &TempConv_, ConcConverter<T> &ConcConv_,
               T t_melt, T t_eute, T m_solidus, T m_liquidus, T gt_coef)
-      : PhaseDiagramConverter<T>(TempConv_, ConcConv_, t_melt, t_eute, m_solidus, m_liquidus),
-        BaseConv(BaseConv_), GT_Coef(gt_coef) {
+      : PhaseDiagramConverter<T>(TempConv_, ConcConv_, t_melt, t_eute, m_solidus, m_liquidus), GT_Coef(gt_coef),
+        BaseConv(BaseConv_) {
     Lattice_GT_Coef = GT_Coef / BaseConv.Conv_L / this->TempConv.Conv_dT;
   }
   void check(int &check_status) override;

@@ -1,32 +1,33 @@
-/* This file is part of FreeLB, modified from OpenLB's octree.hh, with the following copyright notice:
+/* This file is part of FreeLB, modified from OpenLB's octree.hh, with the following
+ * copyright notice:
  *
  * // start of the original OpenLB's copyright notice
- * 
+ *
  * This file is part of the OpenLB library
  *
  *  Copyright (C) 2015 Thomas Henn
  *  E-mail contact: info@openlb.net
  *  The most recent release of OpenLB can be downloaded at
  *  <http://www.openlb.net/>
- * 
+ *
  * // end of the original OpenLB's copyright notice
- * 
+ *
  * Copyright (C) 2024 Yuan Man
  * E-mail contact: ymmanyuan@outlook.com
  * The most recent progress of FreeLB will be updated at
  * <https://github.com/zdxying/FreeLB>
- * 
- * FreeLB is free software: you can redistribute it and/or modify it under the terms of the GNU
- * General Public License as published by the Free Software Foundation, either version 3 of the
- * License, or (at your option) any later version.
- * 
- * FreeLB is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the
- * implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public
- * License for more details.
- * 
- * You should have received a copy of the GNU General Public License along with FreeLB. If not, see
- * <https://www.gnu.org/licenses/>.
- * 
+ *
+ * FreeLB is free software: you can redistribute it and/or modify it under the terms of
+ * the GNU General Public License as published by the Free Software Foundation, either
+ * version 3 of the License, or (at your option) any later version.
+ *
+ * FreeLB is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
+ * without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
+ * PURPOSE. See the GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License along with FreeLB. If
+ * not, see <https://www.gnu.org/licenses/>.
+ *
  */
 
 // octree.hh
@@ -41,17 +42,10 @@
 #include "utils/directories.h"
 
 template <typename T>
-Octree<T>::Octree(Vector<T, 3> center, T rad, StlMesh<T>* mesh, short maxDepth,
-                  T overlap, Octree<T>* parent)
-    : _center(center),
-      _radius(rad),
-      _mesh(mesh),
-      _maxDepth(maxDepth),
-      _isLeaf(false),
-      _boundaryNode(false),
-      _inside(false),
-      _parent(parent),
-      _child(nullptr) {
+Octree<T>::Octree(Vector<T, 3> center, T rad, StlMesh<T>* mesh, short maxDepth, T overlap,
+                  Octree<T>* parent)
+    : _center(center), _radius(rad), _mesh(mesh), _maxDepth(maxDepth), _isLeaf(false),
+      _boundaryNode(false), _inside(false), _parent(parent), _child(nullptr) {
   findTriangles(overlap);
   //  cout << _triangles.size() << std::endl;
   if (_triangles.size() > 0 && 0 < _maxDepth) {
@@ -62,50 +56,42 @@ Octree<T>::Octree(Vector<T, 3> center, T rad, StlMesh<T>* mesh, short maxDepth,
     tmpCenter[0] = _center[0] - tmpRad;
     tmpCenter[1] = _center[1] - tmpRad;
     tmpCenter[2] = _center[2] + tmpRad;
-    _child[0] =
-        new Octree<T>(tmpCenter, tmpRad, _mesh, _maxDepth - 1, overlap, this);
+    _child[0] = new Octree<T>(tmpCenter, tmpRad, _mesh, _maxDepth - 1, overlap, this);
 
     tmpCenter[0] = _center[0] + tmpRad;
     tmpCenter[1] = _center[1] - tmpRad;
     tmpCenter[2] = _center[2] + tmpRad;
-    _child[1] =
-        new Octree<T>(tmpCenter, tmpRad, _mesh, _maxDepth - 1, overlap, this);
+    _child[1] = new Octree<T>(tmpCenter, tmpRad, _mesh, _maxDepth - 1, overlap, this);
 
     tmpCenter[0] = _center[0] - tmpRad;
     tmpCenter[1] = _center[1] - tmpRad;
     tmpCenter[2] = _center[2] - tmpRad;
-    _child[2] =
-        new Octree<T>(tmpCenter, tmpRad, _mesh, _maxDepth - 1, overlap, this);
+    _child[2] = new Octree<T>(tmpCenter, tmpRad, _mesh, _maxDepth - 1, overlap, this);
 
     tmpCenter[0] = _center[0] + tmpRad;
     tmpCenter[1] = _center[1] - tmpRad;
     tmpCenter[2] = _center[2] - tmpRad;
-    _child[3] =
-        new Octree<T>(tmpCenter, tmpRad, _mesh, _maxDepth - 1, overlap, this);
+    _child[3] = new Octree<T>(tmpCenter, tmpRad, _mesh, _maxDepth - 1, overlap, this);
 
     tmpCenter[0] = _center[0] - tmpRad;
     tmpCenter[1] = _center[1] + tmpRad;
     tmpCenter[2] = _center[2] + tmpRad;
-    _child[4] =
-        new Octree<T>(tmpCenter, tmpRad, _mesh, _maxDepth - 1, overlap, this);
+    _child[4] = new Octree<T>(tmpCenter, tmpRad, _mesh, _maxDepth - 1, overlap, this);
 
     tmpCenter[0] = _center[0] + tmpRad;
     tmpCenter[1] = _center[1] + tmpRad;
     tmpCenter[2] = _center[2] + tmpRad;
-    _child[5] =
-        new Octree<T>(tmpCenter, tmpRad, _mesh, _maxDepth - 1, overlap, this);
+    _child[5] = new Octree<T>(tmpCenter, tmpRad, _mesh, _maxDepth - 1, overlap, this);
 
     tmpCenter[0] = _center[0] - tmpRad;
     tmpCenter[1] = _center[1] + tmpRad;
     tmpCenter[2] = _center[2] - tmpRad;
-    _child[6] =
-        new Octree<T>(tmpCenter, tmpRad, _mesh, _maxDepth - 1, overlap, this);
+    _child[6] = new Octree<T>(tmpCenter, tmpRad, _mesh, _maxDepth - 1, overlap, this);
 
     tmpCenter[0] = _center[0] + tmpRad;
     tmpCenter[1] = _center[1] + tmpRad;
     tmpCenter[2] = _center[2] - tmpRad;
-    _child[7] =
-        new Octree<T>(tmpCenter, tmpRad, _mesh, _maxDepth - 1, overlap, this);
+    _child[7] = new Octree<T>(tmpCenter, tmpRad, _mesh, _maxDepth - 1, overlap, this);
 
   } else {
     _isLeaf = true;
@@ -138,8 +124,7 @@ void Octree<T>::findTriangles(T overlap) {
     }
   } else {
     std::vector<unsigned int>::iterator it;
-    for (it = _parent->_triangles.begin(); it != _parent->_triangles.end();
-         ++it) {
+    for (it = _parent->_triangles.begin(); it != _parent->_triangles.end(); ++it) {
       if (AABBTri(_mesh->getTri(*it), overlap)) {
         _triangles.push_back(*it);
       }
@@ -162,8 +147,8 @@ void Octree<T>::findTriangles(T overlap) {
 
 template <typename T>
 bool Octree<T>::AABBTri(const Triangle<T>& tri, T overlap) {
-  std::vector<T> v0(3, T()), v1(3, T()), v2(3, T()), f0(3, T()), f1(3, T()),
-      f2(3, T()), e(3, T());
+  std::vector<T> v0(3, T()), v1(3, T()), v2(3, T()), f0(3, T()), f1(3, T()), f2(3, T()),
+    e(3, T());
 
   /* Test intersection cuboids - triangle
    * Intersection test after Christer Ericson - Real time Collision Detection p.
@@ -175,8 +160,7 @@ bool Octree<T>::AABBTri(const Triangle<T>& tri, T overlap) {
     v0[j] = tri.vertex[0][j] - _center[j];
     v1[j] = tri.vertex[1][j] - _center[j];
     v2[j] = tri.vertex[2][j] - _center[j];
-    e[j] = _radius * 1.01 +
-           overlap;  // + std::numeric_limits<T>::epsilon(); // *1.01;
+    e[j] = _radius * 1.01 + overlap;  // + std::numeric_limits<T>::epsilon(); // *1.01;
   }
   for (int j = 0; j < 3; j++) {
     f0[j] = v1[j] - v0[j];
@@ -320,8 +304,7 @@ bool Octree<T>::AABBTri(const Triangle<T>& tri, T overlap) {
   /* Test intersection cuboids - triangle plane*/
   r = e[0] * std::fabs(tri.normal[0]) + e[1] * std::fabs(tri.normal[1]) +
       e[2] * std::fabs(tri.normal[2]);
-  T s = tri.normal[0] * c[0] + tri.normal[1] * c[1] + tri.normal[2] * c[2] -
-        tri.d;
+  T s = tri.normal[0] * c[0] + tri.normal[1] * c[1] + tri.normal[2] * c[2] - tri.d;
   return (std::fabs(s) <= r);
 }
 
@@ -330,12 +313,9 @@ Octree<T>* Octree<T>::find(const Vector<T, 3>& pt, const int& maxDepth) {
   //  clout << pt[0] << " " << pt[1] << " " << pt[2] << std::endl;
   // modified < to <= to include points on the boundary
   if (_isLeaf || maxDepth == _maxDepth) {
-    if (std::abs(_center[0] - pt[0]) <=
-            _radius + std::numeric_limits<T>::epsilon() &&
-        std::abs(_center[1] - pt[1]) <=
-            _radius + std::numeric_limits<T>::epsilon() &&
-        std::abs(_center[2] - pt[2]) <=
-            _radius + std::numeric_limits<T>::epsilon()) {
+    if (std::abs(_center[0] - pt[0]) <= _radius + std::numeric_limits<T>::epsilon() &&
+        std::abs(_center[1] - pt[1]) <= _radius + std::numeric_limits<T>::epsilon() &&
+        std::abs(_center[2] - pt[2]) <= _radius + std::numeric_limits<T>::epsilon()) {
       //       clout << pt[0] << " " << pt[1] << " " << pt[2] << std::endl;
       return this;
     } else {
@@ -396,19 +376,16 @@ int Octree<T>::testIntersection(const Vector<T, 3>& pt, const Vector<T, 3>& dir,
   for (unsigned k = 0; k < _triangles.size(); ++k) {
     if (_mesh->getTri(_triangles[k]).testRayIntersect(pt, dir, q, a)) {
       if (std::fabs(_center[0] - q[0]) <=
-              _radius + std::numeric_limits<T>::epsilon() +
-                  1 / 1000. * _radius &&
+            _radius + std::numeric_limits<T>::epsilon() + 1 / 1000. * _radius &&
           std::fabs(_center[1] - q[1]) <=
-              _radius + std::numeric_limits<T>::epsilon() +
-                  1 / 1000. * _radius &&
+            _radius + std::numeric_limits<T>::epsilon() + 1 / 1000. * _radius &&
           std::fabs(_center[2] - q[2]) <=
-              _radius + std::numeric_limits<T>::epsilon() +
-                  1 / 1000. * _radius) {
+            _radius + std::numeric_limits<T>::epsilon() + 1 / 1000. * _radius) {
         bool newpoint = true;
         for (unsigned i = 0; i < qs.size(); i++) {
-          newpoint = (!util::nearZero(q[0] - qs[i][0]) ||
-                      !util::nearZero(q[1] - qs[i][1]) ||
-                      !util::nearZero(q[2] - qs[i][2]));
+          newpoint =
+            (!util::nearZero(q[0] - qs[i][0]) || !util::nearZero(q[1] - qs[i][1]) ||
+             !util::nearZero(q[2] - qs[i][2]));
         }
         if (newpoint) {
           qs.push_back(q);
@@ -432,14 +409,13 @@ void Octree<T>::checkRay(const Vector<T, 3>& pt, const Vector<T, 3>& dir,
   T a = 1.;
 
   for (unsigned int k = 0; k < _triangles.size(); ++k) {
-    if (_mesh->getTri(_triangles[k])
-            .testRayIntersect(pt, dirNormed, q, a, 0.) &&
+    if (_mesh->getTri(_triangles[k]).testRayIntersect(pt, dirNormed, q, a, 0.) &&
         a < 1.) {
       bool newpoint = true;
       for (unsigned int i = 0; i < qs.size(); i++) {
-        newpoint &= (!util::nearZero(q[0] - qs[i][0]) ||
-                     !util::nearZero(q[1] - qs[i][1]) ||
-                     !util::nearZero(q[2] - qs[i][2]));
+        newpoint &=
+          (!util::nearZero(q[0] - qs[i][0]) || !util::nearZero(q[1] - qs[i][1]) ||
+           !util::nearZero(q[2] - qs[i][2]));
       }
       if (newpoint) {
         qs.push_back(q);
@@ -519,22 +495,22 @@ void Octree<T>::write(const Vector<T, 3>& pt, const std::string no) {
     if (!f) {
       std::cerr << "[Octree] could not open file: " << fullName << std::endl;
     }
-    f << "solid ascii" << std::endl << std::flush;
+    f << "solid ascii" << std::endl;
     std::vector<unsigned int>::iterator it = _triangles.begin();
     for (; it != _triangles.end(); ++it) {
       f << "facet normal" << _mesh->getTri(*it).normal[0] << " "
-        << _mesh->getTri(*it).normal[1] << " " << _mesh->getTri(*it).normal[2]
-        << " " << std::endl;
+        << _mesh->getTri(*it).normal[1] << " " << _mesh->getTri(*it).normal[2] << " "
+        << std::endl;
       f << "    outer loop\n";
       f << "        vertex " << _mesh->getTri(*it).vertex[0][0] << " "
-        << _mesh->getTri(*it).vertex[0][1] << " "
-        << _mesh->getTri(*it).vertex[0][2] << "\n";
+        << _mesh->getTri(*it).vertex[0][1] << " " << _mesh->getTri(*it).vertex[0][2]
+        << "\n";
       f << "        vertex " << _mesh->getTri(*it).vertex[1][0] << " "
-        << _mesh->getTri(*it).vertex[1][1] << " "
-        << _mesh->getTri(*it).vertex[1][2] << "\n";
+        << _mesh->getTri(*it).vertex[1][1] << " " << _mesh->getTri(*it).vertex[1][2]
+        << "\n";
       f << "        vertex " << _mesh->getTri(*it).vertex[2][0] << " "
-        << _mesh->getTri(*it).vertex[2][1] << " "
-        << _mesh->getTri(*it).vertex[2][2] << "\n";
+        << _mesh->getTri(*it).vertex[2][1] << " " << _mesh->getTri(*it).vertex[2][2]
+        << "\n";
       f << "    endloop\n";
       f << "endfacet\n";
     }
@@ -558,22 +534,22 @@ void Octree<T>::write(const int depth, const std::string no) {
     if (!f) {
       std::cerr << "[Octree] could not open file: " << fullName << std::endl;
     }
-    f << "solid ascii" << std::endl << std::flush;
+    f << "solid ascii" << std::endl;
     std::vector<unsigned int>::iterator it = _triangles.begin();
     for (; it != _triangles.end(); ++it) {
       f << "facet normal" << _mesh->getTri(*it).normal[0] << " "
-        << _mesh->getTri(*it).normal[1] << " " << _mesh->getTri(*it).normal[2]
-        << " " << std::endl;
+        << _mesh->getTri(*it).normal[1] << " " << _mesh->getTri(*it).normal[2] << " "
+        << std::endl;
       f << "    outer loop\n";
       f << "        vertex " << _mesh->getTri(*it).vertex[0][0] << " "
-        << _mesh->getTri(*it).vertex[0][1] << " "
-        << _mesh->getTri(*it).vertex[0][2] << "\n";
+        << _mesh->getTri(*it).vertex[0][1] << " " << _mesh->getTri(*it).vertex[0][2]
+        << "\n";
       f << "        vertex " << _mesh->getTri(*it).vertex[1][0] << " "
-        << _mesh->getTri(*it).vertex[1][1] << " "
-        << _mesh->getTri(*it).vertex[1][2] << "\n";
+        << _mesh->getTri(*it).vertex[1][1] << " " << _mesh->getTri(*it).vertex[1][2]
+        << "\n";
       f << "        vertex " << _mesh->getTri(*it).vertex[2][0] << " "
-        << _mesh->getTri(*it).vertex[2][1] << " "
-        << _mesh->getTri(*it).vertex[2][2] << "\n";
+        << _mesh->getTri(*it).vertex[2][1] << " " << _mesh->getTri(*it).vertex[2][2]
+        << "\n";
       f << "    endloop\n";
       f << "endfacet\n";
     }
@@ -610,8 +586,8 @@ void Octree<T>::write(const std::string fName) {
   std::vector<Octree<T>*> leafs;
   getLeafs(leafs);
   if (leafs.size() > 100000) {
-    std::cout << "Octree too large:" << leafs.size()
-              << " ,Press any key to continue..." << std::endl;
+    std::cout << "Octree too large:" << leafs.size() << " ,Press any key to continue..."
+              << std::endl;
     std::cin.get();
   }
   typename std::vector<Octree<T>*>::iterator it = leafs.begin();
@@ -619,15 +595,14 @@ void Octree<T>::write(const std::string fName) {
   std::string fullName = "./vtkoutput/" + fName + ".vtk";
   std::ofstream f(fullName.c_str());
   if (!f) {
-    std::cerr << "[Octree write] could not open file: " << fullName
-              << std::endl;
+    std::cerr << "[Octree write] could not open file: " << fullName << std::endl;
   }
   std::cout << "Writing Octree(" << leafs.size() << " leafs) to vtk file...";
 
-  f << "# vtk DataFile Version 2.0" << std::endl << std::flush;
-  f << "Octree" << std::endl << std::flush;
-  f << "ASCII" << std::endl << std::flush;
-  f << "DATASET UNSTRUCTURED_GRID" << std::endl << std::flush;
+  f << "# vtk DataFile Version 2.0" << std::endl;
+  f << "Octree" << std::endl;
+  f << "ASCII" << std::endl;
+  f << "DATASET UNSTRUCTURED_GRID" << std::endl;
   std::stringstream points;
   std::stringstream cells;
   std::stringstream cell_types;
@@ -724,16 +699,15 @@ void Octree<T>::write(const std::string fName) {
 
 template <typename T>
 bool Octree<T>::closestIntersectionSphere(const Vector<T, 3>& pt, const T& rad,
-                                          const Vector<T, 3>& direction,
-                                          Vector<T, 3>& q, T& a,
-                                          Triangle<T>& tri) {
+                                          const Vector<T, 3>& direction, Vector<T, 3>& q,
+                                          T& a, Triangle<T>& tri) {
   a = std::numeric_limits<T>::infinity();
   T alpha = T();
   std::vector<T> qtmp(3, T());
   bool found = false;
   for (unsigned int k = 0; k < _triangles.size(); ++k) {
     if (_mesh->getTri(_triangles[k])
-            .testMovingSphereIntersect(pt, rad, direction, qtmp, alpha)) {
+          .testMovingSphereIntersect(pt, rad, direction, qtmp, alpha)) {
       if (alpha < a) {
         a = alpha;
         q = qtmp;
@@ -746,18 +720,16 @@ bool Octree<T>::closestIntersectionSphere(const Vector<T, 3>& pt, const T& rad,
 }
 
 template <typename T>
-bool Octree<T>::closestIntersection(const Vector<T, 3>& pt,
-                                    const Vector<T, 3>& direction,
-                                    Vector<T, 3>& q, T& a, Triangle<T>& tri,
-                                    const T& rad, bool print) {
+bool Octree<T>::closestIntersection(const Vector<T, 3>& pt, const Vector<T, 3>& direction,
+                                    Vector<T, 3>& q, T& a, Triangle<T>& tri, const T& rad,
+                                    bool print) {
   a = std::numeric_limits<T>::infinity();
   T alpha = T();
   Vector<T, 3> qtmp;
   bool found = false;
 
   for (unsigned int k = 0; k < _triangles.size(); ++k) {
-    if (_mesh->getTri(_triangles[k])
-            .testRayIntersect(pt, direction, qtmp, alpha, rad)) {
+    if (_mesh->getTri(_triangles[k]).testRayIntersect(pt, direction, qtmp, alpha, rad)) {
       if (print) {
         std::cout << "Found intersection!" << std::endl;
       }
@@ -774,16 +746,15 @@ bool Octree<T>::closestIntersection(const Vector<T, 3>& pt,
 }
 
 template <typename T>
-bool Octree<T>::closestIntersection(const Vector<T, 3>& pt,
-                                    const Vector<T, 3>& direction,
+bool Octree<T>::closestIntersection(const Vector<T, 3>& pt, const Vector<T, 3>& direction,
                                     Vector<T, 3>& q, T& a) {
   Triangle<T> tri;
   return closestIntersection(pt, direction, q, a, tri, 0.);
 }
 
 template <typename T>
-void Octree<T>::intersectRayNode(const Vector<T, 3>& pt,
-                                 const Vector<T, 3>& dir, Vector<T, 3>& s) {
+void Octree<T>::intersectRayNode(const Vector<T, 3>& pt, const Vector<T, 3>& dir,
+                                 Vector<T, 3>& s) {
   T t, d;
   s = s * T();
   // Plane Normals outside
@@ -861,8 +832,7 @@ void Octree<T>::print(std::vector<Octree<T>*>& leafs) {
 }
 
 template <typename T>
-void Octree<T>::trianglesOnLine(const Vector<T, 3>& pt1,
-                                const Vector<T, 3>& pt2,
+void Octree<T>::trianglesOnLine(const Vector<T, 3>& pt1, const Vector<T, 3>& pt2,
                                 std::set<unsigned int>& tris) {
   tris.clear();
   std::vector<T> line = pt2 - pt1;
@@ -879,8 +849,7 @@ void Octree<T>::trianglesOnLine(const Vector<T, 3>& pt1,
       s[i] = s[i] + line[i] * _radius * 0.001 /* *node->getRadius()*/;
     }
     it++;
-    dist2 = (pt1[0] - s[0]) * (pt1[0] - s[0]) +
-            (pt1[1] - s[1]) * (pt1[1] - s[1]) +
+    dist2 = (pt1[0] - s[0]) * (pt1[0] - s[0]) + (pt1[1] - s[1]) * (pt1[1] - s[1]) +
             (pt1[2] - s[2]) * (pt1[2] - s[2]);
     // dist2 = GetDist2(pt1, s);
   }

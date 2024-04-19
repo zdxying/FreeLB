@@ -305,7 +305,7 @@ int main() {
   Printer::Print_BigBanner(std::string("Calculation Complete!"));
   MainLoopTimer.Print_MainLoopPerformance(Ni, Nj);
   Printer::Print("Total PhysTime", BaseConv.getPhysTime(MainLoopTimer()));
-  Printer::End();
+  Printer::Endl();
   return 0;
 }
 

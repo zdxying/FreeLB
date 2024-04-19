@@ -1,21 +1,21 @@
 /* This file is part of FreeLB
- * 
+ *
  * Copyright (C) 2024 Yuan Man
  * E-mail contact: ymmanyuan@outlook.com
  * The most recent progress of FreeLB will be updated at
  * <https://github.com/zdxying/FreeLB>
- * 
- * FreeLB is free software: you can redistribute it and/or modify it under the terms of the GNU
- * General Public License as published by the Free Software Foundation, either version 3 of the
- * License, or (at your option) any later version.
- * 
- * FreeLB is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the
- * implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public
- * License for more details.
- * 
- * You should have received a copy of the GNU General Public License along with FreeLB. If not, see
- * <https://www.gnu.org/licenses/>.
- * 
+ *
+ * FreeLB is free software: you can redistribute it and/or modify it under the terms of
+ * the GNU General Public License as published by the Free Software Foundation, either
+ * version 3 of the License, or (at your option) any later version.
+ *
+ * FreeLB is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
+ * without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
+ * PURPOSE. See the GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License along with FreeLB. If
+ * not, see <https://www.gnu.org/licenses/>.
+ *
  */
 
 // vtkWriter.h
@@ -24,16 +24,16 @@
 
 #include <any>
 
-#include "io/basic_writer.h"
-#include "data_struct/lattice.h"
 #include "data_struct/Vector.h"
+#include "data_struct/lattice.h"
+#include "io/basic_writer.h"
 
 // vtk format:
 // dataType is one of the types: bit, unsigned_char, char, unsigned_short,
 // short, unsigned_int, int, unsigned_long, long, float, or double
 class AbstractFieldWriter {
  public:
-  virtual void write(std::ofstream& f) = 0;
+  virtual void write(std::ofstream &f) = 0;
 };
 
 namespace vtkWriter {
@@ -50,8 +50,8 @@ class FlagWriter : public AbstractFieldWriter {
       : varname(name), Field(f), Size(Field.size()) {}
   void write(std::ofstream &f) override {
     std::stringstream ss;
-    ss << "SCALARS " << varname << " int" << std::endl << std::flush;
-    ss << "LOOKUP_TABLE default" << std::endl << std::flush;
+    ss << "SCALARS " << varname << " int" << std::endl;
+    ss << "LOOKUP_TABLE default" << std::endl;
     for (int i = 0; i < Size; ++i) {
       ss << static_cast<int>(Field[i]) << " ";
     }
@@ -71,8 +71,8 @@ class FieldFlagWriter : public AbstractFieldWriter {
       : varname(name), Field(f), Size(size) {}
   void write(std::ofstream &f) override {
     std::stringstream ss;
-    ss << "SCALARS " << varname << " int" << std::endl << std::flush;
-    ss << "LOOKUP_TABLE default" << std::endl << std::flush;
+    ss << "SCALARS " << varname << " int" << std::endl;
+    ss << "LOOKUP_TABLE default" << std::endl;
     for (int i = 0; i < Size; ++i) {
       ss << static_cast<int>(Field[i]) << " ";
     }
@@ -94,16 +94,16 @@ class ScalerWriter : public AbstractFieldWriter {
   void write(std::ofstream &f) override {
     std::stringstream ss;
     if constexpr (std::is_same<T, double>::value) {
-      ss << "SCALARS " << varname << " double" << std::endl << std::flush;
+      ss << "SCALARS " << varname << " double" << std::endl;
     } else if constexpr (std::is_same<T, float>::value) {
-      ss << "SCALARS " << varname << " float" << std::endl << std::flush;
+      ss << "SCALARS " << varname << " float" << std::endl;
     } else if constexpr (std::is_same<T, int>::value) {
-      ss << "SCALARS " << varname << " int" << std::endl << std::flush;
+      ss << "SCALARS " << varname << " int" << std::endl;
     } else {
       std::cout << "ERROR: ScalerWriter: unsupported type" << std::endl;
       exit(1);
     }
-    ss << "LOOKUP_TABLE default" << std::endl << std::flush;
+    ss << "LOOKUP_TABLE default" << std::endl;
     for (int i = 0; i < Size; ++i) {
       ss << Field[i] << " ";
     }
@@ -124,16 +124,16 @@ class FieldScalerWriter : public AbstractFieldWriter {
   void write(std::ofstream &f) override {
     std::stringstream ss;
     if constexpr (std::is_same<FIELDTYPE, double>::value) {
-      ss << "SCALARS " << varname << " double" << std::endl << std::flush;
+      ss << "SCALARS " << varname << " double" << std::endl;
     } else if constexpr (std::is_same<FIELDTYPE, float>::value) {
-      ss << "SCALARS " << varname << " float" << std::endl << std::flush;
+      ss << "SCALARS " << varname << " float" << std::endl;
     } else if constexpr (std::is_same<FIELDTYPE, int>::value) {
-      ss << "SCALARS " << varname << " int" << std::endl << std::flush;
+      ss << "SCALARS " << varname << " int" << std::endl;
     } else {
       std::cout << "ERROR: FieldScalerWriter: unsupported type" << std::endl;
       exit(1);
     }
-    ss << "LOOKUP_TABLE default" << std::endl << std::flush;
+    ss << "LOOKUP_TABLE default" << std::endl;
     for (int i = 0; i < Size; ++i) {
       ss << Field[i] << " ";
     }
@@ -157,16 +157,16 @@ class PhysScalerWriter : public AbstractFieldWriter {
   void write(std::ofstream &f) override {
     std::stringstream ss;
     if constexpr (std::is_same<T, double>::value) {
-      ss << "SCALARS " << varname << " double" << std::endl << std::flush;
+      ss << "SCALARS " << varname << " double" << std::endl;
     } else if constexpr (std::is_same<T, float>::value) {
-      ss << "SCALARS " << varname << " float" << std::endl << std::flush;
+      ss << "SCALARS " << varname << " float" << std::endl;
     } else if constexpr (std::is_same<T, int>::value) {
-      ss << "SCALARS " << varname << " int" << std::endl << std::flush;
+      ss << "SCALARS " << varname << " int" << std::endl;
     } else {
       std::cout << "ERROR: PhysScalerWriter: unsupported type" << std::endl;
       exit(1);
     }
-    ss << "LOOKUP_TABLE default" << std::endl << std::flush;
+    ss << "LOOKUP_TABLE default" << std::endl;
     for (int i = 0; i < Size; ++i) {
       ss << Conv.getPhysRho(Field[i]) << " ";
     }
@@ -189,17 +189,16 @@ class PhysFieldScalerWriter : public AbstractFieldWriter {
   void write(std::ofstream &f) override {
     std::stringstream ss;
     if constexpr (std::is_same<FIELDTYPE, double>::value) {
-      ss << "SCALARS " << varname << " double" << std::endl << std::flush;
+      ss << "SCALARS " << varname << " double" << std::endl;
     } else if constexpr (std::is_same<FIELDTYPE, float>::value) {
-      ss << "SCALARS " << varname << " float" << std::endl << std::flush;
+      ss << "SCALARS " << varname << " float" << std::endl;
     } else if constexpr (std::is_same<FIELDTYPE, int>::value) {
-      ss << "SCALARS " << varname << " int" << std::endl << std::flush;
+      ss << "SCALARS " << varname << " int" << std::endl;
     } else {
-      std::cout << "ERROR: PhysFieldScalerWriter: unsupported type"
-                << std::endl;
+      std::cout << "ERROR: PhysFieldScalerWriter: unsupported type" << std::endl;
       exit(1);
     }
-    ss << "LOOKUP_TABLE default" << std::endl << std::flush;
+    ss << "LOOKUP_TABLE default" << std::endl;
     for (int i = 0; i < Size; ++i) {
       ss << Conv.getPhysRho(Field[i]) << " ";
     }
@@ -219,20 +218,18 @@ class FieldVectorWriter_SOA : public AbstractFieldWriter {
   template <typename... Args>
   FieldVectorWriter_SOA(std::string name, int size, Args... args)
       : varname(name), Size(size), Field{args...} {}
-  FieldVectorWriter_SOA(std::string name, int size,
-                        std::array<FIELDTYPE *, D> &f)
+  FieldVectorWriter_SOA(std::string name, int size, std::array<FIELDTYPE *, D> &f)
       : varname(name), Size(size), Field(f) {}
   void write(std::ofstream &f) override {
     std::stringstream ss;
     if constexpr (std::is_same<FIELDTYPE, double>::value) {
-      ss << "VECTORS " << varname << " double" << std::endl << std::flush;
+      ss << "VECTORS " << varname << " double" << std::endl;
     } else if constexpr (std::is_same<FIELDTYPE, float>::value) {
-      ss << "VECTORS " << varname << " float" << std::endl << std::flush;
+      ss << "VECTORS " << varname << " float" << std::endl;
     } else if constexpr (std::is_same<FIELDTYPE, int>::value) {
-      ss << "VECTORS " << varname << " int" << std::endl << std::flush;
+      ss << "VECTORS " << varname << " int" << std::endl;
     } else {
-      std::cout << "ERROR: FieldVectorWriter_SOA: unsupported type"
-                << std::endl;
+      std::cout << "ERROR: FieldVectorWriter_SOA: unsupported type" << std::endl;
       exit(1);
     }
     for (int i = 0; i < Size; ++i) {
@@ -256,20 +253,18 @@ class FieldVectorWriter_AOS : public AbstractFieldWriter {
 
  public:
   template <typename... Args>
-  FieldVectorWriter_AOS(std::string name, const Vector<FIELDTYPE, D> *f,
-                        int size)
+  FieldVectorWriter_AOS(std::string name, const Vector<FIELDTYPE, D> *f, int size)
       : varname(name), Field(f), Size(size) {}
   void write(std::ofstream &f) override {
     std::stringstream ss;
     if constexpr (std::is_same<FIELDTYPE, double>::value) {
-      ss << "VECTORS " << varname << " double" << std::endl << std::flush;
+      ss << "VECTORS " << varname << " double" << std::endl;
     } else if constexpr (std::is_same<FIELDTYPE, float>::value) {
-      ss << "VECTORS " << varname << " float" << std::endl << std::flush;
+      ss << "VECTORS " << varname << " float" << std::endl;
     } else if constexpr (std::is_same<FIELDTYPE, int>::value) {
-      ss << "VECTORS " << varname << " int" << std::endl << std::flush;
+      ss << "VECTORS " << varname << " int" << std::endl;
     } else {
-      std::cout << "ERROR: FieldVectorWriter_AOS: unsupported type"
-                << std::endl;
+      std::cout << "ERROR: FieldVectorWriter_AOS: unsupported type" << std::endl;
       exit(1);
     }
     for (int i = 0; i < Size; ++i) {
@@ -300,23 +295,22 @@ class PhysVelocityWriter_AOS : public AbstractFieldWriter {
   void write(std::ofstream &f) override {
     std::stringstream ss;
     if constexpr (std::is_same<T, double>::value) {
-      ss << "VECTORS " << varname << " double" << std::endl << std::flush;
+      ss << "VECTORS " << varname << " double" << std::endl;
     } else if constexpr (std::is_same<T, float>::value) {
-      ss << "VECTORS " << varname << " float" << std::endl << std::flush;
+      ss << "VECTORS " << varname << " float" << std::endl;
     } else if constexpr (std::is_same<T, int>::value) {
-      ss << "VECTORS " << varname << " int" << std::endl << std::flush;
+      ss << "VECTORS " << varname << " int" << std::endl;
     } else {
-      std::cout << "ERROR: FieldVectorWriter_AOS: unsupported type"
-                << std::endl;
+      std::cout << "ERROR: FieldVectorWriter_AOS: unsupported type" << std::endl;
       exit(1);
     }
     for (int i = 0; i < Size; ++i) {
       if constexpr (D == 2) {
-        ss << Conv.getPhysU(Field[i][0]) << " " << Conv.getPhysU(Field[i][1])
-           << " " << 0 << " ";
+        ss << Conv.getPhysU(Field[i][0]) << " " << Conv.getPhysU(Field[i][1]) << " " << 0
+           << " ";
       } else if constexpr (D == 3) {
-        ss << Conv.getPhysU(Field[i][0]) << " " << Conv.getPhysU(Field[i][1])
-           << " " << Conv.getPhysU(Field[i][2]) << " ";
+        ss << Conv.getPhysU(Field[i][0]) << " " << Conv.getPhysU(Field[i][1]) << " "
+           << Conv.getPhysU(Field[i][2]) << " ";
       }
     }
     ss << std::endl;
@@ -333,30 +327,28 @@ class PhysVelocityFieldWriter_AOS : public AbstractFieldWriter {
 
  public:
   template <typename... Args>
-  PhysVelocityFieldWriter_AOS(std::string name, const Vector<FIELDTYPE, D> *f,
-                              int size,
+  PhysVelocityFieldWriter_AOS(std::string name, const Vector<FIELDTYPE, D> *f, int size,
                               const AbstractConverter<FIELDTYPE> &conv)
       : varname(name), Field(f), Size(size), Conv(conv) {}
   void write(std::ofstream &f) override {
     std::stringstream ss;
     if constexpr (std::is_same<FIELDTYPE, double>::value) {
-      ss << "VECTORS " << varname << " double" << std::endl << std::flush;
+      ss << "VECTORS " << varname << " double" << std::endl;
     } else if constexpr (std::is_same<FIELDTYPE, float>::value) {
-      ss << "VECTORS " << varname << " float" << std::endl << std::flush;
+      ss << "VECTORS " << varname << " float" << std::endl;
     } else if constexpr (std::is_same<FIELDTYPE, int>::value) {
-      ss << "VECTORS " << varname << " int" << std::endl << std::flush;
+      ss << "VECTORS " << varname << " int" << std::endl;
     } else {
-      std::cout << "ERROR: FieldVectorWriter_AOS: unsupported type"
-                << std::endl;
+      std::cout << "ERROR: FieldVectorWriter_AOS: unsupported type" << std::endl;
       exit(1);
     }
     for (int i = 0; i < Size; ++i) {
       if constexpr (D == 2) {
-        ss << Conv.getPhysU(Field[i][0]) << " " << Conv.getPhysU(Field[i][1])
-           << " " << 0 << " ";
+        ss << Conv.getPhysU(Field[i][0]) << " " << Conv.getPhysU(Field[i][1]) << " " << 0
+           << " ";
       } else if constexpr (D == 3) {
-        ss << Conv.getPhysU(Field[i][0]) << " " << Conv.getPhysU(Field[i][1])
-           << " " << Conv.getPhysU(Field[i][2]) << " ";
+        ss << Conv.getPhysU(Field[i][0]) << " " << Conv.getPhysU(Field[i][1]) << " "
+           << Conv.getPhysU(Field[i][2]) << " ";
       }
     }
     ss << std::endl;
@@ -373,12 +365,11 @@ class UnStruFlagWriter : public AbstractFieldWriter {
   const std::vector<T> &Field;
 
  public:
-  UnStruFlagWriter(std::string name, std::vector<T> &f)
-      : varname(name), Field(f) {}
+  UnStruFlagWriter(std::string name, std::vector<T> &f) : varname(name), Field(f) {}
   void write(std::ofstream &f) override {
     std::stringstream ss;
-    ss << "SCALARS " << varname << " int" << std::endl << std::flush;
-    ss << "LOOKUP_TABLE default" << std::endl << std::flush;
+    ss << "SCALARS " << varname << " int" << std::endl;
+    ss << "LOOKUP_TABLE default" << std::endl;
     for (auto field : Field) {
       ss << static_cast<int>(field) << " ";
     }
@@ -394,21 +385,20 @@ class UnStruScalerWriter : public AbstractFieldWriter {
   const std::vector<T> &Field;
 
  public:
-  UnStruScalerWriter(std::string name, std::vector<T> &f)
-      : varname(name), Field(f) {}
+  UnStruScalerWriter(std::string name, std::vector<T> &f) : varname(name), Field(f) {}
   void write(std::ofstream &f) override {
     std::stringstream ss;
-   if constexpr (std::is_same<T, double>::value) {
-      ss << "SCALARS " << varname << " double" << std::endl << std::flush;
+    if constexpr (std::is_same<T, double>::value) {
+      ss << "SCALARS " << varname << " double" << std::endl;
     } else if constexpr (std::is_same<T, float>::value) {
-      ss << "SCALARS " << varname << " float" << std::endl << std::flush;
+      ss << "SCALARS " << varname << " float" << std::endl;
     } else if constexpr (std::is_same<T, int>::value) {
-      ss << "SCALARS " << varname << " int" << std::endl << std::flush;
+      ss << "SCALARS " << varname << " int" << std::endl;
     } else {
       std::cout << "ERROR: ScalerWriter: unsupported type" << std::endl;
       exit(1);
     }
-    ss << "LOOKUP_TABLE default" << std::endl << std::flush;
+    ss << "LOOKUP_TABLE default" << std::endl;
     for (auto field : Field) {
       ss << field << " ";
     }
@@ -428,13 +418,12 @@ class FieldFlagWriter : public AbstractFieldWriter {
   const std::vector<int> &index;
 
  public:
-  FieldFlagWriter(std::string name, std::vector<FIELDTYPE> &f,
-                  std::vector<int> &idx)
+  FieldFlagWriter(std::string name, std::vector<FIELDTYPE> &f, std::vector<int> &idx)
       : varname(name), field(f), index(idx) {}
   void write(std::ofstream &f) override {
     std::stringstream ss;
-    ss << "SCALARS " << varname << " int" << std::endl << std::flush;
-    ss << "LOOKUP_TABLE default" << std::endl << std::flush;
+    ss << "SCALARS " << varname << " int" << std::endl;
+    ss << "LOOKUP_TABLE default" << std::endl;
     for (int i = 0; i < index.size(); ++i) {
       if (index[i] != -1)
         ss << static_cast<int>(field[index[i]]) << " ";
@@ -454,22 +443,21 @@ class FieldScalerWriter : public AbstractFieldWriter {
   const std::vector<int> &index;
 
  public:
-  FieldScalerWriter(std::string name, std::vector<FIELDTYPE> &f,
-                    std::vector<int> &idx)
+  FieldScalerWriter(std::string name, std::vector<FIELDTYPE> &f, std::vector<int> &idx)
       : varname(name), field(f), index(idx) {}
   void write(std::ofstream &f) override {
     std::stringstream ss;
     if constexpr (std::is_same<FIELDTYPE, double>::value) {
-      ss << "SCALARS " << varname << " double" << std::endl << std::flush;
+      ss << "SCALARS " << varname << " double" << std::endl;
     } else if constexpr (std::is_same<FIELDTYPE, float>::value) {
-      ss << "SCALARS " << varname << " float" << std::endl << std::flush;
+      ss << "SCALARS " << varname << " float" << std::endl;
     } else if constexpr (std::is_same<FIELDTYPE, int>::value) {
-      ss << "SCALARS " << varname << " int" << std::endl << std::flush;
+      ss << "SCALARS " << varname << " int" << std::endl;
     } else {
       std::cout << "ERROR: FieldScalerWriter: unsupported type" << std::endl;
       exit(1);
     }
-    ss << "LOOKUP_TABLE default" << std::endl << std::flush;
+    ss << "LOOKUP_TABLE default" << std::endl;
     for (int i = 0; i < index.size(); ++i) {
       if (index[i] != -1)
         ss << field[index[i]] << " ";
@@ -495,11 +483,11 @@ class FieldVectorWriter : public AbstractFieldWriter {
   void write(std::ofstream &f) override {
     std::stringstream ss;
     if constexpr (std::is_same<FIELDTYPE, double>::value) {
-      ss << "VECTORS " << varname << " double" << std::endl << std::flush;
+      ss << "VECTORS " << varname << " double" << std::endl;
     } else if constexpr (std::is_same<FIELDTYPE, float>::value) {
-      ss << "VECTORS " << varname << " float" << std::endl << std::flush;
+      ss << "VECTORS " << varname << " float" << std::endl;
     } else if constexpr (std::is_same<FIELDTYPE, int>::value) {
-      ss << "VECTORS " << varname << " int" << std::endl << std::flush;
+      ss << "VECTORS " << varname << " int" << std::endl;
     } else {
       std::cout << "ERROR: FieldVectorWriter: unsupported type" << std::endl;
       exit(1);
@@ -507,8 +495,7 @@ class FieldVectorWriter : public AbstractFieldWriter {
     for (int i = 0; i < index.size(); ++i) {
       if (index[i] != -1) {
         if constexpr (D == 2) {
-          ss << field[index[i]][0] << " " << field[index[i]][1] << " " << 0
-             << " ";
+          ss << field[index[i]][0] << " " << field[index[i]][1] << " " << 0 << " ";
         } else {
           ss << field[index[i]][0] << " " << field[index[i]][1] << " "
              << field[index[i]][2] << " ";
@@ -537,23 +524,13 @@ class vtkStruPointsWriter {
 
  public:
   vtkStruPointsWriter(std::string filename, Geometry<T, D> &geo)
-      : _filename(filename),
-        VoxelSize(geo.getVoxelSize()),
-        _Min(geo.getMin()),
-        _Nx(geo.getNx()),
-        _Ny(geo.getNy()),
-        _Nz(geo.getNz()) {}
-  vtkStruPointsWriter(std::string filename, T voxsize, Vector<T, D> Min, int Nx, int Ny, int Nz = 1)
-      : _filename(filename),
-        VoxelSize(voxsize),
-        _Min(Min),
-        _Nx(Nx),
-        _Ny(Ny),
-        _Nz(Nz) {}
+      : _filename(filename), VoxelSize(geo.getVoxelSize()), _Min(geo.getMin()),
+        _Nx(geo.getNx()), _Ny(geo.getNy()), _Nz(geo.getNz()) {}
+  vtkStruPointsWriter(std::string filename, T voxsize, Vector<T, D> Min, int Nx, int Ny,
+                      int Nz = 1)
+      : _filename(filename), VoxelSize(voxsize), _Min(Min), _Nx(Nx), _Ny(Ny), _Nz(Nz) {}
 
-  void addtoWriteList(AbstractFieldWriter *writer) {
-    _FieldWriters.push_back(writer);
-  }
+  void addtoWriteList(AbstractFieldWriter *writer) { _FieldWriters.push_back(writer); }
   template <typename... Args>
   void addtoWriteList(AbstractFieldWriter *writer, Args... args) {
     _FieldWriters.push_back(writer);
@@ -574,8 +551,7 @@ class vtkStruPointsWriter {
   }
   void Write(int step) {
     DirCreator::Create_Dir(_dirname);
-    std::string fullName =
-        "./vtkoutput/" + _filename + std::to_string(step) + ".vtk";
+    std::string fullName = "./vtkoutput/" + _filename + std::to_string(step) + ".vtk";
     std::ofstream f(fullName.c_str());
     writeHeader(f);
     // write
@@ -586,29 +562,23 @@ class vtkStruPointsWriter {
   }
 
   void writeHeader(std::ofstream &f) {
-    f << "# vtk DataFile Version 2.0" << std::endl << std::flush;
-    f << "Voxels" << std::endl << std::flush;
-    f << "ASCII" << std::endl << std::flush;
+    f << "# vtk DataFile Version 2.0" << std::endl;
+    f << "Voxels" << std::endl;
+    f << "ASCII" << std::endl;
 
-    f << "DATASET STRUCTURED_POINTS" << std::endl << std::flush;
-    f << "DIMENSIONS " << _Nx << " " << _Ny << " " << _Nz << std::endl
-      << std::flush;
+    f << "DATASET STRUCTURED_POINTS" << std::endl;
+    f << "DIMENSIONS " << _Nx << " " << _Ny << " " << _Nz << std::endl;
     if constexpr (D == 2) {
       f << "ORIGIN " << _Min[0] + VoxelSize * T(0.5) << " "
-        << _Min[1] + VoxelSize * T(0.5) << " 0" << std::endl
-        << std::flush;
-      f << "SPACING " << VoxelSize << " " << VoxelSize << " 1" << std::endl
-        << std::flush;
+        << _Min[1] + VoxelSize * T(0.5) << " 0" << std::endl;
+      f << "SPACING " << VoxelSize << " " << VoxelSize << " 1" << std::endl;
     } else {
       f << "ORIGIN " << _Min[0] + VoxelSize * T(0.5) << " "
         << _Min[1] + VoxelSize * T(0.5) << " " << _Min[2] + VoxelSize * T(0.5)
-        << std::endl
-        << std::flush;
-      f << "SPACING " << VoxelSize << " " << VoxelSize << " " << VoxelSize
-        << std::endl
-        << std::flush;
+        << std::endl;
+      f << "SPACING " << VoxelSize << " " << VoxelSize << " " << VoxelSize << std::endl;
     }
-    f << "POINT_DATA " << _Nx * _Ny * _Nz << std::endl << std::flush;
+    f << "POINT_DATA " << _Nx * _Ny * _Nz << std::endl;
   }
 };
 
@@ -621,12 +591,9 @@ class vtkUnStruGridWriter {
   std::vector<AbstractFieldWriter *> _FieldWriters;
 
  public:
-  vtkUnStruGridWriter(std::string filename)
-      : _filename(filename) {}
+  vtkUnStruGridWriter(std::string filename) : _filename(filename) {}
 
-  void addtoWriteList(AbstractFieldWriter *writer) {
-    _FieldWriters.push_back(writer);
-  }
+  void addtoWriteList(AbstractFieldWriter *writer) { _FieldWriters.push_back(writer); }
   template <typename... Args>
   void addtoWriteList(AbstractFieldWriter *writer, Args... args) {
     _FieldWriters.push_back(writer);
@@ -648,8 +615,7 @@ class vtkUnStruGridWriter {
   }
   void Write(std::vector<BasicTree<T, D> *> &leafs, int step) {
     DirCreator::Create_Dir(_dirname);
-    std::string fullName =
-        "./vtkoutput/" + _filename + std::to_string(step) + ".vtk";
+    std::string fullName = "./vtkoutput/" + _filename + std::to_string(step) + ".vtk";
     std::ofstream f(fullName.c_str());
     writeHeader(f);
     writeGeometry(f, leafs);
@@ -661,14 +627,13 @@ class vtkUnStruGridWriter {
   }
 
   void writeHeader(std::ofstream &f) {
-    f << "# vtk DataFile Version 2.0" << std::endl << std::flush;
-    f << "tree" << std::endl << std::flush;
-    f << "ASCII" << std::endl << std::flush;
-    f << "DATASET UNSTRUCTURED_GRID" << std::endl << std::flush;
+    f << "# vtk DataFile Version 2.0" << std::endl;
+    f << "tree" << std::endl;
+    f << "ASCII" << std::endl;
+    f << "DATASET UNSTRUCTURED_GRID" << std::endl;
   }
 
-  void writeGeometry(std::ofstream &f,
-                     std::vector<BasicTree<T, D> *> &leafs) {
+  void writeGeometry(std::ofstream &f, std::vector<BasicTree<T, D> *> &leafs) {
     std::stringstream points;
     std::stringstream cells;
     std::stringstream cell_types;
@@ -682,8 +647,7 @@ class vtkUnStruGridWriter {
       } else if constexpr (std::is_same<T, int>::value) {
         points << "POINTS " << leafs.size() * 4 << " int" << std::endl;
       } else {
-        std::cout << "ERROR: vtkUnStruGridWriter: unsupported type"
-                  << std::endl;
+        std::cout << "ERROR: vtkUnStruGridWriter: unsupported type" << std::endl;
         exit(1);
       }
     } else if constexpr (D == 3) {
@@ -694,8 +658,7 @@ class vtkUnStruGridWriter {
       } else if constexpr (std::is_same<T, int>::value) {
         points << "POINTS " << leafs.size() * 8 << " int" << std::endl;
       } else {
-        std::cout << "ERROR: vtkUnStruGridWriter: unsupported type"
-                  << std::endl;
+        std::cout << "ERROR: vtkUnStruGridWriter: unsupported type" << std::endl;
         exit(1);
       }
     }
@@ -723,8 +686,7 @@ class vtkUnStruGridWriter {
         pt = center + Vector<T, 2>(rad, rad);
         points << pt[0] << " " << pt[1] << " 0 \n";
 
-        cells << "4 " << i << " " << i + 1 << " " << i + 2 << " " << i + 3
-              << " \n";
+        cells << "4 " << i << " " << i + 1 << " " << i + 2 << " " << i + 3 << " \n";
         i += 4;
         cell_types << 8 << "\n";
       }
@@ -752,9 +714,8 @@ class vtkUnStruGridWriter {
         pt = center + Vector<T, 3>(-rad, rad, rad);
         points << pt[0] << " " << pt[1] << " " << pt[2] << " \n";
 
-        cells << "8 " << i << " " << i + 1 << " " << i + 2 << " " << i + 3
-              << " " << i + 4 << " " << i + 5 << " " << i + 6 << " " << i + 7
-              << " \n";
+        cells << "8 " << i << " " << i + 1 << " " << i + 2 << " " << i + 3 << " " << i + 4
+              << " " << i + 5 << " " << i + 6 << " " << i + 7 << " \n";
         i += 8;
         cell_types << 11 << "\n";
       }
@@ -773,12 +734,9 @@ class vtkPolyWriter {
   std::vector<AbstractFieldWriter *> _FieldWriters;
 
  public:
-  vtkPolyWriter(std::string filename)
-      : _filename(filename) {}
+  vtkPolyWriter(std::string filename) : _filename(filename) {}
 
-  void addtoWriteList(AbstractFieldWriter *writer) {
-    _FieldWriters.push_back(writer);
-  }
+  void addtoWriteList(AbstractFieldWriter *writer) { _FieldWriters.push_back(writer); }
   template <typename... Args>
   void addtoWriteList(AbstractFieldWriter *writer, Args... args) {
     _FieldWriters.push_back(writer);
@@ -800,8 +758,7 @@ class vtkPolyWriter {
   }
   void Write(std::vector<BasicTree<T, D> *> &leafs, int step) {
     DirCreator::Create_Dir(_dirname);
-    std::string fullName =
-        "./vtkoutput/" + _filename + std::to_string(step) + ".vtk";
+    std::string fullName = "./vtkoutput/" + _filename + std::to_string(step) + ".vtk";
     std::ofstream f(fullName.c_str());
     writeHeader(f);
     writeGeometry(f, leafs);
@@ -813,14 +770,13 @@ class vtkPolyWriter {
   }
 
   void writeHeader(std::ofstream &f) {
-    f << "# vtk DataFile Version 2.0" << std::endl << std::flush;
-    f << "polydata" << std::endl << std::flush;
-    f << "ASCII" << std::endl << std::flush;
-    f << "DATASET POLYDATA" << std::endl << std::flush;
+    f << "# vtk DataFile Version 2.0" << std::endl;
+    f << "polydata" << std::endl;
+    f << "ASCII" << std::endl;
+    f << "DATASET POLYDATA" << std::endl;
   }
 
-  void writeGeometry(std::ofstream &f,
-                     std::vector<BasicTree<T, D> *> &leafs) {
+  void writeGeometry(std::ofstream &f, std::vector<BasicTree<T, D> *> &leafs) {
     std::stringstream points;
     std::stringstream cells;
     std::stringstream celldataheader;
@@ -849,11 +805,9 @@ class vtkPolyWriter {
       }
     }
     if constexpr (D == 2) {
-      cells << "POLYGONS " << leafs.size() << " " << leafs.size() * 5
-            << std::endl;
+      cells << "POLYGONS " << leafs.size() << " " << leafs.size() * 5 << std::endl;
     } else if constexpr (D == 3) {
-      cells << "POLYGONS " << leafs.size() << " " << leafs.size() * 9
-            << std::endl;
+      cells << "POLYGONS " << leafs.size() << " " << leafs.size() * 9 << std::endl;
     }
     T rad;
     int i = 0;
@@ -873,8 +827,7 @@ class vtkPolyWriter {
         pt = center + Vector<T, 2>(-rad, rad);
         points << pt[0] << " " << pt[1] << " 0 \n";
 
-        cells << "4 " << i << " " << i + 1 << " " << i + 2 << " " << i + 3
-              << " \n";
+        cells << "4 " << i << " " << i + 1 << " " << i + 2 << " " << i + 3 << " \n";
         i += 4;
       }
     } else if constexpr (D == 3) {
@@ -901,9 +854,8 @@ class vtkPolyWriter {
         pt = center + Vector<T, 3>(-rad, rad, rad);
         points << pt[0] << " " << pt[1] << " " << pt[2] << " \n";
 
-        cells << "8 " << i << " " << i + 1 << " " << i + 2 << " " << i + 3
-              << " " << i + 4 << " " << i + 5 << " " << i + 6 << " " << i + 7
-              << " \n";
+        cells << "8 " << i << " " << i + 1 << " " << i + 2 << " " << i + 3 << " " << i + 4
+              << " " << i + 5 << " " << i + 6 << " " << i + 7 << " \n";
         i += 8;
       }
     }
@@ -934,19 +886,13 @@ class vtkWriterStruPoints {
   std::vector<std::string> _FlagNames;
 
  public:
-  vtkWriterStruPoints(std::string filename, T voxelsize,
-                      const Vector<T, D> &Min, int Nx, int Ny, int Nz = 1)
-      : _filename(filename),
-        VoxelSize(voxelsize),
-        _Min(Min),
-        _Nx(Nx),
-        _Ny(Ny),
-        _Nz(Nz) {}
+  vtkWriterStruPoints(std::string filename, T voxelsize, const Vector<T, D> &Min, int Nx,
+                      int Ny, int Nz = 1)
+      : _filename(filename), VoxelSize(voxelsize), _Min(Min), _Nx(Nx), _Ny(Ny), _Nz(Nz) {}
   void setFilename(std::string filename) { _filename = filename; }
   void setDirname(std::string dirname) { _dirname = dirname; }
 
-  void addScalertoWriteList(std::string name, std::vector<T> *v,
-                            std::vector<int> *idx) {
+  void addScalertoWriteList(std::string name, std::vector<T> *v, std::vector<int> *idx) {
     _ScalerNames.push_back(name);
     _ScalerIndex.push_back(idx);
     _Scalers.push_back(v);
@@ -958,8 +904,7 @@ class vtkWriterStruPoints {
     _Vectors.push_back(v);
   }
   template <typename U = int>
-  void addFlagtoWriteList(std::string name, std::vector<U> *v,
-                          std::vector<int> *idx) {
+  void addFlagtoWriteList(std::string name, std::vector<U> *v, std::vector<int> *idx) {
     _FlagNames.push_back(name);
     _FlagIndex.push_back(idx);
     _Flags.push_back(v);
@@ -967,8 +912,7 @@ class vtkWriterStruPoints {
   template <typename U = int>
   void write(int step) {
     DirCreator::Create_Dir(_dirname);
-    std::string fullName =
-        "./vtkoutput/" + _filename + std::to_string(step) + ".vtk";
+    std::string fullName = "./vtkoutput/" + _filename + std::to_string(step) + ".vtk";
     std::ofstream f(fullName.c_str());
     writeHeader(f);
     // write scalers
@@ -1008,42 +952,37 @@ class vtkWriterStruPoints {
     f.close();
   }
   void writeHeader(std::ofstream &f) {
-    f << "# vtk DataFile Version 2.0" << std::endl << std::flush;
-    f << "Voxels" << std::endl << std::flush;
-    f << "ASCII" << std::endl << std::flush;
+    f << "# vtk DataFile Version 2.0" << std::endl;
+    f << "Voxels" << std::endl;
+    f << "ASCII" << std::endl;
 
-    f << "DATASET STRUCTURED_POINTS" << std::endl << std::flush;
-    f << "DIMENSIONS " << _Nx << " " << _Ny << " " << _Nz << std::endl
-      << std::flush;
+    f << "DATASET STRUCTURED_POINTS" << std::endl;
+    f << "DIMENSIONS " << _Nx << " " << _Ny << " " << _Nz << std::endl;
     if constexpr (D == 2) {
       f << "ORIGIN " << _Min[0] + VoxelSize * T(0.5) << " "
-        << _Min[1] + VoxelSize * T(0.5) << " 0" << std::endl
-        << std::flush;
-      f << "ASPECT_RATIO " << VoxelSize << " " << VoxelSize << " 1" << std::endl
-        << std::flush;
+        << _Min[1] + VoxelSize * T(0.5) << " 0" << std::endl;
+      f << "ASPECT_RATIO " << VoxelSize << " " << VoxelSize << " 1" << std::endl;
     } else {
       f << "ORIGIN " << _Min[0] + VoxelSize * T(0.5) << " "
         << _Min[1] + VoxelSize * T(0.5) << " " << _Min[2] + VoxelSize * T(0.5)
-        << std::endl
-        << std::flush;
+        << std::endl;
       f << "ASPECT_RATIO " << VoxelSize << " " << VoxelSize << " " << VoxelSize
-        << std::endl
-        << std::flush;
+        << std::endl;
     }
-    f << "POINT_DATA " << _Nx * _Ny * _Nz << std::endl << std::flush;
+    f << "POINT_DATA " << _Nx * _Ny * _Nz << std::endl;
   }
 
   void writeScaler(std::ofstream &f, std::string name, const std::vector<T> &v,
                    const std::vector<int> &idx) {
     std::stringstream ss;
     if constexpr (std::is_same<T, double>::value) {
-      ss << "SCALARS " << name << " double" << std::endl << std::flush;
+      ss << "SCALARS " << name << " double" << std::endl;
     } else if constexpr (std::is_same<T, float>::value) {
-      ss << "SCALARS " << name << " float" << std::endl << std::flush;
+      ss << "SCALARS " << name << " float" << std::endl;
     } else if constexpr (std::is_same<T, int>::value) {
-      ss << "SCALARS " << name << " int" << std::endl << std::flush;
+      ss << "SCALARS " << name << " int" << std::endl;
     }
-    ss << "LOOKUP_TABLE default" << std::endl << std::flush;
+    ss << "LOOKUP_TABLE default" << std::endl;
     for (int i = 0; i < _Nx * _Ny * _Nz; ++i) {
       if (idx[i] != -1)
         ss << v[idx[i]] << " ";
@@ -1057,8 +996,8 @@ class vtkWriterStruPoints {
   void WriteFlag(std::ofstream &f, std::string name, const std::vector<U> &v,
                  const std::vector<int> &idx) {
     std::stringstream ss;
-    ss << "SCALARS " << name << " int" << std::endl << std::flush;
-    ss << "LOOKUP_TABLE default" << std::endl << std::flush;
+    ss << "SCALARS " << name << " int" << std::endl;
+    ss << "LOOKUP_TABLE default" << std::endl;
     for (int i = 0; i < _Nx * _Ny * _Nz; ++i) {
       if (idx[i] != -1)
         ss << static_cast<int>(v[idx[i]]) << " ";
@@ -1069,24 +1008,22 @@ class vtkWriterStruPoints {
     f << ss.str();
   }
 
-  void writeVector(std::ofstream &f, std::string name,
-                   const std::vector<Vector<T, D>> &v,
+  void writeVector(std::ofstream &f, std::string name, const std::vector<Vector<T, D>> &v,
                    const std::vector<int> &idx) {
     std::stringstream ss;
     if constexpr (std::is_same<T, double>::value) {
-      ss << "VECTORS " << name << " double" << std::endl << std::flush;
+      ss << "VECTORS " << name << " double" << std::endl;
     } else if constexpr (std::is_same<T, float>::value) {
-      ss << "VECTORS " << name << " float" << std::endl << std::flush;
+      ss << "VECTORS " << name << " float" << std::endl;
     } else if constexpr (std::is_same<T, int>::value) {
-      ss << "VECTORS " << name << " int" << std::endl << std::flush;
+      ss << "VECTORS " << name << " int" << std::endl;
     }
     for (int i = 0; i < _Nx * _Ny * _Nz; ++i) {
       if (idx[i] != -1) {
         if constexpr (D == 2) {
           ss << v[idx[i]][0] << " " << v[idx[i]][1] << " " << 0 << " ";
         } else {
-          ss << v[idx[i]][0] << " " << v[idx[i]][1] << " " << v[idx[i]][2]
-             << " ";
+          ss << v[idx[i]][0] << " " << v[idx[i]][1] << " " << v[idx[i]][2] << " ";
         }
       } else {
         ss << 0 << " " << 0 << " " << 0 << " ";

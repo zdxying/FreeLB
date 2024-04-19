@@ -1,21 +1,21 @@
 /* This file is part of FreeLB
- * 
+ *
  * Copyright (C) 2024 Yuan Man
  * E-mail contact: ymmanyuan@outlook.com
  * The most recent progress of FreeLB will be updated at
  * <https://github.com/zdxying/FreeLB>
- * 
- * FreeLB is free software: you can redistribute it and/or modify it under the terms of the GNU
- * General Public License as published by the Free Software Foundation, either version 3 of the
- * License, or (at your option) any later version.
- * 
- * FreeLB is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the
- * implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public
- * License for more details.
- * 
- * You should have received a copy of the GNU General Public License along with FreeLB. If not, see
- * <https://www.gnu.org/licenses/>.
- * 
+ *
+ * FreeLB is free software: you can redistribute it and/or modify it under the terms of
+ * the GNU General Public License as published by the Free Software Foundation, either
+ * version 3 of the License, or (at your option) any later version.
+ *
+ * FreeLB is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
+ * without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
+ * PURPOSE. See the GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License along with FreeLB. If
+ * not, see <https://www.gnu.org/licenses/>.
+ *
  */
 
 // vti_writer.h
@@ -61,7 +61,7 @@ class AbstWriterSet {
 };
 
 // manager of generating a single vti file
-template <typename T, unsigned int D>
+template <typename T, unsigned int Dim>
 class vtiManager {
  private:
   std::string _dirname = "./vtkoutput/vtidata/";
@@ -70,9 +70,9 @@ class vtiManager {
 
   // image info
   T VoxelSize;
-  Vector<T, D> _Min;
-  // _Ext = Mesh - Vector<int, D>{1}
-  Vector<int, D> _Ext;
+  Vector<T, Dim> _Min;
+  // _Ext = Mesh - Vector<int, Dim>{1}
+  Vector<int, Dim> _Ext;
 
 #ifdef MPI_ENABLED
   int _rank;
@@ -81,18 +81,22 @@ class vtiManager {
   std::vector<AbstractWriter *> _writers;
 
  public:
-  vtiManager(std::string filename, int id, T voxsize, Vector<T, D> min, Vector<int, D> ext)
+  vtiManager(std::string filename, int id, T voxsize, Vector<T, Dim> min,
+             Vector<int, Dim> ext)
       : _filename(filename), _id(id), VoxelSize(voxsize), _Min(min), _Ext(ext) {
+        static_assert(Dim == 2 || Dim == 3, "Error: Dimension is not supported!");
     DirCreator::MPI_Create_Dir(_dirname);
   }
-  vtiManager(std::string filename, T voxsize, Vector<T, D> min, Vector<int, D> ext)
+  vtiManager(std::string filename, T voxsize, Vector<T, Dim> min, Vector<int, Dim> ext)
       : _filename(filename), _id(-1), VoxelSize(voxsize), _Min(min), _Ext(ext) {
+        static_assert(Dim == 2 || Dim == 3, "Error: Dimension is not supported!");
     DirCreator::MPI_Create_Dir(_dirname);
   }
   // extended block should be used
-  vtiManager(std::string filename, int id, const BasicBlock<T, D> &block)
-      : _filename(filename), _id(id), VoxelSize(block.getVoxelSize()), _Min(block.getMinCenter()),
-        _Ext(block.getMesh() - Vector<int, D>{1}) {
+  vtiManager(std::string filename, int id, const BasicBlock<T, Dim> &block)
+      : _filename(filename), _id(id), VoxelSize(block.getVoxelSize()),
+        _Min(block.getMinCenter()), _Ext(block.getMesh() - Vector<int, Dim>{1}) {
+          static_assert(Dim == 2 || Dim == 3, "Error: Dimension is not supported!");
     DirCreator::MPI_Create_Dir(_dirname);
   }
 
@@ -135,7 +139,8 @@ class vtiManager {
       fullName += "_T" + std::to_string(step) + "_B" + std::to_string(_id) + ".vti";
     }
     // std::string fullName =
-    // _dirname + _filename + "_T" + std::to_string(step) + "_B" + std::to_string(_id) + ".vti";
+    // _dirname + _filename + "_T" + std::to_string(step) + "_B" + std::to_string(_id) +
+    // ".vti";
     vtiHeader(fullName);
     for (AbstractWriter *writer : _writers) {
       writer->write(fullName);
@@ -164,7 +169,8 @@ class vtiManager {
       fullName += "_T" + std::to_string(step) + "_B" + std::to_string(_id) + ".vti";
     }
     // std::string fullName =
-    // _dirname + _filename + "_T" + std::to_string(step) + "_B" + std::to_string(_id) + ".vti";
+    // _dirname + _filename + "_T" + std::to_string(step) + "_B" + std::to_string(_id) +
+    // ".vti";
     vtiHeader(fullName);
     for (AbstractWriter *writer : _writers) {
       writer->writeBinary(fullName);
@@ -176,18 +182,20 @@ class vtiManager {
     f << "<?xml version=\"1.0\"?>\n";
     f << "<VTKFile type=\"ImageData\" version=\"0.1\" "
       << "byte_order=\"LittleEndian\">\n";
-    if constexpr (D == 2) {
-      f << "<ImageData WholeExtent=\"" << 0 << " " << _Ext[0] << " " << 0 << " " << _Ext[1] << " "
-        << 0 << " " << 0 << "\" Origin=\"" << _Min[0] << " " << _Min[1] << " " << 0
-        << "\" Spacing=\"" << VoxelSize << " " << VoxelSize << " " << VoxelSize << "\">\n";
-      f << "<Piece Extent=\"" << 0 << " " << _Ext[0] << " " << 0 << " " << _Ext[1] << " " << 0
-        << " " << 0 << "\">\n";
-    } else if constexpr (D == 3) {
-      f << "<ImageData WholeExtent=\"" << 0 << " " << _Ext[0] << " " << 0 << " " << _Ext[1] << " "
-        << 0 << " " << _Ext[2] << "\" Origin=\"" << _Min[0] << " " << _Min[1] << " " << _Min[2]
-        << "\" Spacing=\"" << VoxelSize << " " << VoxelSize << " " << VoxelSize << "\">\n";
-      f << "<Piece Extent=\"" << 0 << " " << _Ext[0] << " " << 0 << " " << _Ext[1] << " " << 0
-        << " " << _Ext[2] << "\">\n";
+    if constexpr (Dim == 2) {
+      f << "<ImageData WholeExtent=\"" << 0 << " " << _Ext[0] << " " << 0 << " "
+        << _Ext[1] << " " << 0 << " " << 0 << "\" Origin=\"" << _Min[0] << " " << _Min[1]
+        << " " << 0 << "\" Spacing=\"" << VoxelSize << " " << VoxelSize << " "
+        << VoxelSize << "\">\n";
+      f << "<Piece Extent=\"" << 0 << " " << _Ext[0] << " " << 0 << " " << _Ext[1] << " "
+        << 0 << " " << 0 << "\">\n";
+    } else if constexpr (Dim == 3) {
+      f << "<ImageData WholeExtent=\"" << 0 << " " << _Ext[0] << " " << 0 << " "
+        << _Ext[1] << " " << 0 << " " << _Ext[2] << "\" Origin=\"" << _Min[0] << " "
+        << _Min[1] << " " << _Min[2] << "\" Spacing=\"" << VoxelSize << " " << VoxelSize
+        << " " << VoxelSize << "\">\n";
+      f << "<Piece Extent=\"" << 0 << " " << _Ext[0] << " " << 0 << " " << _Ext[1] << " "
+        << 0 << " " << _Ext[2] << "\">\n";
     }
     f << "<PointData>\n";
     f.close();
@@ -202,20 +210,21 @@ class vtiManager {
   }
 };
 
-template <template <typename> class ArrayType, typename T>
+template <template <typename> class ArrayType, typename datatype>
 class ScalerWriter : public AbstractWriter {
  private:
   std::string varname;
   // field data
-  const ArrayType<T> &Array;
+  const ArrayType<datatype> &Array;
   std::size_t Size;
 
  public:
-  ScalerWriter(std::string name, const ArrayType<T> &f) : varname(name), Array(f), Size(f.size()) {}
+  ScalerWriter(std::string name, const ArrayType<datatype> &f)
+      : varname(name), Array(f), Size(f.size()) {}
   void write(const std::string &fName) override {
     std::ofstream f(fName, std::ios::out | std::ios::app);
     std::string type;
-    // getVTKTypeString<T>(type);
+    // getVTKTypeString<datatype>(type);
     f << "<DataArray type=\""
       << "Float32"
       << "\" Name=\"" << varname << "\" "
@@ -229,20 +238,20 @@ class ScalerWriter : public AbstractWriter {
   void writeBinary(const std::string &fName) override {
     std::ofstream f(fName, std::ios::out | std::ios::app);
     std::string type;
-    getVTKTypeString<T>(type);
+    getVTKTypeString<datatype>(type);
     f << "<DataArray type=\"" << type << "\" Name=\"" << varname << "\" "
       << "format=\"binary\" encoding=\"base64\" "
       << "NumberOfComponents=\"" << 1 << "\">\n";
     f.close();
 
     std::ofstream fb(fName, std::ios::out | std::ios::app | std::ios::binary);
-    std::size_t binarySize = std::size_t(Size * sizeof(T));
+    std::size_t binarySize = std::size_t(Size * sizeof(datatype));
     // writes first number, which have to be the size(byte) of the following data
     Base64Encoder<unsigned int> sizeEncoder(fb, 1);
     unsigned int uintBinarySize = (unsigned int)binarySize;
     sizeEncoder.encode(&uintBinarySize, 1);
     // writes the data
-    Base64Encoder<T> Encoder(fb, Size);
+    Base64Encoder<datatype> Encoder(fb, Size);
     Encoder.encode(Array.getdata(), Size);
     fb.close();
 
@@ -252,31 +261,32 @@ class ScalerWriter : public AbstractWriter {
   }
 };
 
-template <typename T, unsigned int D>
+template <typename datatype, unsigned int D>
 class VectorWriter : public AbstractWriter {
  private:
   std::string varname;
   // field data
-  const GenericArray<Vector<T, D>> &Array;
+  const GenericArray<Vector<datatype, D>> &Array;
   std::size_t Size;
 
  public:
-  VectorWriter(std::string name, const GenericArray<Vector<T, D>> &f)
+  VectorWriter(std::string name, const GenericArray<Vector<datatype, D>> &f)
       : varname(name), Array(f), Size(f.size()) {}
   void write(const std::string &fName) override {
     std::ofstream f(fName, std::ios::out | std::ios::app);
     std::string type;
-    // getVTKTypeString<T>(type);
+    // getVTKTypeString<datatype>(type);
     f << "<DataArray type=\""
       << "Float32"
       << "\" Name=\"" << varname << "\" "
       << "NumberOfComponents=\"" << D << "\">\n";
     for (int i = 0; i < Size; ++i) {
       if constexpr (D == 2) {
-        f << static_cast<float>(Array[i][0]) << " " << static_cast<float>(Array[i][1]) << " ";
+        f << static_cast<float>(Array[i][0]) << " " << static_cast<float>(Array[i][1])
+          << " ";
       } else if constexpr (D == 3) {
-        f << static_cast<float>(Array[i][0]) << " " << static_cast<float>(Array[i][1]) << " "
-          << static_cast<float>(Array[i][2]) << " ";
+        f << static_cast<float>(Array[i][0]) << " " << static_cast<float>(Array[i][1])
+          << " " << static_cast<float>(Array[i][2]) << " ";
       }
     }
     f << "\n</DataArray>\n";
@@ -285,7 +295,7 @@ class VectorWriter : public AbstractWriter {
   void writeBinary(const std::string &fName) override {
     std::ofstream f(fName, std::ios::out | std::ios::app);
     std::string type;
-    getVTKTypeString<T>(type);
+    getVTKTypeString<datatype>(type);
     f << "<DataArray type=\"" << type << "\" Name=\"" << varname << "\" "
       << "format=\"binary\" encoding=\"base64\" "
       << "NumberOfComponents=\"" << D << "\">\n";
@@ -293,14 +303,14 @@ class VectorWriter : public AbstractWriter {
 
     std::ofstream fb(fName, std::ios::out | std::ios::app | std::ios::binary);
     std::size_t DSize = std::size_t(D * Size);
-    std::size_t binarySize = std::size_t(DSize * sizeof(T));
+    std::size_t binarySize = std::size_t(DSize * sizeof(datatype));
     // writes first number, which have to be the size(byte) of the following data
     Base64Encoder<unsigned int> sizeEncoder(fb, 1);
     unsigned int uintBinarySize = (unsigned int)binarySize;
     sizeEncoder.encode(&uintBinarySize, 1);
 
     // get data array for encoding
-    T *data = new T[DSize];
+    datatype *data = new datatype[DSize];
     if constexpr (D == 2 || D == 3) {
       int j = 0;
       for (int i = 0; i < Size; ++i) {
@@ -321,7 +331,7 @@ class VectorWriter : public AbstractWriter {
       }
     }
     // writes the data
-    Base64Encoder<T> Encoder(fb, DSize);
+    Base64Encoder<datatype> Encoder(fb, DSize);
     Encoder.encode(data, DSize);
     fb.close();
     delete[] data;
@@ -332,21 +342,21 @@ class VectorWriter : public AbstractWriter {
   }
 };
 
-template <template <typename> class ArrayType, typename T, unsigned int D>
+template <template <typename> class ArrayType, typename datatype, unsigned int D>
 class VectorSOAWriter : public AbstractWriter {
  private:
   std::string varname;
   // field data
-  const GenericField<ArrayType<T>, D> &Field;
+  const GenericField<ArrayType<datatype>, D> &Field;
   std::size_t Size;
 
  public:
-  VectorSOAWriter(std::string name, const GenericField<ArrayType<T>, D> &f)
+  VectorSOAWriter(std::string name, const GenericField<ArrayType<datatype>, D> &f)
       : varname(name), Field(f), Size(f.getField(0).size()) {}
   void write(const std::string &fName) override {
     std::ofstream f(fName, std::ios::out | std::ios::app);
     std::string type;
-    // getVTKTypeString<T>(type);
+    // getVTKTypeString<datatype>(type);
     f << "<DataArray type=\""
       << "Float32"
       << "\" Name=\"" << varname << "\" "
@@ -362,7 +372,7 @@ class VectorSOAWriter : public AbstractWriter {
   void writeBinary(const std::string &fName) override {
     std::ofstream f(fName, std::ios::out | std::ios::app);
     std::string type;
-    getVTKTypeString<T>(type);
+    getVTKTypeString<datatype>(type);
     f << "<DataArray type=\"" << type << "\" Name=\"" << varname << "\" "
       << "format=\"binary\" encoding=\"base64\" "
       << "NumberOfComponents=\"" << D << "\">\n";
@@ -370,14 +380,14 @@ class VectorSOAWriter : public AbstractWriter {
 
     std::ofstream fb(fName, std::ios::out | std::ios::app | std::ios::binary);
     std::size_t DSize = std::size_t(D * Size);
-    std::size_t binarySize = std::size_t(DSize * sizeof(T));
+    std::size_t binarySize = std::size_t(DSize * sizeof(datatype));
     // writes first number, which have to be the size(byte) of the following data
     Base64Encoder<unsigned int> sizeEncoder(fb, 1);
     unsigned int uintBinarySize = (unsigned int)binarySize;
     sizeEncoder.encode(&uintBinarySize, 1);
 
     // get data array for encoding
-    T *data = new T[DSize];
+    datatype *data = new datatype[DSize];
     int j = 0;
     for (int i = 0; i < Size; i += D) {
       for (unsigned int k = 0; k < D; ++k) {
@@ -386,7 +396,7 @@ class VectorSOAWriter : public AbstractWriter {
       j += D;
     }
     // writes the data
-    Base64Encoder<T> Encoder(fb, DSize);
+    Base64Encoder<datatype> Encoder(fb, DSize);
     Encoder.encode(data, DSize);
     fb.close();
     delete[] data;
@@ -417,7 +427,7 @@ class AbstWriterSet {
 };
 
 // manager of generating a single vti file
-template <typename T, unsigned int D>
+template <typename T, unsigned int Dim>
 class vtiManager {
  private:
   std::string _dirname = "./vtkoutput/vtidata/";
@@ -426,9 +436,9 @@ class vtiManager {
 
   // image info
   T VoxelSize;
-  Vector<T, D> _Min;
-  // _Ext = Mesh - Vector<int, D>{1}
-  Vector<int, D> _Ext;
+  Vector<T, Dim> _Min;
+  // _Ext = Mesh - Vector<int, Dim>{1}
+  Vector<int, Dim> _Ext;
   // overlap
   int _Overlap;
 
@@ -439,17 +449,20 @@ class vtiManager {
   std::vector<AbstractWriter *> _writers;
 
  public:
-  vtiManager(std::string filename, int id, T voxsize, Vector<T, D> min, Vector<int, D> ext,
-             int Overlap)
+  vtiManager(std::string filename, int id, T voxsize, Vector<T, Dim> min,
+             Vector<int, Dim> ext, int Overlap)
       : _filename(filename), _id(id), VoxelSize(voxsize), _Overlap(Overlap),
-        _Min(min + Vector<T, D>{Overlap * voxsize}), _Ext(ext - Vector<int, D>{2 * Overlap}) {
+        _Min(min + Vector<T, Dim>{Overlap * voxsize}),
+        _Ext(ext - Vector<int, Dim>{2 * Overlap}) {
+          static_assert(Dim == 2 || Dim == 3, "Error: Dimension is not supported!");
     DirCreator::MPI_Create_Dir(_dirname);
   }
   // extended block should be used
-  vtiManager(std::string filename, int id, const BasicBlock<T, D> &block, int Overlap)
+  vtiManager(std::string filename, int id, const BasicBlock<T, Dim> &block, int Overlap)
       : _filename(filename), _id(id), VoxelSize(block.getVoxelSize()), _Overlap(Overlap),
-        _Min(block.getMinCenter() + Vector<T, D>{Overlap * block.getVoxelSize()}),
-        _Ext(block.getMesh() - Vector<int, D>{1} - Vector<int, D>{2 * Overlap}) {
+        _Min(block.getMinCenter() + Vector<T, Dim>{Overlap * block.getVoxelSize()}),
+        _Ext(block.getMesh() - Vector<int, Dim>{1} - Vector<int, Dim>{2 * Overlap}) {
+          static_assert(Dim == 2 || Dim == 3, "Error: Dimension is not supported!");
     DirCreator::MPI_Create_Dir(_dirname);
   }
 
@@ -501,18 +514,20 @@ class vtiManager {
     f << "<?xml version=\"1.0\"?>\n";
     f << "<VTKFile type=\"ImageData\" version=\"0.1\" "
       << "byte_order=\"LittleEndian\">\n";
-    if constexpr (D == 2) {
-      f << "<ImageData WholeExtent=\"" << 0 << " " << _Ext[0] << " " << 0 << " " << _Ext[1] << " "
-        << 0 << " " << 0 << "\" Origin=\"" << _Min[0] << " " << _Min[1] << " " << 0
-        << "\" Spacing=\"" << VoxelSize << " " << VoxelSize << " " << VoxelSize << "\">\n";
-      f << "<Piece Extent=\"" << 0 << " " << _Ext[0] << " " << 0 << " " << _Ext[1] << " " << 0
-        << " " << 0 << "\">\n";
-    } else if constexpr (D == 3) {
-      f << "<ImageData WholeExtent=\"" << 0 << " " << _Ext[0] << " " << 0 << " " << _Ext[1] << " "
-        << 0 << " " << _Ext[2] << "\" Origin=\"" << _Min[0] << " " << _Min[1] << " " << _Min[2]
-        << "\" Spacing=\"" << VoxelSize << " " << VoxelSize << " " << VoxelSize << "\">\n";
-      f << "<Piece Extent=\"" << 0 << " " << _Ext[0] << " " << 0 << " " << _Ext[1] << " " << 0
-        << " " << _Ext[2] << "\">\n";
+    if constexpr (Dim == 2) {
+      f << "<ImageData WholeExtent=\"" << 0 << " " << _Ext[0] << " " << 0 << " "
+        << _Ext[1] << " " << 0 << " " << 0 << "\" Origin=\"" << _Min[0] << " " << _Min[1]
+        << " " << 0 << "\" Spacing=\"" << VoxelSize << " " << VoxelSize << " "
+        << VoxelSize << "\">\n";
+      f << "<Piece Extent=\"" << 0 << " " << _Ext[0] << " " << 0 << " " << _Ext[1] << " "
+        << 0 << " " << 0 << "\">\n";
+    } else if constexpr (Dim == 3) {
+      f << "<ImageData WholeExtent=\"" << 0 << " " << _Ext[0] << " " << 0 << " "
+        << _Ext[1] << " " << 0 << " " << _Ext[2] << "\" Origin=\"" << _Min[0] << " "
+        << _Min[1] << " " << _Min[2] << "\" Spacing=\"" << VoxelSize << " " << VoxelSize
+        << " " << VoxelSize << "\">\n";
+      f << "<Piece Extent=\"" << 0 << " " << _Ext[0] << " " << 0 << " " << _Ext[1] << " "
+        << 0 << " " << _Ext[2] << "\">\n";
     }
     f << "<PointData>\n";
     f.close();
@@ -527,23 +542,25 @@ class vtiManager {
   }
 };
 
-template <template <typename> class ArrayType, typename T, unsigned int D>
+template <template <typename> class ArrayType, typename datatype, unsigned int Dim>
 class ScalerWriter : public AbstractWriter {
  private:
   std::string varname;
   // field data
-  const ArrayType<T> &Array;
+  const ArrayType<datatype> &Array;
   // mesh info
-  Vector<int, D> Mesh;
+  Vector<int, Dim> Mesh;
 
  public:
-  ScalerWriter(std::string name, const ArrayType<T> &f, Vector<int, D> mesh)
-      : varname(name), Array(f), Mesh(mesh) {}
+  ScalerWriter(std::string name, const ArrayType<datatype> &f, Vector<int, Dim> mesh)
+      : varname(name), Array(f), Mesh(mesh) {
+    static_assert(Dim == 2 || Dim == 3, "Error: Dimension is not supported!");
+  }
 
   void writeBinary(const std::string &fName, int Overlap) override {
     std::ofstream f(fName, std::ios::out | std::ios::app);
     std::string type;
-    getVTKTypeString<T>(type);
+    getVTKTypeString<datatype>(type);
     f << "<DataArray type=\"" << type << "\" Name=\"" << varname << "\" "
       << "format=\"binary\" encoding=\"base64\" "
       << "NumberOfComponents=\"" << 1 << "\">\n";
@@ -551,42 +568,45 @@ class ScalerWriter : public AbstractWriter {
 
     // get submesh size
     std::size_t Size;
-    Vector<int, D> SubMesh = Mesh - Vector<int, D>{2 * Overlap};
-    if constexpr (D == 2) {
+    Vector<int, Dim> SubMesh = Mesh - Vector<int, Dim>{2 * Overlap};
+    if constexpr (Dim == 2) {
       Size = SubMesh[0] * SubMesh[1];
-    } else if constexpr (D == 3) {
+    } else if constexpr (Dim == 3) {
       Size = SubMesh[0] * SubMesh[1] * SubMesh[2];
     }
     // get data array for encoding
-    T *data = new T[Size];
+    datatype *data = new datatype[Size];
     std::size_t id = 0;
-    if constexpr (D == 2) {
+    if constexpr (Dim == 2) {
       for (int j = Overlap; j < Mesh[1] - Overlap; ++j) {
         // copy data from {Array[Overlap][j] to Array[Mesh[0]-Overlap-1][j]} to data
         std::size_t start = Overlap + j * Mesh[0];
-        std::copy(Array.getdataPtr(start), Array.getdataPtr(start + SubMesh[0]), data + id);
+        std::copy(Array.getdataPtr(start), Array.getdataPtr(start + SubMesh[0]),
+                  data + id);
         id += SubMesh[0];
       }
-    } else if constexpr (D == 3) {
+    } else if constexpr (Dim == 3) {
       int XY = Mesh[0] * Mesh[1];
       for (int k = Overlap; k < Mesh[2] - Overlap; ++k) {
         for (int j = Overlap; j < Mesh[1] - Overlap; ++j) {
-          // copy data from {Array[Overlap][j][k] to Array[Mesh[0]-Overlap-1][j][k]} to data
+          // copy data from {Array[Overlap][j][k] to Array[Mesh[0]-Overlap-1][j][k]} to
+          // data
           int start = Overlap + j * Mesh[0] + k * XY;
-          std::copy(Array.getdataPtr(start), Array.getdataPtr(start + SubMesh[0]), data + id);
+          std::copy(Array.getdataPtr(start), Array.getdataPtr(start + SubMesh[0]),
+                    data + id);
           id += SubMesh[0];
         }
       }
     }
 
     std::ofstream fb(fName, std::ios::out | std::ios::app | std::ios::binary);
-    std::size_t binarySize = std::size_t(Size * sizeof(T));
+    std::size_t binarySize = std::size_t(Size * sizeof(datatype));
     // writes first number, which have to be the size(byte) of the following data
     Base64Encoder<unsigned int> sizeEncoder(fb, 1);
     unsigned int uintBinarySize = (unsigned int)binarySize;
     sizeEncoder.encode(&uintBinarySize, 1);
     // writes the data
-    Base64Encoder<T> Encoder(fb, Size);
+    Base64Encoder<datatype> Encoder(fb, Size);
     Encoder.encode(data, Size);
     fb.close();
     delete[] data;
@@ -597,70 +617,73 @@ class ScalerWriter : public AbstractWriter {
   }
 };
 
-template <typename T, unsigned int D, unsigned int arrD>
+template <typename datatype, unsigned int Dim, unsigned int D>
 class VectorWriter : public AbstractWriter {
  private:
   std::string varname;
   // field data
-  const GenericArray<Vector<T, arrD>> &Array;
+  const GenericArray<Vector<datatype, D>> &Array;
   // mesh info
-  Vector<int, D> Mesh;
+  Vector<int, Dim> Mesh;
 
  public:
-  VectorWriter(std::string name, const GenericArray<Vector<T, arrD>> &f, Vector<int, D> mesh)
-      : varname(name), Array(f), Mesh(mesh) {}
+  VectorWriter(std::string name, const GenericArray<Vector<datatype, D>> &f,
+               Vector<int, Dim> mesh)
+      : varname(name), Array(f), Mesh(mesh) {
+    static_assert(Dim == 2 || Dim == 3, "Error: Dimension is not supported!");
+  }
 
   void writeBinary(const std::string &fName, int Overlap) override {
     std::ofstream f(fName, std::ios::out | std::ios::app);
     std::string type;
-    getVTKTypeString<T>(type);
+    getVTKTypeString<datatype>(type);
     f << "<DataArray type=\"" << type << "\" Name=\"" << varname << "\" "
       << "format=\"binary\" encoding=\"base64\" "
-      << "NumberOfComponents=\"" << arrD << "\">\n";
+      << "NumberOfComponents=\"" << D << "\">\n";
     f.close();
 
     // get submesh size
     std::size_t Size;
-    Vector<int, D> SubMesh = Mesh - Vector<int, D>{2 * Overlap};
-    if constexpr (D == 2) {
+    Vector<int, Dim> SubMesh = Mesh - Vector<int, Dim>{2 * Overlap};
+    if constexpr (Dim == 2) {
       Size = SubMesh[0] * SubMesh[1];
-    } else if constexpr (D == 3) {
+    } else if constexpr (Dim == 3) {
       Size = SubMesh[0] * SubMesh[1] * SubMesh[2];
     }
-    std::size_t arrDSize = std::size_t(arrD * Size);
+    std::size_t arrDSize = std::size_t(D * Size);
 
     // get data array for encoding
-    T *data = new T[arrDSize];
+    datatype *data = new datatype[arrDSize];
     std::size_t id = 0;
-    if constexpr (D == 2) {
+    if constexpr (Dim == 2) {
       for (int j = Overlap; j < Mesh[1] - Overlap; ++j) {
         for (int i = Overlap; i < Mesh[0] - Overlap; ++i) {
           std::size_t arrId = i + j * Mesh[0];
-          std::copy(Array[arrId].data(), Array[arrId].data() + arrD, data + id);
-          id += arrD;
+          std::copy(Array[arrId].data(), Array[arrId].data() + D, data + id);
+          id += D;
         }
       }
-    } else if constexpr (D == 3) {
+    } else if constexpr (Dim == 3) {
       int XY = Mesh[0] * Mesh[1];
       for (int k = Overlap; k < Mesh[2] - Overlap; ++k) {
         for (int j = Overlap; j < Mesh[1] - Overlap; ++j) {
           for (int i = Overlap; i < Mesh[0] - Overlap; ++i) {
             std::size_t arrId = i + j * Mesh[0] + k * XY;
-            std::copy(Array[arrId].data(), Array[arrId].data() + arrD, data + id);
-            id += arrD;
+            std::copy(Array[arrId].data(), Array[arrId].data() + D, data + id);
+            id += D;
           }
         }
       }
     }
 
     std::ofstream fb(fName, std::ios::out | std::ios::app | std::ios::binary);
-    std::size_t binarySize = std::size_t(arrDSize * sizeof(T));
+    std::size_t binarySize = std::size_t(arrDSize * sizeof(datatype));
     // writes first number, which have to be the size(byte) of the following data
     Base64Encoder<unsigned int> sizeEncoder(fb, 1);
     unsigned int uintBinarySize = (unsigned int)binarySize;
     sizeEncoder.encode(&uintBinarySize, 1);
     // writes the data
-    Base64Encoder<T> Encoder(fb, arrDSize);
+    Base64Encoder<datatype> Encoder(fb, arrDSize);
     Encoder.encode(data, arrDSize);
     fb.close();
     delete[] data;
@@ -671,74 +694,76 @@ class VectorWriter : public AbstractWriter {
   }
 };
 
-template <template <typename> class ArrayType, typename T, unsigned int D, unsigned int arrD>
+template <template <typename> class ArrayType, typename datatype, unsigned int Dim,
+          unsigned int D>
 class VectorSOAWriter : public AbstractWriter {
  private:
   std::string varname;
   // field data
-  const GenericField<ArrayType<T>, arrD> &Field;
+  const GenericField<ArrayType<datatype>, D> &Field;
   // mesh info
-  Vector<int, D> Mesh;
+  Vector<int, Dim> Mesh;
 
  public:
-  VectorSOAWriter(std::string name, const GenericField<ArrayType<T>, arrD> &f, Vector<int, D> mesh)
+  VectorSOAWriter(std::string name, const GenericField<ArrayType<datatype>, D> &f,
+                  Vector<int, Dim> mesh)
       : varname(name), Field(f), Mesh(mesh) {}
 
   void writeBinary(const std::string &fName, int Overlap) override {
     std::ofstream f(fName, std::ios::out | std::ios::app);
     std::string type;
-    getVTKTypeString<T>(type);
+    getVTKTypeString<datatype>(type);
     f << "<DataArray type=\"" << type << "\" Name=\"" << varname << "\" "
       << "format=\"binary\" encoding=\"base64\" "
-      << "NumberOfComponents=\"" << arrD << "\">\n";
+      << "NumberOfComponents=\"" << D << "\">\n";
     f.close();
 
     // get submesh size
     std::size_t Size;
-    Vector<int, D> SubMesh = Mesh - Vector<int, D>{2 * Overlap};
-    if constexpr (D == 2) {
+    Vector<int, Dim> SubMesh = Mesh - Vector<int, Dim>{2 * Overlap};
+    if constexpr (Dim == 2) {
       Size = SubMesh[0] * SubMesh[1];
-    } else if constexpr (D == 3) {
+    } else if constexpr (Dim == 3) {
       Size = SubMesh[0] * SubMesh[1] * SubMesh[2];
     }
-    std::size_t arrDSize = std::size_t(arrD * Size);
+    std::size_t arrDSize = std::size_t(D * Size);
 
     // get data array for encoding
-    T *data = new T[arrDSize];
+    datatype *data = new datatype[arrDSize];
     std::size_t id = 0;
-    if constexpr (D == 2) {
+    if constexpr (Dim == 2) {
       for (int j = Overlap; j < Mesh[1] - Overlap; ++j) {
         for (int i = Overlap; i < Mesh[0] - Overlap; ++i) {
           std::size_t arrId = i + j * Mesh[0];
-          for (unsigned int vecid = 0; vecid < arrD; ++vecid) {
+          for (unsigned int vecid = 0; vecid < D; ++vecid) {
             data[id + vecid] = Field.get(arrId, vecid);
           }
-          id += arrD;
+          id += D;
         }
       }
-    } else if constexpr (D == 3) {
+    } else if constexpr (Dim == 3) {
       int XY = Mesh[0] * Mesh[1];
       for (int k = Overlap; k < Mesh[2] - Overlap; ++k) {
         for (int j = Overlap; j < Mesh[1] - Overlap; ++j) {
           for (int i = Overlap; i < Mesh[0] - Overlap; ++i) {
             std::size_t arrId = i + j * Mesh[0] + k * XY;
-            for (unsigned int vecid = 0; vecid < arrD; ++vecid) {
+            for (unsigned int vecid = 0; vecid < D; ++vecid) {
               data[id + vecid] = Field.get(arrId, vecid);
             }
-            id += arrD;
+            id += D;
           }
         }
       }
     }
 
     std::ofstream fb(fName, std::ios::out | std::ios::app | std::ios::binary);
-    std::size_t binarySize = std::size_t(arrDSize * sizeof(T));
+    std::size_t binarySize = std::size_t(arrDSize * sizeof(datatype));
     // writes first number, which have to be the size(byte) of the following data
     Base64Encoder<unsigned int> sizeEncoder(fb, 1);
     unsigned int uintBinarySize = (unsigned int)binarySize;
     sizeEncoder.encode(&uintBinarySize, 1);
 
-    Base64Encoder<T> Encoder(fb, arrDSize);
+    Base64Encoder<datatype> Encoder(fb, arrDSize);
     Encoder.encode(data, arrDSize);
     fb.close();
     delete[] data;

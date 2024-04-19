@@ -313,7 +313,7 @@ int main() {
   Printer::Print_BigBanner(std::string("Calculation Complete!"));
   MainLoopTimer.Print_MainLoopPerformance(Geo0.getVoxelsNum());
   Printer::Print("Total PhysTime: ", BaseConv.getPhysTime(MainLoopTimer()));
-  Printer::End();
+  Printer::Endl();
   return 0;
 }
 
