@@ -422,30 +422,17 @@ class BlockZhuStefanescu2DManager {
     }
   }
 
-  void CAFieldDataTransfer(BlockGeometryHelper2D<T>& GeoHelper) {
+  void CAFieldDataInit(BlockGeometryHelper2D<T>& GeoHelper) {
     // data transfer
-    StateFM.FieldDataAverTransfer(GeoHelper, CAType::Boundary);
-    FsFM.FieldDataTransfer(GeoHelper);
-    CSolidsFM.FieldDataTransfer(GeoHelper);
-    ExcessCFM.FieldDataTransfer(GeoHelper);
+    // StateFM.InitCopy(GeoHelper, CAType::Boundary);
+    FsFM.InitAndComm(GeoHelper);
+    CSolidsFM.InitAndComm(GeoHelper);
+    ExcessCFM.InitAndComm(GeoHelper);
 
     // field init without data transfer
-    DeltaFsFM.Init(GeoHelper, T(0));
-    CurvFM.Init(GeoHelper, T(0));
-    PreExcessCFM.Init(GeoHelper, T(0));
-  }
-
-  void CAFieldDataInitComm(){
-    StateFM.InitComm();
-    StateFM.NormalCommunicate();
-
-    FsFM.InitAndCommAll();
-    CSolidsFM.InitAndCommAll();
-    ExcessCFM.InitAndCommAll();
-
-    DeltaFsFM.InitAndCommAll();
-    CurvFM.InitAndCommAll();
-    PreExcessCFM.InitAndCommAll();
+    DeltaFsFM.Init(T(0));
+    CurvFM.Init(T(0));
+    PreExcessCFM.Init(T(0));
   }
 
   template <typename LatSet0, typename LatSet1>

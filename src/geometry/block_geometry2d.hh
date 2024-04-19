@@ -432,39 +432,30 @@ BlockGeometryHelper2D<T>::BlockGeometryHelper2D(int Nx, int Ny, int blocklen,
     : BasicBlock<T, 2>(voxelSize, AABBs.getExtended(Vector<T, 2>{voxelSize * ext}),
                        AABB<int, 2>(Vector<int, 2>{0}, Vector<int, 2>{Nx + 1, Ny + 1})),
       _BaseBlock(voxelSize, AABBs, AABB<int, 2>(Vector<int, 2>{1}, Vector<int, 2>{Nx, Ny})),
-      BlockLen(blocklen), Ext(ext), _MaxLevel(std::uint8_t(0)) {
+      BlockLen(blocklen), Ext(ext), _MaxLevel(std::uint8_t(0)), _Exchanged(true) {
+  if (BlockLen < 4) {
+    std::cerr << "BlockGeometryHelper2D<T>, BlockLen < 4" << std::endl;
+  }
   CellsNx = _BaseBlock.getNx() / BlockLen;
   CellsNy = _BaseBlock.getNy() / BlockLen;
   CellsN = CellsNx * CellsNy;
-  //
-  DivideAABBCells();
+
   CreateBlockCells();
 }
 
 template <typename T>
-void BlockGeometryHelper2D<T>::DivideAABBCells() {
-  _AABBCells.clear();
-  // check size
-  if (CellsN > 10000) {
-    std::cerr << "BlockGeometryHelper2D<T>, CellsNx * CellsNy > 10000" << std::endl;
-  }
-  _AABBCells.reserve(CellsN);
-  _BaseBlock.getIdxBlock().divide(CellsNx, CellsNy, _AABBCells);
-  // check size
-  if (_AABBCells.size() != CellsN) {
-    std::cerr << "BlockGeometryHelper2D<T>, _AABBCells.size() != CellsN" << std::endl;
-  }
-}
-
-template <typename T>
 void BlockGeometryHelper2D<T>::CreateBlockCells() {
-  _BlockCells.clear();
+  // buffer vector to store cell aabbs
+  std::vector<AABB<int, 2>> AABBCells;
+  AABBCells.reserve(CellsN);
+  // divide base block into cell aabbs
+  _BaseBlock.getIdxBlock().divide(CellsNx, CellsNy, AABBCells);
+  // create cell blocks from cell aabbs
   _BlockCells.reserve(CellsN);
-  // create blocks
   int blockid = 0;
   T voxsize = BasicBlock<T, 2>::getVoxelSize();
   Vector<T, 2> _Min = BasicBlock<T, 2>::_min;
-  for (const AABB<int, 2> &aabbcell : _AABBCells) {
+  for (const AABB<int, 2> &aabbcell : AABBCells) {
     Vector<T, 2> MIN = aabbcell.getMin() * voxsize + _Min;
     Vector<T, 2> MAX = (aabbcell.getMax() + Vector<T, 2>{T(1)}) * voxsize + _Min;
     AABB<T, 2> aabb(MIN, MAX);
@@ -473,6 +464,7 @@ void BlockGeometryHelper2D<T>::CreateBlockCells() {
     ++blockid;
   }
 }
+
 template <typename T>
 void BlockGeometryHelper2D<T>::UpdateMaxLevel() {
   _MaxLevel = std::uint8_t(0);
@@ -483,7 +475,11 @@ void BlockGeometryHelper2D<T>::UpdateMaxLevel() {
 
 template <typename T>
 void BlockGeometryHelper2D<T>::CreateBlocks() {
-  _BasicBlocks.clear();
+  // create new blocks on relatively older blocks
+  std::vector<BasicBlock<T, 2>>& BasicBlocks = getOldBasicBlocks();
+  BasicBlocks.clear();
+  // now old blocks become new blocks
+  _Exchanged = !_Exchanged;
   // get max refine level
   // int maxlevel = 0;
   // for (const BasicBlock<T, 2>& block : _BlockCells) {
@@ -539,7 +535,7 @@ void BlockGeometryHelper2D<T>::CreateBlocks() {
       int ratio = static_cast<int>(std::pow(2, static_cast<int>(level)));
       Vector<T, 2> MAX = Ext * voxsize * ratio + MIN;
       AABB<T, 2> block(MIN, MAX);
-      _BasicBlocks.emplace_back(level, voxsize, blockid, block, idxblock, NewMesh);
+      BasicBlocks.emplace_back(level, voxsize, blockid, block, idxblock, NewMesh);
       blockid++;
       // set visited
       for (int jj = 0; jj < Ny; ++jj) {
@@ -569,13 +565,15 @@ void BlockGeometryHelper2D<T>::AdaptiveOptimization(int OptProcNum, int MaxProcN
   if (MaxProcNum == -1) {
     MaxProcNum = 2 * OptProcNum;
   }
+  // get new basic blocks
+  std::vector<BasicBlock<T, 2>>& BasicBlocks = getBasicBlocks();
   // vector store stddev of each optimization scheme
   std::vector<T> StdDevs;
-  int minProcNum = std::min(OptProcNum, static_cast<int>(_BasicBlocks.size()));
-  int maxProcNum = std::max(MaxProcNum, static_cast<int>(_BasicBlocks.size()));
+  int minProcNum = std::min(OptProcNum, static_cast<int>(BasicBlocks.size()));
+  int maxProcNum = std::max(MaxProcNum, static_cast<int>(BasicBlocks.size()));
   for (int i = minProcNum; i <= maxProcNum; ++i) {
-    // buffer vector copied from _BasicBlocks
-    std::vector<BasicBlock<T, 2>> Blocks = _BasicBlocks;
+    // buffer vector copied from BasicBlocks
+    std::vector<BasicBlock<T, 2>> Blocks = BasicBlocks;
     Optimize(Blocks, i, enforce);
     StdDevs.push_back(ComputeStdDev(Blocks));
   }
@@ -603,12 +601,12 @@ void BlockGeometryHelper2D<T>::AdaptiveOptimization(int OptProcNum, int MaxProcN
   }
   // apply the best scheme
   Optimize(bestScheme, enforce);
-  std::cout << "Optimization result: " << _BasicBlocks.size() << " Blocks with stdDev: " << minStdDev << std::endl;
+  std::cout << "Optimization result: " << BasicBlocks.size() << " Blocks with stdDev: " << minStdDev << std::endl;
 }
 
 template <typename T>
 void BlockGeometryHelper2D<T>::Optimize(int ProcessNum, bool enforce) {
-  Optimize(_BasicBlocks, ProcessNum, enforce);
+  Optimize(getBasicBlocks(), ProcessNum, enforce);
 }
 
 template <typename T>
@@ -671,7 +669,7 @@ void BlockGeometryHelper2D<T>::Optimize(std::vector<BasicBlock<T, 2>> &Blocks, i
 
 template <typename T>
 T BlockGeometryHelper2D<T>::ComputeStdDev() const {
-  return ComputeStdDev(_BasicBlocks);
+  return ComputeStdDev(getBasicBlocks());
 }
 
 template <typename T>

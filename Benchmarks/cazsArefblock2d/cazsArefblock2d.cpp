@@ -355,37 +355,30 @@ int main() {
       if (SODynLatHelper.WillRefineOrCoarsen()) {
         SODynLatHelper.GeoRefineOrCoarsen(Thread_Num);
 
-        // field data transfer
-        VelocityFM.FieldDataTransfer(GeoHelper);
-        SODynLatHelper.PopFieldDataTransfer();
-        NSDynLatHelper.PopFieldDataTransfer();
-
-        CA.CAFieldDataTransfer(GeoHelper);
-
         // Geo Init
         Geo.Init(GeoHelper);
 
-        VelocityFM.InitAndCommAll();
-        SODynLatHelper.PopFieldDataInitComm();
-        NSDynLatHelper.PopFieldDataInitComm();
-
-        CA.CAFieldDataInitComm();
-
-        NSLattice.Init();
-        SOLattice.Init();
-        CA.Init(SOLattice, THLattice);
-
         // field reconstruction
-        FlagFM.Init(GeoHelper, voidFlag);
-        FlagFM.InitComm();
+        FlagFM.Init(voidFlag);
         FlagFM.forEach(cavity, [&](FlagField& field, std::size_t id) {
           field.SetField(id, AABBFlag);
         });
         FlagFM.template SetupBoundary<LatSet0>(cavity, BouncebackFlag);
 
-        CA.getStateFM().forEach(FlagFM, AABBFlag, [&](auto& field, std::size_t id) {
+        CA.getStateFM().InitCopy(GeoHelper, CA::CAType::Boundary, FlagFM, AABBFlag, [&](auto& field, std::size_t id) {
           field.SetField(id, CA::CAType::Fluid);
         });
+        CA.getStateFM().NormalCommunicate();
+        // field data transfer
+        VelocityFM.InitAndComm(GeoHelper);
+        SODynLatHelper.PopFieldInit();
+        NSDynLatHelper.PopFieldInit();
+
+        CA.CAFieldDataInit(GeoHelper);
+
+        NSLattice.Init();
+        SOLattice.Init();
+        CA.Init(SOLattice, THLattice);
 
         // Bcs init
         NS_BB.Init();

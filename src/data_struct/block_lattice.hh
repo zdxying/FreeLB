@@ -724,7 +724,7 @@ void DynamicBlockLatticeHelper2D<T, LatSet>::GeoRefineOrCoarsen(int OptProcNum,
                                                                  bool enforce) {
   // post refine
   BlockGeoHelper.PostRefine();
-  // update _BasicBlocks in GeoHelper
+  // update BasicBlocks in GeoHelper
   BlockGeoHelper.CreateBlocks();
   BlockGeoHelper.AdaptiveOptimization(OptProcNum, MaxProcNum, enforce);
 
@@ -739,12 +739,12 @@ void DynamicBlockLatticeHelper2D<T, LatSet>::GeoRefineOrCoarsen(int OptProcNum,
 
 
 template <typename T, typename LatSet>
-void DynamicBlockLatticeHelper2D<T, LatSet>::PopFieldDataTransfer() {
+void DynamicBlockLatticeHelper2D<T, LatSet>::PopFieldInit() {
   // rho field data transfer could be done here
-  BlockLatMan.getRhoFM().FieldDataTransfer(BlockGeoHelper);
+  BlockLatMan.getRhoFM().InitAndComm(BlockGeoHelper);
   // pop field data, this assumes that other fields like rho and velocity have been
   // transfered
-  BlockLatMan.getPopsFM().FieldDataTransfer(BlockGeoHelper);
+  BlockLatMan.getPopsFM().Init(BlockGeoHelper);
   // now pops field data is transferred, but conversion of distribution function
   // between blocks of different refinement levels is not done yet
 #pragma omp parallel for num_threads(Thread_Num)
@@ -757,13 +757,14 @@ void DynamicBlockLatticeHelper2D<T, LatSet>::PopFieldDataTransfer() {
     const BlockField<VectorFieldAOS<T, LatSet::d>, T, LatSet::d>& VelocityField =
       BlockLatMan.getVelocityFM().getBlockField(inewblock);
 
-    const BasicBlock<T, 2>& newbaseblock = BlockGeoHelper.getBasicBlock(inewblock);
-    const BasicBlock<T, 2>& newblock = PopsField.getBlock();
+    const BasicBlock<T, 2>& newblock = BlockGeo.getBlock(inewblock);
+    const BasicBlock<T, 2>& newbaseblock = BlockGeo.getBlock(inewblock).getBaseBlock();
     std::uint8_t Level = newblock.getLevel();
     // find overlapped old block field
     for (int iblock = 0; iblock < BlockGeo.getBlockNum(); ++iblock) {
-      const BasicBlock<T, 2>& block = BlockGeo.getBlock(iblock);
-      const BasicBlock<T, 2>& baseblock = BlockGeo.getBlock(iblock).getBaseBlock();
+      const BasicBlock<T, 2>& baseblock = BlockGeoHelper.getOldBasicBlock(iblock);
+      int overlap = (baseblock.getLevel() != std::uint8_t(0)) ? 2 : 1;
+      const BasicBlock<T, 2>& block = baseblock.getExtBlock(overlap);
       if (isOverlapped(newbaseblock, baseblock)) {
         // get omega
         T omega = BlockLatMan.getBlockLat(iblock).getOmega();
@@ -779,12 +780,7 @@ void DynamicBlockLatticeHelper2D<T, LatSet>::PopFieldDataTransfer() {
       }
     }
   }
-}
-
-template <typename T, typename LatSet>
-void DynamicBlockLatticeHelper2D<T, LatSet>::PopFieldDataInitComm() {
-  BlockLatMan.getRhoFM().InitAndCommAll();
-  BlockLatMan.getPopsFM().InitAndCommAll();
+  BlockLatMan.getPopsFM().CommunicateAll();
 }
 
 template <typename T, typename LatSet>

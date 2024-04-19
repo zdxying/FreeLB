@@ -366,9 +366,7 @@ class DynamicBlockLatticeHelper2D {
   // pop date transfer between blocks with different level should be treated separately
   // other field data like rho and velo transfer should use Init() in BlockFieldManager
   // you should transfer pop data after other field data hs been transferred
-  void PopFieldDataTransfer();
-  // init comm and comm
-  void PopFieldDataInitComm();
+  void PopFieldInit();
 
 
   void PopConversionFineToCoarse(const ScalerField<T>& RhoF,
