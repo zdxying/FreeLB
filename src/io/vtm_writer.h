@@ -37,8 +37,10 @@ class vtmWriter {
   std::string _filename;
   std::vector<vtiwriter::vtiManager<T, D>> _vtiwriters;
 
+  BlockGeometry<T, D>& BlockGeo;
+
  public:
-  vtmWriter(std::string filename, BlockGeometry<T, D>& blockgeo) : _filename(filename) {
+  vtmWriter(std::string filename, BlockGeometry<T, D>& blockgeo) : _filename(filename), BlockGeo(blockgeo) {
     DirCreator::Create_Dir(_dirname);
     DirCreator::Create_Dir(_vtidirname);
     create_vtiwriters(blockgeo);
@@ -57,9 +59,9 @@ class vtmWriter {
     create_vtiwriter(block);
   }
 
-  void Init(BlockGeometry<T, D>& blockgeo) {
+  void Init() {
     _vtiwriters.clear();
-    create_vtiwriters(blockgeo);
+    create_vtiwriters(BlockGeo);
   }
 
   void create_vtiwriters(BlockGeometry<T, D>& blockgeo) {

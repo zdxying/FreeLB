@@ -245,7 +245,7 @@ int main() {
   vtkWriter::FieldScalerWriter<T> GradNormRho("GradNormRho",
                                               SODynLatHelper.getMaxGradNorm2s().data(),
                                               SODynLatHelper.getMaxGradNorm2s().size());
-  vtkStruPointsWriter<T, 2> GradNormRhoWriter("GradNormRho", Cell_Len * BlockCellNx,
+  vtkStruPointsWriter<T, 2> GradNormRhoWriter("GradNormRho", Cell_Len * Ni / BlockCellNx,
                                               Vector<T, 2>{}, GeoHelper.getCellsNx(),
                                               GeoHelper.getCellsNy());
   GradNormRhoWriter.addtoWriteList(&GradNormRho);
@@ -289,10 +289,11 @@ int main() {
   Force.AddSource(THLattice);
 
   // writer
-  vtmno::ScalerWriter CWriter("Rho", SOLattice.getRhoFM());
+  vtmno::ScalerWriter CWriter("Conc", SOLattice.getRhoFM());
+  // vtmno::ScalerWriter TWriter("Temp", THLattice.getRhoFM());
   vtmno::ScalerWriter StateWriter("State", CA.getStateFM());
-  vtmno::VectorWriter VecWriter("VelocityFM", VelocityFM);
-  vtmno::vtmWriter<T, 2> MainWriter("cavityblock2d", Geo, 1);
+  vtmno::VectorWriter VecWriter("Velocity", VelocityFM);
+  vtmno::vtmWriter<T, 2> MainWriter("cazsAMR2d", Geo, 1);
   MainWriter.addWriterSet(&CWriter, &StateWriter, &VecWriter);
 
   /*count and timer*/
@@ -310,7 +311,12 @@ int main() {
     SOLattice.UpdateRho_Source(MainLoopTimer(), FI_Flag, CA.getStateFM(),
                                CA.getExcessCFM());
 
+    try {
     CA.Apply_SimpleCapture();
+    } catch (const std::runtime_error& e) {
+      std::cerr << "At MainStep: "<< MainLoopTimer() << ", Caught exception: " << e.what() << std::endl;
+      goto fianloutput;
+    }
 
     Force.GetBuoyancy(MainLoopTimer(), FI_Flag, CA.getStateFM());
 
@@ -369,6 +375,10 @@ int main() {
           field.SetField(id, CA::CAType::Fluid);
         });
         CA.getStateFM().NormalCommunicate();
+
+        THLattice.getRhoFM().Init(TempConv.getLatRhoInit());
+        THLattice.getPopsFM().Init();
+        
         // field data transfer
         VelocityFM.InitAndComm(GeoHelper);
         SODynLatHelper.PopFieldInit();
@@ -378,6 +388,7 @@ int main() {
 
         NSLattice.Init();
         SOLattice.Init();
+        THLattice.Init();
         CA.Init(SOLattice, THLattice);
         Force.Init();
 
@@ -391,6 +402,7 @@ int main() {
         // GradNormRhoWVTI.WriteBinary(MainLoopTimer());
 
         CWriter.Init(SOLattice.getRhoFM());
+        // TWriter.Init(THLattice.getRhoFM());
         StateWriter.Init(CA.getStateFM());
         VecWriter.Init(VelocityFM);
         MainWriter.Init();
@@ -398,6 +410,7 @@ int main() {
       }
     }
   }
+  fianloutput:
   MainWriter.WriteBinary(MainLoopTimer());
 
 

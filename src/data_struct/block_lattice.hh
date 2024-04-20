@@ -686,7 +686,7 @@ void DynamicBlockLatticeHelper2D<T, LatSet>::UpdateMaxGradNorm2() {
 }
 
 template <typename T, typename LatSet>
-bool DynamicBlockLatticeHelper2D<T, LatSet>::WillRefineOrCoarsen(){
+bool DynamicBlockLatticeHelper2D<T, LatSet>::WillRefineOrCoarsen() {
   ComputeGradNorm2();
   UpdateMaxGradNorm2();
   // statistics
@@ -720,8 +720,8 @@ bool DynamicBlockLatticeHelper2D<T, LatSet>::WillRefineOrCoarsen(){
 
 template <typename T, typename LatSet>
 void DynamicBlockLatticeHelper2D<T, LatSet>::GeoRefineOrCoarsen(int OptProcNum,
-                                                                 int MaxProcNum,
-                                                                 bool enforce) {
+                                                                int MaxProcNum,
+                                                                bool enforce) {
   // post refine
   BlockGeoHelper.PostRefine();
   // update BasicBlocks in GeoHelper
@@ -729,11 +729,9 @@ void DynamicBlockLatticeHelper2D<T, LatSet>::GeoRefineOrCoarsen(int OptProcNum,
   BlockGeoHelper.AdaptiveOptimization(OptProcNum, MaxProcNum, enforce);
 
   _GradNorm2s.clear();
-  _MaxGradNorm2s.clear();
   // init gradnorm2
   for (BasicBlock<T, 2>& block : BlockGeoHelper.getBlockCells()) {
     _GradNorm2s.emplace_back(block.getN(), T(0));
-    _MaxGradNorm2s.push_back(T(0));
   }
 }
 

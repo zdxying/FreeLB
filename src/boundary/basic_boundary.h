@@ -22,10 +22,6 @@
 
 #pragma once
 
-#include <omp.h>
-#include <stdio.h>
-#include <stdlib.h>
-
 #include <algorithm>
 #include <cmath>
 #include <cstddef>

@@ -20,6 +20,11 @@
 
 #pragma once
 
+#include <stdexcept>
+
+#include <omp.h>
+#include <stdio.h>
+#include <stdlib.h>
 // #define Thread_Num 16
 // // if define Thread_Nums in makefile
 // // e.g., CXXFLAGS = -DThread_Nums=4 -fopenmp

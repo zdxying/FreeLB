@@ -287,21 +287,20 @@ bool ZhuStefanescu2D<T, LatSet>::hasNeighborFlag(int id, std::uint8_t flag) cons
 // ------------------------------------------------------------------
 
 template <typename T, typename LatSet>
-BlockZhuStefanescu2D<T, LatSet>::BlockZhuStefanescu2D(Block2D<T>& geo, 
-  BlockField<VectorFieldAOS<T, 2>, T, 2> &veloFM, ZSConverter<T> &convca,
+BlockZhuStefanescu2D<T, LatSet>::BlockZhuStefanescu2D(
+  Block2D<T> &geo, BlockField<VectorFieldAOS<T, 2>, T, 2> &veloFM, ZSConverter<T> &convca,
   BlockRhoLattice<T> &latso, BlockRhoLattice<T> &latth, ScalerField<CAType> &state,
   ScalerField<T> &fs, ScalerField<T> &delta_fs, ScalerField<T> &curvature,
   ScalerField<T> &csolids, ScalerField<T> &preexcessc, ScalerField<T> &excessc, T delta,
   T theta)
-    : Geo(geo), ConvCA(convca), Conc(latso.getRhoField()),
-      Temp(latth.getRhoField()), delta(delta), Theta(theta),
-      GT(convca.Lattice_GT_Coef * pow(2, int(geo.getLevel()))),
-      C0(latso.getLatRhoInit()), Tl(latth.getLatRhoInit()),
-      Tl_eq(convca.get_LatTliq(latso.getLatRhoInit())), m_l(convca.Lattice_m_Liq),
-      Part_Coef(convca.Part_Coef), _Part_Coef(T(1) - convca.Part_Coef),
-      SolidCount(std::size_t(0)), Velocity(veloFM.getField()), State(state), Fs(fs),
-      Delta_Fs(delta_fs), Curvature(curvature), C_Solids(csolids), PreExcessC(preexcessc),
-      ExcessC(excessc) {
+    : Geo(geo), ConvCA(convca), Conc(latso.getRhoField()), Temp(latth.getRhoField()),
+      delta(delta), Theta(theta),
+      GT(convca.Lattice_GT_Coef * pow(2, int(geo.getLevel()))), C0(latso.getLatRhoInit()),
+      Tl(latth.getLatRhoInit()), Tl_eq(convca.get_LatTliq(latso.getLatRhoInit())),
+      m_l(convca.Lattice_m_Liq), Part_Coef(convca.Part_Coef),
+      _Part_Coef(T(1) - convca.Part_Coef), SolidCount(std::size_t(0)),
+      Velocity(veloFM.getField()), State(state), Fs(fs), Delta_Fs(delta_fs),
+      Curvature(curvature), C_Solids(csolids), PreExcessC(preexcessc), ExcessC(excessc) {
   Delta_Index =
     make_Array<int, LatSet::q>([&](int i) { return LatSet::c[i] * Geo.getProjection(); });
   Interface.reserve(4 * (Geo.getNx() + Geo.getNy()));
@@ -393,11 +392,16 @@ void BlockZhuStefanescu2D<T, LatSet>::UpdateDeltaFs() {
     //
     if (deltaf > 1) {
       Vector<int, 2> vox = Geo.getLoc(id);
-      std::cerr << "error: at (" << vox[0] << ", " << vox[1] << "), id = " << id
-                << " ,deltaf = " << deltaf << ",\t"
-                << "Ceq = " << C_eq << ",\t"
-                << "Cl = " << Conc.get(id) << std::endl;
-      exit(-1);
+      Vector<T, 2> global_loc = Geo.getVoxel(vox);
+      std::cerr << "[BlockCA2d] Error: at (" << global_loc[0] << ", " << global_loc[1]
+                << "), Index: (" << vox[0] << ", " << vox[1] << "), id: " << id
+                << ", blockid: " << Geo.getBlockId() << "\n deltaf: " << deltaf
+                << ", Ceq: " << C_eq << ", Cl: " << Conc.get(id) << std::endl;
+#ifndef _OPENMP
+      throw std::runtime_error("DeltaF Error");
+#else
+      exit(1);
+#endif
     }
     deltaf = deltaf < 0 ? 0 : deltaf;
     Delta_Fs.SetField(id, deltaf);
@@ -410,14 +414,18 @@ T BlockZhuStefanescu2D<T, LatSet>::getC_eq(std::size_t id) {
     C0 + ((Tl_eq - Temp.get(id)) - GT * Curvature.get(id) * getanisotropy(id)) / m_l;
   if (Ceq > 1 || Ceq < 0) {
     Vector<int, 2> vox = Geo.getLoc(id);
-    std::cout << "error: at (" << vox[0] << ", " << vox[1] << "), id = " << id
-              << " ,Ceq = " << Ceq << ",\t"
-              << "Tl_eq - Tl = " << Tl_eq - Temp.get(id) << ",\t"
-              << "K = " << Curvature.get(id) << ",\t"
-              << "anisotropy = " << getanisotropy(id) << ",\t"
-              << "GT * Curvature.get(id) * getanisotropy(id) = "
+    Vector<T, 2> global_loc = Geo.getVoxel(vox);
+    std::cerr << "[BlockCA2d] Error: at (" << global_loc[0] << ", " << global_loc[1]
+              << "), Index: (" << vox[0] << ", " << vox[1] << "), id: " << id
+              << ", blockid: " << Geo.getBlockId() << "\n Ceq: " << Ceq
+              << ", Tl_eq - Tl: " << Tl_eq - Temp.get(id) << ", K: " << Curvature.get(id)
+              << ", anisotropy: " << getanisotropy(id) << ", GT * Curv * anisotropy: "
               << GT * Curvature.get(id) * getanisotropy(id) << std::endl;
-    exit(-1);
+#ifndef _OPENMP
+    throw std::runtime_error("Ceq Error");
+#else
+    exit(1);
+#endif
   }
   return Ceq;
 }
