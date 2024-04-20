@@ -393,7 +393,7 @@ void BlockZhuStefanescu2D<T, LatSet>::UpdateDeltaFs() {
     //
     if (deltaf > 1) {
       Vector<int, 2> vox = Geo.getLoc(id);
-      std::cout << "error: at (" << vox[0] << ", " << vox[1] << "), id = " << id
+      std::cerr << "error: at (" << vox[0] << ", " << vox[1] << "), id = " << id
                 << " ,deltaf = " << deltaf << ",\t"
                 << "Ceq = " << C_eq << ",\t"
                 << "Cl = " << Conc.get(id) << std::endl;

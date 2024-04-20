@@ -379,6 +379,7 @@ int main() {
         NSLattice.Init();
         SOLattice.Init();
         CA.Init(SOLattice, THLattice);
+        Force.Init();
 
         // Bcs init
         NS_BB.Init();

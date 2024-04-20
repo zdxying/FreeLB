@@ -123,21 +123,31 @@ class BlockBuoyancyManager {
 
   BlockLatticeManager<T, LatSet> &NSLatMan;
 
+  BlockFieldManager<VectorFieldAOS<T, LatSet::d>, T, LatSet::d> &Velocity;
+
  public:
   BlockBuoyancyManager(
     BlockLatticeManager<T, LatSet> &nsLatMan,
-    BlockFieldManager<VectorFieldAOS<T, LatSet::d>, T, LatSet::d> &Velocity)
-      : NSLatMan(nsLatMan) {
+    BlockFieldManager<VectorFieldAOS<T, LatSet::d>, T, LatSet::d> &velocity)
+      : NSLatMan(nsLatMan), Velocity(velocity) {
+    for (int i = 0; i < NSLatMan.getBlockLats().size(); ++i) {
+      _Buoyancys.emplace_back(NSLatMan.getBlockLat(i),
+                              velocity.getBlockField(i).getField());
+    }
+  }
+  // BlockBuoyancyManager(BlockLatticeManager<T, LatSet> &nsLatMan,
+  //                      std::vector<VectorFieldAOS<T, LatSet::d> *> Velocity)
+  //     : NSLatMan(nsLatMan) {
+  //   for (int i = 0; i < NSLatMan.getBlockLats().size(); ++i) {
+  //     _Buoyancys.emplace_back(NSLatMan.getBlockLat(i), *(Velocity[i]));
+  //   }
+  // }
+
+  void Init(){
+    _Buoyancys.clear();
     for (int i = 0; i < NSLatMan.getBlockLats().size(); ++i) {
       _Buoyancys.emplace_back(NSLatMan.getBlockLat(i),
                               Velocity.getBlockField(i).getField());
-    }
-  }
-  BlockBuoyancyManager(BlockLatticeManager<T, LatSet> &nsLatMan,
-                       std::vector<VectorFieldAOS<T, LatSet::d> *> Velocity)
-      : NSLatMan(nsLatMan) {
-    for (int i = 0; i < NSLatMan.getBlockLats().size(); ++i) {
-      _Buoyancys.emplace_back(NSLatMan.getBlockLat(i), *(Velocity[i]));
     }
   }
 
