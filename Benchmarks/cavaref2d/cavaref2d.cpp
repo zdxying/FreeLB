@@ -110,18 +110,16 @@ int main() {
   ConvManager.Check_and_Print();
 
   // ------------------ define geometry ------------------
-  AABB<T, 2> cavity(Vector<T, 2>(T(0), T(0)), Vector<T, 2>(T(Ni * Cell_Len), T(Nj * Cell_Len)));
+  AABB<T, 2> cavity(Vector<T, 2>(T(0), T(0)),
+                    Vector<T, 2>(T(Ni * Cell_Len), T(Nj * Cell_Len)));
   // use 0.5 for refined block
   AABB<T, 2> toplid(Vector<T, 2>(Cell_Len / 2, T((Nj - 1) * Cell_Len)),
                     Vector<T, 2>(T((Ni - 0.5) * Cell_Len), T(Nj * Cell_Len)));
   // use for refined block
   AABB<T, 2> outercavity(
-    Vector<T, 2>(T(Ni * Cell_Len) / BlockCellNx + 1, T(Nj * Cell_Len) / BlockCellNx + 1),
-    Vector<T, 2>(T(Ni * Cell_Len) * (BlockCellNx - 1) / BlockCellNx - 1,
-                 T(Nj * Cell_Len) * (BlockCellNx - 1) / BlockCellNx - 1));
-
-  // AABB<T, 2> innercavity(Vector<T, 2>(T(Ni * Cell_Len) * 3 / 8 + 1, T(Nj * Cell_Len) * 3 / 8 +
-  // 1),Vector<T, 2>(T(Ni * Cell_Len) * 5 / 8 - 1, T(Nj * Cell_Len) * 5 / 8 -1));
+    Vector<T, 2>(T(Ni * Cell_Len) / BlockCellNx, T(Nj * Cell_Len) / BlockCellNx),
+    Vector<T, 2>(T(Ni * Cell_Len) * (BlockCellNx - 1) / BlockCellNx,
+                 T(Nj * Cell_Len) * (BlockCellNx - 1) / BlockCellNx));
 
   // geometry helper
   BlockGeometryHelper2D<T> GeoHelper(Ni, Nj, Ni / BlockCellNx, cavity, Cell_Len);
@@ -130,78 +128,70 @@ int main() {
       block.refine();
     }
   });
-  // GeoHelper.forEachBlockCell([&](BasicBlock<T, 2>& block) {
-  //   if (isOverlapped(block, innercavity)) {
-  //     block.refine();
-  //   }
-  // });
   GeoHelper.CreateBlocks();
   GeoHelper.AdaptiveOptimization(16);
 
-  BlockGeometry2D<T> Geo(GeoHelper, cavity, AABBFlag, VoidFlag);
-  Geo.SetupBoundary<LatSet>(AABBFlag, BouncebackFlag);
-  Geo.setFlag(toplid, BouncebackFlag, BBMovingWallFlag);
+  BlockGeometry2D<T> Geo(GeoHelper);
 
-  // vtmwriter::ScalerWriter GeoFlagWriter("flag", Geo.getGeoFlags());
-  // vtmwriter::vtmWriter<T, LatSet::d> GeoWriter("GeoFlag", Geo);
-  // GeoWriter.addWriterSet(&GeoFlagWriter);
-  // GeoWriter.WriteBinary();
+  // ------------------ define flag field ------------------
+  BlockFieldManager<FlagField, T, 2> FlagFM(Geo, VoidFlag);
+  FlagFM.forEach(cavity,
+                 [&](FlagField& field, std::size_t id) { field.SetField(id, AABBFlag); });
+  FlagFM.template SetupBoundary<LatSet>(cavity, BouncebackFlag);
+  FlagFM.forEach(toplid, [&](FlagField& field, std::size_t id) {
+    if (field.get(id) == BouncebackFlag) field.SetField(id, BBMovingWallFlag);
+  });
 
-  vtmno::ScalerWriter GeoFlagWriterNO("flagno", Geo.getGeoFlags(), Geo.getGeoMeshes());
-  vtmno::vtmWriter<T, LatSet::d> GeoWriterNO("GeoFlagNO", Geo, 1);
-  GeoWriterNO.addWriterSet(&GeoFlagWriterNO);
-  GeoWriterNO.WriteBinary();
+  vtmo::ScalerWriter FlagWriter("flag", FlagFM);
+  vtmo::vtmWriter<T, LatSet::d> GeoWriter("GeoFlag", Geo, 1);
+  GeoWriter.addWriterSet(&FlagWriter);
+  GeoWriter.WriteBinary();
 
   // ------------------ define lattice ------------------
   // velocity field
-  BlockVectFieldAOS<T, 2> Velocity(Geo.getBlockSizes());
+  BlockFieldManager<VectorFieldAOS<T, 2>, T, 2> VelocityFM(Geo);
   // set initial value of field
-  Geo.forEachVoxel(toplid, BBMovingWallFlag, [&Velocity](int id, int blockid) {
-    Velocity.getBlockField(blockid).SetField(id, U_Wall);
-  });
+  VelocityFM.forEach(FlagFM, BBMovingWallFlag,
+                     [&](auto& field, std::size_t id) { field.SetField(id, U_Wall); });
   // lattice
-  BlockLatticeManager<T, LatSet> LatMan(Geo, BaseConv, Velocity);
+  BlockLatticeManager<T, LatSet> LatMan(Geo, BaseConv, VelocityFM);
   LatMan.EnableToleranceU();
   T res = 1;
 
   // bcs
-  BBLikeFixedBlockBdManager<T, LatSet, BounceBackLikeMethod<T, LatSet>::normal_bounceback> NS_BB(
-    "NS_BB", LatMan, BouncebackFlag, VoidFlag);
-  BBLikeFixedBlockBdManager<T, LatSet, BounceBackLikeMethod<T, LatSet>::movingwall_bounceback>
-    NS_BBMW("NS_BBMW", LatMan, BBMovingWallFlag, VoidFlag);
+  BBLikeFixedBlockBdManager<T, LatSet, BounceBackLikeMethod<T, LatSet>::normal_bounceback>
+    NS_BB("NS_BB", LatMan, FlagFM, BouncebackFlag, VoidFlag);
+  BBLikeFixedBlockBdManager<T, LatSet,
+                            BounceBackLikeMethod<T, LatSet>::movingwall_bounceback>
+    NS_BBMW("NS_BBMW", LatMan, FlagFM, BBMovingWallFlag, VoidFlag);
   BlockBoundaryManager BM(&NS_BB, &NS_BBMW);
 
   // writers
-  vtmno::ScalerWriter RhoWriterNO("Rho", LatMan.getRhoField(), Geo.getGeoMeshes());
-  vtmno::VectorWriter VecWriterNO("Velocity", Velocity, Geo.getGeoMeshes());
-  vtmno::vtmWriter<T, LatSet::d> NSWriterNO("cavAref2dNO", Geo, 1);
-  NSWriterNO.addWriterSet(&RhoWriterNO, &VecWriterNO);
-
-  // vtmwriter::ScalerWriter RhoWriter("Rho", LatMan.getRhoField());
-  // vtmwriter::VectorWriter VecWriter("Velocity", Velocity);
-  // vtmwriter::vtmWriter<T, LatSet::d> NSWriter("cavref2d", Geo);
-  // NSWriter.addWriterSet(&RhoWriter, &VecWriter);
-
+  vtmo::ScalerWriter RhoWriter("Rho", LatMan.getRhoFM());
+  vtmo::VectorWriter VecWriter("Velocity", VelocityFM);
+  vtmo::vtmWriter<T, LatSet::d> NSWriter("cavAref2d", Geo, 1);
+  NSWriter.addWriterSet(&RhoWriter, &VecWriter);
 
   // /*count and timer*/
   Timer MainLoopTimer;
   Timer OutputTimer;
-  NSWriterNO.WriteBinary(MainLoopTimer());
+  NSWriter.WriteBinary(MainLoopTimer());
 
   Printer::Print_BigBanner(std::string("Start Calculation..."));
 
   while (MainLoopTimer() < MaxStep && res > tol) {
-    LatMan.UpdateRho(MainLoopTimer(), std::uint8_t(AABBFlag));
-    LatMan.UpdateU(MainLoopTimer(), std::uint8_t(AABBFlag));
+    LatMan.UpdateRho(MainLoopTimer(), AABBFlag, FlagFM);
+    LatMan.UpdateU(MainLoopTimer(), AABBFlag, FlagFM);
     LatMan.template BGK<Equilibrium<T, LatSet>::SecondOrder>(
-      MainLoopTimer(), std::uint8_t(AABBFlag | BouncebackFlag | BBMovingWallFlag));
+      MainLoopTimer(), std::uint8_t(AABBFlag | BouncebackFlag | BBMovingWallFlag),
+      FlagFM);
 
     // to communicate before stream, non-overlapped vtm writer should be used
     LatMan.Stream(MainLoopTimer());
 
-    LatMan.Communicate(MainLoopTimer());
-
     BM.Apply(MainLoopTimer());
+
+    LatMan.Communicate(MainLoopTimer());
 
     ++MainLoopTimer;
     ++OutputTimer;
@@ -209,10 +199,11 @@ int main() {
       res = LatMan.getToleranceU(1);
       OutputTimer.Print_InnerLoopPerformance(Geo.getTotalCellNum(), OutputStep);
       Printer::Print_Res<T>(res);
-      NSWriterNO.WriteBinary(MainLoopTimer());
+      Printer::Endl();
+      NSWriter.WriteBinary(MainLoopTimer());
     }
   }
-  NSWriterNO.WriteBinary(MainLoopTimer());
+  NSWriter.WriteBinary(MainLoopTimer());
   Printer::Print_BigBanner(std::string("Calculation Complete!"));
   MainLoopTimer.Print_MainLoopPerformance(Geo.getTotalCellNum());
 

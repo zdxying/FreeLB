@@ -242,7 +242,7 @@ class BlockFieldManager {
   }
   template <typename datatype>
   void InitAndComm(BlockGeometryHelper<FloatType, Dim>& GeoHelper, datatype initvalue) {
-    InitCopy(GeoHelper, initvalue);
+    Init(GeoHelper, initvalue);
     CommunicateAll();
   }
   // pure init
@@ -278,7 +278,7 @@ class BlockFieldManager {
   void Init(BlockGeometryHelper<FloatType, Dim>& GeoHelper, datatype initvalue) {
     std::vector<BlockField<FieldType, FloatType, Dim>> NewFields;
     for (Block<FloatType, Dim>& block : _BlockGeo.getBlocks()) {
-      NewFields.emplace_back(block);
+      NewFields.emplace_back(block, initvalue);
     }
     // data transfer
     FieldDataTransfer(GeoHelper, NewFields);
@@ -365,7 +365,7 @@ class BlockFieldManager {
       const BasicBlock<FloatType, Dim>& newblock = NewField.getBlock();
       std::uint8_t Level = newblock.getLevel();
       // find overlapped old block field
-      for (int iblock = 0; iblock < _BlockGeo.getBlockNum(); ++iblock) {
+      for (int iblock = 0; iblock < GeoHelper.getOldBasicBlocks().size(); ++iblock) {
         // oldbaseblock could be accessed only from GeoHelper
         const BasicBlock<FloatType, Dim>& baseblock = GeoHelper.getOldBasicBlock(iblock);
         if (isOverlapped(newbaseblock, baseblock)) {
@@ -403,7 +403,7 @@ class BlockFieldManager {
       const BasicBlock<FloatType, Dim>& newblock = NewField.getBlock();
       std::uint8_t Level = newblock.getLevel();
       // find overlapped old block field
-      for (int iblock = 0; iblock < _BlockGeo.getBlockNum(); ++iblock) {
+      for (int iblock = 0; iblock < GeoHelper.getOldBasicBlocks().size(); ++iblock) {
         // oldbaseblock could be accessed only from GeoHelper
         const BasicBlock<FloatType, Dim>& baseblock = GeoHelper.getOldBasicBlock(iblock);
         if (isOverlapped(newbaseblock, baseblock)) {

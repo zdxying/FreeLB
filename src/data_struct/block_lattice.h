@@ -125,7 +125,7 @@ class BlockLattice : public BlockRhoLattice<T> {
  public:
   BlockLattice(Block<T, LatSet::d>& block, ScalerField<T>& rho,
                VectorFieldAOS<T, LatSet::d>& velocity,
-               PopulationField<T, LatSet::q>& pops, AbstractConverter<T>& conv);
+               PopulationField<T, LatSet::q>& pops, AbstractConverter<T>& conv, bool initpop = true);
 
   void InitPop(int Id, T rho) {
     for (int i = 0; i < LatSet::q; ++i) Pops.getField(i)[Id] = rho * LatSet::w[i];

@@ -1,9 +1,9 @@
 
-TARGET = cazsArefblock2d.exe
-ROOT := ../..
+TARGET = bddatatrans.exe
+ROOT := ../../..
 
 # FLAGS += -march=native -ffast-math
-FLAGS += -O3 -march=native #-fopenmp
+FLAGS += -O3 -march=native
 # FLAGS += -O3 -march=native -fopenmp
 # FLAGS += -march=native
 # FLAGS += -DThread_Num 16 -fopenmp

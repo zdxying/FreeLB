@@ -78,8 +78,8 @@ int main() {
   Geo.SetupBoundary<LatSet>(AABBFlag, BouncebackFlag);
   Geo.setFlag(toplid, BouncebackFlag, BBMovingWallFlag);
 
-  vtmno::ScalerWriter GeoFlagWriterNO("flagno", Geo.getGeoFlags(), Geo.getGeoMeshes());
-  vtmno::vtmWriter<T, LatSet::d> GeoWriterNO("GeoFlagNO", Geo);
+  vtmo::ScalerWriter GeoFlagWriterNO("flagno", Geo.getGeoFlags(), Geo.getGeoMeshes());
+  vtmo::vtmWriter<T, LatSet::d> GeoWriterNO("GeoFlagNO", Geo);
   GeoWriterNO.addWriterSet(&GeoFlagWriterNO);
   GeoWriterNO.WriteBinary();
 

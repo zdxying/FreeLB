@@ -29,7 +29,7 @@ template <typename T, typename LatSet>
 BlockLattice<T, LatSet>::BlockLattice(Block<T, LatSet::d>& block, ScalerField<T>& rho,
                                       VectorFieldAOS<T, LatSet::d>& velocity,
                                       PopulationField<T, LatSet::q>& pops,
-                                      AbstractConverter<T>& conv)
+                                      AbstractConverter<T>& conv, bool initpop)
     : BlockGeo(block), BlockRhoLattice<T>(conv, rho), Velocity(velocity), Pops(pops),
       Omega(RefineConverter<T>::getOmegaF(conv.GetOMEGA(), block.getLevel())) {
   _Omega = T(1) - Omega;
@@ -37,8 +37,10 @@ BlockLattice<T, LatSet>::BlockLattice(Block<T, LatSet::d>& block, ScalerField<T>
   Delta_Index =
     make_Array<int, LatSet::q>([&](int i) { return LatSet::c[i] * getProjection(); });
   // init populations
-  for (int i = 0; i < LatSet::q; ++i) {
-    Pops.getField(i).Init(this->Lattice_Rho_Init * LatSet::w[i]);
+  if (initpop) {
+    for (int i = 0; i < LatSet::q; ++i) {
+      Pops.getField(i).Init(this->Lattice_Rho_Init * LatSet::w[i]);
+    }
   }
 }
 
@@ -435,7 +437,7 @@ void BlockLatticeManager<T, LatSet>::Init() {
   for (int i = 0; i < BlockGeo.getBlocks().size(); ++i) {
     BlockLats.emplace_back(BlockGeo.getBlock(i), RhoFM.getBlockField(i).getField(),
                            VelocityFM.getBlockField(i).getField(),
-                           PopsFM.getBlockField(i).getField(), Conv);
+                           PopsFM.getBlockField(i).getField(), Conv, false);
   }
   InitCommunicators();
   InitAverComm();
@@ -660,8 +662,8 @@ void DynamicBlockLatticeHelper2D<T, LatSet>::ComputeGradNorm2() {
         int blockstartx = static_cast<int>(std::round(blockstart[0] / voxsize));
         int blockstarty = static_cast<int>(std::round(blockstart[1] / voxsize));
 
-        for (int iy = 0; iy < Ny; ++iy) {
-          for (int ix = 0; ix < Nx; ++ix) {
+        for (int iy = 1; iy < Ny-1; ++iy) {
+          for (int ix = 1; ix < Nx-1; ++ix) {
             std::size_t idcell = (iy + cellstarty) * cellblock.getNx() + ix + cellstartx;
             std::size_t idblock = (iy + blockstarty) * block.getNx() + ix + blockstartx;
             GradNorm2[idcell] = FDM.gradnorm2(idblock);

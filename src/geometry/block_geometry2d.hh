@@ -197,8 +197,8 @@ void BlockGeometry2D<T>::UpdateMaxLevel() {
 }
 
 template <typename T>
-int BlockGeometry2D<T>::getTotalCellNum() const {
-  int sum = 0;
+std::size_t BlockGeometry2D<T>::getTotalCellNum() const {
+  std::size_t sum = 0;
   for (const Block2D<T> &block : _Blocks) {
     sum += block.getN();
   }
@@ -206,8 +206,8 @@ int BlockGeometry2D<T>::getTotalCellNum() const {
 }
 
 template <typename T>
-int BlockGeometry2D<T>::getBaseCellNum() const {
-  int sum = 0;
+std::size_t BlockGeometry2D<T>::getBaseCellNum() const {
+  std::size_t sum = 0;
   for (const Block2D<T> &block : _Blocks) {
     sum += block.getBaseBlock().getN();
   }

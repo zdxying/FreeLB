@@ -143,9 +143,9 @@ class BlockGeometry2D : public BasicBlock<T, 2> {
 
   int getBlockNum() const { return _Blocks.size(); }
   // get total number of cells, overlapped cells included
-  int getTotalCellNum() const;
+  std::size_t getTotalCellNum() const;
   // get total number of cells, overlapped cells not included
-  int getBaseCellNum() const;
+  std::size_t getBaseCellNum() const;
 
   // first divide blockgeometry into blocks, stored in _BlockAABBs
   void DivideBlocks(int blocknum);

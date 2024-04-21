@@ -133,8 +133,8 @@ int main() {
   // GeoWriter.addWriterSet(&GeoFlagWriter);
   // GeoWriter.WriteBinary();
 
-  vtmno::ScalerWriter GeoFlagWriterNO("flagno", Geo.getGeoFlags(), Geo.getGeoMeshes());
-  vtmno::vtmWriter<T, LatSet::d> GeoWriterNO("GeoFlagNO", Geo);
+  vtmo::ScalerWriter GeoFlagWriterNO("flagno", Geo.getGeoFlags(), Geo.getGeoMeshes());
+  vtmo::vtmWriter<T, LatSet::d> GeoWriterNO("GeoFlagNO", Geo);
   GeoWriterNO.addWriterSet(&GeoFlagWriterNO);
   GeoWriterNO.WriteBinary();
 
@@ -158,9 +158,9 @@ int main() {
   BlockBoundaryManager BM(&NS_BB, &NS_BBMW);
 
   // writers
-  vtmno::ScalerWriter RhoWriterNO("Rho", LatMan.getRhoField(), Geo.getGeoMeshes());
-  vtmno::VectorWriter VecWriterNO("Velocity", Velocity, Geo.getGeoMeshes());
-  vtmno::vtmWriter<T, LatSet::d> NSWriterNO("cavref2dNO", Geo, 1);
+  vtmo::ScalerWriter RhoWriterNO("Rho", LatMan.getRhoField(), Geo.getGeoMeshes());
+  vtmo::VectorWriter VecWriterNO("Velocity", Velocity, Geo.getGeoMeshes());
+  vtmo::vtmWriter<T, LatSet::d> NSWriterNO("cavref2dNO", Geo, 1);
   NSWriterNO.addWriterSet(&RhoWriterNO, &VecWriterNO);
 
   vtmwriter::ScalerWriter RhoWriter("Rho", LatMan.getRhoField());

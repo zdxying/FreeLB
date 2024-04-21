@@ -352,8 +352,8 @@ class VectorSOAWriter : public vtiwriter::AbstWriterSet {
 
 }  // namespace vtmwriter
 
-// non-overlapped vtm writer
-namespace vtmno {
+// vtm writer with handling overlap 
+namespace vtmo {
 
 // manager of generating a vtm file and series of vti files
 template <typename T, unsigned int D>
@@ -641,4 +641,4 @@ class VectorSOAWriter : public vtino::AbstWriterSet {
   vtino::AbstractWriter* getWriter(int i) override { return &_vectorsoawriters[i]; }
 };
 
-}  // namespace vtmno
+}  // namespace vtmo

@@ -231,8 +231,8 @@ int main() {
                 [&](FlagField& field, std::size_t id) { field.SetField(id, AABBFlag); });
   FlagFM.template SetupBoundary<LatSet0>(cavity, BouncebackFlag);
 
-  vtmwriter::ScalerWriter FlagWriter("flag", FlagFM);
-  vtmwriter::vtmWriter<T, 2> GeoWriter("GeoFlag", Geo);
+  vtmo::ScalerWriter FlagWriter("flag", FlagFM);
+  vtmo::vtmWriter<T, 2> GeoWriter("GeoFlag", Geo, 1);
   GeoWriter.addWriterSet(&FlagWriter);
   GeoWriter.WriteBinary();
 
@@ -289,11 +289,11 @@ int main() {
   Force.AddSource(THLattice);
 
   // writer
-  vtmno::ScalerWriter CWriter("Conc", SOLattice.getRhoFM());
-  // vtmno::ScalerWriter TWriter("Temp", THLattice.getRhoFM());
-  vtmno::ScalerWriter StateWriter("State", CA.getStateFM());
-  vtmno::VectorWriter VecWriter("Velocity", VelocityFM);
-  vtmno::vtmWriter<T, 2> MainWriter("cazsAMR2d", Geo, 1);
+  vtmo::ScalerWriter CWriter("Conc", SOLattice.getRhoFM());
+  // vtmo::ScalerWriter TWriter("Temp", THLattice.getRhoFM());
+  vtmo::ScalerWriter StateWriter("State", CA.getStateFM());
+  vtmo::VectorWriter VecWriter("Velocity", VelocityFM);
+  vtmo::vtmWriter<T, 2> MainWriter("cazsAMR2d", Geo, 1);
   MainWriter.addWriterSet(&CWriter, &StateWriter, &VecWriter);
 
   /*count and timer*/
@@ -307,7 +307,7 @@ int main() {
   // GradNormRhoWVTI.WriteBinary(MainLoopTimer());
 
   while (MainLoopTimer() < MaxStep) {
-    NSLattice.UpdateRho(MainLoopTimer(), FI_Flag, SOLattice.getRhoFM());
+    NSLattice.UpdateRho(MainLoopTimer(), FI_Flag, CA.getStateFM());
     SOLattice.UpdateRho_Source(MainLoopTimer(), FI_Flag, CA.getStateFM(),
                                CA.getExcessCFM());
 
@@ -350,12 +350,14 @@ int main() {
       // Velocity and Conc Field Communication for output
       VelocityFM.CommunicateAll();
       SOLattice.getRhoFM().CommunicateAll();
+      NSLattice.getRhoFM().CommunicateAll();
 
-      OutputTimer.Print_InnerLoopPerformance(Geo.getN(), OutputStep);
+      OutputTimer.Print_InnerLoopPerformance(Geo.getTotalCellNum(), OutputStep);
       Printer::Print<std::size_t>("Interface", CA.getInterfaceNum());
-      Printer::Print<T>("Solid%", T(CA.getSolidCount()) * 100 / Geo.getN());
+      Printer::Print<T>("Solid%", T(CA.getSolidCount()) * 100 / Geo.getTotalCellNum());
       Printer::Endl();
       MainWriter.WriteBinary(MainLoopTimer());
+      GradNormRhoWriter.Write(MainLoopTimer());
 
       // ----- adaptive mesh refinement -----
       if (SODynLatHelper.WillRefineOrCoarsen()) {
@@ -398,7 +400,7 @@ int main() {
         SO_BB.Init();
         SO_MBB.Init();
 
-        GradNormRhoWriter.Write(MainLoopTimer());
+        
         // GradNormRhoWVTI.WriteBinary(MainLoopTimer());
 
         CWriter.Init(SOLattice.getRhoFM());
