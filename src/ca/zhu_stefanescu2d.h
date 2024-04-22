@@ -475,47 +475,6 @@ class BlockZhuStefanescu2DManager {
     }
   }
 
-  // freeze cells based on CA field(if all points are solid, freeze the blockcell)
-  void FreezeBlockCells(BlockGeometryHelper2D<T>& GeoHelper) {
-#pragma omp parallel for num_threads(Thread_Num)
-    for (BasicBlock<T, 2>& block : GeoHelper.getBlockCells()) {
-      if (util::isFlag(GeoHelper.getBlockCellTag(block.getBlockId()),
-                       BlockCellTag::Solid)) {
-        continue;
-      }
-      Vector<T, 2> centre = block.getCenter();
-      // find block
-      int blockFid = 0;
-      for (auto& zs : BlockZS) {
-        if (zs.getGeo().getBaseBlock().isInside(centre)) {
-          blockFid = zs.getGeo().getBlockId();
-          break;
-        }
-      }
-      BasicBlock<T, 2>& blockF = BlockGeo.getBlock(blockFid);
-      GenericArray<CAType>& StateF = BlockZS[blockFid].getState().getField(0);
-
-      // get start index
-      Vector<T, 2> Ext = block.getMinCenter() - blockF.getMinCenter();
-      int x = static_cast<int>(Ext[0] / blockF.getCellSize());
-      int y = static_cast<int>(Ext[1] / blockF.getCellSize());
-      // check if all points within the blockcell are solid
-      bool freeze = true;
-      for (int iy = y; iy < y + block.getNy(); ++iy) {
-        for (int ix = x; ix < x + block.getNx(); ++ix) {
-          std::size_t id = ix + iy * blockF.getNx();
-          if (!util::isFlag(StateF[id], CAType::Solid)) {
-            freeze = false;
-            break;
-          }
-        }
-      }
-      if (freeze) {
-        GeoHelper.getBlockCellTag(block.getBlockId()) = BlockCellTag::Solid;
-      }
-    }
-  }
-
   std::vector<std::vector<std::size_t>*>& getInterfaces() { return Interfaces; }
 
 
@@ -571,6 +530,53 @@ class BlockZhuStefanescu2DManager {
       count += zs.getSolidCount();
     }
     return count;
+  }
+
+  bool WillRefineBlockCells(BlockGeometryHelper2D<T>& GeoHelper) {
+    const std::uint8_t LevelLimit = GeoHelper.getLevelLimit();
+    bool willrefine = false;
+    std::vector<bool> hasSolid(GeoHelper.getBlockCells().size(), false);
+#pragma omp parallel for num_threads(Thread_Num)
+    for (int icell = 0; icell < GeoHelper.getBlockCells().size(); ++icell) {
+      // cell block
+      const BasicBlock<T, 2>& cellblock = GeoHelper.getBlockCell(icell);
+      if (cellblock.getLevel() < LevelLimit) {
+        T voxsize = cellblock.getVoxelSize();
+        // find corresponding block
+        for (int iblock = 0; iblock < BlockGeo.getBlockNum(); ++iblock) {
+          const BasicBlock<T, 2>& block = BlockGeo.getBlock(iblock);
+          const BasicBlock<T, 2>& baseblock = BlockGeo.getBlock(iblock).getBaseBlock();
+          if (isOverlapped(cellblock, baseblock)) {
+            // get CA State field
+            const GenericArray<CAType>& StateF =
+              StateFM.getBlockField(iblock).getField().getField(0);
+            const AABB<T, 2> intsec = getIntersection(cellblock, baseblock);
+            int Nx = static_cast<int>(std::round(intsec.getExtension()[0] / voxsize));
+            int Ny = static_cast<int>(std::round(intsec.getExtension()[1] / voxsize));
+            // block start
+            Vector<T, 2> blockstart = intsec.getMin() - block.getMin();
+            int blockstartx = static_cast<int>(std::round(blockstart[0] / voxsize));
+            int blockstarty = static_cast<int>(std::round(blockstart[1] / voxsize));
+
+            for (int iy = 0; iy < Ny; ++iy) {
+              for (int ix = 0; ix < Nx; ++ix) {
+                std::size_t idblock =
+                  (iy + blockstarty) * block.getNx() + ix + blockstartx;
+                if (util::isFlag(StateF[idblock], CAType::Solid)) {
+                  hasSolid[icell] = true;
+                  // exit for loop
+                  ix = Nx;
+                  iy = Ny;
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+    GeoHelper.TagRefineLayer(hasSolid, willrefine);
+
+    return willrefine;
   }
 };
 }  // namespace CA

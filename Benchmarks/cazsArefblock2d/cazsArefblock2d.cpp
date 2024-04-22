@@ -77,6 +77,7 @@ T Cl;  // char low conc
 // Simulation settings
 int MaxStep;
 int OutputStep;
+int RefineCheckStep;
 
 std::string work_dir;
 
@@ -137,6 +138,7 @@ void readParam(std::vector<T>& refThold, std::vector<T>& coaThold) {
   // Simulation settings
   MaxStep = param_reader.getValue<int>("Simulation_Settings", "TotalStep");
   OutputStep = param_reader.getValue<int>("Simulation_Settings", "OutputStep");
+  RefineCheckStep = param_reader.getValue<int>("Simulation_Settings", "RefineCheckStep");
   // threshold
   param_reader.getVector<T>("RefTHOLD", refThold);
   param_reader.getVector<T>("CoaTHOLD", coaThold);
@@ -228,7 +230,7 @@ int main() {
   // ------------------ define flag field ------------------
   BlockFieldManager<FlagField, T, 2> FlagFM(Geo, voidFlag);
   FlagFM.forEach(cavity,
-                [&](FlagField& field, std::size_t id) { field.SetField(id, AABBFlag); });
+                 [&](FlagField& field, std::size_t id) { field.SetField(id, AABBFlag); });
   FlagFM.template SetupBoundary<LatSet0>(cavity, BouncebackFlag);
 
   vtmo::ScalerWriter FlagWriter("flag", FlagFM);
@@ -303,7 +305,7 @@ int main() {
   Printer::Print_BigBanner(std::string("Start Calculation..."));
   MainWriter.WriteBinary(MainLoopTimer());
 
-  GradNormRhoWriter.Write(MainLoopTimer());
+  // GradNormRhoWriter.Write(MainLoopTimer());
   // GradNormRhoWVTI.WriteBinary(MainLoopTimer());
 
   while (MainLoopTimer() < MaxStep) {
@@ -311,10 +313,12 @@ int main() {
     SOLattice.UpdateRho_Source(MainLoopTimer(), FI_Flag, CA.getStateFM(),
                                CA.getExcessCFM());
 
+    // CA.Apply_SimpleCapture();
     try {
-    CA.Apply_SimpleCapture();
+      CA.Apply_SimpleCapture();
     } catch (const std::runtime_error& e) {
-      std::cerr << "At MainStep: "<< MainLoopTimer() << ", Caught exception: " << e.what() << std::endl;
+      std::cerr << "At MainStep: " << MainLoopTimer()
+                << ", Caught exception: " << e.what() << std::endl;
       goto fianloutput;
     }
 
@@ -357,11 +361,14 @@ int main() {
       Printer::Print<T>("Solid%", T(CA.getSolidCount()) * 100 / Geo.getTotalCellNum());
       Printer::Endl();
       MainWriter.WriteBinary(MainLoopTimer());
-      GradNormRhoWriter.Write(MainLoopTimer());
+      // GradNormRhoWriter.Write(MainLoopTimer());
+    }
 
-      // ----- adaptive mesh refinement -----
-      if (SODynLatHelper.WillRefineOrCoarsen()) {
-        SODynLatHelper.GeoRefineOrCoarsen(Thread_Num);
+    // ----- adaptive mesh refinement -----
+    if (MainLoopTimer() % RefineCheckStep == 0) {
+      // if (SODynLatHelper.WillRefineOrCoarsen()) {
+      if (CA.WillRefineBlockCells(GeoHelper)) {
+        SODynLatHelper.GeoRefine(Thread_Num);
 
         // Geo Init
         Geo.Init(GeoHelper);
@@ -373,14 +380,14 @@ int main() {
         });
         FlagFM.template SetupBoundary<LatSet0>(cavity, BouncebackFlag);
 
-        CA.getStateFM().InitCopy(GeoHelper, CA::CAType::Boundary, FlagFM, AABBFlag, [&](auto& field, std::size_t id) {
-          field.SetField(id, CA::CAType::Fluid);
-        });
+        CA.getStateFM().InitCopy(
+          GeoHelper, CA::CAType::Boundary, FlagFM, AABBFlag,
+          [&](auto& field, std::size_t id) { field.SetField(id, CA::CAType::Fluid); });
         CA.getStateFM().NormalCommunicate();
 
         THLattice.getRhoFM().Init(TempConv.getLatRhoInit());
         THLattice.getPopsFM().Init();
-        
+
         // field data transfer
         VelocityFM.InitAndComm(GeoHelper);
         SODynLatHelper.PopFieldInit();
@@ -400,11 +407,8 @@ int main() {
         SO_BB.Init();
         SO_MBB.Init();
 
-        
-        // GradNormRhoWVTI.WriteBinary(MainLoopTimer());
-
         CWriter.Init(SOLattice.getRhoFM());
-        // TWriter.Init(THLattice.getRhoFM());
+
         StateWriter.Init(CA.getStateFM());
         VecWriter.Init(VelocityFM);
         MainWriter.Init();
@@ -412,12 +416,9 @@ int main() {
       }
     }
   }
-  fianloutput:
+
+fianloutput:
   MainWriter.WriteBinary(MainLoopTimer());
-
-
-  GradNormRhoWriter.Write(MainLoopTimer());
-  // GradNormRhoWVTI.WriteBinary(MainLoopTimer());
 
   Printer::Print_BigBanner(std::string("Calculation Complete!"));
   MainLoopTimer.Print_MainLoopPerformance(Geo.getN());

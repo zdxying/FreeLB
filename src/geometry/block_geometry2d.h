@@ -184,7 +184,7 @@ class BlockGeometry2D : public BasicBlock<T, 2> {
   }
 };
 
-enum BlockCellTag : std::uint8_t { None = 1, Refine = 2, Coarsen = 4, Solid = 8 };
+enum BlockCellTag : std::uint8_t { none = 1, refine = 2, coarsen = 4, solid = 8 };
 
 // especially designed for refine blockgeometry, uniform blockgeometry does not need this
 // all BasicBlocks here refer to the base block, overlaps will not be handled here
@@ -207,6 +207,8 @@ class BlockGeometryHelper2D : public BasicBlock<T, 2> {
   int BlockLen;
   // extension of the whole domain
   int Ext;
+  // max level limit
+  std::uint8_t _LevelLimit;
   // max level
   std::uint8_t _MaxLevel;
   // store old geometry info for data transfer, blockcomms are not needed here
@@ -214,24 +216,40 @@ class BlockGeometryHelper2D : public BasicBlock<T, 2> {
   std::vector<BasicBlock<T, 2>> _BasicBlocks1;
   // exchange flag for _BasicBlocks0 and _BasicBlocks1
   bool _Exchanged;
+  // delta index for cell block
+  std::array<int, 8> Delta_Cellidx;
 
  public:
   // domain of Nx * Ny will be divided into (Nx/blocklen)*(Ny/blocklen) blocks
   BlockGeometryHelper2D(int Nx, int Ny, int blocklen, const AABB<T, 2>& AABBs,
-                        T voxelSize = T(1), int ext = 1);
+                        T voxelSize = T(1), std::uint8_t llimit = std::uint8_t(2),
+                        int ext = 1);
   ~BlockGeometryHelper2D() = default;
 
   // get
+  void UpdateMaxLevel();
+  std::uint8_t getMaxLevel() const { return _MaxLevel; }
+  std::uint8_t getLevelLimit() const { return _LevelLimit; }
+  const std::array<int, 8>& getDeltaCellidx() const { return Delta_Cellidx; }
+
   int getExt() const { return Ext; }
   BasicBlock<T, 2>& getBaseBlock() { return _BaseBlock; }
   BasicBlock<T, 2>& getBlockCell(int id) { return _BlockCells[id]; }
   std::vector<BasicBlock<T, 2>>& getBlockCells() { return _BlockCells; }
 
+  BlockCellTag& getBlockCellTag(int id) { return _BlockCellTags[id]; }
+  std::vector<BlockCellTag>& getBlockCellTags() { return _BlockCellTags; }
+
+  int getCellsNx() const { return CellsNx; }
+  int getCellsNy() const { return CellsNy; }
+
   BasicBlock<T, 2>& getBasicBlock(int id) { return getBasicBlocks()[id]; }
   const BasicBlock<T, 2>& getBasicBlock(int id) const { return getBasicBlocks()[id]; }
 
   BasicBlock<T, 2>& getOldBasicBlock(int id) { return getOldBasicBlocks()[id]; }
-  const BasicBlock<T, 2>& getOldBasicBlock(int id) const { return getOldBasicBlocks()[id]; }
+  const BasicBlock<T, 2>& getOldBasicBlock(int id) const {
+    return getOldBasicBlocks()[id];
+  }
 
   // get new basic blocks
   std::vector<BasicBlock<T, 2>>& getBasicBlocks() {
@@ -249,27 +267,21 @@ class BlockGeometryHelper2D : public BasicBlock<T, 2> {
       return _BasicBlocks1;
   }
 
-  BlockCellTag& getBlockCellTag(int id) { return _BlockCellTags[id]; }
-  std::vector<BlockCellTag>& getBlockCellTags() { return _BlockCellTags; }
-
-
-  int getCellsNx() const { return CellsNx; }
-  int getCellsNy() const { return CellsNy; }
-
   void CreateBlockCells();
   // create block from BlockCells, this should be called after refinement
   void CreateBlocks();
+  // tag neighbor refine cells
+  void TagRefineLayer(std::vector<bool>& refine, bool& refined);
   // check refine cell status
-  void PostRefine();
+  void CheckRefine();
+  // perform refine
+  void Refine();
 
-  void UpdateMaxLevel();
-  std::uint8_t getMaxLevel() const { return _MaxLevel; }
-
-  // lambda function for each block
+  // lambda function for each cell block
   template <typename Func>
   void forEachBlockCell(Func func);
 
-  // optimal procNum usually set to actual procNum, 
+  // optimal procNum usually set to actual procNum,
   // MaxProcNum usually set to x * optProcNum
   void AdaptiveOptimization(int OptProcNum, int MaxProcNum = -1, bool enforce = true);
   // void AdaptiveOptimization(std::vector<BasicBlock<T, 2>>& Blocks, int OptProcNum,

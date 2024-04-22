@@ -643,7 +643,7 @@ void DynamicBlockLatticeHelper2D<T, LatSet>::ComputeGradNorm2() {
 
     const BasicBlock<T, 2>& cellblock = BlockGeoHelper.getBlockCell(icell);
     T voxsize = cellblock.getVoxelSize();
-    // find corresponding cellblock
+    // find corresponding block
     for (int iblock = 0; iblock < BlockGeo.getBlockNum(); ++iblock) {
       const BasicBlock<T, 2>& block = BlockGeo.getBlock(iblock);
       const BasicBlock<T, 2>& baseblock = BlockGeo.getBlock(iblock).getBaseBlock();
@@ -662,8 +662,8 @@ void DynamicBlockLatticeHelper2D<T, LatSet>::ComputeGradNorm2() {
         int blockstartx = static_cast<int>(std::round(blockstart[0] / voxsize));
         int blockstarty = static_cast<int>(std::round(blockstart[1] / voxsize));
 
-        for (int iy = 1; iy < Ny-1; ++iy) {
-          for (int ix = 1; ix < Nx-1; ++ix) {
+        for (int iy = 1; iy < Ny - 1; ++iy) {
+          for (int ix = 1; ix < Nx - 1; ++ix) {
             std::size_t idcell = (iy + cellstarty) * cellblock.getNx() + ix + cellstartx;
             std::size_t idblock = (iy + blockstarty) * block.getNx() + ix + blockstartx;
             GradNorm2[idcell] = FDM.gradnorm2(idblock);
@@ -689,6 +689,12 @@ void DynamicBlockLatticeHelper2D<T, LatSet>::UpdateMaxGradNorm2() {
 
 template <typename T, typename LatSet>
 bool DynamicBlockLatticeHelper2D<T, LatSet>::WillRefineOrCoarsen() {
+  _GradNorm2s.clear();
+  // init gradnorm2
+  for (BasicBlock<T, 2>& block : BlockGeoHelper.getBlockCells()) {
+    _GradNorm2s.emplace_back(block.getN(), T(0));
+  }
+
   ComputeGradNorm2();
   UpdateMaxGradNorm2();
   // statistics
@@ -721,27 +727,21 @@ bool DynamicBlockLatticeHelper2D<T, LatSet>::WillRefineOrCoarsen() {
 }
 
 template <typename T, typename LatSet>
-void DynamicBlockLatticeHelper2D<T, LatSet>::GeoRefineOrCoarsen(int OptProcNum,
+void DynamicBlockLatticeHelper2D<T, LatSet>::GeoRefine(int OptProcNum,
                                                                 int MaxProcNum,
                                                                 bool enforce) {
   // post refine
-  BlockGeoHelper.PostRefine();
+  BlockGeoHelper.CheckRefine();
   // update BasicBlocks in GeoHelper
   BlockGeoHelper.CreateBlocks();
   BlockGeoHelper.AdaptiveOptimization(OptProcNum, MaxProcNum, enforce);
-
-  _GradNorm2s.clear();
-  // init gradnorm2
-  for (BasicBlock<T, 2>& block : BlockGeoHelper.getBlockCells()) {
-    _GradNorm2s.emplace_back(block.getN(), T(0));
-  }
 }
 
 
 template <typename T, typename LatSet>
 void DynamicBlockLatticeHelper2D<T, LatSet>::PopFieldInit() {
   // rho field data transfer could be done here
-  BlockLatMan.getRhoFM().InitAndComm(BlockGeoHelper);
+  BlockLatMan.getRhoFM().InitAndComm(BlockGeoHelper,BlockLatMan.getConverter().getLatRhoInit());
   // pop field data, this assumes that other fields like rho and velocity have been
   // transfered
   BlockLatMan.getPopsFM().Init(BlockGeoHelper);

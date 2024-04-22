@@ -360,7 +360,7 @@ class DynamicBlockLatticeHelper2D {
 
   bool WillRefineOrCoarsen();
 
-  void GeoRefineOrCoarsen(int OptProcNum, int MaxProcNum = -1, bool enforce = true);
+  void GeoRefine(int OptProcNum, int MaxProcNum = -1, bool enforce = true);
 
   // field data transfer based on GeoHelper, before re-init geometry
   // pop date transfer between blocks with different level should be treated separately
