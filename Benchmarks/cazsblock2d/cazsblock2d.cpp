@@ -265,6 +265,9 @@ int main() {
   vtmo::vtmWriter<T, 2> MainWriter("cazsblock2d", Geo, 1);
   MainWriter.addWriterSet(&CWriter, &StateWriter, &VecWriter);
 
+  vtmo::ScalerWriter RhoWriter("Rho", NSLattice.getRhoFM());
+  MainWriter.addWriterSet(&RhoWriter);
+
   /*count and timer*/
   Timer MainLoopTimer;
   Timer OutputTimer;
@@ -300,13 +303,16 @@ int main() {
     NSLattice.Communicate(MainLoopTimer());
     SOLattice.Communicate(MainLoopTimer());
 
-    SOLattice.getRhoFM().CommunicateAll(MainLoopTimer());
+    // SOLattice.getRhoFM().CommunicateAll(MainLoopTimer());
 
     ++MainLoopTimer;
     ++OutputTimer;
 
     if (MainLoopTimer() % OutputStep == 0) {
-      VelocityFM.CommunicateAll(MainLoopTimer());
+      VelocityFM.CommunicateAll();
+      SOLattice.getRhoFM().CommunicateAll();
+      NSLattice.getRhoFM().CommunicateAll();
+
       OutputTimer.Print_InnerLoopPerformance(Geo.getTotalCellNum(), OutputStep);
       Printer::Print<std::size_t>("Interface", CA.getInterfaceNum());
       Printer::Print<T>("Solid%", T(CA.getSolidCount()) * 100 / Geo.getTotalCellNum());

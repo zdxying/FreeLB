@@ -703,7 +703,7 @@ bool DynamicBlockLatticeHelper2D<T, LatSet>::WillRefineOrCoarsen() {
   for (int i = 0; i < _GradNorm2s.size(); ++i) {
     BasicBlock<T, 2>& block = BlockGeoHelper.getBlockCell(i);
     int level = static_cast<int>(block.getLevel());
-    if (level < _MaxRefineLevel) {
+    if (level < BlockGeoHelper.getLevelLimit()) {
       if (_MaxGradNorm2s[i] > _RefineTholds[level]) {
         block.refine();
         ++refineNum;

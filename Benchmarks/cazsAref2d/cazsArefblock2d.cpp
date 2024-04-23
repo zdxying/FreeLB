@@ -209,8 +209,8 @@ int main() {
   AABB<T, 2> cavity(Vector<T, 2>(T(0), T(0)),
                     Vector<T, 2>(T(Ni * Cell_Len), T(Nj * Cell_Len)));
   AABB<T, 2> seedcavity(
-    Vector<T, 2>(T((Ni / 2 - 5) * Cell_Len), T((Nj / 2 - 5) * Cell_Len)),
-    Vector<T, 2>(T((Ni / 2 + 5) * Cell_Len), T((Nj / 2 + 5) * Cell_Len)));
+    Vector<T, 2>(T((Ni / 2 - Ni / BlockCellNx) * Cell_Len), T((Nj / 2 - Ni / BlockCellNx) * Cell_Len)),
+    Vector<T, 2>(T((Ni / 2 + Ni / BlockCellNx) * Cell_Len), T((Nj / 2 + Ni / BlockCellNx) * Cell_Len)));
 
   // geometry helper
   BlockGeometryHelper2D<T> GeoHelper(Ni, Nj, Ni / BlockCellNx, cavity, Cell_Len);
@@ -219,6 +219,12 @@ int main() {
       block.refine();
     }
   });
+  // GeoHelper.forEachBlockCell([&](BasicBlock<T, 2>& block) {
+  //   if (isOverlapped(block, seedcavity)) {
+  //     block.refine();
+  //   }
+  // });
+  // GeoHelper.CheckRefine();
   GeoHelper.CreateBlocks();
   GeoHelper.AdaptiveOptimization(Thread_Num);
 
@@ -249,9 +255,9 @@ int main() {
 
   // --------------------- dynamic lattice ---------------------
   DynamicBlockLatticeHelper2D<T, LatSet0> NSDynLatHelper(NSLattice, GeoHelper, VelocityFM,
-                                                         RefThold, CoaThold, 1);
+                                                         RefThold, CoaThold, 2);
   DynamicBlockLatticeHelper2D<T, LatSet1> SODynLatHelper(SOLattice, GeoHelper, VelocityFM,
-                                                         RefThold, CoaThold, 1);
+                                                         RefThold, CoaThold, 2);
 
   vtkWriter::FieldScalerWriter<T> GradNormRho("GradNormRho",
                                               SODynLatHelper.getMaxGradNorm2s().data(),
@@ -307,6 +313,9 @@ int main() {
   vtmo::vtmWriter<T, 2> MainWriter("cazsAMR2d", Geo, 1);
   MainWriter.addWriterSet(&CWriter, &StateWriter, &VecWriter);
 
+  vtmo::ScalerWriter RhoWriter("Rho", NSLattice.getRhoFM());
+  MainWriter.addWriterSet(&RhoWriter);
+
   /*count and timer*/
   Timer MainLoopTimer;
   Timer OutputTimer;
@@ -333,10 +342,14 @@ int main() {
 
     Force.GetBuoyancy(MainLoopTimer(), FI_Flag, CA.getStateFM());
 
+    // NSLattice.UpdateU(MainLoopTimer(), CA::CAType::Fluid, CA.getStateFM());
     Force.BGK_U<Equilibrium<T, LatSet0>::SecondOrder>(MainLoopTimer(), CA::CAType::Fluid,
                                                       CA.getStateFM());
     Force.BGK<Equilibrium<T, LatSet0>::SecondOrder>(
       MainLoopTimer(), CA::CAType::Interface, CA.getStateFM());
+
+      //   Force.BGK<Equilibrium<T, LatSet0>::SecondOrder>(
+      // MainLoopTimer(), FI_Flag, CA.getStateFM());
 
     SOLattice.BGK_Source<Equilibrium<T, LatSet1>::SecondOrder>(
       MainLoopTimer(), FI_Flag, CA.getStateFM(), CA.getExcessCFM());
@@ -375,6 +388,11 @@ int main() {
     if (MainLoopTimer() % RefineCheckStep == 0) {
       // if (SODynLatHelper.WillRefineOrCoarsen()) {
       if (CA.WillRefineBlockCells(GeoHelper)) {
+        // test
+        RefineCheckStep /= 100;
+        OutputStep /= 100;
+        MaxStep = (MaxStep - MainLoopTimer())/100 + MainLoopTimer();
+
         SODynLatHelper.GeoRefine(Thread_Num);
 
         // Geo Init
@@ -397,8 +415,9 @@ int main() {
 
         // field data transfer
         VelocityFM.InitAndComm(GeoHelper);
-        SODynLatHelper.PopFieldInit();
+
         NSDynLatHelper.PopFieldInit();
+        SODynLatHelper.PopFieldInit();        
 
         CA.CAFieldDataInit(GeoHelper);
 
@@ -419,12 +438,15 @@ int main() {
         VecWriter.Init(VelocityFM);
         MainWriter.Init();
         MainWriter.addWriterSet(&CWriter, &StateWriter, &VecWriter);
+
+        RhoWriter.Init(NSLattice.getRhoFM());
+        MainWriter.addWriterSet(&RhoWriter);
       }
     }
   }
 
-fianloutput:
-  MainWriter.WriteBinary(MainLoopTimer());
+// fianloutput:
+  // MainWriter.WriteBinary(MainLoopTimer());
 
   Printer::Print_BigBanner(std::string("Calculation Complete!"));
   MainLoopTimer.Print_MainLoopPerformance(Geo.getTotalCellNum());

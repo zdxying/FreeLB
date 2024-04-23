@@ -710,7 +710,7 @@ void BlockGeometryHelper2D<T>::TagRefineLayer(std::vector<bool> &refine, bool& r
   UpdateMaxLevel();
   // refine one additional layer if has neighbor with lower level
   // tag cells to be refined
-  for (std::uint8_t level = std::uint8_t(1); level <= _MaxLevel; ++level) {
+  for (std::uint8_t level = _MaxLevel; level > std::uint8_t(0); --level) {
     for (int celly = 1; celly < CellsNy - 1; ++celly) {
       for (int cellx = 1; cellx < CellsNx - 1; ++cellx) {
         int cellid = celly * CellsNx + cellx;

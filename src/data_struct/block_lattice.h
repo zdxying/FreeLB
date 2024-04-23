@@ -346,8 +346,8 @@ class DynamicBlockLatticeHelper2D {
         _CoarsenTholds(coarsenth), _MaxRefineLevel(MaxRefineLevel)
   // ,_GradNorm2F(BlockGeo.getBaseBlock().getN(), T(0)) {
   {
-    int minsize = std::min(_RefineTholds.size(), _CoarsenTholds.size());
-    _MaxRefineLevel = std::min(_MaxRefineLevel, minsize);
+    // int minsize = std::min(_RefineTholds.size(), _CoarsenTholds.size());
+    // _MaxRefineLevel = std::min(_MaxRefineLevel, minsize);
     // init gradnorm2
     for (BasicBlock<T, 2>& block : BlockGeoHelper.getBlockCells()) {
       _GradNorm2s.emplace_back(block.getN(), T(0));
