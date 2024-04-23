@@ -473,6 +473,12 @@ class BlockZhuStefanescu2DManager {
     for (int i = 0; i < BlockGeo.getBlockNum(); ++i) {
       BlockZS[i].Setup(blockid, nums[i]);
     }
+
+    Communicate();
+    for (auto& zs : BlockZS) {
+      zs.SimpleCapture();
+    }
+    Communicate();
   }
 
   std::vector<std::vector<std::size_t>*>& getInterfaces() { return Interfaces; }
@@ -498,23 +504,25 @@ class BlockZhuStefanescu2DManager {
     // ExcessC field
     ExcessCFM.NormalCommunicate();
     // ExcessC field post communication
-    // Reversed Communicate
 
-#pragma omp parallel for num_threads(Thread_Num)
-    for (BlockField<ScalerField<T>, T, 2>& blockF : ExcessCFM.getBlockFields()) {
-      // data in Recvs is sent from blockF to Sends of nblockF
-      for (BlockFieldComm<ScalerField<T>, T, 2>& comm : blockF.getComms()) {
-        BlockField<ScalerField<T>, T, 2>* nblockF = comm.BlockF;
-        std::size_t size = comm.getRecvs().size();
-        for (int iArr = 0; iArr < blockF.getField().Size(); ++iArr) {
-          auto& nArray = nblockF->getField().getField(iArr);
-          const auto& Array = blockF.getField().getField(iArr);
-          for (std::size_t id = 0; id < size; ++id) {
-            nArray[comm.getSend(id)] += Array[comm.getRecv(id)];
-          }
-        }
-      }
-    }
+    // Reversed Communicate should only apply to newly solidified cells's neighbors
+
+// #pragma omp parallel for num_threads(Thread_Num)
+//     for (BlockField<ScalerField<T>, T, 2>& blockF : ExcessCFM.getBlockFields()) {
+//       // data in Recvs is sent from blockF to Sends of nblockF
+//       for (BlockFieldComm<ScalerField<T>, T, 2>& comm : blockF.getComms()) {
+//         BlockField<ScalerField<T>, T, 2>* nblockF = comm.BlockF;
+//         std::size_t size = comm.getRecvs().size();
+//         for (int iArr = 0; iArr < blockF.getField().Size(); ++iArr) {
+//           auto& nArray = nblockF->getField().getField(iArr);
+//           const auto& Array = blockF.getField().getField(iArr);
+//           for (std::size_t id = 0; id < size; ++id) {
+//             nArray[comm.getSend(id)] += Array[comm.getRecv(id)];
+//           }
+//         }
+//       }
+//     }
+
   }
 
   std::size_t getInterfaceNum() {

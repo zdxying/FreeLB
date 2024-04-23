@@ -1,20 +1,37 @@
+/* This file is part of FreeLB
+ *
+ * Copyright (C) 2024 Yuan Man
+ * E-mail contact: ymmanyuan@outlook.com
+ * The most recent progress of FreeLB will be updated at
+ * <https://github.com/zdxying/FreeLB>
+ *
+ * FreeLB is free software: you can redistribute it and/or modify it under the terms of
+ * the GNU General Public License as published by the Free Software Foundation, either
+ * version 3 of the License, or (at your option) any later version.
+ *
+ * FreeLB is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
+ * without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
+ * PURPOSE. See the GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License along with FreeLB. If
+ * not, see <https://www.gnu.org/licenses/>.
+ *
+ */
+
+// cazsArefblock2d.cpp
 
 #include "ca/zhu_stefanescu2d.h"
 #include "ca/zhu_stefanescu2d.hh"
 #include "freelb.h"
 #include "freelb.hh"
-// Known bugs: Segmentation fault may occur, but running rhe executable again
-// may resolve this without re-compile
-//  this may be caused by parallel
 
-// int Total_Macro_Step = 0;
 using T = FLOAT;
 using LatSet0 = D2Q9<T>;
 using LatSet1 = D2Q5<T>;
 using LatSetCA = CA::D2Q8<T>;
 
 /*----------------------------------------------
-                        Simulation Parameters
+            Simulation Parameters
 -----------------------------------------------*/
 int Ni;
 int Nj;
@@ -60,7 +77,6 @@ T Temp_Ini;          // K
 T Conc_Ini;          // wt.%
 Vector<T, 2> U_Ini;  // mm/s
 T U_Max;
-T P_char;
 
 /*bcs*/
 T Temp_Wall;          // K
@@ -83,7 +99,7 @@ std::string work_dir;
 
 void readParam(std::vector<T>& refThold, std::vector<T>& coaThold) {
   /*reader*/
-  iniReader param_reader("ZS2Dparam.ini");
+  iniReader param_reader("cazsArefblock2dparam.ini");
   /*mesh*/
   work_dir = param_reader.getValue<std::string>("workdir", "workdir_");
   // parallel
@@ -127,7 +143,6 @@ void readParam(std::vector<T>& refThold, std::vector<T>& coaThold) {
   U_Ini[0] = param_reader.getValue<T>("ICs", "U_Ini0");
   U_Ini[1] = param_reader.getValue<T>("ICs", "U_Ini1");
   U_Max = param_reader.getValue<T>("ICs", "U_Max");
-  P_char = param_reader.getValue<T>("ICs", "P_char");
   /*bcs*/
   Conc_Wall = param_reader.getValue<T>("BCs", "Conc_Wall");
   Temp_Wall = param_reader.getValue<T>("BCs", "Temp_Wall");
@@ -158,7 +173,7 @@ void readParam(std::vector<T>& refThold, std::vector<T>& coaThold) {
 }
 
 int main() {
-  std::uint8_t voidFlag = std::uint8_t(1);
+  std::uint8_t VoidFlag = std::uint8_t(1);
   std::uint8_t AABBFlag = std::uint8_t(2);
   std::uint8_t BouncebackFlag = std::uint8_t(4);
   std::uint8_t FI_Flag =
@@ -172,7 +187,6 @@ int main() {
 
   // ------------------ define converters ------------------
   BaseConverter<T> BaseConv(LatSet0::cs2);
-  // Conv.SimplifiedConvertFromViscosity(Ni - 2, U_Max, Kine_Visc);
   BaseConv.ConvertFromRT(Cell_Len, RT, rho_ref, Ni * Cell_Len, U_Max, Kine_Visc);
 
   TempConverter<T> TempConv(LatSet1::cs2, BaseConv, Temp_Ini);
@@ -184,14 +198,9 @@ int main() {
 
   ConcConverter<T> ConcConv(LatSet1::cs2, BaseConv, Conc_Ini);
   ConcConv.ConvertConc_withCExpan(Cl, Ch, Diff_Liq, Solutal_Expan_Coeff);
-  // ConcConv.Enable_Non_Uniform_TimeStep(100);
 
   ZSConverter<T> CAConv(BaseConv, TempConv, ConcConv, T_Melt, T_Eute, m_Solidus,
                         m_Liquidus, GT_Coeff);
-  // Conv.ConvertLatentHeat(LatHeat);
-
-  // PhaseDiagramConverter<T> PDConv(TempConv, ConcConv, T_Melt, T_Eute,
-  // m_Solidus, m_Liquidus);
 
   UnitConvManager<T> ConvManager(&BaseConv, &TempConv, &ConcConv, &CAConv);
   ConvManager.Check_and_Print();
@@ -228,7 +237,7 @@ int main() {
   BlockLatticeManager<T, LatSet1> THLattice(Geo, TempConv, VelocityFM);
 
   // ------------------ define flag field ------------------
-  BlockFieldManager<FlagField, T, 2> FlagFM(Geo, voidFlag);
+  BlockFieldManager<FlagField, T, 2> FlagFM(Geo, VoidFlag);
   FlagFM.forEach(cavity,
                  [&](FlagField& field, std::size_t id) { field.SetField(id, AABBFlag); });
   FlagFM.template SetupBoundary<LatSet0>(cavity, BouncebackFlag);
@@ -270,7 +279,7 @@ int main() {
   // NS
   BBLikeFixedBlockBdManager<T, LatSet0,
                             BounceBackLikeMethod<T, LatSet0>::normal_bounceback>
-    NS_BB("NS_BB", NSLattice, FlagFM, BouncebackFlag, voidFlag);
+    NS_BB("NS_BB", NSLattice, FlagFM, BouncebackFlag, VoidFlag);
 
   BBLikeMovingBlockBdManager<T, LatSet0,
                              BounceBackLikeMethod<T, LatSet0>::normal_bounceback>
@@ -279,7 +288,7 @@ int main() {
   // Conc
   BBLikeFixedBlockBdManager<T, LatSet1,
                             BounceBackLikeMethod<T, LatSet1>::normal_bounceback>
-    SO_BB("SO_BB", SOLattice, FlagFM, BouncebackFlag, voidFlag);
+    SO_BB("SO_BB", SOLattice, FlagFM, BouncebackFlag, VoidFlag);
 
   BBLikeMovingBlockBdManager<T, LatSet1,
                              BounceBackLikeMethod<T, LatSet1>::normal_bounceback>
@@ -313,14 +322,14 @@ int main() {
     SOLattice.UpdateRho_Source(MainLoopTimer(), FI_Flag, CA.getStateFM(),
                                CA.getExcessCFM());
 
-    // CA.Apply_SimpleCapture();
-    try {
-      CA.Apply_SimpleCapture();
-    } catch (const std::runtime_error& e) {
-      std::cerr << "At MainStep: " << MainLoopTimer()
-                << ", Caught exception: " << e.what() << std::endl;
-      goto fianloutput;
-    }
+    CA.Apply_SimpleCapture();
+    // try {
+    //   CA.Apply_SimpleCapture();
+    // } catch (const std::runtime_error& e) {
+    //   std::cerr << "At MainStep: " << MainLoopTimer()
+    //             << ", Caught exception: " << e.what() << std::endl;
+    //   goto fianloutput;
+    // }
 
     Force.GetBuoyancy(MainLoopTimer(), FI_Flag, CA.getStateFM());
 
@@ -331,8 +340,6 @@ int main() {
 
     SOLattice.BGK_Source<Equilibrium<T, LatSet1>::SecondOrder>(
       MainLoopTimer(), FI_Flag, CA.getStateFM(), CA.getExcessCFM());
-
-    // comm here is ok
 
     NSLattice.Stream(MainLoopTimer());
     SOLattice.Stream(MainLoopTimer());
@@ -374,7 +381,7 @@ int main() {
         Geo.Init(GeoHelper);
 
         // field reconstruction
-        FlagFM.Init(voidFlag);
+        FlagFM.Init(VoidFlag);
         FlagFM.forEach(cavity, [&](FlagField& field, std::size_t id) {
           field.SetField(id, AABBFlag);
         });
@@ -408,7 +415,6 @@ int main() {
         SO_MBB.Init();
 
         CWriter.Init(SOLattice.getRhoFM());
-
         StateWriter.Init(CA.getStateFM());
         VecWriter.Init(VelocityFM);
         MainWriter.Init();
@@ -421,7 +427,7 @@ fianloutput:
   MainWriter.WriteBinary(MainLoopTimer());
 
   Printer::Print_BigBanner(std::string("Calculation Complete!"));
-  MainLoopTimer.Print_MainLoopPerformance(Geo.getN());
+  MainLoopTimer.Print_MainLoopPerformance(Geo.getTotalCellNum());
   Printer::Print("Total PhysTime", BaseConv.getPhysTime(MainLoopTimer()));
   Printer::Endl();
   return 0;

@@ -507,10 +507,11 @@ void BlockZhuStefanescu2D<T, LatSet>::SimpleCapture() {
   for (int j = Geo.getOverlap(); j < Geo.getNy() - Geo.getOverlap(); ++j) {
     for (int i = Geo.getOverlap(); i < Geo.getNx() - Geo.getOverlap(); ++i) {
       std::size_t id = i + j * Geo.getNx();
-      if (util::isFlag(State.get(id), CAType::Fluid) &&
-          hasNeighborType(id, CAType::Solid)) {
-        State.SetField(id, CAType::Interface);
-        Velocity.SetField(id, Vector<T, 2>{});
+      if (util::isFlag(State.get(id), CAType::Fluid)) {
+        if (hasNeighborType(id, CAType::Solid)) {
+          State.SetField(id, CAType::Interface);
+          Velocity.SetField(id, Vector<T, 2>{});
+        }
       }
     }
   }

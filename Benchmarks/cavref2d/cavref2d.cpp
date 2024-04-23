@@ -1,7 +1,26 @@
-// cavblock2d.cpp
+/* This file is part of FreeLB
+ *
+ * Copyright (C) 2024 Yuan Man
+ * E-mail contact: ymmanyuan@outlook.com
+ * The most recent progress of FreeLB will be updated at
+ * <https://github.com/zdxying/FreeLB>
+ *
+ * FreeLB is free software: you can redistribute it and/or modify it under the terms of
+ * the GNU General Public License as published by the Free Software Foundation, either
+ * version 3 of the License, or (at your option) any later version.
+ *
+ * FreeLB is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
+ * without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
+ * PURPOSE. See the GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License along with FreeLB. If
+ * not, see <https://www.gnu.org/licenses/>.
+ *
+ */
 
-// Lid-driven cavity flow 2d
-// this is a benchmark for the freeLB library
+// cavref2d.cpp
+
+// Lid-driven cavity flow 2d with refined block structure
 
 // the top wall is set with a constant velocity,
 // while the other walls are set with a no-slip boundary condition
@@ -9,7 +28,6 @@
 // Bounce-Back-Moving-Wall method for the top wall
 // Bounce-Back method for the other walls
 
-// block data structure is used
 
 #include "freelb.h"
 #include "freelb.hh"
@@ -26,6 +44,7 @@ int Nj;
 T Cell_Len;
 T RT;
 int Thread_Num;
+int BlockCellNx;
 
 /*physical property*/
 T rho_ref;    // g/mm^3
@@ -35,7 +54,6 @@ T Ra;         // Rayleigh number
 /*init conditions*/
 Vector<T, 2> U_Ini;  // mm/s
 T U_Max;
-T P_char;
 
 /*bcs*/
 Vector<T, 2> U_Wall;  // mm/s
@@ -48,16 +66,17 @@ std::string work_dir;
 
 void readParam() {
   /*reader*/
-  iniReader param_reader("cavityref2d.ini");
+  iniReader param_reader("cavref2d.ini");
   // Thread_Num = param_reader.getValue<int>("OMP", "Thread_Num");
   /*mesh*/
   work_dir = param_reader.getValue<std::string>("workdir", "workdir_");
   // parallel
   Thread_Num = param_reader.getValue<int>("parallel", "thread_num");
-  /*CA mesh*/
+  /*mesh*/
   Ni = param_reader.getValue<int>("Mesh", "Ni");
   Nj = param_reader.getValue<int>("Mesh", "Nj");
   Cell_Len = param_reader.getValue<T>("Mesh", "Cell_Len");
+  BlockCellNx = param_reader.getValue<int>("Mesh", "BlockCellNx");
   /*physical property*/
   rho_ref = param_reader.getValue<T>("Physical_Property", "rho_ref");
   Dyna_Visc = param_reader.getValue<T>("Physical_Property", "Dyna_Visc");
@@ -66,7 +85,6 @@ void readParam() {
   U_Ini[0] = param_reader.getValue<T>("Init_Conditions", "U_Ini0");
   U_Ini[1] = param_reader.getValue<T>("Init_Conditions", "U_Ini1");
   U_Max = param_reader.getValue<T>("Init_Conditions", "U_Max");
-  P_char = param_reader.getValue<T>("Init_Conditions", "P_char");
   /*bcs*/
   U_Wall[0] = param_reader.getValue<T>("Boundary_Conditions", "Velo_Wall0");
   U_Wall[1] = param_reader.getValue<T>("Boundary_Conditions", "Velo_Wall1");
@@ -102,104 +120,106 @@ int main() {
   // converters
   BaseConverter<T> BaseConv(LatSet::cs2);
   BaseConv.SimplifiedConvertFromViscosity(Ni, U_Max, Kine_Visc);
-  // BaseConv.ConvertFromRT(Cell_Len, RT, rho_ref, Ni * Cell_Len, U_Max,
-  // Kine_Visc);
   UnitConvManager<T> ConvManager(&BaseConv);
   ConvManager.Check_and_Print();
 
   // ------------------ define geometry ------------------
-  AABB<T, 2> cavity(Vector<T, 2>(T(0), T(0)), Vector<T, 2>(T(Ni * Cell_Len), T(Nj * Cell_Len)));
+  AABB<T, 2> cavity(Vector<T, 2>(T(0), T(0)),
+                    Vector<T, 2>(T(Ni * Cell_Len), T(Nj * Cell_Len)));
   // use 0.5 for refined block
   AABB<T, 2> toplid(Vector<T, 2>(Cell_Len / 2, T((Nj - 1) * Cell_Len)),
                     Vector<T, 2>(T((Ni - 0.5) * Cell_Len), T(Nj * Cell_Len)));
-  AABB<T, 2> Coarsecavity(Vector<T, 2>(T(Ni * Cell_Len) / 3 + 1, T(Nj * Cell_Len) / 3 + 1),
-                          Vector<T, 2>(T(Ni * Cell_Len) * 2 / 3 - 1, T(Nj * Cell_Len) * 2 / 3 - 1));
+  // for refined block
+  AABB<T, 2> innercavity(
+    Vector<T, 2>(T(Ni * Cell_Len) / BlockCellNx, T(Nj * Cell_Len) / BlockCellNx),
+    Vector<T, 2>(T(Ni * Cell_Len) * (BlockCellNx - 1) / BlockCellNx,
+                 T(Nj * Cell_Len) * (BlockCellNx - 1) / BlockCellNx));
 
-  BlockGeometry2D<T> Geo(Ni, Nj, Thread_Num, cavity, Cell_Len, AABBFlag, VoidFlag, 1, true);
-  Geo.forEachBlock([&](Block2D<T>& block) {
-    if (!isOverlapped(block.getBaseBlock(), Coarsecavity)) {
-      // BasicBlock<T, 2> RefBlock = block.getBaseBlock().getRefinedBlock();
-      // block = Block2D<T>(RefBlock, AABBFlag, VoidFlag, 2);
-      block.Refine();
+  // geometry helper
+  BlockGeometryHelper2D<T> GeoHelper(Ni, Nj, Ni / BlockCellNx, cavity, Cell_Len);
+  GeoHelper.forEachBlockCell([&](BasicBlock<T, 2>& block) {
+    if (!isOverlapped(block, innercavity)) {
+      block.refine();
     }
   });
-  Geo.InitAllComm();
-  Geo.ReadAABBs(cavity, AABBFlag);
-  Geo.SetupBoundary<LatSet>(AABBFlag, BouncebackFlag);
-  Geo.setFlag(toplid, BouncebackFlag, BBMovingWallFlag);
+  GeoHelper.CreateBlocks();
+  GeoHelper.AdaptiveOptimization(16);
 
-  // vtmwriter::ScalerWriter GeoFlagWriter("flag", Geo.getGeoFlags());
-  // vtmwriter::vtmWriter<T, LatSet::d> GeoWriter("GeoFlag", Geo);
-  // GeoWriter.addWriterSet(&GeoFlagWriter);
-  // GeoWriter.WriteBinary();
+  BlockGeometry2D<T> Geo(GeoHelper);
 
-  vtmo::ScalerWriter GeoFlagWriterNO("flagno", Geo.getGeoFlags(), Geo.getGeoMeshes());
-  vtmo::vtmWriter<T, LatSet::d> GeoWriterNO("GeoFlagNO", Geo);
-  GeoWriterNO.addWriterSet(&GeoFlagWriterNO);
-  GeoWriterNO.WriteBinary();
+  // ------------------ define flag field ------------------
+  BlockFieldManager<FlagField, T, 2> FlagFM(Geo, VoidFlag);
+  FlagFM.forEach(cavity,
+                 [&](FlagField& field, std::size_t id) { field.SetField(id, AABBFlag); });
+  FlagFM.template SetupBoundary<LatSet>(cavity, BouncebackFlag);
+  FlagFM.forEach(toplid, [&](FlagField& field, std::size_t id) {
+    if (field.get(id) == BouncebackFlag) field.SetField(id, BBMovingWallFlag);
+  });
+
+  vtmo::ScalerWriter FlagWriter("flag", FlagFM);
+  vtmo::vtmWriter<T, LatSet::d> GeoWriter("GeoFlag", Geo, 1);
+  GeoWriter.addWriterSet(&FlagWriter);
+  GeoWriter.WriteBinary();
 
   // ------------------ define lattice ------------------
   // velocity field
-  BlockVectFieldAOS<T, 2> Velocity(Geo.getBlockSizes());
+  BlockFieldManager<VectorFieldAOS<T, 2>, T, 2> VelocityFM(Geo);
   // set initial value of field
-  Geo.forEachVoxel(toplid, BBMovingWallFlag, [&Velocity](int id, int blockid) {
-    Velocity.getBlockField(blockid).SetField(id, U_Wall);
-  });
+  VelocityFM.forEach(FlagFM, BBMovingWallFlag,
+                     [&](auto& field, std::size_t id) { field.SetField(id, U_Wall); });
   // lattice
-  BlockLatticeManager<T, LatSet> LatMan(Geo, BaseConv, Velocity);
-  LatMan.EnableToleranceU();
+  BlockLatticeManager<T, LatSet> NSLattice(Geo, BaseConv, VelocityFM);
+  NSLattice.EnableToleranceU();
   T res = 1;
 
   // bcs
-  BBLikeFixedBlockBdManager<T, LatSet, BounceBackLikeMethod<T, LatSet>::normal_bounceback> NS_BB(
-    "NS_BB", LatMan, BouncebackFlag, VoidFlag);
-  BBLikeFixedBlockBdManager<T, LatSet, BounceBackLikeMethod<T, LatSet>::movingwall_bounceback> NS_BBMW(
-    "NS_BBMW", LatMan, BBMovingWallFlag, VoidFlag);
+  BBLikeFixedBlockBdManager<T, LatSet, BounceBackLikeMethod<T, LatSet>::normal_bounceback>
+    NS_BB("NS_BB", NSLattice, FlagFM, BouncebackFlag, VoidFlag);
+  BBLikeFixedBlockBdManager<T, LatSet,
+                            BounceBackLikeMethod<T, LatSet>::movingwall_bounceback>
+    NS_BBMW("NS_BBMW", NSLattice, FlagFM, BBMovingWallFlag, VoidFlag);
   BlockBoundaryManager BM(&NS_BB, &NS_BBMW);
 
   // writers
-  vtmo::ScalerWriter RhoWriterNO("Rho", LatMan.getRhoField(), Geo.getGeoMeshes());
-  vtmo::VectorWriter VecWriterNO("Velocity", Velocity, Geo.getGeoMeshes());
-  vtmo::vtmWriter<T, LatSet::d> NSWriterNO("cavref2dNO", Geo, 1);
-  NSWriterNO.addWriterSet(&RhoWriterNO, &VecWriterNO);
-
-  vtmwriter::ScalerWriter RhoWriter("Rho", LatMan.getRhoField());
-  vtmwriter::VectorWriter VecWriter("Velocity", Velocity);
-  vtmwriter::vtmWriter<T, LatSet::d> NSWriter("cavref2d", Geo);
+  vtmo::ScalerWriter RhoWriter("Rho", NSLattice.getRhoFM());
+  vtmo::VectorWriter VecWriter("Velocity", VelocityFM);
+  vtmo::vtmWriter<T, LatSet::d> NSWriter("cavref2d", Geo, 1);
   NSWriter.addWriterSet(&RhoWriter, &VecWriter);
 
-
-  // /*count and timer*/
+  // count and timer
   Timer MainLoopTimer;
   Timer OutputTimer;
-  NSWriterNO.WriteBinary(MainLoopTimer());
+  NSWriter.WriteBinary(MainLoopTimer());
 
   Printer::Print_BigBanner(std::string("Start Calculation..."));
 
   while (MainLoopTimer() < MaxStep && res > tol) {
-
-    LatMan.UpdateRho(MainLoopTimer(), std::uint8_t(AABBFlag));
-    LatMan.UpdateU(MainLoopTimer(), std::uint8_t(AABBFlag));
-    LatMan.template BGK<Equilibrium<T, LatSet>::SecondOrder>(MainLoopTimer(),
-      std::uint8_t(AABBFlag | BouncebackFlag | BBMovingWallFlag));
-
-    // to communicate before stream, non-overlapped vtm writer should be used
-    LatMan.Stream(MainLoopTimer());
-
-    LatMan.Communicate(MainLoopTimer());
-
+    // update macroscopic variables
+    NSLattice.UpdateRho(MainLoopTimer(), AABBFlag, FlagFM);
+    NSLattice.UpdateU(MainLoopTimer(), AABBFlag, FlagFM);
+    // BGK collision
+    NSLattice.template BGK<Equilibrium<T, LatSet>::SecondOrder>(
+      MainLoopTimer(), std::uint8_t(AABBFlag | BouncebackFlag | BBMovingWallFlag),
+      FlagFM);
+    // streaming
+    NSLattice.Stream(MainLoopTimer());
+    // boundary conditions
     BM.Apply(MainLoopTimer());
+    // block communication
+    NSLattice.Communicate(MainLoopTimer());
 
     ++MainLoopTimer;
     ++OutputTimer;
+
     if (MainLoopTimer() % OutputStep == 0) {
-      res = LatMan.getToleranceU(1);
+      res = NSLattice.getToleranceU(1);
       OutputTimer.Print_InnerLoopPerformance(Geo.getTotalCellNum(), OutputStep);
       Printer::Print_Res<T>(res);
-      NSWriterNO.WriteBinary(MainLoopTimer());
+      Printer::Endl();
+      NSWriter.WriteBinary(MainLoopTimer());
     }
   }
-  NSWriterNO.WriteBinary(MainLoopTimer());
+  NSWriter.WriteBinary(MainLoopTimer());
   Printer::Print_BigBanner(std::string("Calculation Complete!"));
   MainLoopTimer.Print_MainLoopPerformance(Geo.getTotalCellNum());
 

@@ -1,20 +1,38 @@
+/* This file is part of FreeLB
+ *
+ * Copyright (C) 2024 Yuan Man
+ * E-mail contact: ymmanyuan@outlook.com
+ * The most recent progress of FreeLB will be updated at
+ * <https://github.com/zdxying/FreeLB>
+ *
+ * FreeLB is free software: you can redistribute it and/or modify it under the terms of
+ * the GNU General Public License as published by the Free Software Foundation, either
+ * version 3 of the License, or (at your option) any later version.
+ *
+ * FreeLB is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
+ * without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
+ * PURPOSE. See the GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License along with FreeLB. If
+ * not, see <https://www.gnu.org/licenses/>.
+ *
+ */
+
+// cazsblock2d.cpp
+
 
 #include "ca/zhu_stefanescu2d.h"
 #include "ca/zhu_stefanescu2d.hh"
 #include "freelb.h"
 #include "freelb.hh"
-// Known bugs: Segmentation fault may occur, but running rhe executable again
-// may resolve this without re-compile
-//  this may be caused by parallel
 
-// int Total_Macro_Step = 0;
 using T = FLOAT;
 using LatSet0 = D2Q9<T>;
 using LatSet1 = D2Q5<T>;
 using LatSetCA = CA::D2Q8<T>;
 
 /*----------------------------------------------
-                        Simulation Parameters
+            Simulation Parameters
 -----------------------------------------------*/
 int Ni;
 int Nj;
@@ -24,7 +42,7 @@ T RT;
 T TimeStep;
 int Thread_Num;
 /*---------------------
-        physical param
+    physical param
 ---------------------*/
 
 /*nucleation and growth*/
@@ -59,7 +77,6 @@ T Temp_Ini;          // K
 T Conc_Ini;          // wt.%
 Vector<T, 2> U_Ini;  // mm/s
 T U_Max;
-T P_char;
 
 /*bcs*/
 T Temp_Wall;          // K
@@ -81,7 +98,7 @@ std::string work_dir;
 
 void readParam() {
   /*reader*/
-  iniReader param_reader("ZS2Dparam.ini");
+  iniReader param_reader("cazsblock2dparam.ini");
   /*mesh*/
   work_dir = param_reader.getValue<std::string>("workdir", "workdir_");
   // parallel
@@ -124,7 +141,6 @@ void readParam() {
   U_Ini[0] = param_reader.getValue<T>("ICs", "U_Ini0");
   U_Ini[1] = param_reader.getValue<T>("ICs", "U_Ini1");
   U_Max = param_reader.getValue<T>("ICs", "U_Max");
-  P_char = param_reader.getValue<T>("ICs", "P_char");
   /*bcs*/
   Conc_Wall = param_reader.getValue<T>("BCs", "Conc_Wall");
   Temp_Wall = param_reader.getValue<T>("BCs", "Temp_Wall");
@@ -151,10 +167,11 @@ void readParam() {
 }
 
 int main() {
-  std::uint8_t voidflag = std::uint8_t(1);
-  std::uint8_t AABBflag = std::uint8_t(2);
+  std::uint8_t VoidFlag = std::uint8_t(1);
+  std::uint8_t AABBFlag = std::uint8_t(2);
   std::uint8_t BouncebackFlag = std::uint8_t(4);
-  std::uint8_t FI_Flag = static_cast<std::uint8_t>(CA::CAType::Fluid | CA::CAType::Interface);
+  std::uint8_t FI_Flag =
+    static_cast<std::uint8_t>(CA::CAType::Fluid | CA::CAType::Interface);
 
   Printer::Print_BigBanner(std::string("Initializing..."));
 
@@ -162,7 +179,6 @@ int main() {
 
   // ------------------ define converters ------------------
   BaseConverter<T> BaseConv(LatSet0::cs2);
-  // Conv.SimplifiedConvertFromViscosity(Ni - 2, U_Max, Kine_Visc);
   BaseConv.ConvertFromRT(Cell_Len, RT, rho_ref, Ni * Cell_Len, U_Max, Kine_Visc);
 
   TempConverter<T> TempConv(LatSet1::cs2, BaseConv, Temp_Ini);
@@ -174,98 +190,104 @@ int main() {
 
   ConcConverter<T> ConcConv(LatSet1::cs2, BaseConv, Conc_Ini);
   ConcConv.ConvertConc_withCExpan(Cl, Ch, Diff_Liq, Solutal_Expan_Coeff);
-  // ConcConv.Enable_Non_Uniform_TimeStep(100);
 
-  ZSConverter<T> CAConv(BaseConv, TempConv, ConcConv, T_Melt, T_Eute, m_Solidus, m_Liquidus,
-                        GT_Coeff);
-  // Conv.ConvertLatentHeat(LatHeat);
-
-  // PhaseDiagramConverter<T> PDConv(TempConv, ConcConv, T_Melt, T_Eute,
-  // m_Solidus, m_Liquidus);
+  ZSConverter<T> CAConv(BaseConv, TempConv, ConcConv, T_Melt, T_Eute, m_Solidus,
+                        m_Liquidus, GT_Coeff);
 
   UnitConvManager<T> ConvManager(&BaseConv, &TempConv, &ConcConv, &CAConv);
   ConvManager.Check_and_Print();
 
   // ------------------ define geometry ------------------
-  AABB<T, 2> cavity(Vector<T, 2>(T(0), T(0)), Vector<T, 2>(T(Ni * Cell_Len), T(Nj * Cell_Len)));
+  AABB<T, 2> cavity(Vector<T, 2>(T(0), T(0)),
+                    Vector<T, 2>(T(Ni * Cell_Len), T(Nj * Cell_Len)));
   // NS geometry
-  BlockGeometry2D<T> Geo0(Ni, Nj, Thread_Num, cavity, Cell_Len, AABBflag, voidflag);
-  Geo0.SetupBoundary<LatSet0>(AABBflag, BouncebackFlag);
-  // thermal geometry
-  BlockGeometry2D<T> Geo1(Ni, Nj, Thread_Num, cavity, Cell_Len, AABBflag, voidflag);
-  Geo1.SetupBoundary<LatSet1>(AABBflag, BouncebackFlag);
+  BlockGeometry2D<T> Geo(Ni, Nj, Thread_Num, cavity, Cell_Len);
 
-  vtmwriter::ScalerWriter GeoFlagWriter("flag", Geo0.getGeoFlags());
-  vtmwriter::vtmWriter<T, 2> GeoWriter("GeoFlag", Geo0);
-  GeoWriter.addWriterSet(&GeoFlagWriter);
-  GeoWriter.Write();
+  // ------------------ define flag field ------------------
+  BlockFieldManager<FlagField, T, 2> FlagFM(Geo, VoidFlag);
+  FlagFM.forEach(cavity,
+                 [&](FlagField& field, std::size_t id) { field.SetField(id, AABBFlag); });
+  FlagFM.template SetupBoundary<LatSet0>(cavity, BouncebackFlag);
+
+  vtmo::ScalerWriter FlagWriter("flag", FlagFM);
+  vtmo::vtmWriter<T, 2> GeoWriter("GeoFlag", Geo, 1);
+  GeoWriter.addWriterSet(&FlagWriter);
+  GeoWriter.WriteBinary();
 
   // ------------------ define lattice ------------------
   // velocity field
-  BlockVectFieldAOS<T, 2> Velocity(Geo0.getBlockSizes());
+  BlockFieldManager<VectorFieldAOS<T, 2>, T, 2> VelocityFM(Geo);
   // lbm
-  BlockLatticeManager<T, LatSet0> NSLattice(Geo0, BaseConv, Velocity);
+  BlockLatticeManager<T, LatSet0> NSLattice(Geo, BaseConv, VelocityFM);
 
-  BlockLatticeManager<T, LatSet1> SOLattice(Geo1, ConcConv, Velocity);
+  BlockLatticeManager<T, LatSet1> SOLattice(Geo, ConcConv, VelocityFM);
 
-  BlockLatticeManager<T, LatSet1> THLattice(Geo1, TempConv, Velocity);
+  BlockLatticeManager<T, LatSet1> THLattice(Geo, TempConv, VelocityFM);
 
   // --------------------- CA ---------------------
-  CA::BlockZhuStefanescu2DManager<T, LatSetCA> CA(
-    Velocity, CAConv, SOLattice.getRhoLattices(), THLattice.getRhoLattices(), Geo0, Delta,
-    pref_Orine, Geo0.getIndex(Vector<int, 2>{Ni / 2, Nj / 2}));
-
+  CA::BlockZhuStefanescu2DManager<T, LatSetCA> CA(VelocityFM, CAConv, SOLattice,
+                                                  THLattice, Delta, pref_Orine);
+  // set CA State field
+  CA.getStateFM().forEach(FlagFM, AABBFlag, [&](auto& field, std::size_t id) {
+    field.SetField(id, CA::CAType::Fluid);
+  });
+  CA.Setup(Geo.getIndex(Vector<int, 2>{Ni / 2, Nj / 2}));
   // --------------------- BCs ---------------------
   // NS
-  BBLikeFixedBlockBdManager<T, LatSet0, BounceBackLikeMethod<T, LatSet0>::normal_bounceback> NS_BB(
-    "NS_BB", NSLattice, BouncebackFlag, voidflag);
+  BBLikeFixedBlockBdManager<T, LatSet0,
+                            BounceBackLikeMethod<T, LatSet0>::normal_bounceback>
+    NS_BB("NS_BB", NSLattice, FlagFM, BouncebackFlag, VoidFlag);
 
-  BBLikeMovingBlockBdManager<T, LatSet0, BounceBackLikeMethod<T, LatSet0>::normal_bounceback>
-    NS_MBB("NS_MBB", NSLattice, CA.getInterfaces(), CA::CAType::Solid);
+  BBLikeMovingBlockBdManager<T, LatSet0,
+                             BounceBackLikeMethod<T, LatSet0>::normal_bounceback>
+    NS_MBB("NS_MBB", NSLattice, CA.getInterfaces(), FlagFM, CA::CAType::Solid);
 
   // Conc
-  BBLikeFixedBlockBdManager<T, LatSet1, BounceBackLikeMethod<T, LatSet1>::normal_bounceback> SO_BB(
-    "SO_BB", SOLattice, BouncebackFlag, voidflag);
+  BBLikeFixedBlockBdManager<T, LatSet1,
+                            BounceBackLikeMethod<T, LatSet1>::normal_bounceback>
+    SO_BB("SO_BB", SOLattice, FlagFM, BouncebackFlag, VoidFlag);
 
-  BBLikeMovingBlockBdManager<T, LatSet1, BounceBackLikeMethod<T, LatSet1>::normal_bounceback>
-    SO_MBB("SO_MBB", SOLattice, CA.getInterfaces(), CA::CAType::Solid);
+  BBLikeMovingBlockBdManager<T, LatSet1,
+                             BounceBackLikeMethod<T, LatSet1>::normal_bounceback>
+    SO_MBB("SO_MBB", SOLattice, CA.getInterfaces(), FlagFM, CA::CAType::Solid);
 
 
-  BlockBuoyancyManager<T, LatSet0> Force(NSLattice, Velocity);
+  BlockBuoyancyManager<T, LatSet0> Force(NSLattice, VelocityFM);
   Force.AddSource(SOLattice);
   Force.AddSource(THLattice);
 
   // writer
-  vtmwriter::ScalerWriter CWriter("Rho", SOLattice.getRhoField());
-  vtmwriter::ScalerWriter StateWriter("State", CA.getStates());
-  vtmwriter::VectorWriter VecWriter("Velocity", Velocity);
-  vtmwriter::vtmWriter<T, 2> NCWriter("cavityblock2d", Geo0);
-  NCWriter.addWriterSet(&CWriter, &StateWriter, &VecWriter);
+  vtmo::ScalerWriter CWriter("Conc", SOLattice.getRhoFM());
+  // vtmo::ScalerWriter FsWriter("Fs", CA.getFsFM());
+  // vtmo::ScalerWriter EXCWriter("ExC", CA.getExcessCFM());
+  vtmo::ScalerWriter StateWriter("State", CA.getStateFM());
+  vtmo::VectorWriter VecWriter("Velocity", VelocityFM);
+  vtmo::vtmWriter<T, 2> MainWriter("cazsblock2d", Geo, 1);
+  MainWriter.addWriterSet(&CWriter, &StateWriter, &VecWriter);
 
   /*count and timer*/
   Timer MainLoopTimer;
   Timer OutputTimer;
 
   Printer::Print_BigBanner(std::string("Start Calculation..."));
-  NCWriter.WriteBinary(MainLoopTimer());
+  MainWriter.WriteBinary(MainLoopTimer());
 
   while (MainLoopTimer() < MaxStep) {
-    NSLattice.UpdateRho(MainLoopTimer(), CA.getStates(), FI_Flag);
-    SOLattice.UpdateRho_Source(MainLoopTimer(), CA.getStates(), FI_Flag, CA.getExcessC_s());
+    NSLattice.UpdateRho(MainLoopTimer(), FI_Flag, CA.getStateFM());
+    SOLattice.UpdateRho_Source(MainLoopTimer(), FI_Flag, CA.getStateFM(),
+                               CA.getExcessCFM());
 
-    CA.apply_SimpleCapture();
+    CA.Apply_SimpleCapture();
 
-    Force.GetBuoyancy(MainLoopTimer(), CA.getStates(), FI_Flag);
+    Force.GetBuoyancy(MainLoopTimer(), FI_Flag, CA.getStateFM());
 
-    Force.BGK_U<Equilibrium<T, LatSet0>::SecondOrder>(MainLoopTimer(), CA.getStates(),
-                                                      CA::CAType::Fluid);
-    Force.BGK<Equilibrium<T, LatSet0>::SecondOrder>(MainLoopTimer(), CA.getStates(),
-                                                    CA::CAType::Interface);
+    Force.BGK_U<Equilibrium<T, LatSet0>::SecondOrder>(MainLoopTimer(), CA::CAType::Fluid,
+                                                      CA.getStateFM());
+    Force.BGK<Equilibrium<T, LatSet0>::SecondOrder>(
+      MainLoopTimer(), CA::CAType::Interface, CA.getStateFM());
 
-    SOLattice.BGK_Source<Equilibrium<T, LatSet1>::SecondOrder>(MainLoopTimer(), CA.getStates(),
-                                                               FI_Flag, CA.getExcessC_s());
-
-    // comm here is ok                                               
+    SOLattice.BGK_Source<Equilibrium<T, LatSet1>::SecondOrder>(
+      MainLoopTimer(), FI_Flag, CA.getStateFM(), CA.getExcessCFM());
 
     NSLattice.Stream(MainLoopTimer());
     SOLattice.Stream(MainLoopTimer());
@@ -275,24 +297,27 @@ int main() {
     SO_BB.Apply(MainLoopTimer());
     SO_MBB.Apply(MainLoopTimer());
 
-    // comm here is ok 
-    
     NSLattice.Communicate(MainLoopTimer());
-    SOLattice.Communicate(MainLoopTimer());  
+    SOLattice.Communicate(MainLoopTimer());
+
+    SOLattice.getRhoFM().CommunicateAll(MainLoopTimer());
 
     ++MainLoopTimer;
     ++OutputTimer;
 
     if (MainLoopTimer() % OutputStep == 0) {
-      OutputTimer.Print_InnerLoopPerformance(Geo0.getTotalCellNum(), OutputStep);
+      VelocityFM.CommunicateAll(MainLoopTimer());
+      OutputTimer.Print_InnerLoopPerformance(Geo.getTotalCellNum(), OutputStep);
       Printer::Print<std::size_t>("Interface", CA.getInterfaceNum());
-      Printer::Print<T>("Solid%", T(CA.getSolidCount()) * 100 / Geo0.getTotalCellNum());
-      NCWriter.WriteBinary(MainLoopTimer());
+      Printer::Print<T>("Solid%", T(CA.getSolidCount()) * 100 / Geo.getTotalCellNum());
+      Printer::Endl();
+      MainWriter.WriteBinary(MainLoopTimer());
     }
   }
-  NCWriter.WriteBinary(MainLoopTimer());
+
+  MainWriter.WriteBinary(MainLoopTimer());
   Printer::Print_BigBanner(std::string("Calculation Complete!"));
-  MainLoopTimer.Print_MainLoopPerformance(Ni, Nj);
+  MainLoopTimer.Print_MainLoopPerformance(Geo.getTotalCellNum());
   Printer::Print("Total PhysTime", BaseConv.getPhysTime(MainLoopTimer()));
   Printer::Endl();
   return 0;

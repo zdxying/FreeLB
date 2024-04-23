@@ -8,8 +8,6 @@ FLAGS += -O3 -march=native #-fopenmp
 # FLAGS += -march=native
 # FLAGS += -DThread_Num 16 -fopenmp
 
-# FLAGS += -D_COLLISION_P
-
 # unused #pragma warning
 # the order of member initialization not matching the order of member declaration in the class definition
 # type comparison 

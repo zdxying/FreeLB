@@ -1,21 +1,21 @@
 /* This file is part of FreeLB
- * 
+ *
  * Copyright (C) 2024 Yuan Man
  * E-mail contact: ymmanyuan@outlook.com
  * The most recent progress of FreeLB will be updated at
  * <https://github.com/zdxying/FreeLB>
- * 
- * FreeLB is free software: you can redistribute it and/or modify it under the terms of the GNU
- * General Public License as published by the Free Software Foundation, either version 3 of the
- * License, or (at your option) any later version.
- * 
- * FreeLB is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the
- * implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public
- * License for more details.
- * 
- * You should have received a copy of the GNU General Public License along with FreeLB. If not, see
- * <https://www.gnu.org/licenses/>.
- * 
+ *
+ * FreeLB is free software: you can redistribute it and/or modify it under the terms of
+ * the GNU General Public License as published by the Free Software Foundation, either
+ * version 3 of the License, or (at your option) any later version.
+ *
+ * FreeLB is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
+ * without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
+ * PURPOSE. See the GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License along with FreeLB. If
+ * not, see <https://www.gnu.org/licenses/>.
+ *
  */
 
 // ini_reader.h
@@ -65,6 +65,10 @@ class iniReader {
  public:
   iniReader(const std::string& filename) {
     std::ifstream file(filename);
+    if (!file) {
+      std::cerr << "Can't open file: " << filename << std::endl;
+      exit(1);
+    }
     std::string line, section;
     while (std::getline(file, line)) {
       // Ignore comments
@@ -113,6 +117,7 @@ class iniReader {
 
 // avoid unnecessary conversion
 template <>
-std::string iniReader::getValue<std::string>(const std::string& section, const std::string& name) {
+std::string iniReader::getValue<std::string>(const std::string& section,
+                                             const std::string& name) {
   return iniContent[section][name];
 }
