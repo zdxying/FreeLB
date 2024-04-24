@@ -190,9 +190,7 @@ int main() {
   BaseConv.ConvertFromRT(Cell_Len, RT, rho_ref, Ni * Cell_Len, U_Max, Kine_Visc);
 
   TempConverter<T> TempConv(LatSet1::cs2, BaseConv, Temp_Ini);
-  // Conv.ConvertTempFromTDiff_with_Ra(Tl, Th, TDiff, Ra);
-  // Conv.ConvertTempFromSHeatCap_and_TCond_with_Ra(Tl, Th, T_Cond_Liq,
-  // SHeatCap_Liq, Ra);
+
   TempConv.ConvertTempFromSHeatCap_and_TCond_with_Texpan(Tl, Th, T_Cond_Liq, SHeatCap_Liq,
                                                          Thermal_Expan_Coeff);
 
@@ -220,12 +218,12 @@ int main() {
       block.refine();
     }
   });
-  // GeoHelper.forEachBlockCell([&](BasicBlock<T, 2>& block) {
-  //   if (isOverlapped(block, seedcavity)) {
-  //     block.refine();
-  //   }
-  // });
-  // GeoHelper.CheckRefine();
+  GeoHelper.forEachBlockCell([&](BasicBlock<T, 2>& block) {
+    if (isOverlapped(block, seedcavity)) {
+      block.refine();
+    }
+  });
+  GeoHelper.CheckRefine();
   GeoHelper.CreateBlocks();
   GeoHelper.AdaptiveOptimization(Thread_Num);
 
@@ -259,19 +257,6 @@ int main() {
                                                          RefThold, CoaThold, 2);
   DynamicBlockLatticeHelper2D<T, LatSet1> SODynLatHelper(SOLattice, GeoHelper, VelocityFM,
                                                          RefThold, CoaThold, 2);
-
-  vtkWriter::FieldScalerWriter<T> GradNormRho("GradNormRho",
-                                              SODynLatHelper.getMaxGradNorm2s().data(),
-                                              SODynLatHelper.getMaxGradNorm2s().size());
-  vtkStruPointsWriter<T, 2> GradNormRhoWriter("GradNormRho", Cell_Len * Ni / BlockCellNx,
-                                              Vector<T, 2>{}, GeoHelper.getCellsNx(),
-                                              GeoHelper.getCellsNy());
-  GradNormRhoWriter.addtoWriteList(&GradNormRho);
-
-  // vtiwriter::ScalerWriter GradNormRhoVTI("GradNormRho",
-  // SODynLatHelper.getGradNorm2F().getField(0)); vtiwriter::vtiManager
-  // GradNormRhoWVTI("GradNormRhoF", Geo.getBaseBlock());
-  // GradNormRhoWVTI.addWriter(&GradNormRhoVTI);
 
   // --------------------- CA ---------------------
   CA::BlockZhuStefanescu2DManager<T, LatSetCA> CA(VelocityFM, CAConv, SOLattice,
@@ -314,9 +299,6 @@ int main() {
   vtmo::vtmWriter<T, 2> MainWriter("cazsAMR2d", Geo, 1);
   MainWriter.addWriterSet(&CWriter, &StateWriter, &VecWriter);
 
-  vtmo::ScalerWriter RhoWriter("Rho", NSLattice.getRhoFM());
-  MainWriter.addWriterSet(&RhoWriter);
-
   /*count and timer*/
   Timer MainLoopTimer;
   Timer OutputTimer;
@@ -324,8 +306,6 @@ int main() {
   Printer::Print_BigBanner(std::string("Start Calculation..."));
   MainWriter.WriteBinary(MainLoopTimer());
 
-  // GradNormRhoWriter.Write(MainLoopTimer());
-  // GradNormRhoWVTI.WriteBinary(MainLoopTimer());
 
   while (MainLoopTimer() < MaxStep) {
     NSLattice.UpdateRho(MainLoopTimer(), FI_Flag, CA.getStateFM());
@@ -343,14 +323,11 @@ int main() {
 
     Force.GetBuoyancy(MainLoopTimer(), FI_Flag, CA.getStateFM());
 
-    // NSLattice.UpdateU(MainLoopTimer(), CA::CAType::Fluid, CA.getStateFM());
     Force.BGK_U<Equilibrium<T, LatSet0>::SecondOrder>(MainLoopTimer(), CA::CAType::Fluid,
                                                       CA.getStateFM());
     Force.BGK<Equilibrium<T, LatSet0>::SecondOrder>(
       MainLoopTimer(), CA::CAType::Interface, CA.getStateFM());
 
-    //   Force.BGK<Equilibrium<T, LatSet0>::SecondOrder>(
-    // MainLoopTimer(), FI_Flag, CA.getStateFM());
 
     SOLattice.BGK_Source<Equilibrium<T, LatSet1>::SecondOrder>(
       MainLoopTimer(), FI_Flag, CA.getStateFM(), CA.getExcessCFM());
@@ -382,17 +359,11 @@ int main() {
       Printer::Print<T>("Solid%", T(CA.getSolidCount()) * 100 / Geo.getTotalCellNum());
       Printer::Endl();
       MainWriter.WriteBinary(MainLoopTimer());
-      // GradNormRhoWriter.Write(MainLoopTimer());
     }
 
     // ----- adaptive mesh refinement -----
     if (MainLoopTimer() % RefineCheckStep == 0) {
-      // if (SODynLatHelper.WillRefineOrCoarsen()) {
       if (CA.WillRefineBlockCells(GeoHelper)) {
-        // test
-        // RefineCheckStep /= 100;
-        // OutputStep /= 100;
-        // MaxStep = (MaxStep - MainLoopTimer()) / 100 + MainLoopTimer();
 
         SODynLatHelper.GeoRefine(Thread_Num);
 
@@ -442,15 +413,9 @@ int main() {
         VecWriter.Init(VelocityFM);
         MainWriter.Init();
         MainWriter.addWriterSet(&CWriter, &StateWriter, &VecWriter);
-
-        RhoWriter.Init(NSLattice.getRhoFM());
-        MainWriter.addWriterSet(&RhoWriter);
       }
     }
   }
-
-  // fianloutput:
-  // MainWriter.WriteBinary(MainLoopTimer());
 
   Printer::Print_BigBanner(std::string("Calculation Complete!"));
   MainLoopTimer.Print_MainLoopPerformance(Geo.getTotalCellNum());
@@ -458,8 +423,3 @@ int main() {
   Printer::Endl();
   return 0;
 }
-
-// attention! DO NOT call std::srand(std::time(0)) in a while loop
-// If the while loop doesn't take more than a second to complete,
-// then time(0) will return the same value every time we call srand(time(0)),
-// which means we are setting the same seed for rand() repeatedly.

@@ -328,8 +328,3 @@ int main() {
   Printer::Endl();
   return 0;
 }
-
-// attention! DO NOT call std::srand(std::time(0)) in a while loop
-// If the while loop doesn't take more than a second to complete,
-// then time(0) will return the same value every time we call srand(time(0)),
-// which means we are setting the same seed for rand() repeatedly.

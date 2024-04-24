@@ -326,7 +326,9 @@ void BlockGeometry2D<T>::InitAverComm(int highlevelovlap) {
           comm.SendCells.emplace_back(InterpSource<2>{id0, id1, id2, id3});
         }
       } else if (nblock->getLevel() > blocklevel + 1) {
-        std::cerr << "Error: block level difference larger than 1" << std::endl;
+        std::cerr << "[BlockGeometry2D<T>::InitAverComm] Error: block level difference "
+                     "larger than 1"
+                  << std::endl;
       }
     }
   }
@@ -402,6 +404,10 @@ void BlockGeometry2D<T>::InitIntpComm() {
             } break;
           }
         }
+      } else if (nblock->getLevel() < blocklevel - 1) {
+        std::cerr << "[BlockGeometry2D<T>::InitIntpComm] Error: block level difference "
+                     "larger than 1"
+                  << std::endl;
       }
     }
   }
@@ -595,6 +601,7 @@ void BlockGeometryHelper2D<T>::AdaptiveOptimization(int OptProcNum, int MaxProcN
   // find shcemes with minimum stddev
   std::vector<int> bestSchemesvec;
   T minStdDev = StdDevs[0];
+  bestSchemesvec.push_back(minProcNum);
   for (int i = 1; i < StdDevs.size(); ++i) {
     if (StdDevs[i] < minStdDev) {
       minStdDev = StdDevs[i];
@@ -706,7 +713,7 @@ T BlockGeometryHelper2D<T>::ComputeStdDev(
 }
 
 template <typename T>
-void BlockGeometryHelper2D<T>::TagRefineLayer(std::vector<bool> &refine, bool& refined) {
+void BlockGeometryHelper2D<T>::TagRefineLayer(std::vector<bool> &refine, bool &refined) {
   UpdateMaxLevel();
   // refine one additional layer if has neighbor with lower level
   // tag cells to be refined
@@ -733,10 +740,11 @@ void BlockGeometryHelper2D<T>::TagRefineLayer(std::vector<bool> &refine, bool& r
 
 template <typename T>
 void BlockGeometryHelper2D<T>::CheckRefine() {
+  Refine();
   UpdateMaxLevel();
   // refine one additional layer if has neighbor with 2 lower level
   // tag cells to be refined
-  for (std::uint8_t level = std::uint8_t(1); level <= _MaxLevel; ++level) {
+  for (std::uint8_t level = _MaxLevel; level > std::uint8_t(1); --level) {
     for (int celly = 1; celly < CellsNy - 1; ++celly) {
       for (int cellx = 1; cellx < CellsNx - 1; ++cellx) {
         int cellid = celly * CellsNx + cellx;
@@ -751,8 +759,8 @@ void BlockGeometryHelper2D<T>::CheckRefine() {
         }
       }
     }
+    Refine();
   }
-  Refine();
 }
 
 template <typename T>
