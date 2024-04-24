@@ -106,12 +106,12 @@ struct AbstractConverter {
   // T OMEGAC;
   // T cs2;
 
-  virtual T GetLattice_RT() const = 0;
-  virtual T GetOMEGA() const = 0;
+  virtual T getLattice_RT() const = 0;
+  virtual T getOMEGA() const = 0;
   virtual T getLatticeRho(T rho_phys) const = 0;
   virtual T getLatRhoInit() const = 0;
   virtual T getPhysRho(T Lattice_rho) const = 0;
-  virtual T GetLattice_gbeta() const { return 0; }
+  virtual T getLattice_gbeta() const { return 0; }
   virtual T getLatticeU(T U_phys) const { return 0; }
   virtual T getPhysU(T Lattice_U) const { return 0; }
 };
@@ -149,8 +149,8 @@ struct BaseConverter final : public AbstractConverter<T> {
   T cs2;
 
   BaseConverter(T cs2_) : cs2(cs2_) {}
-  T GetLattice_RT() const override { return Lattice_RT; }
-  T GetOMEGA() const override { return OMEGA; }
+  T getLattice_RT() const override { return Lattice_RT; }
+  T getOMEGA() const override { return OMEGA; }
   T getLatticeRho(T rho_phys) const override { return rho_phys / Conv_rho; }
   T getLatRhoInit() const override { return T(1); }
 
@@ -260,9 +260,9 @@ struct TempConverter final : public AbstractConverter<T> {
   T cs2;
 
   BaseConverter<T> &BaseConv;
-  T GetLattice_RT() const override { return Lattice_RTT; }
-  T GetOMEGA() const override { return OMEGAT; }
-  T GetLattice_gbeta() const override { return Lattice_gbetaT; }
+  T getLattice_RT() const override { return Lattice_RTT; }
+  T getOMEGA() const override { return OMEGAT; }
+  T getLattice_gbeta() const override { return Lattice_gbetaT; }
   T getLatticeRho(T T_phys) const override {
     // normalized temperature
     T Lattice_T = (T_phys - Tl) / Conv_dT;
@@ -359,12 +359,12 @@ struct ConcConverter final : public AbstractConverter<T> {
   T Ch;            // g / mm^3 // characteristic physical high concentration
   T Cl;            // g / mm^3 // characteristic physical low concentration
   T CDiff;         // mm^2 / s  // concentration diffusion
-  T Cexpan_Coeff;  // 1 / K // concentration expansion coefficient
+  T Cexpan_Coeff;  // mm^3 / g // concentration expansion coefficient
   /*-----------*/
   T Conv_dC;  // kg / m^3
   T Conv_ConcDiff;
   /*-----------*/
-  T Lattice_gbetaC;  // lattice g * beta
+  T Lattice_gbetaC;  // lattice g * beta   1
   T Lattice_betaC;   // lattice concentration expansion coefficient
   T Lattice_CDiff;   // lattice concentration diffusion
   /*-----------*/
@@ -380,9 +380,9 @@ struct ConcConverter final : public AbstractConverter<T> {
   int TimeStepCoeff = 0;
 
   BaseConverter<T> &BaseConv;
-  T GetLattice_RT() const override { return Lattice_RTC; }
-  T GetOMEGA() const override { return OMEGAC; }
-  T GetLattice_gbeta() const override { return Lattice_gbetaC; }
+  T getLattice_RT() const override { return Lattice_RTC; }
+  T getOMEGA() const override { return OMEGAC; }
+  T getLattice_gbeta() const override { return Lattice_gbetaC; }
   T getLatticeDConc(T dConc_phys) { return dConc_phys / Conv_dC; }
   T getLatticeRho(T Conc_phys) const override {
     // normalized concentration
@@ -621,5 +621,10 @@ struct RefineConverter {
   }
   static inline T getPopC(T popF, T popeq, T omegaF) {
     return popF + T(0.5) * omegaF * (popF - popeq);
+  }
+
+  // get lattice g beta
+  static inline T getLattice_gbetaF(T gbeta0, std::uint8_t level) {
+    return gbeta0 / std::pow(T(2), level);
   }
 };

@@ -59,15 +59,10 @@ class BlockRhoLattice {
   ScalerField<T>& Rho;
   // converter
   AbstractConverter<T>& Conv;
-  // rho init
-  T Lattice_Rho_Init;
-  // buoyancy
-  T Lattice_gbeta;
 
  public:
   BlockRhoLattice(AbstractConverter<T>& conv, ScalerField<T>& rho)
-      : Conv(conv), Lattice_Rho_Init(conv.getLatRhoInit()),
-        Lattice_gbeta(conv.GetLattice_gbeta()), Rho(rho) {}
+      : Conv(conv), Rho(rho) {}
 
   ScalerField<T>& getRhoField() { return Rho; }
   const ScalerField<T>& getRhoField() const { return Rho; }
@@ -77,8 +72,10 @@ class BlockRhoLattice {
 
   void SetRhoField(std::size_t id, T value) { Rho.SetField(id, value); }
 
-  T getLatRhoInit() const { return Lattice_Rho_Init; }
-  T getLatgBeta() const { return Lattice_gbeta; }
+  T getLatRhoInit() const { return Conv.getLatRhoInit(); }
+  T getLatgBeta(std::uint8_t level) const {
+    return RefineConverter<T>::getLattice_gbetaF(Conv.getLattice_gbeta(), level);
+  }
 };
 
 // block structure for refined lattice
@@ -125,7 +122,8 @@ class BlockLattice : public BlockRhoLattice<T> {
  public:
   BlockLattice(Block<T, LatSet::d>& block, ScalerField<T>& rho,
                VectorFieldAOS<T, LatSet::d>& velocity,
-               PopulationField<T, LatSet::q>& pops, AbstractConverter<T>& conv, bool initpop = true);
+               PopulationField<T, LatSet::q>& pops, AbstractConverter<T>& conv,
+               bool initpop = true);
 
   void InitPop(int Id, T rho) {
     for (int i = 0; i < LatSet::q; ++i) Pops.getField(i)[Id] = rho * LatSet::w[i];
@@ -193,7 +191,6 @@ class BlockLattice : public BlockRhoLattice<T> {
             typename flagtype = std::uint8_t>
   void BGK_Source(const GenericArray<flagtype>& flagarr, std::uint8_t flag,
                   const GenericArray<T>& source);
-
   void Stream();
 
   // tolerance
@@ -235,7 +232,7 @@ class BlockLatticeManager {
   BlockLatticeManager(
     BlockGeometry<T, LatSet::d>& blockgeo, AbstractConverter<T>& conv,
     BlockFieldManager<VectorFieldAOS<T, LatSet::d>, T, LatSet::d>& blockvelocity);
-  
+
   void Init();
 
   AbstractConverter<T>& getConverter() { return Conv; }

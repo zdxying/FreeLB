@@ -31,7 +31,7 @@ BlockLattice<T, LatSet>::BlockLattice(Block<T, LatSet::d>& block, ScalerField<T>
                                       PopulationField<T, LatSet::q>& pops,
                                       AbstractConverter<T>& conv, bool initpop)
     : BlockGeo(block), BlockRhoLattice<T>(conv, rho), Velocity(velocity), Pops(pops),
-      Omega(RefineConverter<T>::getOmegaF(conv.GetOMEGA(), block.getLevel())) {
+      Omega(RefineConverter<T>::getOmegaF(conv.getOMEGA(), block.getLevel())) {
   _Omega = T(1) - Omega;
   fOmega = T(1) - T(0.5) * Omega;
   Delta_Index =
@@ -39,7 +39,7 @@ BlockLattice<T, LatSet>::BlockLattice(Block<T, LatSet::d>& block, ScalerField<T>
   // init populations
   if (initpop) {
     for (int i = 0; i < LatSet::q; ++i) {
-      Pops.getField(i).Init(this->Lattice_Rho_Init * LatSet::w[i]);
+      Pops.getField(i).Init(this->getLatRhoInit() * LatSet::w[i]);
     }
   }
 }
@@ -287,7 +287,6 @@ template <void (*GetFeq)(std::array<T, LatSet::q>&, const Vector<T, LatSet::d>&,
 void BlockLattice<T, LatSet>::BGK_Source(const GenericArray<flagtype>& flagarr,
                                          std::uint8_t flag,
                                          const GenericArray<T>& source) {
-#pragma omp parallel for num_threads(Thread_Num) schedule(static)
   for (std::size_t id = 0; id < getN(); ++id) {
     if (util::isFlag(flagarr[id], flag)) {
       BCell<T, LatSet> cell(id, *this);

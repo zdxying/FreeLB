@@ -30,7 +30,9 @@ class BlockBuoyancy {
   BlockLattice<T, LatSet> &NSLat;
   // source lattice, e.g., thermal and solute lattice
   std::vector<BlockRhoLattice<T> *> Source;
+
   VectorFieldAOS<T, LatSet::d> &Velocity;
+
   ScalerField<T> Force;
   // omega
   T Omega;
@@ -52,18 +54,6 @@ class BlockBuoyancy {
 
   std::uint8_t getLevel() const { return NSLat.getLevel(); }
 
-  void GetBuoyancy() {
-    // reset force
-    Force.getField(0).Init(T(0));
-    // add to buoyancy
-    for (BlockRhoLattice<T> *lat : Source) {
-      T latRhoInit = lat->getLatRhoInit();
-      T latgbeta = lat->getLatgBeta();
-      for (int id : NSLat.getIndex()) {
-        Force.get(id) += (lat->getRho(id) - latRhoInit) * latgbeta;
-      }
-    }
-  }
   template <typename flagtype>
   void GetBuoyancy(const GenericArray<flagtype> &flagarr, std::uint8_t flag) {
     // reset force
@@ -71,7 +61,7 @@ class BlockBuoyancy {
     // add to buoyancy
     for (BlockRhoLattice<T> *lat : Source) {
       T latRhoInit = lat->getLatRhoInit();
-      T latgbeta = lat->getLatgBeta();
+      T latgbeta = lat->getLatgBeta(NSLat.getLevel());
       for (int id = 0; id < NSLat.getN(); ++id) {
         if (util::isFlag(flagarr[id], flag))
           Force.get(id) += (lat->getRho(id) - latRhoInit) * latgbeta;
@@ -94,7 +84,8 @@ class BlockBuoyancy {
       if (util::isFlag(flagarr[id], flag)) {
         BCell<T, LatSet> cell(id, NSLat);
         std::array<T, LatSet::q> Fi{};
-        force::Force<T, LatSet>::ComputeForcePop(Fi, Velocity.get(id), getForce(id));
+        // force::Force<T, LatSet>::ComputeForcePop(Fi, Velocity.get(id), getForce(id));
+        force::Force<T, LatSet>::ComputeForcePop(Fi, Velocity.get(id), Force.get(id));
         moment::Velocity<T, LatSet>::apply(cell, Velocity.get(id), Fi);
         collision::BGK<T, LatSet>::template applySource<GetFeq>(cell, Fi);
       }
@@ -109,7 +100,8 @@ class BlockBuoyancy {
       if (util::isFlag(flagarr[id], flag)) {
         BCell<T, LatSet> cell(id, NSLat);
         std::array<T, LatSet::q> Fi{};
-        force::Force<T, LatSet>::ComputeForcePop(Fi, Velocity.get(id), getForce(id));
+        // force::Force<T, LatSet>::ComputeForcePop(Fi, Velocity.get(id), getForce(id));
+        force::Force<T, LatSet>::ComputeForcePop(Fi, Velocity.get(id), Force.get(id));
         collision::BGK<T, LatSet>::template applySource<GetFeq>(cell, Fi);
       }
     }
@@ -135,13 +127,6 @@ class BlockBuoyancyManager {
                               velocity.getBlockField(i).getField());
     }
   }
-  // BlockBuoyancyManager(BlockLatticeManager<T, LatSet> &nsLatMan,
-  //                      std::vector<VectorFieldAOS<T, LatSet::d> *> Velocity)
-  //     : NSLatMan(nsLatMan) {
-  //   for (int i = 0; i < NSLatMan.getBlockLats().size(); ++i) {
-  //     _Buoyancys.emplace_back(NSLatMan.getBlockLat(i), *(Velocity[i]));
-  //   }
-  // }
 
   void Init(){
     _Buoyancys.clear();
@@ -164,14 +149,6 @@ class BlockBuoyancyManager {
   void AddSource(BlockLatticeManager<T, LatSet1> &LatMan, Args... args) {
     AddSource(LatMan);
     AddSource(args...);
-  }
-
-  void GetBuoyancy(std::int64_t count) {
-    std::uint8_t MaxLevel = NSLatMan.getMaxLevel();
-    for (BlockBuoyancy<T, LatSet> &buoyancy : _Buoyancys) {
-      if (count % (static_cast<int>(pow(2, int(MaxLevel - buoyancy.getLevel())))) == 0)
-        buoyancy.GetBuoyancy();
-    }
   }
 
   template <typename flagtype>

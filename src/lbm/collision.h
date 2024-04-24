@@ -117,7 +117,7 @@ struct BGK {
   }
 
   template <void (*GetFeq)(std::array<T, LatSet::q>&, const Vector<T, LatSet::d>&, T)>
-  static void applySource(Cell<T, LatSet>& cell, T S) {
+  static void applySource(Cell<T, LatSet>& cell, const T S) {
     std::array<T, LatSet::q> feq{};
     GetFeq(feq, cell.getVelocity(), cell.getRho());
 
@@ -130,7 +130,7 @@ struct BGK {
     }
   }
   template <void (*GetFeq)(std::array<T, LatSet::q>&, const Vector<T, LatSet::d>&, T)>
-  static void applySource(BCell<T, LatSet>& cell, T S) {
+  static void applySource(BCell<T, LatSet>& cell, const T S) {
     std::array<T, LatSet::q> feq{};
     GetFeq(feq, cell.getVelocity(), cell.getRho());
 

@@ -29,7 +29,7 @@ template <typename T, typename LatSet>
 BasicLattice<T, LatSet>::BasicLattice(Geometry<T, LatSet::d>& geo, AbstractConverter<T>& conv,
                                       VectorFieldAOS<T, LatSet::d>& velocity, bool InitIdx)
     : Geo(geo), Nx(geo.getNx()), Ny(geo.getNy()), Nz(geo.getNz()), Pops(geo.getVoxelsNum()),
-      Omega(conv.GetOMEGA()), Velocity(velocity), RhoLattice<T>(conv, geo.getVoxelsNum()) {
+      Omega(conv.getOMEGA()), Velocity(velocity), RhoLattice<T>(conv, geo.getVoxelsNum()) {
   _Omega = T(1) - Omega;
   fOmega = T(1) - T(0.5) * Omega;
   if constexpr (LatSet::d == 3) {

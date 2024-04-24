@@ -47,7 +47,7 @@ class RhoLattice {
 
  public:
   RhoLattice(AbstractConverter<T>& conv, std::size_t size)
-      : Conv(conv), Lattice_Rho_Init(conv.getLatRhoInit()), Lattice_gbeta(conv.GetLattice_gbeta()),
+      : Conv(conv), Lattice_Rho_Init(conv.getLatRhoInit()), Lattice_gbeta(conv.getLattice_gbeta()),
         Rho(size, conv.getLatRhoInit()) {}
 
   ScalerField<T>& getRhoField() { return Rho; }

@@ -31,11 +31,11 @@
 // lattice set: DdQq(e.g., D2Q9)
 // the member of DdQq struct can be accessed without inheritance,
 // e.g., struct D1Q3 : public Basic_Lattice_Set<1, 3>
-template <int D, int Q>
+template <unsigned int D, unsigned int Q>
 struct Basic_Lattice_Set {
   // DdQq
-  static constexpr int d = D;
-  static constexpr int q = Q;
+  static constexpr unsigned int d = D;
+  static constexpr unsigned int q = Q;
 };
 
 // D1Q3

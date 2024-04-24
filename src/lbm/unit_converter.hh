@@ -189,15 +189,15 @@ void UnitConvManager<T>::Check_and_Print() {
   }
 
   std::cout << "[Lattice Parameters]:\n"
-            << "Lattice_RT =     " << BaseConv->GetLattice_RT() << "\n"
-            << "OMEGA =          " << BaseConv->GetOMEGA() << "\n";
+            << "Lattice_RT =     " << BaseConv->getLattice_RT() << "\n"
+            << "OMEGA =          " << BaseConv->getOMEGA() << "\n";
   if (TempConv != nullptr) {
-    std::cout << "Lattice_RTT =    " << TempConv->GetLattice_RT() << "\n"
-              << "OMEGAT =         " << TempConv->GetOMEGA() << "\n";
+    std::cout << "Lattice_RTT =    " << TempConv->getLattice_RT() << "\n"
+              << "OMEGAT =         " << TempConv->getOMEGA() << "\n";
   }
   if (ConcConv != nullptr) {
-    std::cout << "Lattice_RTC =    " << ConcConv->GetLattice_RT() << "\n"
-              << "OMEGAC =         " << ConcConv->GetOMEGA() << "\n";
+    std::cout << "Lattice_RTC =    " << ConcConv->getLattice_RT() << "\n"
+              << "OMEGAC =         " << ConcConv->getOMEGA() << "\n";
   }
   std::cout << "-------------------------------------------------\n"
             << std::endl;
