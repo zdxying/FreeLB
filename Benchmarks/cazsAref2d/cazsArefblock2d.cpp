@@ -208,9 +208,10 @@ int main() {
   // ------------------ define geometry ------------------
   AABB<T, 2> cavity(Vector<T, 2>(T(0), T(0)),
                     Vector<T, 2>(T(Ni * Cell_Len), T(Nj * Cell_Len)));
-  AABB<T, 2> seedcavity(
-    Vector<T, 2>(T((Ni / 2 - Ni / BlockCellNx) * Cell_Len), T((Nj / 2 - Ni / BlockCellNx) * Cell_Len)),
-    Vector<T, 2>(T((Ni / 2 + Ni / BlockCellNx) * Cell_Len), T((Nj / 2 + Ni / BlockCellNx) * Cell_Len)));
+  AABB<T, 2> seedcavity(Vector<T, 2>(T((Ni / 2 - Ni / BlockCellNx) * Cell_Len),
+                                     T((Nj / 2 - Ni / BlockCellNx) * Cell_Len)),
+                        Vector<T, 2>(T((Ni / 2 + Ni / BlockCellNx) * Cell_Len),
+                                     T((Nj / 2 + Ni / BlockCellNx) * Cell_Len)));
 
   // geometry helper
   BlockGeometryHelper2D<T> GeoHelper(Ni, Nj, Ni / BlockCellNx, cavity, Cell_Len);
@@ -348,8 +349,8 @@ int main() {
     Force.BGK<Equilibrium<T, LatSet0>::SecondOrder>(
       MainLoopTimer(), CA::CAType::Interface, CA.getStateFM());
 
-      //   Force.BGK<Equilibrium<T, LatSet0>::SecondOrder>(
-      // MainLoopTimer(), FI_Flag, CA.getStateFM());
+    //   Force.BGK<Equilibrium<T, LatSet0>::SecondOrder>(
+    // MainLoopTimer(), FI_Flag, CA.getStateFM());
 
     SOLattice.BGK_Source<Equilibrium<T, LatSet1>::SecondOrder>(
       MainLoopTimer(), FI_Flag, CA.getStateFM(), CA.getExcessCFM());
@@ -389,9 +390,9 @@ int main() {
       // if (SODynLatHelper.WillRefineOrCoarsen()) {
       if (CA.WillRefineBlockCells(GeoHelper)) {
         // test
-        RefineCheckStep /= 100;
-        OutputStep /= 100;
-        MaxStep = (MaxStep - MainLoopTimer())/100 + MainLoopTimer();
+        // RefineCheckStep /= 100;
+        // OutputStep /= 100;
+        // MaxStep = (MaxStep - MainLoopTimer()) / 100 + MainLoopTimer();
 
         SODynLatHelper.GeoRefine(Thread_Num);
 
@@ -417,7 +418,7 @@ int main() {
         VelocityFM.InitAndComm(GeoHelper);
 
         NSDynLatHelper.PopFieldInit();
-        SODynLatHelper.PopFieldInit();        
+        SODynLatHelper.PopFieldInit();
 
         CA.CAFieldDataInit(GeoHelper);
 
@@ -425,7 +426,10 @@ int main() {
         SOLattice.Init();
         THLattice.Init();
         CA.Init(SOLattice, THLattice);
+
         Force.Init();
+        Force.AddSource(SOLattice);
+        Force.AddSource(THLattice);
 
         // Bcs init
         NS_BB.Init();
@@ -445,7 +449,7 @@ int main() {
     }
   }
 
-// fianloutput:
+  // fianloutput:
   // MainWriter.WriteBinary(MainLoopTimer());
 
   Printer::Print_BigBanner(std::string("Calculation Complete!"));
