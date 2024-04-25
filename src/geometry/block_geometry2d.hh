@@ -22,9 +22,7 @@
 
 #pragma once
 
-#include "block_geometry2d.h"
 #include "geometry/block_geometry2d.h"
-
 
 template <typename T>
 Block2D<T>::Block2D(const BasicBlock<T, 2> &baseblock, int olap)
@@ -152,7 +150,7 @@ void Block2D<T>::GeoFlagMPIComm() {
 
 template <typename T>
 BlockGeometry2D<T>::BlockGeometry2D(int Nx, int Ny, int blocknum, const AABB<T, 2> &block,
-                                    T voxelSize, int overlap, bool refine)
+                                    T voxelSize, int overlap)
     : BasicBlock<T, 2>(voxelSize, block.getExtended(Vector<T, 2>{voxelSize}),
                        AABB<int, 2>(Vector<int, 2>{0}, Vector<int, 2>{Nx + 1, Ny + 1})),
       _BaseBlock(voxelSize, block,
@@ -161,9 +159,7 @@ BlockGeometry2D<T>::BlockGeometry2D(int Nx, int Ny, int blocknum, const AABB<T, 
   DivideBlocks(blocknum);
   CreateBlocks();
   SetupNbrs();
-  if (!refine) {
-    InitCommunicators();
-  }
+  InitCommunicators();
 }
 
 template <typename T>
@@ -583,8 +579,17 @@ void BlockGeometryHelper2D<T>::forEachBlockCell(Func func) {
 template <typename T>
 void BlockGeometryHelper2D<T>::AdaptiveOptimization(int OptProcNum, int MaxProcNum,
                                                     bool enforce) {
+  // check
+  if (OptProcNum < 1) {
+    std::cerr << "[BlockGeometryHelper2D<T>::AdaptiveOptimization]: OptProcNum < 1"
+              << std::endl;
+  }
   if (MaxProcNum == -1) {
     MaxProcNum = 2 * OptProcNum;
+  }
+  if (MaxProcNum < 1) {
+    std::cerr << "[BlockGeometryHelper2D<T>::AdaptiveOptimization]: MaxProcNum < 1"
+              << std::endl;
   }
   // get new basic blocks
   std::vector<BasicBlock<T, 2>> &BasicBlocks = getBasicBlocks();

@@ -131,8 +131,10 @@ class BlockGeometry2D : public BasicBlock<T, 2> {
   std::uint8_t _MaxLevel;
 
  public:
+  // construct uniform blockgeometry
   BlockGeometry2D(int Nx, int Ny, int blocknum, const AABB<T, 2>& block,
-                  T voxelSize = T(1), int overlap = 1, bool refine = false);
+                  T voxelSize = T(1), int overlap = 1);
+  // construct uniform/ refined blockgeometry from GeoHelper
   BlockGeometry2D(BlockGeometryHelper2D<T>& GeoHelper);
   ~BlockGeometry2D() = default;
 

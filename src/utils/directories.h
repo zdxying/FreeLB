@@ -43,12 +43,12 @@ struct DirCreator {
   // this will create DirName in the same directory as the executable file
   // DO NOT FORGET the "." at the beginning of the path if relative path is used
   // DO NOT create directory with sub-directory in one call, e.g. "./dir/subdir"
-  static void MPI_Create_Dir(std::string DirName) {
+  static void MPI_Create_Dir(const std::string& DirName) {
     if (Mpi().isMainProcessor()) {
       Create_Dir(DirName);
     }
   }
-  static void Create_Dir(std::string DirName) {
+  static void Create_Dir(const std::string& DirName) {
     struct STAT info;
     if (STAT(DirName.c_str(), &info) != 0) {
       // win: _mkdir; linux: mkdir
@@ -78,13 +78,13 @@ struct DirCreator {
   //    Create_Dir("./dir1"); -> Create_Dir(std::string DirName)
   //    Create_Dir("./dir2"); -> Create_Dir(std::string DirName)
   template <typename... Args>
-  static void Create_Dir(std::string DirName, Args... args) {
+  static void Create_Dir(const std::string& DirName, const Args&... args) {
     Create_Dir(DirName);
     Create_Dir(args...);
   }
 };
 
-// TODO: use std::filesystem
+
 #include <filesystem>
 struct DirCreator_ {
   static void Create_Dir(const std::string& DirName) {
@@ -112,7 +112,7 @@ struct DirCreator_ {
   }
 
   template <typename... Args>
-  static void Create_Dir(const std::string& DirName, Args... args) {
+  static void Create_Dir(const std::string& DirName, const Args&... args) {
     Create_Dir(DirName);
     Create_Dir(args...);
   }

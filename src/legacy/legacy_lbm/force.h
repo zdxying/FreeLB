@@ -66,7 +66,7 @@ class ForceManager {
     _Force.resize(_LbmNS.getPopSize(), force);
   }
   template <typename... Args>
-  void AddSource(Basiclbm<T> *Lbm, Args... args) {
+  void AddSource(Basiclbm<T> *Lbm, Args*... args) {
     _LbmSource.push_back(Lbm);
     AddSource(args...);
   }
