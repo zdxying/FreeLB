@@ -85,19 +85,19 @@ class vtiManager {
              Vector<int, Dim> ext)
       : _filename(filename), _id(id), VoxelSize(voxsize), _Min(min), _Ext(ext) {
     static_assert(Dim == 2 || Dim == 3, "Error: Dimension is not supported!");
-    DirCreator::MPI_Create_Dir(_dirname);
+    DirCreator::Create_Dir(_dirname);
   }
   vtiManager(std::string filename, T voxsize, Vector<T, Dim> min, Vector<int, Dim> ext)
       : _filename(filename), _id(-1), VoxelSize(voxsize), _Min(min), _Ext(ext) {
     static_assert(Dim == 2 || Dim == 3, "Error: Dimension is not supported!");
-    DirCreator::MPI_Create_Dir(_dirname);
+    DirCreator::Create_Dir(_dirname);
   }
   // extended block should be used
   vtiManager(std::string filename, int id, const BasicBlock<T, Dim> &block)
       : _filename(filename), _id(id), VoxelSize(block.getVoxelSize()),
         _Min(block.getMinCenter()), _Ext(block.getMesh() - Vector<int, Dim>{1}) {
     static_assert(Dim == 2 || Dim == 3, "Error: Dimension is not supported!");
-    DirCreator::MPI_Create_Dir(_dirname);
+    DirCreator::Create_Dir(_dirname);
   }
 
   int getvtiBlockId() { return _id; }
@@ -458,7 +458,7 @@ class vtiManager {
         _Min(min + Vector<T, Dim>{Overlap * voxsize}),
         _Ext(ext - Vector<int, Dim>{2 * Overlap}) {
     static_assert(Dim == 2 || Dim == 3, "Error: Dimension is not supported!");
-    DirCreator::MPI_Create_Dir(_dirname);
+    DirCreator::Create_Dir(_dirname);
   }
   // extended block should be used
   vtiManager(std::string filename, int id, const BasicBlock<T, Dim> &block, int Overlap)
@@ -466,7 +466,7 @@ class vtiManager {
         _Min(block.getMinCenter() + Vector<T, Dim>{Overlap * block.getVoxelSize()}),
         _Ext(block.getMesh() - Vector<int, Dim>{1} - Vector<int, Dim>{2 * Overlap}) {
     static_assert(Dim == 2 || Dim == 3, "Error: Dimension is not supported!");
-    DirCreator::MPI_Create_Dir(_dirname);
+    DirCreator::Create_Dir(_dirname);
   }
 
   int getvtiBlockId() { return _id; }

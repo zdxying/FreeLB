@@ -225,6 +225,7 @@ class BlockBoundaryManager {
   BlockBoundaryManager(Args*... args) : _Boundaries{args...} {}
 
   void Apply(std::int64_t count) {
+    mpi().barrier();
     for (AbstractBlockBoundary *boundary : _Boundaries) boundary->Apply(count);
   }
   void UpdateRho(std::int64_t count) {

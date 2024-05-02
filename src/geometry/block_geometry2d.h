@@ -63,10 +63,6 @@ class Block2D : public BasicBlock<T, 2> {
   // block2d for uniform block structure
   Block2D(const AABB<T, 2>& block, const AABB<int, 2>& idxblock, int blockid,
           T voxelSize = T(1), int olap = 1);
-#ifdef MPI_ENABLED
-  Block2D(int rank, int blockid, const AABB<T, 2>& block, const AABB<int, 2>& idxblock,
-          T voxelSize = T(1), int olap = 1);
-#endif
 
   ~Block2D() = default;
 
@@ -354,7 +350,7 @@ class BlockGeometryHelper2D : public BasicBlock<T, 2> {
   T ComputeStdDev() const;
   T ComputeStdDev(const std::vector<BasicBlock<T, 2>>& Blocks) const;
 
-  void LoadBalancing(int ProcessNum = 1);
+  void LoadBalancing(int ProcessNum = mpi().getSize());
 
 #ifdef MPI_ENABLED
   // call this after LoadBalancing()

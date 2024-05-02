@@ -759,6 +759,7 @@ template <typename flagtype>
 void BlockLatticeManager<T, LatSet>::UpdateRho(
   std::int64_t count, std::uint8_t flag,
   const BlockFieldManager<ScalerField<flagtype>, T, LatSet::d>& BFM) {
+    mpi().barrier();
 #pragma omp parallel for num_threads(Thread_Num)
   for (int i = 0; i < BlockLats.size(); ++i) {
     const int deLevel = static_cast<int>(getMaxLevel() - BlockLats[i].getLevel());
@@ -774,6 +775,7 @@ void BlockLatticeManager<T, LatSet>::UpdateRho_Source(
   std::int64_t count, std::uint8_t flag,
   const BlockFieldManager<ScalerField<flagtype>, T, LatSet::d>& BFM,
   const BlockFieldManager<ScalerField<T>, T, LatSet::d>& source) {
+    mpi().barrier();
 #pragma omp parallel for num_threads(Thread_Num)
   for (int i = 0; i < BlockLats.size(); ++i) {
     const int deLevel = static_cast<int>(getMaxLevel() - BlockLats[i].getLevel());
@@ -788,6 +790,7 @@ template <typename flagtype>
 void BlockLatticeManager<T, LatSet>::UpdateU(
   std::int64_t count, std::uint8_t flag,
   const BlockFieldManager<ScalerField<flagtype>, T, LatSet::d>& BFM) {
+    mpi().barrier();
 #pragma omp parallel for num_threads(Thread_Num)
   for (int i = 0; i < BlockLats.size(); ++i) {
     const int deLevel = static_cast<int>(getMaxLevel() - BlockLats[i].getLevel());
@@ -802,6 +805,7 @@ template <void (*GetFeq)(std::array<T, LatSet::q>&, const Vector<T, LatSet::d>&,
 void BlockLatticeManager<T, LatSet>::BGK(
   std::int64_t count, std::uint8_t flag,
   const BlockFieldManager<ScalerField<flagtype>, T, LatSet::d>& BFM) {
+    mpi().barrier();
 #pragma omp parallel for num_threads(Thread_Num)
   for (int i = 0; i < BlockLats.size(); ++i) {
     const int deLevel = static_cast<int>(getMaxLevel() - BlockLats[i].getLevel());
@@ -819,6 +823,7 @@ void BlockLatticeManager<T, LatSet>::BGK_Source(
   std::int64_t count, std::uint8_t flag,
   const BlockFieldManager<ScalerField<flagtype>, T, LatSet::d>& BFM,
   const BlockFieldManager<ScalerField<T>, T, LatSet::d>& source) {
+    mpi().barrier();
 #pragma omp parallel for num_threads(Thread_Num)
   for (int i = 0; i < BlockLats.size(); ++i) {
     const int deLevel = static_cast<int>(getMaxLevel() - BlockLats[i].getLevel());
@@ -831,6 +836,7 @@ void BlockLatticeManager<T, LatSet>::BGK_Source(
 
 template <typename T, typename LatSet>
 void BlockLatticeManager<T, LatSet>::Stream(std::int64_t count) {
+  mpi().barrier();
 #pragma omp parallel for num_threads(Thread_Num) schedule(static)
   for (BlockLattice<T, LatSet>& BLat : BlockLats) {
     if (count % (static_cast<int>(pow(2, int(getMaxLevel() - BLat.getLevel())))) == 0)
@@ -840,6 +846,7 @@ void BlockLatticeManager<T, LatSet>::Stream(std::int64_t count) {
 
 template <typename T, typename LatSet>
 void BlockLatticeManager<T, LatSet>::Communicate(std::int64_t count) {
+  mpi().barrier();
 #pragma omp parallel for num_threads(Thread_Num)
   for (BlockLattice<T, LatSet>& BLat : BlockLats) {
     if (count % (static_cast<int>(pow(2, int(getMaxLevel() - BLat.getLevel())))) == 0)
@@ -893,6 +900,7 @@ void BlockLatticeManager<T, LatSet>::EnableToleranceU(T ures) {
 
 template <typename T, typename LatSet>
 T BlockLatticeManager<T, LatSet>::getToleranceRho(int shift) {
+  mpi().barrier();
   T maxres = T(0);
 #pragma omp parallel for num_threads(Thread_Num) schedule(static) reduction(max : maxres)
   for (BlockLattice<T, LatSet>& BLat : BlockLats) {
@@ -904,11 +912,16 @@ T BlockLatticeManager<T, LatSet>::getToleranceRho(int shift) {
     }
     maxres = std::max(temp, maxres);
   }
+  #ifdef MPI_ENABLED
+  mpi().barrier();
+  mpi().reduceAndBcast(maxres, MPI_MAX);
+  #endif
   return maxres;
 }
 
 template <typename T, typename LatSet>
 T BlockLatticeManager<T, LatSet>::getToleranceU(int shift) {
+  mpi().barrier();
   T maxres = T(0);
 #pragma omp parallel for num_threads(Thread_Num) schedule(static) reduction(max : maxres)
   for (BlockLattice<T, LatSet>& BLat : BlockLats) {
@@ -920,6 +933,10 @@ T BlockLatticeManager<T, LatSet>::getToleranceU(int shift) {
     }
     maxres = std::max(temp, maxres);
   }
+  #ifdef MPI_ENABLED
+  mpi().barrier();
+  mpi().reduceAndBcast(maxres, MPI_MAX);
+  #endif
   return maxres;
 }
 

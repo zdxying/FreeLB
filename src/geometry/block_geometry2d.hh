@@ -40,17 +40,6 @@ Block2D<T>::Block2D(const AABB<T, 2> &block, const AABB<int, 2> &idxblock, int b
   // ReadAABBs(AABBs, AABBflag);
 }
 
-#ifdef MPI_ENABLED
-
-template <typename T>
-Block2D<T>::Block2D(int rank, int blockid, const AABB<T, 2> &block,
-                    const AABB<int, 2> &idxblock, T voxelSize, int olap)
-    : BasicBlock<T, 2>(voxelSize, block.getExtended(Vector<T, 2>{voxelSize}),
-                       idxblock.getExtended(Vector<int, 2>{1}), blockid),
-      _BaseBlock(voxelSize, block, idxblock, blockid), _overlap(olap), _Rank(rank){}
-
-#endif
-
 template <typename T>
 template <typename FieldType, typename LatSet>
 void Block2D<T>::SetupBoundary(const AABB<T, 2> &block, FieldType &field,
@@ -831,6 +820,7 @@ void BlockGeometryHelper2D<T>::AdaptiveOptimization(int OptProcNum, int MaxProcN
   }
   // apply the best scheme
   Optimize(bestScheme, enforce);
+  MPI_RANK(0)
   std::cout << "Optimization result: " << BasicBlocks.size()
             << " Blocks with stdDev: " << minStdDev << std::endl;
 }
@@ -985,12 +975,13 @@ void BlockGeometryHelper2D<T>::SetupMPINbrs() {
   for (int iRank = 0; iRank < getAllBlockIndices().size(); ++iRank) {
     for (int blockid : getAllBlockIndices()[iRank]) {
       std::vector<std::pair<int, int>> &nbrsvec = _MPIBlockNbrs[blockid];
-      const BasicBlock<T, 2> &block = getAllBasicBlock(blockid);
+      const BasicBlock<T, 2> block = getAllBasicBlock(blockid).getExtBlock(1);
       // for all blocks in all ranks except iRank
       for (int nRank = 0; nRank < getAllBlockIndices().size(); ++nRank) {
         if (nRank != iRank) {
           for (int nblockid : getAllBlockIndices()[nRank]) {
-            if (isOverlapped(block, getAllBasicBlock(nblockid)))
+            const BasicBlock<T, 2> nblock = getAllBasicBlock(nblockid).getExtBlock(1);
+            if (isOverlapped(block, nblock))
               nbrsvec.push_back(std::make_pair(nRank, nblockid));
           }
         }

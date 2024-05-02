@@ -632,6 +632,9 @@ class BlockFieldManager {
       ++iblock;
     }
     NormalCommunicate();
+    #ifdef MPI_ENABLED
+    MPINormalCommunicate();
+    #endif
   }
 
   // call forEach(AABBs, [&](FieldType& field, std::size_t id){});

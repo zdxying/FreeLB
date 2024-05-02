@@ -43,12 +43,8 @@ struct DirCreator {
   // this will create DirName in the same directory as the executable file
   // DO NOT FORGET the "." at the beginning of the path if relative path is used
   // DO NOT create directory with sub-directory in one call, e.g. "./dir/subdir"
-  static void MPI_Create_Dir(const std::string& DirName) {
-    if (mpi().isMainProcessor()) {
-      Create_Dir(DirName);
-    }
-  }
   static void Create_Dir(const std::string& DirName) {
+    MPI_RANK(0)
     struct STAT info;
     if (STAT(DirName.c_str(), &info) != 0) {
       // win: _mkdir; linux: mkdir

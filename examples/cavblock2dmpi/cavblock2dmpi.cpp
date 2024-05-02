@@ -120,8 +120,8 @@ int main(int argc, char* argv[]) {
   BlockGeometryHelper2D<T> GeoHelper(Ni, Nj, cavity, Cell_Len);
 
   GeoHelper.CreateBlocks();
-  GeoHelper.AdaptiveOptimization(16);
-  GeoHelper.LoadBalancing();
+  GeoHelper.AdaptiveOptimization(mpi().getSize());
+  GeoHelper.LoadBalancing(mpi().getSize());
 
   BlockGeometry2D<T> Geo(GeoHelper);
 
@@ -147,7 +147,7 @@ int main(int argc, char* argv[]) {
   VelocityFM.forEach(
     toplid, FlagFM, BBMovingWallFlag,
     [&](VectorFieldAOS<T, 2>& field, std::size_t id) { field.SetField(id, LatU_Wall); });
-  
+
   // lattice
   BlockLatticeManager<T, LatSet> NSLattice(Geo, BaseConv, VelocityFM);
   NSLattice.EnableToleranceU();
@@ -170,14 +170,11 @@ int main(int argc, char* argv[]) {
   // count and timer
   Timer MainLoopTimer;
   Timer OutputTimer;
-  NSWriter.MPIWriteBinary(MainLoopTimer());
+  NSWriter.WriteBinary(MainLoopTimer());
 
   Printer::Print_BigBanner(std::string("Start Calculation..."));
 
   while (MainLoopTimer() < MaxStep && res > tol) {
-    ++MainLoopTimer;
-    ++OutputTimer;
-
     NSLattice.UpdateRho(MainLoopTimer(), AABBFlag, FlagFM);
     NSLattice.UpdateU(MainLoopTimer(), AABBFlag, FlagFM);
     NSLattice.template BGK<Equilibrium<T, LatSet>::SecondOrder>(
@@ -188,18 +185,17 @@ int main(int argc, char* argv[]) {
 
     NSLattice.Communicate(MainLoopTimer());
 
+    ++MainLoopTimer;
+    ++OutputTimer;
+
     if (MainLoopTimer() % OutputStep == 0) {
       res = NSLattice.getToleranceU();
-      mpi().barrier();
-      mpi().reduceAndBcast(res, MPI_MAX);
       OutputTimer.Print_InnerLoopPerformance(GeoHelper.getN(), OutputStep);
       Printer::Print_Res<T>(res);
-      NSWriter.MPIWriteBinary(MainLoopTimer());
+      Printer::Endl();
+      NSWriter.WriteBinary(MainLoopTimer());
     }
   }
-  NSWriter.MPIWriteBinary(MainLoopTimer());
   Printer::Print_BigBanner(std::string("Calculation Complete!"));
   MainLoopTimer.Print_MainLoopPerformance(GeoHelper.getN());
-
-  // mpi().~MpiManager();
 }

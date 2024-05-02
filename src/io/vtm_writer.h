@@ -46,12 +46,6 @@ class vtmWriter {
     DirCreator::Create_Dir(_vtidirname);
     create_vtiwriters(blockgeo);
   }
-  // for mpi
-  vtmWriter(std::string filename, const BasicBlock<T, D>& block) : _filename(filename) {
-    DirCreator::MPI_Create_Dir(_dirname);
-    DirCreator::MPI_Create_Dir(_vtidirname);
-    create_vtiwriter(block);
-  }
 
   void Init() {
     _vtiwriters.clear();
@@ -64,12 +58,8 @@ class vtmWriter {
       T voxsize = block.getVoxelSize();
       const Vector<int, D> ext = block.getMesh() - Vector<int, D>{1};
       const Vector<T, D> origin = block.getMinCenter();
-      _vtiwriters.emplace_back(_filename, i, voxsize, origin, ext);
+      _vtiwriters.emplace_back(_filename, block.getBlockId(), voxsize, origin, ext);
     }
-  }
-  void create_vtiwriter(const BasicBlock<T, D>& block) {
-    _vtiwriters.emplace_back(_filename, mpi().getRank(), block);
-    // std::cout << "created vti writer of rank " << mpi().getRank()<< std::endl;
   }
 
   void addWriterSet(const vtiwriter::AbstWriterSet& writerset) {
@@ -120,7 +110,7 @@ class vtmWriter {
 #ifdef MPI_ENABLED
     int vtisize = _vtiwriters.size();
     int totalvtisize;
-    mpi().reduce(vtisize, totalvtisize, 1);
+    mpi().reduce(vtisize, totalvtisize, MPI_SUM);
     MPI_RANK(0)
     for (int i = 0; i < totalvtisize; ++i) {
       writevtm(fullName, getvtiFileName(i), i);
@@ -147,7 +137,7 @@ class vtmWriter {
 #ifdef MPI_ENABLED
     int vtisize = _vtiwriters.size();
     int totalvtisize;
-    mpi().reduce(vtisize, totalvtisize, 1);
+    mpi().reduce(vtisize, totalvtisize, MPI_SUM);
     MPI_RANK(0)
     for (int i = 0; i < totalvtisize; ++i) {
       writevtm(fullName, getvtiFileName(i, step), i);
@@ -393,7 +383,7 @@ class vtmWriter {
           overlap = 0;
         }
       }
-      _vtiwriters.emplace_back(_filename, i, voxsize, origin, ext, overlap);
+      _vtiwriters.emplace_back(_filename, block.getBlockId(), voxsize, origin, ext, overlap);
     }
   }
 
@@ -423,7 +413,7 @@ class vtmWriter {
 #ifdef MPI_ENABLED
     int vtisize = _vtiwriters.size();
     int totalvtisize;
-    mpi().reduce(vtisize, totalvtisize, 1);
+    mpi().reduce(vtisize, totalvtisize, MPI_SUM);
     MPI_RANK(0)
     for (int i = 0; i < totalvtisize; ++i) {
       writevtm(fullName, getvtiFileName(i), i);
@@ -450,7 +440,7 @@ class vtmWriter {
 #ifdef MPI_ENABLED
     int vtisize = _vtiwriters.size();
     int totalvtisize;
-    mpi().reduce(vtisize, totalvtisize, 1);
+    mpi().reduce(vtisize, totalvtisize, MPI_SUM);
     MPI_RANK(0)
     for (int i = 0; i < totalvtisize; ++i) {
       writevtm(fullName, getvtiFileName(i, step), i);
