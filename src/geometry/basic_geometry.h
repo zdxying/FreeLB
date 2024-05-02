@@ -225,6 +225,7 @@ class BasicBlock : public AABB<T, D> {
     else if constexpr (D == 2)
       return 1;
   }
+  // return total number of cells in the block
   std::size_t getN() const { return N; }
 
   std::uint8_t getLevel() const { return _level; }
@@ -292,7 +293,6 @@ struct BlockComm {
   Block<T, D>* SendBlock;
 
   BlockComm(Block<T, D>* block) : SendBlock(block) {}
-  // SendBlock->getBlockId();
   int getSendId() const { return SendBlock->getBlockId(); }
 };
 
@@ -303,18 +303,34 @@ struct InterpBlockComm {
   // index in sendblock
   std::vector<InterpSource<D>> SendCells;
   // interp weight
-  std::vector<InterpWeight<T, D>> InterpWeights;
+  // std::vector<InterpWeight<T, D>> InterpWeights;
   // index in recvblock
   std::vector<std::size_t> RecvCells;
   // receive data from sendblock
   Block<T, D>* SendBlock;
+  // predefined interp weight
+  static constexpr std::array<InterpWeight<T, 2>, 4> InterpWeight2D{{
+    {T(0.0625), T(0.1875), T(0.1875), T(0.5625)}, 
+    {T(0.1875), T(0.0625), T(0.5625), T(0.1875)}, 
+    {T(0.1875), T(0.5625), T(0.0625), T(0.1875)}, 
+    {T(0.5625), T(0.1875), T(0.1875), T(0.0625)}}};
+  static constexpr std::array<InterpWeight<T, 3>, 8> InterpWeight3D{};
+
+  static constexpr auto getIntpWeight() {
+    if constexpr (D == 2) {
+      return InterpWeight2D;
+    } else {
+      return InterpWeight3D;
+    }
+  }
 
   InterpBlockComm(Block<T, D>* block) : SendBlock(block) {}
 
-  // SendBlock->getBlockId()
   int getSendId() const { return SendBlock->getBlockId(); }
-  constexpr int getSourceNum() const { return (D == 2) ? 4 : 8; }
-  constexpr T getUniformWeight() const { return (D == 2) ? T(0.25) : T(0.125); }
+  // return (D == 2) ? 4 : 8;
+  static constexpr int getSourceNum() { return (D == 2) ? 4 : 8; }
+  // return (D == 2) ? T(0.25) : T(0.125);
+  static constexpr T getUniformWeight() { return (D == 2) ? T(0.25) : T(0.125); }
 };
 
 
@@ -337,6 +353,7 @@ static void DivideBlock2D(BasicBlock<T, 2>& block, int blocknum,
   T voxsize = block.getVoxelSize();
   const Vector<T, 2>& Min = block.getMin();
   int ratio = static_cast<int>(std::pow(2, static_cast<int>(level)));
+  int blockid = 0;
   for (const AABB<int, 2>& idxaabb : blocksvec) {
     // relative index location
     Vector<int, 2> idxmin = idxaabb.getMin() - IdxBlock.getMin();
@@ -347,7 +364,8 @@ static void DivideBlock2D(BasicBlock<T, 2>& block, int blocknum,
     AABB<T, 2> aabb{min, max};
     // mesh
     Vector<int, 2> Mesh = (idxaabb.getExtension() + Vector<int, 2>{1}) * ratio;
-    basicblocksvec.emplace_back(level, voxsize, 0, aabb, idxaabb, Mesh);
+    basicblocksvec.emplace_back(level, voxsize, blockid, aabb, idxaabb, Mesh);
+    ++blockid;
   }
 }
 
@@ -391,10 +409,10 @@ static void DivideBlock2D(int NX, int NY, int blocknum, const AABB<int, 2>& idxA
     int rest_blocknum = Xblocks * (Yblocks - rest);
     T bestVolume = (T)NX * NY * rest_blocknum / (T)blocknum;
     int seg_Y = (int)(bestVolume / (T)NX);
-    Vector<int,2> min0 = idxAABBs.getMin();
-    Vector<int,2> max0 = Vector<int,2>{idxAABBs.getMax()[0], min0[1] + seg_Y - 1};
-    Vector<int,2> min1 = Vector<int,2>{min0[0], min0[1] + seg_Y};
-    Vector<int,2> max1 = idxAABBs.getMax();
+    Vector<int, 2> min0 = idxAABBs.getMin();
+    Vector<int, 2> max0 = Vector<int, 2>{idxAABBs.getMax()[0], min0[1] + seg_Y - 1};
+    Vector<int, 2> min1 = Vector<int, 2>{min0[0], min0[1] + seg_Y};
+    Vector<int, 2> max1 = idxAABBs.getMax();
     AABB<int, 2> Child_0(min0, max0);
     AABB<int, 2> Child_1(min1, max1);
     Child_0.divide(Xblocks, Yblocks - rest, blocksvec);
@@ -404,10 +422,10 @@ static void DivideBlock2D(int NX, int NY, int blocknum, const AABB<int, 2>& idxA
     int rest_blocknum = Yblocks * (Xblocks - rest);
     T bestVolume = (T)NX * NY * rest_blocknum / (T)blocknum;
     int seg_X = (int)(bestVolume / (T)NY + 0.9999);
-    Vector<int,2> min0 = idxAABBs.getMin();
-    Vector<int,2> max0 = Vector<int,2>{min0[0] + seg_X - 1, idxAABBs.getMax()[1]};
-    Vector<int,2> min1 = Vector<int,2>{min0[0] + seg_X, min0[1]};
-    Vector<int,2> max1 = idxAABBs.getMax();
+    Vector<int, 2> min0 = idxAABBs.getMin();
+    Vector<int, 2> max0 = Vector<int, 2>{min0[0] + seg_X - 1, idxAABBs.getMax()[1]};
+    Vector<int, 2> min1 = Vector<int, 2>{min0[0] + seg_X, min0[1]};
+    Vector<int, 2> max1 = idxAABBs.getMax();
     AABB<int, 2> Child_0(min0, max0);
     AABB<int, 2> Child_1(min1, max1);
     Child_0.divide(Xblocks - rest, Yblocks, blocksvec);

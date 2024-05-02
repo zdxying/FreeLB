@@ -19,7 +19,7 @@ int Thread_Num;
         physical param
 ---------------------*/
 
-/*physical property*/
+// physical properties
 T rho_ref;              // g/mm^3
 T Solutal_Expan_Coeff;  // wt.%^-1 Solutal expansion coefficient
 T Thermal_Expan_Coeff;  // K^-1 Thermal expansion coefficient
@@ -35,14 +35,14 @@ T Dyna_Visc;            // Pa·s Dynamic viscosity of the liquid
 T Kine_Visc;            // mm^2/s kinematic viscosity of the liquid
 T TDiff;                // mm^2/s Thermal diffusivity of the liquid
 T Ra;                   // Rayleigh number
-/*init conditions*/
+// init conditions
 T Temp_Ini;          // K
 T Conc_Ini;          // wt.%
 Vector<T, 2> U_Ini;  // mm/s
 T U_Max;
 T P_char;
 
-/*bcs*/
+// bcs
 Vector<T, 2> U_Wall;  // mm/s
 /*---------------------
         LB param
@@ -57,19 +57,19 @@ T tol;
 std::string work_dir;
 
 void readParam() {
-  /*reader*/
+  
   iniReader param_reader("ncparam2d.ini");
   // Thread_Num = param_reader.getValue<int>("OMP", "Thread_Num");
-  /*mesh*/
+  // mesh
   work_dir = param_reader.getValue<std::string>("workdir", "workdir_");
   // parallel
   Thread_Num = param_reader.getValue<int>("parallel", "thread_num");
-  /*CA mesh*/
+  
   Ni = param_reader.getValue<int>("Mesh", "Ni");
   Nj = param_reader.getValue<int>("Mesh", "Nj");
   Cell_Len = param_reader.getValue<T>("Mesh", "Cell_Len");
 
-  /*physical property*/
+  // physical properties
   rho_ref = param_reader.getValue<T>("Physical_Property", "rho_ref");
   Solutal_Expan_Coeff = param_reader.getValue<T>("Physical_Property", "Solutal_Expan_Coeff");
   Thermal_Expan_Coeff = param_reader.getValue<T>("Physical_Property", "Thermal_Expan_Coeff");
@@ -86,7 +86,7 @@ void readParam() {
   Ra = param_reader.getValue<T>("Physical_Property", "Ra");
   // Kine_Visc = Dyna_Visc / rho_ref;
   TDiff = param_reader.getValue<T>("Physical_Property", "TDiff");
-  /*init conditions*/
+  // init conditions
   Temp_Ini = param_reader.getValue<T>("Init_Conditions", "Temp_Ini");
   Th = param_reader.getValue<T>("Init_Conditions", "Th");
   Tl = param_reader.getValue<T>("Init_Conditions", "Tl");
@@ -95,7 +95,7 @@ void readParam() {
   U_Ini[1] = param_reader.getValue<T>("Init_Conditions", "U_Ini1");
   U_Max = param_reader.getValue<T>("Init_Conditions", "U_Max");
   P_char = param_reader.getValue<T>("Init_Conditions", "P_char");
-  /*bcs*/
+  // bcs
   U_Wall[0] = param_reader.getValue<T>("Boundary_Conditions", "Velo_Wall0");
   U_Wall[1] = param_reader.getValue<T>("Boundary_Conditions", "Velo_Wall1");
   // LB
@@ -105,7 +105,7 @@ void readParam() {
   OutputStep = param_reader.getValue<int>("Simulation_Settings", "OutputStep");
   tol = param_reader.getValue<T>("tolerance", "tol");
 
-  /*output to console*/
+  
   std::cout << "------------Simulation Parameters:-------------\n" << std::endl;
   std::cout << "[Simulation_Settings]:"
             << "TotalStep:         " << MaxStep << "\n"
@@ -203,7 +203,7 @@ int main() {
     NSLattice.getVelocityField().getField().size());
   vtkStruPointsWriter<T, LatSet0::d> NCWriter("FS", Geo0);
   NCWriter.addtoWriteList(&RhoWriter, &TWriter, &VelocityWriter);
-  /*count and timer*/
+  // count and timer
   Timer MainLoopTimer;
   Timer OutputTimer;
 

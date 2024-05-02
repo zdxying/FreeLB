@@ -48,12 +48,12 @@ class Block2D : public BasicBlock<T, 2> {
 
 #ifdef MPI_ENABLED
   int _Rank;
-  bool _NeedMPIComm;
-
-  MPIBlockCommStru MPIComm;
-  MPIInterpBlockCommStru<2> MPIInterpComm;
-  // for flag comm
-  MPIBlockBuffer<std::uint8_t> MPIBuffer;
+  // conmmunicate with same level block
+  MPIBlockComm MPIComm;
+  // average block comm, get from higher level block
+  MPIInterpBlockComm<T, 2> MPIAverComm;
+  // interp block comm, get from lower level block
+  MPIInterpBlockComm<T, 2> MPIInterpComm;
 #endif
 
  public:
@@ -77,13 +77,9 @@ class Block2D : public BasicBlock<T, 2> {
   int getOverlap() const { return _overlap; }
 
   // setup boundary
-  template <typename FieldType, typename datatype, typename LatSet>
-  void SetupBoundary(const AABB<T, 2>& block, FieldType& field, datatype bdvalue);
-
-  // refine block
-  void Refine(std::uint8_t deltalevel = std::uint8_t(1));
-  // coarsen block
-  void Coarsen(std::uint8_t deltalevel = std::uint8_t(1));
+  template <typename FieldType, typename LatSet>
+  void SetupBoundary(const AABB<T, 2>& block, FieldType& field,
+                     typename FieldType::value_type bdvalue);
 
   std::vector<Block2D<T>*>& getNeighbors() { return _Neighbors; }
   const Block2D<T>& getNeighbor(int id) const { return *_Neighbors[id]; }
@@ -99,16 +95,17 @@ class Block2D : public BasicBlock<T, 2> {
 
 #ifdef MPI_ENABLED
   int getRank() const { return _Rank; }
-  bool getNeedMPIComm() const { return _NeedMPIComm; }
+  bool _NeedMPIComm = false;
 
-  MPIBlockCommStru& getMPIBlockComm() { return MPIComm; }
-  const MPIBlockCommStru& getMPIBlockComm() const { return MPIComm; }
+  MPIBlockComm& getMPIBlockComm() { return MPIComm; }
+  const MPIBlockComm& getMPIBlockComm() const { return MPIComm; }
 
-  MPIBlockBuffer<std::uint8_t>& getMPIBlockBuffer() { return MPIBuffer; }
-  const MPIBlockBuffer<std::uint8_t>& getMPIBlockBuffer() const { return MPIBuffer; }
+  MPIInterpBlockComm<T, 2>& getMPIInterpBlockComm() { return MPIInterpComm; }
+  const MPIInterpBlockComm<T, 2>& getMPIInterpBlockComm() const { return MPIInterpComm; }
 
-  // mpi communicate FlagField GeometryFlag, non blocking
-  void GeoFlagMPIComm();
+  MPIInterpBlockComm<T, 2>& getMPIAverBlockComm() { return MPIAverComm; }
+  const MPIInterpBlockComm<T, 2>& getMPIAverBlockComm() const { return MPIAverComm; }
+
 #endif
 };
 
@@ -138,7 +135,17 @@ class BlockGeometry2D : public BasicBlock<T, 2> {
   BlockGeometry2D(BlockGeometryHelper2D<T>& GeoHelper);
   ~BlockGeometry2D() = default;
 
+  void PrintInfo() const;
   void Init(BlockGeometryHelper2D<T>& GeoHelper);
+
+  const BasicBlock<T, 2>& getSelfBlock() const { return *this; }
+  const BasicBlock<T, 2>& getBaseBlock() const { return _BaseBlock; }
+
+  std::vector<Block2D<T>>& getBlocks() { return _Blocks; }
+  const std::vector<Block2D<T>>& getBlocks() const { return _Blocks; }
+
+  Block2D<T>& getBlock(int id) { return _Blocks[id]; }
+  const Block2D<T>& getBlock(int id) const { return _Blocks[id]; }
 
   void UpdateMaxLevel();
   inline std::uint8_t getMaxLevel() const { return _MaxLevel; }
@@ -153,37 +160,28 @@ class BlockGeometry2D : public BasicBlock<T, 2> {
   void DivideBlocks(int blocknum);
   void CreateBlocks();
   void SetupNbrs();
-  void InitCommunicators();
-  // communicate GeometryFlag
-  void GeoFlagComm();
-  // Communicators with different level
+
+  // --- communication ---
+  void InitComm();
   // Low level block(coarse) get info from High level block(fine) using average
-  void InitAverComm(int highlevelovlap = 2);
-  // experimental
-  // void InitAverComm2();
+  void InitAverComm();
   // High level block(fine) get info from Low level block(coarse) using interpolation
   void InitIntpComm();
-  // High level block(fine) get info from Low level block(coarse) using extrapolation
-  // only support one single layer of overlapped cells
-  // void InitExtpComm();
   // init all commuicators
   void InitAllComm();
 
-  const BasicBlock<T, 2>& getSelfBlock() const { return *this; }
-  const BasicBlock<T, 2>& getBaseBlock() const { return _BaseBlock; }
+// --- mpi communication ---
+#ifdef MPI_ENABLED
 
-  std::vector<Block2D<T>>& getBlocks() { return _Blocks; }
-  const std::vector<Block2D<T>>& getBlocks() const { return _Blocks; }
+  void InitMPIComm(BlockGeometryHelper2D<T>& GeoHelper);
+  // Low level block(coarse) get info from High level block(fine) using average
+  void InitMPIAverComm(BlockGeometryHelper2D<T>& GeoHelper);
+  // High level block(fine) get info from Low level block(coarse) using interpolation
+  void InitMPIIntpComm(BlockGeometryHelper2D<T>& GeoHelper);
+  // init all commuicators
+  void InitAllMPIComm(BlockGeometryHelper2D<T>& GeoHelper);
 
-  Block2D<T>& getBlock(int id) { return _Blocks[id]; }
-  const Block2D<T>& getBlock(int id) const { return _Blocks[id]; }
-
-  // get size of each block
-  std::vector<std::size_t> getBlockSizes() const {
-    std::vector<std::size_t> sizes;
-    for (const Block2D<T>& block : _Blocks) sizes.push_back(block.getN());
-    return sizes;
-  }
+#endif
 };
 
 enum BlockCellTag : std::uint8_t { none = 1, refine = 2, coarsen = 4, solid = 8 };
@@ -201,6 +199,9 @@ class BlockGeometryHelper2D : public BasicBlock<T, 2> {
   std::vector<BlockCellTag> _BlockCellTags;
   // rectanglar blocks
   std::vector<BasicBlock<T, 2>> _BasicBlocks0;
+  // store old geometry info for data transfer, blockcomms are not needed here
+  // simply store basicblocks is ok since block could be constructed from basicblock
+  std::vector<BasicBlock<T, 2>> _BasicBlocks1;
   // cell geometry info
   int CellsNx;
   int CellsNy;
@@ -213,18 +214,27 @@ class BlockGeometryHelper2D : public BasicBlock<T, 2> {
   std::uint8_t _LevelLimit;
   // max level
   std::uint8_t _MaxLevel;
-  // store old geometry info for data transfer, blockcomms are not needed here
-  // simply store basicblocks is ok since block could be constructed from basicblock
-  std::vector<BasicBlock<T, 2>> _BasicBlocks1;
   // exchange flag for _BasicBlocks0 and _BasicBlocks1
   bool _Exchanged;
   // delta index for cell block
   std::array<int, 8> Delta_Cellidx;
 
+  // for mpi
+  std::vector<std::vector<int>> _BlockIndex0;
+  std::vector<std::vector<int>> _BlockIndex1;
+  std::vector<std::vector<BasicBlock<T, 2>*>> _BlockIndexPtr0;
+  std::vector<std::vector<BasicBlock<T, 2>*>> _BlockIndexPtr1;
+  bool _IndexExchanged;
+#ifdef MPI_ENABLED
+  // mpi neighbors: first: rank, second: blockid
+  std::vector<std::vector<std::pair<int, int>>> _MPIBlockNbrs;
+#endif
+
+
  public:
   // domain of Nx * Ny will be divided into (Nx/blocklen)*(Ny/blocklen) blocks
-  BlockGeometryHelper2D(int Nx, int Ny, int blocklen, const AABB<T, 2>& AABBs,
-                        T voxelSize = T(1), std::uint8_t llimit = std::uint8_t(2),
+  BlockGeometryHelper2D(int Nx, int Ny, const AABB<T, 2>& AABBs, T voxelSize = T(1),
+                        int blocklen = 10, std::uint8_t llimit = std::uint8_t(2),
                         int ext = 1);
   ~BlockGeometryHelper2D() = default;
 
@@ -236,6 +246,7 @@ class BlockGeometryHelper2D : public BasicBlock<T, 2> {
 
   int getExt() const { return Ext; }
   BasicBlock<T, 2>& getBaseBlock() { return _BaseBlock; }
+
   BasicBlock<T, 2>& getBlockCell(int id) { return _BlockCells[id]; }
   std::vector<BasicBlock<T, 2>>& getBlockCells() { return _BlockCells; }
 
@@ -245,29 +256,76 @@ class BlockGeometryHelper2D : public BasicBlock<T, 2> {
   int getCellsNx() const { return CellsNx; }
   int getCellsNy() const { return CellsNy; }
 
-  BasicBlock<T, 2>& getBasicBlock(int id) { return getBasicBlocks()[id]; }
-  const BasicBlock<T, 2>& getBasicBlock(int id) const { return getBasicBlocks()[id]; }
+  // get all new basic blocks
+  std::vector<BasicBlock<T, 2>>& getAllBasicBlocks() {
+    if (_Exchanged)
+      return _BasicBlocks1;
+    else
+      return _BasicBlocks0;
+  }
+  BasicBlock<T, 2>& getAllBasicBlock(int id) { return getAllBasicBlocks()[id]; }
+  const BasicBlock<T, 2>& getAllBasicBlock(int id) const {
+    return getAllBasicBlocks()[id];
+  }
+  // get all old basic blocks
+  std::vector<BasicBlock<T, 2>>& getAllOldBasicBlocks() {
+    if (_Exchanged)
+      return _BasicBlocks0;
+    else
+      return _BasicBlocks1;
+  }
+  BasicBlock<T, 2>& getAllOldBasicBlock(int id) { return getAllOldBasicBlocks()[id]; }
+  const BasicBlock<T, 2>& getAllOldBasicBlock(int id) const {
+    return getAllOldBasicBlocks()[id];
+  }
 
-  BasicBlock<T, 2>& getOldBasicBlock(int id) { return getOldBasicBlocks()[id]; }
+
+  std::vector<std::vector<int>>& getAllBlockIndices() {
+    if (_IndexExchanged)
+      return _BlockIndex1;
+    else
+      return _BlockIndex0;
+  }
+  std::vector<std::vector<int>>& getAllOldBlockIndices() {
+    if (_IndexExchanged)
+      return _BlockIndex0;
+    else
+      return _BlockIndex1;
+  }
+
+
+  std::vector<std::vector<BasicBlock<T, 2>*>>& getAllBlockIndexPtrs() {
+    if (_IndexExchanged)
+      return _BlockIndexPtr1;
+    else
+      return _BlockIndexPtr0;
+  }
+  // get basic blocks from std::vector<std::vector<BasicBlock<T, 2>*>> _BlockIndexPtr
+  std::vector<BasicBlock<T, 2>*>& getBasicBlocks() {
+    return getAllBlockIndexPtrs()[mpi().getRank()];
+  }
+  BasicBlock<T, 2>& getBasicBlock(int id) { return *(getBasicBlocks()[id]); }
+  const BasicBlock<T, 2>& getBasicBlock(int id) const { return *(getBasicBlocks()[id]); }
+
+  std::vector<std::vector<BasicBlock<T, 2>*>>& getAllOldBlockIndexPtrs() {
+    if (_IndexExchanged)
+      return _BlockIndexPtr0;
+    else
+      return _BlockIndexPtr1;
+  }
+  std::vector<BasicBlock<T, 2>*>& getOldBasicBlocks() {
+    return getAllOldBlockIndexPtrs()[mpi().getRank()];
+  }
+  BasicBlock<T, 2>& getOldBasicBlock(int id) { return *(getOldBasicBlocks()[id]); }
   const BasicBlock<T, 2>& getOldBasicBlock(int id) const {
-    return getOldBasicBlocks()[id];
+    return *(getOldBasicBlocks()[id]);
   }
 
-  // get new basic blocks
-  std::vector<BasicBlock<T, 2>>& getBasicBlocks() {
-    if (_Exchanged)
-      return _BasicBlocks1;
-    else
-      return _BasicBlocks0;
+#ifdef MPI_ENABLED
+  std::vector<std::pair<int, int>>& getMPIBlockNbrs(int blockid) {
+    return _MPIBlockNbrs[blockid];
   }
-
-  // get old basic blocks
-  std::vector<BasicBlock<T, 2>>& getOldBasicBlocks() {
-    if (_Exchanged)
-      return _BasicBlocks0;
-    else
-      return _BasicBlocks1;
-  }
+#endif
 
   void CreateBlockCells();
   // create block from BlockCells, this should be called after refinement
@@ -295,6 +353,13 @@ class BlockGeometryHelper2D : public BasicBlock<T, 2> {
   // calculate the Standard Deviation of the number of points in each block
   T ComputeStdDev() const;
   T ComputeStdDev(const std::vector<BasicBlock<T, 2>>& Blocks) const;
+
+  void LoadBalancing(int ProcessNum = 1);
+
+#ifdef MPI_ENABLED
+  // call this after LoadBalancing()
+  void SetupMPINbrs();
+#endif
 };
 
 // helper class for MPI
@@ -344,14 +409,7 @@ class BlockGeometryMPIHelper2D : public BasicBlock<T, 2> {
   void CreateBlocks();
   void SetupNbrs();
   // the following should be called on specific process
-  void InitMPIBlockCommStru(MPIBlockCommStru& BlockComm);
-
-  void InitMPIAverComm(int highlevelovlap = 2);
-
-  void InitMPIIntpComm();
-
-  void InitAllMPIComm();
-  // void GeoFlagComm();
+  void InitMPIBlockCommStru(MPIBlockComm& BlockComm);
 };
 
 // block geometry manager for MPI

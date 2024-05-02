@@ -47,15 +47,14 @@ Block2D<T>::Block2D(int rank, int blockid, const AABB<T, 2> &block,
                     const AABB<int, 2> &idxblock, T voxelSize, int olap)
     : BasicBlock<T, 2>(voxelSize, block.getExtended(Vector<T, 2>{voxelSize}),
                        idxblock.getExtended(Vector<int, 2>{1}), blockid),
-      _BaseBlock(voxelSize, block, idxblock, blockid), _overlap(olap), _Rank(rank),
-      _voidflag(voidflag) {}
+      _BaseBlock(voxelSize, block, idxblock, blockid), _overlap(olap), _Rank(rank){}
 
 #endif
 
 template <typename T>
-template <typename FieldType, typename datatype, typename LatSet>
+template <typename FieldType, typename LatSet>
 void Block2D<T>::SetupBoundary(const AABB<T, 2> &block, FieldType &field,
-                               datatype bdvalue) {
+                               typename FieldType::value_type bdvalue) {
   // temp flag field store the transition flag
   GenericArray<bool> TransFlag(BasicBlock<T, 2>::N, false);
 
@@ -76,72 +75,53 @@ void Block2D<T>::SetupBoundary(const AABB<T, 2> &block, FieldType &field,
   for (std::size_t id = 0; id < BasicBlock<T, 2>::N; ++id) {
     if (TransFlag[id]) field.SetField(id, bdvalue);
   }
-#ifdef MPI_ENABLED
-  GeoFlagMPIComm();
-#endif
-}
-
-template <typename T>
-void Block2D<T>::Refine(std::uint8_t deltalevel) {
-  _BaseBlock = _BaseBlock.getRefinedBlock(deltalevel);
-  _overlap = 2;
-  BasicBlock<T, 2>::operator=(_BaseBlock.getExtBlock(_overlap));
-}
-
-template <typename T>
-void Block2D<T>::Coarsen(std::uint8_t deltalevel) {
-  _BaseBlock = _BaseBlock.getCoasenedBlock(deltalevel);
-  if (_BaseBlock.getLevel() == std::uint8_t(0)) {
-    _overlap = 1;
-  }
-  BasicBlock<T, 2>::operator=(_BaseBlock.getExtBlock(_overlap));
 }
 
 #ifdef MPI_ENABLED
 
-template <typename T>
-void Block2D<T>::GeoFlagMPIComm() {
-  Mpi().barrier();
-  // send data
-  // send buffer
-  // add to send buffer
-  for (int i = 0; i < MPIComm.Senders.size(); ++i) {
-    std::vector<std::uint8_t> &buffer = MPIBuffer.SendBuffers[i];
-    const std::vector<std::size_t> &sendcells = MPIComm.Senders[i].SendCells;
-    for (std::size_t id = 0; id < sendcells.size(); ++id) {
-      buffer[id] = GeometryFlag.get(sendcells[id]);
-    }
-  }
-  // non-blocking send
-  std::vector<MPI_Request> requests;
-  for (int i = 0; i < MPIComm.Senders.size(); ++i) {
-    std::vector<std::uint8_t> &buffer = MPIBuffer.SendBuffers[i];
-    MPI_Request request;
-    Mpi().iSend(buffer.data(), buffer.size(), MPIComm.Senders[i].RecvRank, &request, 0,
-                MPI_COMM_WORLD);
-    // MPI_ISend()
-    requests.push_back(request);
-  }
-  // non-blocking recv
-  for (int i = 0; i < MPIComm.Recvers.size(); ++i) {
-    std::vector<std::uint8_t> &buffer = MPIBuffer.RecvBuffers[i];
-    MPI_Request request;
-    Mpi().iRecv(buffer.data(), buffer.size(), MPIComm.Recvers[i].SendRank, &request, 0,
-                MPI_COMM_WORLD);
-    requests.push_back(request);
-  }
-  // wait for all requests
-  MPI_Waitall(requests.size(), requests.data(), MPI_STATUSES_IGNORE);
-  // set flag based on recv buffer
-  for (int i = 0; i < MPIComm.Recvers.size(); ++i) {
-    const std::vector<std::uint8_t> &buffer = MPIBuffer.RecvBuffers[i];
-    const std::vector<int> &recvcells = MPIComm.Recvers[i].RecvCells;
-    for (int j = 0; j < buffer.size(); ++j) {
-      GeometryFlag.SetField(recvcells[j], buffer[j]);
-    }
-  }
-  Mpi().barrier();
-}
+// template <typename T>
+// void Block2D<T>::GeoFlagMPIComm() {
+//   mpi().barrier();
+//   // send data
+//   // send buffer
+//   // add to send buffer
+//   for (int i = 0; i < MPIComm.Senders.size(); ++i) {
+//     std::vector<std::uint8_t> &buffer = MPIBuffer.SendBuffers[i];
+//     const std::vector<std::size_t> &sendcells = MPIComm.Senders[i].SendCells;
+//     for (std::size_t id = 0; id < sendcells.size(); ++id) {
+//       buffer[id] = GeometryFlag.get(sendcells[id]);
+//     }
+//   }
+//   // non-blocking send
+//   std::vector<MPI_Request> requests;
+//   for (int i = 0; i < MPIComm.Senders.size(); ++i) {
+//     std::vector<std::uint8_t> &buffer = MPIBuffer.SendBuffers[i];
+//     MPI_Request request;
+//     mpi().iSend(buffer.data(), buffer.size(), MPIComm.Senders[i].RecvRank, &request, 0,
+//                 MPI_COMM_WORLD);
+//     // MPI_ISend()
+//     requests.push_back(request);
+//   }
+//   // non-blocking recv
+//   for (int i = 0; i < MPIComm.Recvers.size(); ++i) {
+//     std::vector<std::uint8_t> &buffer = MPIBuffer.RecvBuffers[i];
+//     MPI_Request request;
+//     mpi().iRecv(buffer.data(), buffer.size(), MPIComm.Recvers[i].SendRank, &request, 0,
+//                 MPI_COMM_WORLD);
+//     requests.push_back(request);
+//   }
+//   // wait for all requests
+//   MPI_Waitall(requests.size(), requests.data(), MPI_STATUSES_IGNORE);
+//   // set flag based on recv buffer
+//   for (int i = 0; i < MPIComm.Recvers.size(); ++i) {
+//     const std::vector<std::uint8_t> &buffer = MPIBuffer.RecvBuffers[i];
+//     const std::vector<int> &recvcells = MPIComm.Recvers[i].RecvCells;
+//     for (int j = 0; j < buffer.size(); ++j) {
+//       GeometryFlag.SetField(recvcells[j], buffer[j]);
+//     }
+//   }
+//   mpi().barrier();
+// }
 
 #endif
 
@@ -159,7 +139,10 @@ BlockGeometry2D<T>::BlockGeometry2D(int Nx, int Ny, int blocknum, const AABB<T, 
   DivideBlocks(blocknum);
   CreateBlocks();
   SetupNbrs();
-  InitCommunicators();
+  InitComm();
+#ifndef MPI_ENABLED
+  PrintInfo();
+#endif
 }
 
 template <typename T>
@@ -167,13 +150,24 @@ BlockGeometry2D<T>::BlockGeometry2D(BlockGeometryHelper2D<T> &GeoHelper)
     : _BaseBlock(GeoHelper.getBaseBlock()), BasicBlock<T, 2>(GeoHelper),
       _overlap(GeoHelper.getExt()) {
   // create blocks from GeoHelper
-  for (BasicBlock<T, 2> &baseblock : GeoHelper.getBasicBlocks()) {
-    int overlap = (baseblock.getLevel() != std::uint8_t(0)) ? 2 : 1;
-    _Blocks.emplace_back(baseblock, overlap);
+  for (BasicBlock<T, 2> *baseblock : GeoHelper.getBasicBlocks()) {
+    int overlap = (baseblock->getLevel() != std::uint8_t(0)) ? 2 : 1;
+    _Blocks.emplace_back(*baseblock, overlap);
   }
   SetupNbrs();
   InitAllComm();
   UpdateMaxLevel();
+#ifdef MPI_ENABLED
+  InitAllMPIComm(GeoHelper);
+#else
+  PrintInfo();
+#endif
+}
+
+template <typename T>
+void BlockGeometry2D<T>::PrintInfo() const {
+  std::cout << "[BlockGeometry2D]: \n"
+            << "Total Cell Num: " << getTotalCellNum() << std::endl;
 }
 
 template <typename T>
@@ -181,13 +175,18 @@ void BlockGeometry2D<T>::Init(BlockGeometryHelper2D<T> &GeoHelper) {
   ;
   _Blocks.clear();
   // create blocks from GeoHelper
-  for (BasicBlock<T, 2> &baseblock : GeoHelper.getBasicBlocks()) {
-    int overlap = (baseblock.getLevel() != std::uint8_t(0)) ? 2 : 1;
-    _Blocks.emplace_back(baseblock, overlap);
+  for (BasicBlock<T, 2> *baseblock : GeoHelper.getBasicBlocks()) {
+    int overlap = (baseblock->getLevel() != std::uint8_t(0)) ? 2 : 1;
+    _Blocks.emplace_back(*baseblock, overlap);
   }
   SetupNbrs();
   InitAllComm();
   UpdateMaxLevel();
+#ifdef MPI_ENABLED
+  InitAllMPIComm(GeoHelper);
+#else
+  PrintInfo();
+#endif
 }
 
 template <typename T>
@@ -200,18 +199,14 @@ void BlockGeometry2D<T>::UpdateMaxLevel() {
 template <typename T>
 std::size_t BlockGeometry2D<T>::getTotalCellNum() const {
   std::size_t sum = 0;
-  for (const Block2D<T> &block : _Blocks) {
-    sum += block.getN();
-  }
+  for (const Block2D<T> &block : _Blocks) sum += block.getN();
   return sum;
 }
 
 template <typename T>
 std::size_t BlockGeometry2D<T>::getBaseCellNum() const {
   std::size_t sum = 0;
-  for (const Block2D<T> &block : _Blocks) {
-    sum += block.getBaseBlock().getN();
-  }
+  for (const Block2D<T> &block : _Blocks) sum += block.getBaseBlock().getN();
   return sum;
 }
 
@@ -258,15 +253,13 @@ void BlockGeometry2D<T>::SetupNbrs() {
 }
 
 template <typename T>
-void BlockGeometry2D<T>::InitCommunicators() {
-  for (int i = 0; i < _Blocks.size(); ++i) {
-    // getCellIdx() called from ext block
-    Block2D<T> &block = _Blocks[i];
+void BlockGeometry2D<T>::InitComm() {
+  for (Block2D<T> &block : _Blocks) {
+    std::vector<BlockComm<T, 2>> &Communicators = block.getCommunicators();
+    Communicators.clear();
     // get the first layer of overlapped cells(counted from inside to outside)
     BasicBlock<T, 2> baseblock_ext1 = block.getBaseBlock().getExtBlock(1);
     std::uint8_t blocklevel = block.getLevel();
-    std::vector<BlockComm<T, 2>> &Communicators = block.getCommunicators();
-    Communicators.clear();
     for (Block2D<T> *nblock : block.getNeighbors()) {
       // check if 2 blocks are of the same level
       if (nblock->getLevel() == blocklevel) {
@@ -282,44 +275,44 @@ void BlockGeometry2D<T>::InitCommunicators() {
 }
 
 template <typename T>
-void BlockGeometry2D<T>::InitAverComm(int highlevelovlap) {
-  for (int i = 0; i < _Blocks.size(); ++i) {
-    // getCellIdx() called from ext block
-    Block2D<T> &block = _Blocks[i];
+void BlockGeometry2D<T>::InitAverComm() {
+  for (Block2D<T> &block : _Blocks) {
+    std::vector<InterpBlockComm<T, 2>> &Communicators = block.getAverageBlockComm();
+    Communicators.clear();
     // get the first layer of overlapped cells(counted from inside to outside)
     BasicBlock<T, 2> baseblock_ext1 = block.getBaseBlock().getExtBlock(1);
     std::uint8_t blocklevel = block.getLevel();
-    std::vector<InterpBlockComm<T, 2>> &Communicators = block.getAverageBlockComm();
-    Communicators.clear();
     for (Block2D<T> *nblock : block.getNeighbors()) {
       // find block of blocklevel+1
       if (nblock->getLevel() == blocklevel + 1) {
         Communicators.emplace_back(nblock);
         InterpBlockComm<T, 2> &comm = Communicators.back();
-        // init recv cells
-        // low level block only recv from higher using the first layer of overlapped cells
-        block.getCellIdx(baseblock_ext1, nblock->getBaseBlock(), comm.RecvCells);
-        // get coarsened basicblock of nblock
-        BasicBlock<T, 2> Cnbaseblock = nblock->getBaseBlock().getCoasenedBlock();
-        // buffer container to store virtual cell indices
-        // TODO: more efficient implementation without using virtual cells?
-        std::vector<std::size_t> VSendCells;
-        // get virtual (coarse) cell indices on coarsened basicblock of nblock
-        Cnbaseblock.getCellIdx(baseblock_ext1, Cnbaseblock, VSendCells);
-        // get real cell indices from virtual cell indices
-        for (std::size_t id : VSendCells) {
-          // virtual (coarse) cell location
-          Vector<int, 2> Clocidx = Cnbaseblock.getLoc(id);
-          // real cell location
-          Vector<int, 2> locidx0 = Clocidx * 2 + Vector<int, 2>{highlevelovlap};
-          std::size_t id0 = nblock->getIndex(locidx0);
-          Vector<int, 2> locidx1 = locidx0 + Vector<int, 2>{1, 0};
-          std::size_t id1 = nblock->getIndex(locidx1);
-          Vector<int, 2> locidx2 = locidx0 + Vector<int, 2>{0, 1};
-          std::size_t id2 = nblock->getIndex(locidx2);
-          Vector<int, 2> locidx3 = locidx0 + Vector<int, 2>{1, 1};
-          std::size_t id3 = nblock->getIndex(locidx3);
-          comm.SendCells.emplace_back(InterpSource<2>{id0, id1, id2, id3});
+        // vox size
+        const T Cvoxsize = block.getVoxelSize();
+        const T Fvoxsize = nblock->getVoxelSize();
+        // get intersection
+        const AABB<T, 2> intsec = getIntersection(baseblock_ext1, nblock->getBaseBlock());
+        int CNx = static_cast<int>(std::round(intsec.getExtension()[0] / Cvoxsize));
+        int CNy = static_cast<int>(std::round(intsec.getExtension()[1] / Cvoxsize));
+        // start index of intsec in block
+        Vector<T, 2> startC = intsec.getMin() - block.getMin();
+        int startCx = static_cast<int>(std::round(startC[0] / Cvoxsize));
+        int startCy = static_cast<int>(std::round(startC[1] / Cvoxsize));
+        // start index of intsec in nblock
+        Vector<T, 2> startF = intsec.getMin() - nblock->getMin();
+        int startFx = static_cast<int>(std::round(startF[0] / Fvoxsize));
+        int startFy = static_cast<int>(std::round(startF[1] / Fvoxsize));
+
+        for (int iy = 0; iy < CNy; ++iy) {
+          for (int ix = 0; ix < CNx; ++ix) {
+            std::size_t Cid = (iy + startCy) * block.getNx() + ix + startCx;
+            std::size_t Fid0 = (iy * 2 + startFy) * nblock->getNx() + ix * 2 + startFx;
+            std::size_t Fid1 = Fid0 + 1;
+            std::size_t Fid2 = Fid0 + nblock->getNx();
+            std::size_t Fid3 = Fid2 + 1;
+            comm.RecvCells.push_back(Cid);
+            comm.SendCells.emplace_back(InterpSource<2>{Fid0, Fid1, Fid2, Fid3});
+          }
         }
       } else if (nblock->getLevel() > blocklevel + 1) {
         std::cerr << "[BlockGeometry2D<T>::InitAverComm] Error: block level difference "
@@ -332,9 +325,7 @@ void BlockGeometry2D<T>::InitAverComm(int highlevelovlap) {
 
 template <typename T>
 void BlockGeometry2D<T>::InitIntpComm() {
-  for (int i = 0; i < _Blocks.size(); ++i) {
-    // getCellIdx() called from ext block
-    Block2D<T> &block = _Blocks[i];
+  for (Block2D<T> &block : _Blocks) {
     std::uint8_t blocklevel = block.getLevel();
     std::vector<InterpBlockComm<T, 2>> &Communicators = block.getInterpBlockComm();
     Communicators.clear();
@@ -343,61 +334,69 @@ void BlockGeometry2D<T>::InitIntpComm() {
       if (nblock->getLevel() == blocklevel - 1) {
         Communicators.emplace_back(nblock);
         InterpBlockComm<T, 2> &comm = Communicators.back();
-        // init recv cells
-        // high level block recv from lower using 2^(diff_level) layers of overlapped
-        // cells
-        block.getCellIdx(block, nblock->getBaseBlock(), comm.RecvCells);
-        // get refined basicblock of nblock
-        BasicBlock<T, 2> Rnbaseblock = nblock->getBaseBlock().getRefinedBlock();
-        // buffer container to store virtual cell indices
-        std::vector<std::size_t> VSendCells;
-        // get virtual (refined) cell indices on refined basicblock of nblock
-        Rnbaseblock.getCellIdx(block, Rnbaseblock, VSendCells);
-        // get real cell indices from virtual cell indices
-        T halfvoxsize = nblock->getVoxelSize() / T(2);
-        for (std::size_t id : VSendCells) {
-          // refined cell location
-          Vector<T, 2> Rloc = Rnbaseblock.getLoc_t(id);
-          // get dist of Rloc and MinCenter of nblock
-          Vector<T, 2> dist = Rloc - nblock->getMinCenter();
-          // find nearest real cell location
-          int x = static_cast<int>(dist[0] / nblock->getVoxelSize());
-          int y = static_cast<int>(dist[1] / nblock->getVoxelSize());
-          T remx = dist[0] - x * nblock->getVoxelSize();
-          T remy = dist[1] - y * nblock->getVoxelSize();
-          int scheme = 0;
-          if (remx < halfvoxsize) {
-            scheme += 1;
-          }
-          if (remy < halfvoxsize) {
-            scheme += 2;
-          }
-          /*
-          2 3
-          0 1
-          */
-          std::size_t id0 = nblock->getIndex(Vector<int, 2>{x, y});
-          std::size_t id1 = nblock->getIndex(Vector<int, 2>{x + 1, y});
-          std::size_t id2 = nblock->getIndex(Vector<int, 2>{x, y + 1});
-          std::size_t id3 = nblock->getIndex(Vector<int, 2>{x + 1, y + 1});
-          comm.SendCells.emplace_back(InterpSource<2>{id0, id1, id2, id3});
-          switch (scheme) {
-            case 0: {
-              comm.InterpWeights.emplace_back(
-                InterpWeight<T, 2>{T(0.0625), T(0.1875), T(0.1875), T(0.5625)});
-            } break;
-            case 1: {
-              comm.InterpWeights.emplace_back(
-                InterpWeight<T, 2>{T(0.1875), T(0.0625), T(0.5625), T(0.1875)});
-            } break;
-            case 2: {
-              comm.InterpWeights.emplace_back(
-                InterpWeight<T, 2>{T(0.1875), T(0.5625), T(0.0625), T(0.1875)});
-            } break;
-            case 3: {
-              comm.InterpWeights.emplace_back(
-                InterpWeight<T, 2>{T(0.5625), T(0.1875), T(0.1875), T(0.0625)});
-            } break;
+        // vox size
+        const T Cvoxsize = nblock->getVoxelSize();
+        const T Fvoxsize = block.getVoxelSize();
+        // get intersection
+        const AABB<T, 2> intsec = getIntersection(block, nblock->getBaseBlock());
+        int CNx = static_cast<int>(std::round(intsec.getExtension()[0] / Cvoxsize));
+        int CNy = static_cast<int>(std::round(intsec.getExtension()[1] / Cvoxsize));
+        // get start index of intsec in nblock
+        Vector<T, 2> startC = intsec.getMin() - nblock->getMin();
+        // shift 1 voxel to left bottom for interpolation
+        int startCx = static_cast<int>(std::round(startC[0] / Cvoxsize)) - 1;
+        int startCy = static_cast<int>(std::round(startC[1] / Cvoxsize)) - 1;
+        // start index of intsec in FBlock
+        Vector<T, 2> startF = intsec.getMin() - block.getMin();
+        int startFx = static_cast<int>(std::round(startF[0] / Fvoxsize));
+        int startFy = static_cast<int>(std::round(startF[1] / Fvoxsize));
+        for (int iy = 0; iy < CNy; ++iy) {
+          for (int ix = 0; ix < CNx; ++ix) {
+            std::size_t Cid0 = (iy + startCy) * nblock->getNx() + ix + startCx;
+            std::size_t Cid1 = Cid0 + 1;
+            std::size_t Cid2 = Cid0 + nblock->getNx();
+            std::size_t Cid3 = Cid2 + 1;
+            std::size_t Fid = (iy * 2 + startFy) * block.getNx() + ix * 2 + startFx;
+
+            std::size_t Cid0_ = Cid0 + nblock->getNx();
+            std::size_t Cid1_ = Cid1 + nblock->getNx();
+            std::size_t Cid2_ = Cid2 + nblock->getNx();
+            std::size_t Cid3_ = Cid3 + nblock->getNx();
+            std::size_t Fid_ = Fid + block.getNx();
+
+            // 0
+            comm.RecvCells.push_back(Fid);
+            comm.SendCells.emplace_back(InterpSource<2>{Cid0, Cid1, Cid2, Cid3});
+            // comm.InterpWeights.emplace_back(
+            //   InterpWeight<T, 2>{T(0.0625), T(0.1875), T(0.1875), T(0.5625)});
+
+            // 1
+            Cid0 += 1;
+            Cid1 += 1;
+            Cid2 += 1;
+            Cid3 += 1;
+            Fid += 1;
+            comm.RecvCells.push_back(Fid);
+            comm.SendCells.emplace_back(InterpSource<2>{Cid0, Cid1, Cid2, Cid3});
+            // comm.InterpWeights.emplace_back(
+            //   InterpWeight<T, 2>{T(0.1875), T(0.0625), T(0.5625), T(0.1875)});
+
+            // 2
+            comm.RecvCells.push_back(Fid_);
+            comm.SendCells.emplace_back(InterpSource<2>{Cid0_, Cid1_, Cid2_, Cid3_});
+            // comm.InterpWeights.emplace_back(
+            //   InterpWeight<T, 2>{T(0.1875), T(0.5625), T(0.0625), T(0.1875)});
+
+            // 3
+            Cid0_ += 1;
+            Cid1_ += 1;
+            Cid2_ += 1;
+            Cid3_ += 1;
+            Fid_ += 1;
+            comm.RecvCells.push_back(Fid_);
+            comm.SendCells.emplace_back(InterpSource<2>{Cid0_, Cid1_, Cid2_, Cid3_});
+            // comm.InterpWeights.emplace_back(
+            //   InterpWeight<T, 2>{T(0.5625), T(0.1875), T(0.1875), T(0.0625)});
           }
         }
       } else if (nblock->getLevel() < blocklevel - 1) {
@@ -408,44 +407,248 @@ void BlockGeometry2D<T>::InitIntpComm() {
     }
   }
 }
-
 template <typename T>
 void BlockGeometry2D<T>::InitAllComm() {
-  InitCommunicators();
+  InitComm();
   InitAverComm();
   InitIntpComm();
 }
 
+#ifdef MPI_ENABLED
+
 template <typename T>
-void BlockGeometry2D<T>::GeoFlagComm() {
-  // comm of same level
+void BlockGeometry2D<T>::InitMPIComm(BlockGeometryHelper2D<T> &GeoHelper) {
   for (Block2D<T> &block : _Blocks) {
-    FlagField &GeoFlags = block.getGeoFlagField();
-    for (BlockComm<T, 2> &comm : block.getCommunicators()) {
-      Block2D<T> *nblock = comm.SendBlock;
-      FlagField &nGeoFlags = nblock->getGeoFlagField();
-      int size = comm.RecvCells.size();
-      for (int i = 0; i < size; ++i) {
-        std::size_t idrecv = comm.RecvCells[i];
-        std::size_t idsend = comm.SendCells[i];
-        GeoFlags.SetField(idrecv, nGeoFlags.get(idsend));
+    MPIBlockComm &MPIComm = block.getMPIBlockComm();
+    MPIComm.clear();
+    std::uint8_t blocklevel = block.getLevel();
+    // base block of block
+    const BasicBlock<T, 2> &baseblock = block.getBaseBlock();
+    // get the first layer of overlapped cells(counted from inside to outside)
+    // int overlap = (blocklevel != std::uint8_t(0)) ? 2 : 1;
+    BasicBlock<T, 2> baseblock_ext1 = baseblock.getExtBlock(1);
+    // find neighbors
+    std::vector<std::pair<int, int>> &nbrs =
+      GeoHelper.getMPIBlockNbrs(block.getBlockId());
+    for (const std::pair<int, int> &nbr : nbrs) {
+      // check if 2 blocks are of the same level
+      const BasicBlock<T, 2> &nbaseblock = GeoHelper.getAllBasicBlock(nbr.second);
+      if (nbaseblock.getLevel() == blocklevel) {
+        BasicBlock<T, 2> nbaseblock_ext1 = nbaseblock.getExtBlock(1);
+        // init sender
+        MPIComm.Senders.emplace_back(nbr.first, nbaseblock.getBlockId());
+        MPIBlockSendStru &sender = MPIComm.Senders.back();
+        block.getCellIdx(baseblock, nbaseblock_ext1, sender.SendCells);
+        // init receiver
+        MPIComm.Recvers.emplace_back(nbr.first, nbaseblock.getBlockId());
+        MPIBlockRecvStru &recver = MPIComm.Recvers.back();
+        block.getCellIdx(nbaseblock, baseblock_ext1, recver.RecvCells);
+
+        block._NeedMPIComm = true;
       }
     }
   }
 }
 
+template <typename T>
+void BlockGeometry2D<T>::InitMPIAverComm(BlockGeometryHelper2D<T> &GeoHelper) {
+  for (Block2D<T> &block : _Blocks) {
+    MPIInterpBlockComm<T, 2> &MPIComm = block.getMPIAverBlockComm();
+    MPIComm.clear();
+    std::uint8_t blocklevel = block.getLevel();
+    const BasicBlock<T, 2> &baseblock = block.getBaseBlock();
+    // first layer of overlapped cells(counted from inside to outside)
+    BasicBlock<T, 2> baseblock_ext1 = baseblock.getExtBlock(1);
+    std::vector<std::pair<int, int>> &nbrs =
+      GeoHelper.getMPIBlockNbrs(block.getBlockId());
+    for (const std::pair<int, int> &nbr : nbrs) {
+      const BasicBlock<T, 2> &nbaseblock = GeoHelper.getAllBasicBlock(nbr.second);
+      if (nbaseblock.getLevel() == blocklevel - 1) {
+        BasicBlock<T, 2> nbaseblock_ext1 = nbaseblock.getExtBlock(1);
+        // init sender
+        MPIComm.Senders.emplace_back(nbr.first, nbaseblock.getBlockId());
+        MPIInterpBlockSendStru<T, 2> &sender = MPIComm.Senders.back();
+        // vox size
+        const T Cvoxsize = nbaseblock.getVoxelSize();
+        const T Fvoxsize = block.getVoxelSize();
+        // init sender
+        // get intersection
+        const AABB<T, 2> intsec = getIntersection(baseblock, nbaseblock_ext1);
+        // use coarse grid size here, convient for calculating fine cell index
+        int CNx = static_cast<int>(std::round(intsec.getExtension()[0] / Cvoxsize));
+        int CNy = static_cast<int>(std::round(intsec.getExtension()[1] / Cvoxsize));
+        // start index of intsec in block
+        Vector<T, 2> startF = intsec.getMin() - block.getMin();
+        int startFx = static_cast<int>(std::round(startF[0] / Fvoxsize));
+        int startFy = static_cast<int>(std::round(startF[1] / Fvoxsize));
+        for (int iy = 0; iy < CNy; ++iy) {
+          for (int ix = 0; ix < CNx; ++ix) {
+            std::size_t Fid0 = (iy * 2 + startFy) * block.getNx() + ix * 2 + startFx;
+            std::size_t Fid1 = Fid0 + 1;
+            std::size_t Fid2 = Fid0 + block.getNx();
+            std::size_t Fid3 = Fid2 + 1;
+            sender.SendCells.emplace_back(InterpSource<2>{Fid0, Fid1, Fid2, Fid3});
+          }
+        }
+        block._NeedMPIComm = true;
+      } else if (nbaseblock.getLevel() == blocklevel + 1) {
+        // init receiver
+        MPIComm.Recvers.emplace_back(nbr.first, nbaseblock.getBlockId());
+        MPIBlockRecvStru &recver = MPIComm.Recvers.back();
+        // vox size
+        const T Cvoxsize = block.getVoxelSize();
+        const T Fvoxsize = nbaseblock.getVoxelSize();
+        // get intersection
+        const AABB<T, 2> intsec = getIntersection(baseblock_ext1, nbaseblock);
+        int CNx = static_cast<int>(std::round(intsec.getExtension()[0] / Cvoxsize));
+        int CNy = static_cast<int>(std::round(intsec.getExtension()[1] / Cvoxsize));
+        // start index of intsec in block
+        Vector<T, 2> startC = intsec.getMin() - block.getMin();
+        int startCx = static_cast<int>(std::round(startC[0] / Cvoxsize));
+        int startCy = static_cast<int>(std::round(startC[1] / Cvoxsize));
+        for (int iy = 0; iy < CNy; ++iy) {
+          for (int ix = 0; ix < CNx; ++ix) {
+            std::size_t Cid = (iy + startCy) * block.getNx() + ix + startCx;
+            recver.RecvCells.push_back(Cid);
+          }
+        }
+        block._NeedMPIComm = true;
+      } else if (nbaseblock.getLevel() > blocklevel + 1 ||
+                 nbaseblock.getLevel() < blocklevel - 1) {
+        std::cerr << "[BlockGeometry2D<T>::InitMPIAverComm] Error: block level "
+                     "difference larger than 1"
+                  << std::endl;
+      }
+    }
+  }
+}
+
+template <typename T>
+void BlockGeometry2D<T>::InitMPIIntpComm(BlockGeometryHelper2D<T> &GeoHelper) {
+  for (Block2D<T> &block : _Blocks) {
+    MPIInterpBlockComm<T, 2> &MPIComm = block.getMPIInterpBlockComm();
+    MPIComm.clear();
+    std::uint8_t blocklevel = block.getLevel();
+    const BasicBlock<T, 2> &baseblock = block.getBaseBlock();
+    // 2 layers of overlapped cells(counted from inside to outside)
+    BasicBlock<T, 2> baseblock_ext2 = baseblock.getExtBlock(2);
+    std::vector<std::pair<int, int>> &nbrs =
+      GeoHelper.getMPIBlockNbrs(block.getBlockId());
+    for (const std::pair<int, int> &nbr : nbrs) {
+      const BasicBlock<T, 2> &nbaseblock = GeoHelper.getAllBasicBlock(nbr.second);
+      if (nbaseblock.getLevel() == blocklevel + 1) {
+        BasicBlock<T, 2> nbaseblock_ext2 = nbaseblock.getExtBlock(2);
+        // init sender
+        MPIComm.Senders.emplace_back(nbr.first, nbaseblock.getBlockId());
+        MPIInterpBlockSendStru<T, 2> &sender = MPIComm.Senders.back();
+        // vox size
+        const T Cvoxsize = block.getVoxelSize();
+        const T Fvoxsize = nbaseblock.getVoxelSize();
+        // init sender
+        // get intersection
+        const AABB<T, 2> intsec = getIntersection(baseblock, nbaseblock_ext2);
+        // use coarse grid size here, convient for calculating coarse cell index
+        int CNx = static_cast<int>(std::round(intsec.getExtension()[0] / Cvoxsize));
+        int CNy = static_cast<int>(std::round(intsec.getExtension()[1] / Cvoxsize));
+        // start index of intsec in block
+        Vector<T, 2> startC = intsec.getMin() - block.getMin();
+        // shift 1 voxel to left bottom for interpolation
+        int startCx = static_cast<int>(std::round(startC[0] / Cvoxsize)) - 1;
+        int startCy = static_cast<int>(std::round(startC[1] / Cvoxsize)) - 1;
+        for (int iy = 0; iy < CNy; ++iy) {
+          for (int ix = 0; ix < CNx; ++ix) {
+            std::size_t Cid0 = (iy + startCy) * block.getNx() + ix + startCx;
+            std::size_t Cid1 = Cid0 + 1;
+            std::size_t Cid2 = Cid0 + block.getNx();
+            std::size_t Cid3 = Cid2 + 1;
+
+            std::size_t Cid0_ = Cid0 + block.getNx();
+            std::size_t Cid1_ = Cid1 + block.getNx();
+            std::size_t Cid2_ = Cid2 + block.getNx();
+            std::size_t Cid3_ = Cid3 + block.getNx();
+
+            // 0
+            sender.SendCells.emplace_back(InterpSource<2>{Cid0, Cid1, Cid2, Cid3});
+
+            // 1
+            Cid0 += 1;
+            Cid1 += 1;
+            Cid2 += 1;
+            Cid3 += 1;
+            sender.SendCells.emplace_back(InterpSource<2>{Cid0, Cid1, Cid2, Cid3});
+
+            // 2
+            sender.SendCells.emplace_back(InterpSource<2>{Cid0_, Cid1_, Cid2_, Cid3_});
+
+            // 3
+            Cid0_ += 1;
+            Cid1_ += 1;
+            Cid2_ += 1;
+            Cid3_ += 1;
+            sender.SendCells.emplace_back(InterpSource<2>{Cid0_, Cid1_, Cid2_, Cid3_});
+          }
+        }
+        block._NeedMPIComm = true;
+      } else if (nbaseblock.getLevel() == blocklevel - 1) {
+        // init receiver
+        MPIComm.Recvers.emplace_back(nbr.first, nbaseblock.getBlockId());
+        MPIBlockRecvStru &recver = MPIComm.Recvers.back();
+        // vox size
+        const T Cvoxsize = nbaseblock.getVoxelSize();
+        const T Fvoxsize = block.getVoxelSize();
+        // get intersection
+        const AABB<T, 2> intsec = getIntersection(baseblock_ext2, nbaseblock);
+        // use coarse grid size here, convient for calculating fine cell index
+        int CNx = static_cast<int>(std::round(intsec.getExtension()[0] / Cvoxsize));
+        int CNy = static_cast<int>(std::round(intsec.getExtension()[1] / Cvoxsize));
+        // start index of intsec in block
+        Vector<T, 2> startF = intsec.getMin() - block.getMin();
+        int startFx = static_cast<int>(std::round(startF[0] / Fvoxsize));
+        int startFy = static_cast<int>(std::round(startF[1] / Fvoxsize));
+        for (int iy = 0; iy < CNy; ++iy) {
+          for (int ix = 0; ix < CNx; ++ix) {
+            std::size_t Fid0 = (iy * 2 + startFy) * block.getNx() + ix * 2 + startFx;
+            std::size_t Fid1 = Fid0 + 1;
+            std::size_t Fid2 = Fid0 + block.getNx();
+            std::size_t Fid3 = Fid2 + 1;
+            recver.RecvCells.push_back(Fid0);
+            recver.RecvCells.push_back(Fid1);
+            recver.RecvCells.push_back(Fid3);
+            recver.RecvCells.push_back(Fid2);
+          }
+        }
+        block._NeedMPIComm = true;
+      } else if (nbaseblock.getLevel() > blocklevel + 1 ||
+                 nbaseblock.getLevel() < blocklevel - 1) {
+        std::cerr << "[BlockGeometry2D<T>::InitMPIIntpComm] Error: block level "
+                     "difference larger than 1"
+                  << std::endl;
+      }
+    }
+  }
+}
+
+template <typename T>
+void BlockGeometry2D<T>::InitAllMPIComm(BlockGeometryHelper2D<T> &GeoHelper) {
+  InitMPIComm(GeoHelper);
+  InitMPIAverComm(GeoHelper);
+  InitMPIIntpComm(GeoHelper);
+}
+
+#endif
+
 // BlockGeometryHelper2D
 
 template <typename T>
-BlockGeometryHelper2D<T>::BlockGeometryHelper2D(int Nx, int Ny, int blocklen,
-                                                const AABB<T, 2> &AABBs, T voxelSize,
+BlockGeometryHelper2D<T>::BlockGeometryHelper2D(int Nx, int Ny, const AABB<T, 2> &AABBs,
+                                                T voxelSize, int blocklen,
                                                 std::uint8_t llimit, int ext)
     : BasicBlock<T, 2>(voxelSize, AABBs.getExtended(Vector<T, 2>{voxelSize * ext}),
                        AABB<int, 2>(Vector<int, 2>{0}, Vector<int, 2>{Nx + 1, Ny + 1})),
       _BaseBlock(voxelSize, AABBs,
                  AABB<int, 2>(Vector<int, 2>{1}, Vector<int, 2>{Nx, Ny})),
       BlockLen(blocklen), Ext(ext), _MaxLevel(std::uint8_t(0)), _Exchanged(true),
-      _LevelLimit(llimit) {
+      _IndexExchanged(true), _LevelLimit(llimit) {
   if (BlockLen < 4) {
     std::cerr << "BlockGeometryHelper2D<T>, BlockLen < 4" << std::endl;
   }
@@ -492,7 +695,7 @@ void BlockGeometryHelper2D<T>::UpdateMaxLevel() {
 template <typename T>
 void BlockGeometryHelper2D<T>::CreateBlocks() {
   // create new blocks on relatively older blocks
-  std::vector<BasicBlock<T, 2>> &BasicBlocks = getOldBasicBlocks();
+  std::vector<BasicBlock<T, 2>> &BasicBlocks = getAllOldBasicBlocks();
   BasicBlocks.clear();
   // now old blocks become new blocks
   _Exchanged = !_Exchanged;
@@ -592,7 +795,7 @@ void BlockGeometryHelper2D<T>::AdaptiveOptimization(int OptProcNum, int MaxProcN
               << std::endl;
   }
   // get new basic blocks
-  std::vector<BasicBlock<T, 2>> &BasicBlocks = getBasicBlocks();
+  std::vector<BasicBlock<T, 2>> &BasicBlocks = getAllBasicBlocks();
   // vector store stddev of each optimization scheme
   std::vector<T> StdDevs;
   int minProcNum = std::min(OptProcNum, static_cast<int>(BasicBlocks.size()));
@@ -634,7 +837,7 @@ void BlockGeometryHelper2D<T>::AdaptiveOptimization(int OptProcNum, int MaxProcN
 
 template <typename T>
 void BlockGeometryHelper2D<T>::Optimize(int ProcessNum, bool enforce) {
-  Optimize(getBasicBlocks(), ProcessNum, enforce);
+  Optimize(getAllBasicBlocks(), ProcessNum, enforce);
 }
 
 template <typename T>
@@ -698,7 +901,7 @@ void BlockGeometryHelper2D<T>::Optimize(std::vector<BasicBlock<T, 2>> &Blocks,
 
 template <typename T>
 T BlockGeometryHelper2D<T>::ComputeStdDev() const {
-  return ComputeStdDev(getBasicBlocks());
+  return ComputeStdDev(getAllBasicBlocks());
 }
 
 template <typename T>
@@ -716,6 +919,87 @@ T BlockGeometryHelper2D<T>::ComputeStdDev(
   stdDev = std::sqrt(stdDev / Blocks.size());
   return stdDev;
 }
+
+template <typename T>
+void BlockGeometryHelper2D<T>::LoadBalancing(int ProcessNum) {
+  std::vector<std::vector<int>> &BlockIndex = getAllOldBlockIndices();
+  BlockIndex.clear();
+  std::vector<std::vector<BasicBlock<T, 2> *>> &BlockIndexPtr = getAllOldBlockIndexPtrs();
+  BlockIndexPtr.clear();
+  _IndexExchanged = !_IndexExchanged;
+#ifdef MPI_ENABLED
+  BlockIndex.resize(ProcessNum);
+  // map block's cell num to block id
+  std::vector<std::pair<std::size_t, int>> BlockId_CellNum;
+  for (BasicBlock<T, 2> &block : getAllBasicBlocks()) {
+    BlockId_CellNum.emplace_back(std::make_pair(block.getN(), block.getBlockId()));
+  }
+  // sort blocks by number of cells in descending order
+  std::sort(BlockId_CellNum.begin(), BlockId_CellNum.end(),
+            [](const std::pair<std::size_t, int> &a,
+               const std::pair<std::size_t, int> &b) { return a.first > b.first; });
+  // divide blocks into ProcessNum parts, each part has number of cells as close as
+  // possible a greedy algorithm
+  for (std::pair<std::size_t, int> &pair : BlockId_CellNum) {
+    int blockid = pair.second;
+    // in std::vector<std::vector<int>> BlockIndex, find the part with smallest sum
+    std::size_t minsum = std::numeric_limits<std::size_t>::max();
+    int minidx = 0;
+    for (int i = 0; i < ProcessNum; ++i) {
+      std::size_t sum = 0;
+      for (int id : BlockIndex[i]) {
+        sum += getAllBasicBlock(id).getN();
+      }
+      if (sum < minsum) {
+        minsum = sum;
+        minidx = i;
+      }
+    }
+    // add blockid to vector with minidx
+    BlockIndex[minidx].push_back(blockid);
+  }
+#else
+  BlockIndex.resize(1);
+  for (BasicBlock<T, 2> &block : getAllBasicBlocks()) {
+    BlockIndex[0].push_back(block.getBlockId());
+  }
+#endif
+  BlockIndexPtr.resize(BlockIndex.size());
+  for (int i = 0; i < BlockIndex.size(); ++i) {
+    for (int id : BlockIndex[i]) {
+      BlockIndexPtr[i].push_back(&getAllBasicBlock(id));
+    }
+  }
+
+#ifdef MPI_ENABLED
+  SetupMPINbrs();
+#endif
+}
+
+#ifdef MPI_ENABLED
+
+template <typename T>
+void BlockGeometryHelper2D<T>::SetupMPINbrs() {
+  _MPIBlockNbrs.clear();
+  _MPIBlockNbrs.resize(getAllBasicBlocks().size(), std::vector<std::pair<int, int>>{});
+  for (int iRank = 0; iRank < getAllBlockIndices().size(); ++iRank) {
+    for (int blockid : getAllBlockIndices()[iRank]) {
+      std::vector<std::pair<int, int>> &nbrsvec = _MPIBlockNbrs[blockid];
+      const BasicBlock<T, 2> &block = getAllBasicBlock(blockid);
+      // for all blocks in all ranks except iRank
+      for (int nRank = 0; nRank < getAllBlockIndices().size(); ++nRank) {
+        if (nRank != iRank) {
+          for (int nblockid : getAllBlockIndices()[nRank]) {
+            if (isOverlapped(block, getAllBasicBlock(nblockid)))
+              nbrsvec.push_back(std::make_pair(nRank, nblockid));
+          }
+        }
+      }
+    }
+  }
+}
+
+#endif
 
 template <typename T>
 void BlockGeometryHelper2D<T>::TagRefineLayer(std::vector<bool> &refine, bool &refined) {
@@ -838,8 +1122,8 @@ void BlockGeometryMPIHelper2D<T>::SetupNbrs() {
 }
 
 template <typename T>
-void BlockGeometryMPIHelper2D<T>::InitMPIBlockCommStru(MPIBlockCommStru &BlockComm) {
-  int rank = Mpi().getRank();
+void BlockGeometryMPIHelper2D<T>::InitMPIBlockCommStru(MPIBlockComm &BlockComm) {
+  int rank = mpi().getRank();
   // senders
   // get basicblock to call getCellIdx
   const BasicBlock<T, 2> ExtBlock = _Blocks[rank].getExtBlock();
@@ -858,8 +1142,6 @@ void BlockGeometryMPIHelper2D<T>::InitMPIBlockCommStru(MPIBlockCommStru &BlockCo
   }
   // recvers
   // get basicblock
-  const AABB<int, 2> ExtIdxblock =
-    _Blocks[rank].getIdxBlock().getExtended(Vector<int, 2>{1});
   for (int nbrRank : nbrRanks) {
     BlockComm.Recvers.emplace_back(nbrRank, nbrRank);
     MPIBlockRecvStru &recv = BlockComm.Recvers.back();
@@ -867,6 +1149,136 @@ void BlockGeometryMPIHelper2D<T>::InitMPIBlockCommStru(MPIBlockCommStru &BlockCo
     ExtBlock.getCellIdx(BaseAABBn, ExtAABB, recv.RecvCells);
   }
 }
+
+// template <typename T>
+// void BlockGeometry2D<T>::InitIntpComm() {
+//   for (int i = 0; i < _Blocks.size(); ++i) {
+//     // getCellIdx() called from ext block
+//     Block2D<T> &block = _Blocks[i];
+//     std::uint8_t blocklevel = block.getLevel();
+//     std::vector<InterpBlockComm<T, 2>> &Communicators = block.getInterpBlockComm();
+//     Communicators.clear();
+//     for (Block2D<T> *nblock : block.getNeighbors()) {
+//       // find block of blocklevel-1
+//       if (nblock->getLevel() == blocklevel - 1) {
+//         Communicators.emplace_back(nblock);
+//         InterpBlockComm<T, 2> &comm = Communicators.back();
+//         // init recv cells
+//         // high level block recv from lower using 2^(diff_level) layers of overlapped
+//         // cells
+//         block.getCellIdx(block, nblock->getBaseBlock(), comm.RecvCells);
+//         // get refined basicblock of nblock
+//         BasicBlock<T, 2> Rnbaseblock = nblock->getBaseBlock().getRefinedBlock();
+//         // buffer container to store virtual cell indices
+//         std::vector<std::size_t> VSendCells;
+//         // get virtual (refined) cell indices on refined basicblock of nblock
+//         Rnbaseblock.getCellIdx(block, Rnbaseblock, VSendCells);
+//         // get real cell indices from virtual cell indices
+//         T halfvoxsize = nblock->getVoxelSize() / T(2);
+//         for (std::size_t id : VSendCells) {
+//           // refined cell location
+//           Vector<T, 2> Rloc = Rnbaseblock.getLoc_t(id);
+//           // get dist of Rloc and MinCenter of nblock
+//           Vector<T, 2> dist = Rloc - nblock->getMinCenter();
+//           // find nearest real cell location
+//           int x = static_cast<int>(dist[0] / nblock->getVoxelSize());
+//           int y = static_cast<int>(dist[1] / nblock->getVoxelSize());
+//           T remx = dist[0] - x * nblock->getVoxelSize();
+//           T remy = dist[1] - y * nblock->getVoxelSize();
+//           int scheme = 0;
+//           if (remx < halfvoxsize) {
+//             scheme += 1;
+//           }
+//           if (remy < halfvoxsize) {
+//             scheme += 2;
+//           }
+//           /*
+//           2 3
+//           0 1
+//           */
+//           std::size_t id0 = nblock->getIndex(Vector<int, 2>{x, y});
+//           std::size_t id1 = nblock->getIndex(Vector<int, 2>{x + 1, y});
+//           std::size_t id2 = nblock->getIndex(Vector<int, 2>{x, y + 1});
+//           std::size_t id3 = nblock->getIndex(Vector<int, 2>{x + 1, y + 1});
+//           comm.SendCells.emplace_back(InterpSource<2>{id0, id1, id2, id3});
+//           switch (scheme) {
+//             case 0: {
+//               comm.InterpWeights.emplace_back(
+//                 InterpWeight<T, 2>{T(0.0625), T(0.1875), T(0.1875), T(0.5625)});
+//             } break;
+//             case 1: {
+//               comm.InterpWeights.emplace_back(
+//                 InterpWeight<T, 2>{T(0.1875), T(0.0625), T(0.5625), T(0.1875)});
+//             } break;
+//             case 2: {
+//               comm.InterpWeights.emplace_back(
+//                 InterpWeight<T, 2>{T(0.1875), T(0.5625), T(0.0625), T(0.1875)});
+//             } break;
+//             case 3: {
+//               comm.InterpWeights.emplace_back(
+//                 InterpWeight<T, 2>{T(0.5625), T(0.1875), T(0.1875), T(0.0625)});
+//             } break;
+//           }
+//         }
+//       } else if (nblock->getLevel() < blocklevel - 1) {
+//         std::cerr << "[BlockGeometry2D<T>::InitIntpComm] Error: block level difference
+//         "
+//                      "larger than 1"
+//                   << std::endl;
+//       }
+//     }
+//   }
+// }
+
+// template <typename T>
+// void BlockGeometry2D<T>::InitAverComm(int highlevelovlap) {
+//   for (int i = 0; i < _Blocks.size(); ++i) {
+//     // getCellIdx() called from ext block
+//     Block2D<T> &block = _Blocks[i];
+//     // get the first layer of overlapped cells(counted from inside to outside)
+//     BasicBlock<T, 2> baseblock_ext1 = block.getBaseBlock().getExtBlock(1);
+//     std::uint8_t blocklevel = block.getLevel();
+//     std::vector<InterpBlockComm<T, 2>> &Communicators = block.getAverageBlockComm();
+//     Communicators.clear();
+//     for (Block2D<T> *nblock : block.getNeighbors()) {
+//       // find block of blocklevel+1
+//       if (nblock->getLevel() == blocklevel + 1) {
+//         Communicators.emplace_back(nblock);
+//         InterpBlockComm<T, 2> &comm = Communicators.back();
+//         // init recv cells
+//         // low level block only recv from higher using the first layer of overlapped
+//         cells block.getCellIdx(baseblock_ext1, nblock->getBaseBlock(), comm.RecvCells);
+//         // get coarsened basicblock of nblock
+//         BasicBlock<T, 2> Cnbaseblock = nblock->getBaseBlock().getCoasenedBlock();
+//         // buffer container to store virtual cell indices
+//         // TODO: more efficient implementation without using virtual cells?
+//         std::vector<std::size_t> VSendCells;
+//         // get virtual (coarse) cell indices on coarsened basicblock of nblock
+//         Cnbaseblock.getCellIdx(baseblock_ext1, Cnbaseblock, VSendCells);
+//         // get real cell indices from virtual cell indices
+//         for (std::size_t id : VSendCells) {
+//           // virtual (coarse) cell location
+//           Vector<int, 2> Clocidx = Cnbaseblock.getLoc(id);
+//           // real cell location
+//           Vector<int, 2> locidx0 = Clocidx * 2 + Vector<int, 2>{highlevelovlap};
+//           std::size_t id0 = nblock->getIndex(locidx0);
+//           Vector<int, 2> locidx1 = locidx0 + Vector<int, 2>{1, 0};
+//           std::size_t id1 = nblock->getIndex(locidx1);
+//           Vector<int, 2> locidx2 = locidx0 + Vector<int, 2>{0, 1};
+//           std::size_t id2 = nblock->getIndex(locidx2);
+//           Vector<int, 2> locidx3 = locidx0 + Vector<int, 2>{1, 1};
+//           std::size_t id3 = nblock->getIndex(locidx3);
+//           comm.SendCells.emplace_back(InterpSource<2>{id0, id1, id2, id3});
+//         }
+//       } else if (nblock->getLevel() > blocklevel + 1) {
+//         std::cerr << "[BlockGeometry2D<T>::InitAverComm] Error: block level difference
+//         "
+//                      "larger than 1"
+//                   << std::endl;
+//       }
+//     }
+//   }
+// }
 
 // template <typename T>
 // void BlockGeometry2D<T>::InitAverComm2() {

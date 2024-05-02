@@ -22,7 +22,7 @@ The author is inspired by OpenLB project, but provides a more concise and clear 
   > - 'src/parallel/mpi_manager.h' 
   > - 'src/parallel/mpi_manager.hh' 
 
-This code is written in C++ for clarity and efficiency, methods of LB and CA are stored in classes in ./src folder, specificlly, the declaration of the methods are in .h files and the implementations are in .hh files. To implement the simulation, one should prepare an .ini file storing simulation parameters and write his/her own .cpp file which calls the methods of this code, also, defines the initial and boundary conditions. There are some benchmark(example) cases in ./Benchmarks folder, which can be used as a reference(Some may not compiled correctly due to changes of source files recently, but will be fixed soon).
+This code is written in C++ for clarity and efficiency, methods of LB and CA are stored in classes in ./src folder, specificlly, the declaration of the methods are in .h files and the implementations are in .hh files. To implement the simulation, one should prepare an .ini file storing simulation parameters and write his/her own .cpp file which calls the methods of this code, also, defines the initial and boundary conditions. There are some examples in ./examples folder, which can be used as a reference.
 
 OpenMP is enabled through the code, MPI is available for a few methods, which is still under development. Implementation of CUDA will be considered in the future.
 

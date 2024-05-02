@@ -26,18 +26,19 @@ int Nj;
 T Cell_Len;
 T RT;
 int Thread_Num;
+int BlockCellNx;
 
-/*physical property*/
+// physical properties
 T rho_ref;    // g/mm^3
 T Dyna_Visc;  // Pa·s Dynamic viscosity of the liquid
 T Kine_Visc;  // mm^2/s kinematic viscosity of the liquid
 T Ra;         // Rayleigh number
-/*init conditions*/
+// init conditions
 Vector<T, 2> U_Ini;  // mm/s
 T U_Max;
 T P_char;
 
-/*bcs*/
+// bcs
 Vector<T, 2> U_Wall;  // mm/s
 
 // Simulation settings
@@ -47,27 +48,27 @@ T tol;
 std::string work_dir;
 
 void readParam() {
-  /*reader*/
-  iniReader param_reader("cavityparam2d.ini");
+  iniReader param_reader("cavityblock2dmpi.ini");
   // Thread_Num = param_reader.getValue<int>("OMP", "Thread_Num");
-  /*mesh*/
+  // mesh
   work_dir = param_reader.getValue<std::string>("workdir", "workdir_");
   // parallel
   Thread_Num = param_reader.getValue<int>("parallel", "thread_num");
-  /*CA mesh*/
+
   Ni = param_reader.getValue<int>("Mesh", "Ni");
   Nj = param_reader.getValue<int>("Mesh", "Nj");
   Cell_Len = param_reader.getValue<T>("Mesh", "Cell_Len");
-  /*physical property*/
+  BlockCellNx = param_reader.getValue<int>("Mesh", "BlockCellNx");
+  // physical properties
   rho_ref = param_reader.getValue<T>("Physical_Property", "rho_ref");
   Dyna_Visc = param_reader.getValue<T>("Physical_Property", "Dyna_Visc");
   Kine_Visc = param_reader.getValue<T>("Physical_Property", "Kine_Visc");
-  /*init conditions*/
+  // init conditions
   U_Ini[0] = param_reader.getValue<T>("Init_Conditions", "U_Ini0");
   U_Ini[1] = param_reader.getValue<T>("Init_Conditions", "U_Ini1");
   U_Max = param_reader.getValue<T>("Init_Conditions", "U_Max");
   P_char = param_reader.getValue<T>("Init_Conditions", "P_char");
-  /*bcs*/
+  // bcs
   U_Wall[0] = param_reader.getValue<T>("Boundary_Conditions", "Velo_Wall0");
   U_Wall[1] = param_reader.getValue<T>("Boundary_Conditions", "Velo_Wall1");
   // LB
@@ -77,8 +78,6 @@ void readParam() {
   OutputStep = param_reader.getValue<int>("Simulation_Settings", "OutputStep");
   tol = param_reader.getValue<T>("tolerance", "tol");
 
-  /*output to console*/
-
   MPI_RANK(0)
 
   std::cout << "------------Simulation Parameters:-------------\n" << std::endl;
@@ -86,8 +85,8 @@ void readParam() {
             << "TotalStep:         " << MaxStep << "\n"
             << "OutputStep:        " << OutputStep << "\n"
             << "Tolerance:         " << tol << "\n"
-#ifdef _OPENMP
-            << "Running on " << Thread_Num << " threads\n"
+#ifdef MPI_ENABLED
+            << "Running on " << mpi().getSize() << " processors\n"
 #endif
             << "----------------------------------------------" << std::endl;
 }
@@ -100,73 +99,75 @@ int main(int argc, char* argv[]) {
 
   // Printer::Print_BigBanner(std::string("Initializing..."));
 
-  Mpi().init(&argc, &argv);
+  mpi().init(&argc, &argv);
 
   MPI_DEBUG_WAIT
-
-  int world_size = Mpi().getSize();
 
   readParam();
 
   // converters
   BaseConverter<T> BaseConv(LatSet::cs2);
-  BaseConv.SimplifiedConvertFromViscosity(Ni, U_Max, Kine_Visc);
-  // BaseConv.ConvertFromRT(Cell_Len, RT, rho_ref, Ni * Cell_Len, U_Max,
-  // Kine_Visc);
+  BaseConv.ConvertFromRT(Cell_Len, RT, rho_ref, Ni * Cell_Len, U_Max, Kine_Visc);
   UnitConvManager<T> ConvManager(&BaseConv);
   ConvManager.Check_and_Print();
 
   // ------------------ define geometry ------------------
-  AABB<T, 2> cavity(Vector<T, 2>(T(0), T(0)), Vector<T, 2>(T(Ni * Cell_Len), T(Nj * Cell_Len)));
+  AABB<T, 2> cavity(Vector<T, 2>(T(0), T(0)),
+                    Vector<T, 2>(T(Ni * Cell_Len), T(Nj * Cell_Len)));
   AABB<T, 2> toplid(Vector<T, 2>(Cell_Len, T((Nj - 1) * Cell_Len)),
                     Vector<T, 2>(T((Ni - 1) * Cell_Len), T(Nj * Cell_Len)));
 
-  BlockGeometryMPIHelper2D<T> GeoHelper(Ni, Nj, world_size, cavity, Cell_Len);
-  // TODO: create BlockGeometry instead of Block from GeoHelper
-  const BasicBlock<T, 2>& Block = GeoHelper.getBlock(Mpi().getRank());
-  const AABB<int, 2>& idxblock = Block.getIdxBlock();
-  const AABB<T, 2>& aabb = Block.getAABB();
+  BlockGeometryHelper2D<T> GeoHelper(Ni, Nj, cavity, Cell_Len);
 
-  Block2D<T> Geo(aabb, idxblock, Mpi().getRank(), Cell_Len, AABBFlag, VoidFlag);
-  Geo.ReadAABBs(cavity, AABBFlag);
-  Geo.SetupBoundary<LatSet>(cavity, AABBFlag, BouncebackFlag);
-  GeoHelper.InitMPIBlockCommStru(Geo.getMPIBlockComm());
-  mpi::MPIBlockBufferInit(Geo.getMPIBlockComm(), Geo.getMPIBlockBuffer());
-  Geo.GeoFlagMPIComm();
-  Geo.setFlag(toplid, BouncebackFlag, BBMovingWallFlag);
-  Geo.GeoFlagMPIComm();
+  GeoHelper.CreateBlocks();
+  GeoHelper.AdaptiveOptimization(16);
+  GeoHelper.LoadBalancing();
 
-  vtmwriter::ScalerWriter GeoFlagWriter("flag", Geo.getGeoFlagField());
-  vtmwriter::vtmWriter<T, LatSet::d> GeoWriter("GeoFlag", Geo.getSelfBlock());
-  GeoWriter.addWriterSet(&GeoFlagWriter);
-  GeoWriter.MPIWriteBinary();
+  BlockGeometry2D<T> Geo(GeoHelper);
+
+  // ------------------ define flag field ------------------
+  BlockFieldManager<FlagField, T, 2> FlagFM(Geo, VoidFlag);
+  FlagFM.forEach(cavity,
+                 [&](FlagField& field, std::size_t id) { field.SetField(id, AABBFlag); });
+  FlagFM.template SetupBoundary<LatSet>(cavity, BouncebackFlag);
+  FlagFM.forEach(toplid, [&](FlagField& field, std::size_t id) {
+    if (util::isFlag(field.get(id), BouncebackFlag)) field.SetField(id, BBMovingWallFlag);
+  });
+
+  vtmwriter::ScalerWriter FlagWriter("flag", FlagFM);
+  vtmwriter::vtmWriter<T, 2> GeoWriter("GeoFlag", Geo);
+  GeoWriter.addWriterSet(FlagWriter);
+  GeoWriter.WriteBinary();
 
   // ------------------ define lattice ------------------
   // velocity field
-  VectorFieldAOS<T, LatSet::d> Velocity(Geo.getN());
+  BlockFieldManager<VectorFieldAOS<T, 2>, T, 2> VelocityFM(Geo);
   // set initial value of field
-  Geo.forEach(toplid, Geo.getGeoFlagField().getField(), BBMovingWallFlag,
-              [&Velocity](int id) { Velocity.SetField(id, U_Wall); });
+  Vector<T, 2> LatU_Wall = BaseConv.getLatticeU(U_Wall);
+  VelocityFM.forEach(
+    toplid, FlagFM, BBMovingWallFlag,
+    [&](VectorFieldAOS<T, 2>& field, std::size_t id) { field.SetField(id, LatU_Wall); });
+  
   // lattice
-  BlockLattice<T, LatSet> BlockLat(Geo, BaseConv, Velocity);
-  mpi::MPIBlockBufferInit(Geo.getMPIBlockComm(), BlockLat.getMPIBlockBuffer(), LatSet::q);
-  BlockLat.EnableToleranceU();
+  BlockLatticeManager<T, LatSet> NSLattice(Geo, BaseConv, VelocityFM);
+  NSLattice.EnableToleranceU();
+  T res = 1;
+
   // bcs
-  BBLikeFixedBlockBdManager<T, LatSet, BounceBackLikeMethod<T, LatSet>::normal_bounceback> NS_BB(
-    "NS_BB", {&BlockLat}, BouncebackFlag, VoidFlag);
-  BBLikeFixedBlockBdManager<T, LatSet, BounceBackLikeMethod<T, LatSet>::movingwall_bounceback> NS_BBMW(
-    "NS_BBMW", {&BlockLat}, BBMovingWallFlag, VoidFlag);
+  BBLikeFixedBlockBdManager<T, LatSet, BounceBackLikeMethod<T, LatSet>::normal_bounceback>
+    NS_BB("NS_BB", NSLattice, FlagFM, BouncebackFlag, VoidFlag);
+  BBLikeFixedBlockBdManager<T, LatSet,
+                            BounceBackLikeMethod<T, LatSet>::movingwall_bounceback>
+    NS_BBMW("NS_BBMW", NSLattice, FlagFM, BBMovingWallFlag, VoidFlag);
   BlockBoundaryManager BM(&NS_BB, &NS_BBMW);
 
-  T res = 1;  // res of each process
-
   // writers
-  vtmwriter::ScalerWriter RhoWriter("Rho", BlockLat.getRhoField());
-  vtmwriter::VectorWriter VecWriter("Velocity", Velocity);
-  vtmwriter::vtmWriter<T, LatSet::d> NSWriter("cavityblock2d", Geo.getSelfBlock());
-  NSWriter.addWriterSet(&RhoWriter, &VecWriter);
+  vtmwriter::ScalerWriter RhoWriter("Rho", NSLattice.getRhoFM());
+  vtmwriter::VectorWriter VecWriter("Velocity", VelocityFM);
+  vtmwriter::vtmWriter<T, LatSet::d> NSWriter("cavityblock2d", Geo);
+  NSWriter.addWriterSet(RhoWriter, VecWriter);
 
-  /*count and timer*/
+  // count and timer
   Timer MainLoopTimer;
   Timer OutputTimer;
   NSWriter.MPIWriteBinary(MainLoopTimer());
@@ -177,20 +178,20 @@ int main(int argc, char* argv[]) {
     ++MainLoopTimer;
     ++OutputTimer;
 
-    BlockLat.UpdateRho(Geo.getGeoFlagField().getField(), std::uint8_t(AABBFlag));
-    BlockLat.UpdateU(Geo.getGeoFlagField().getField(), std::uint8_t(AABBFlag));
-    BlockLat.template BGK<Equilibrium<T, LatSet>::SecondOrder>(
-      Geo.getGeoFlagField().getField(), std::uint8_t(AABBFlag | BouncebackFlag | BBMovingWallFlag));
-    BlockLat.Stream();
-    BlockLat.MPIcommunicate(Geo.getMPIBlockComm());
-
+    NSLattice.UpdateRho(MainLoopTimer(), AABBFlag, FlagFM);
+    NSLattice.UpdateU(MainLoopTimer(), AABBFlag, FlagFM);
+    NSLattice.template BGK<Equilibrium<T, LatSet>::SecondOrder>(
+      MainLoopTimer(), std::uint8_t(AABBFlag | BouncebackFlag | BBMovingWallFlag),
+      FlagFM);
+    NSLattice.Stream(MainLoopTimer());
     BM.Apply(MainLoopTimer());
-    Mpi().barrier();
+
+    NSLattice.Communicate(MainLoopTimer());
 
     if (MainLoopTimer() % OutputStep == 0) {
-      res = BlockLat.getToleranceU();
-      Mpi().barrier();
-      Mpi().reduceAndBcast(res, MPI_MAX);
+      res = NSLattice.getToleranceU();
+      mpi().barrier();
+      mpi().reduceAndBcast(res, MPI_MAX);
       OutputTimer.Print_InnerLoopPerformance(GeoHelper.getN(), OutputStep);
       Printer::Print_Res<T>(res);
       NSWriter.MPIWriteBinary(MainLoopTimer());
@@ -200,5 +201,5 @@ int main(int argc, char* argv[]) {
   Printer::Print_BigBanner(std::string("Calculation Complete!"));
   MainLoopTimer.Print_MainLoopPerformance(GeoHelper.getN());
 
-  // Mpi().~MpiManager();
+  // mpi().~MpiManager();
 }

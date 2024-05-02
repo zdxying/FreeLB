@@ -47,7 +47,7 @@ T Cell_Len;
 int BlockNum;
 
 void readParam() {
-  /*reader*/
+  
   iniReader param_reader("divblock.ini");
   Ni = param_reader.getValue<int>("Mesh", "Ni");
   Nj = param_reader.getValue<int>("Mesh", "Nj");
@@ -83,7 +83,7 @@ int main() {
 
   vtmwriter::ScalerWriter GeoFlagWriter("flag", FlagFM);
   vtmwriter::vtmWriter<T, LatSet::d> GeoWriter("GeoFlag", Geo);
-  GeoWriter.addWriterSet(&GeoFlagWriter);
+  GeoWriter.addWriterSet(GeoFlagWriter);
 
   GeoWriter.WriteBinary();
 }

@@ -40,17 +40,11 @@ class vtmWriter {
   BlockGeometry<T, D>& BlockGeo;
 
  public:
-  vtmWriter(std::string filename, BlockGeometry<T, D>& blockgeo) : _filename(filename), BlockGeo(blockgeo) {
+  vtmWriter(std::string filename, BlockGeometry<T, D>& blockgeo)
+      : _filename(filename), BlockGeo(blockgeo) {
     DirCreator::Create_Dir(_dirname);
     DirCreator::Create_Dir(_vtidirname);
     create_vtiwriters(blockgeo);
-  }
-  // exteded block is supposed to be used
-  vtmWriter(std::string filename, std::vector<BasicBlock<T, D>>& blocks)
-      : _filename(filename) {
-    DirCreator::MPI_Create_Dir(_dirname);
-    DirCreator::MPI_Create_Dir(_vtidirname);
-    create_vtiwriters(blocks);
   }
   // for mpi
   vtmWriter(std::string filename, const BasicBlock<T, D>& block) : _filename(filename) {
@@ -73,26 +67,20 @@ class vtmWriter {
       _vtiwriters.emplace_back(_filename, i, voxsize, origin, ext);
     }
   }
-  void create_vtiwriters(std::vector<BasicBlock<T, D>>& blocks) {
-    for (int i = 0; i < blocks.size(); ++i) {
-      const BasicBlock<T, D>& block = blocks[i];
-      _vtiwriters.emplace_back(_filename, i, block);
-    }
-  }
   void create_vtiwriter(const BasicBlock<T, D>& block) {
-    _vtiwriters.emplace_back(_filename, Mpi().getRank(), block);
-    // std::cout << "created vti writer of rank " << Mpi().getRank()<< std::endl;
+    _vtiwriters.emplace_back(_filename, mpi().getRank(), block);
+    // std::cout << "created vti writer of rank " << mpi().getRank()<< std::endl;
   }
 
-  void addWriterSet(vtiwriter::AbstWriterSet* writerset) {
+  void addWriterSet(const vtiwriter::AbstWriterSet& writerset) {
     int i = 0;
     for (vtiwriter::vtiManager<T, D>& vti : _vtiwriters) {
-      vti.addWriter(writerset->getWriter(i));
+      vti.addWriter(writerset.getWriter(i));
       ++i;
     }
   }
   template <typename... Args>
-  void addWriterSet(vtiwriter::AbstWriterSet* writerset, Args... args) {
+  void addWriterSet(const vtiwriter::AbstWriterSet& writerset, const Args&... args) {
     addWriterSet(writerset);
     addWriterSet(args...);
   }
@@ -104,7 +92,7 @@ class vtmWriter {
 #pragma omp parallel for num_threads(Thread_Num)
     for (vtiwriter::vtiManager<T, D>& vti : _vtiwriters) {
       vti.Write();
-      writevtm(fullName, vti.getFileName(), vti.getBlockId());
+      writevtm(fullName, vti.getFileName(), vti.getvtiBlockId());
     }
     // end vtm file
     vtmEnd(fullName);
@@ -115,52 +103,84 @@ class vtmWriter {
 #pragma omp parallel for num_threads(Thread_Num)
     for (vtiwriter::vtiManager<T, D>& vti : _vtiwriters) {
       vti.Write(step);
-      writevtm(fullName, vti.getFileName(step), vti.getBlockId());
+      writevtm(fullName, vti.getFileName(step), vti.getvtiBlockId());
     }
     vtmEnd(fullName);
   }
   void WriteBinary() {
-    std::string fullName = _vtidirname + _filename + ".vtm";
-    vtmHeader(fullName);
+    mpi().barrier();
+    // write vtis
 #pragma omp parallel for num_threads(Thread_Num)
     for (vtiwriter::vtiManager<T, D>& vti : _vtiwriters) {
       vti.WriteBinary();
-      writevtm(fullName, vti.getFileName(), vti.getBlockId());
     }
+    // write vtm
+    std::string fullName = _vtidirname + _filename + ".vtm";
+    IF_MPI_RANK(0) { vtmHeader(fullName); }
+#ifdef MPI_ENABLED
+    int vtisize = _vtiwriters.size();
+    int totalvtisize;
+    mpi().reduce(vtisize, totalvtisize, 1);
+    MPI_RANK(0)
+    for (int i = 0; i < totalvtisize; ++i) {
+      writevtm(fullName, getvtiFileName(i), i);
+    }
+#else
+    for (int i = 0; i < _vtiwriters.size(); ++i) {
+      writevtm(fullName, getvtiFileName(i), i);
+    }
+#endif
     vtmEnd(fullName);
   }
+
   void WriteBinary(int step) {
-    std::string fullName = _vtidirname + _filename + std::to_string(step) + ".vtm";
-    vtmHeader(fullName);
+    mpi().barrier();
+    // write vtis
 #pragma omp parallel for num_threads(Thread_Num)
     for (vtiwriter::vtiManager<T, D>& vti : _vtiwriters) {
       vti.WriteBinary(step);
-      writevtm(fullName, vti.getFileName(step), vti.getBlockId());
     }
+    // write vtm
+    std::string fullName = _vtidirname + _filename + std::to_string(step) + ".vtm";
+    IF_MPI_RANK(0) { vtmHeader(fullName); }
+    vtmHeader(fullName);
+#ifdef MPI_ENABLED
+    int vtisize = _vtiwriters.size();
+    int totalvtisize;
+    mpi().reduce(vtisize, totalvtisize, 1);
+    MPI_RANK(0)
+    for (int i = 0; i < totalvtisize; ++i) {
+      writevtm(fullName, getvtiFileName(i, step), i);
+    }
+#else
+    for (int i = 0; i < _vtiwriters.size(); ++i) {
+      writevtm(fullName, getvtiFileName(i, step), i);
+    }
+#endif
     vtmEnd(fullName);
   }
   void MPIWriteBinary() {
-    Mpi().barrier();
+    mpi().barrier();
     for (vtiwriter::vtiManager<T, D>& vti : _vtiwriters) {
       vti.WriteBinary();
     }
     MPI_RANK(0)
     std::string fullName = _vtidirname + _filename + ".vtm";
     vtmHeader(fullName);
-    for (int i = 0; i < Mpi().getSize(); ++i) {
+    for (int i = 0; i < mpi().getSize(); ++i) {
       writevtm(fullName, getvtiFileName(i), i);
     }
     vtmEnd(fullName);
   }
   void MPIWriteBinary(int step) {
-    Mpi().barrier();
+    mpi().barrier();
     for (vtiwriter::vtiManager<T, D>& vti : _vtiwriters) {
       vti.WriteBinary(step);
     }
     MPI_RANK(0)
     std::string fullName = _vtidirname + _filename + std::to_string(step) + ".vtm";
     vtmHeader(fullName);
-    for (int i = 0; i < Mpi().getSize(); ++i) {
+    for (int i = 0; i < mpi().getSize(); ++i) {
       writevtm(fullName, getvtiFileName(i, step), i);
     }
     vtmEnd(fullName);
@@ -200,54 +220,42 @@ class vtmWriter {
   }
 };
 
-// ArrayType<datatype> &Array
-template <template <typename> class ArrayType, typename datatype>
+template <typename ArrayType>
 class ScalerWriter : public vtiwriter::AbstWriterSet {
  private:
-  std::vector<vtiwriter::ScalerWriter<ArrayType, datatype>> _scalerwriters;
+  std::vector<vtiwriter::ScalerWriter<ArrayType>> _scalerwriters;
   std::string VarName;
 
  public:
-  ScalerWriter(std::string varname, const BlockFStruct<ArrayType, datatype, 1>& field)
-      : VarName(varname) {
-    for (int i = 0; i < field.getBlockNum(); ++i) {
-      _scalerwriters.emplace_back(varname, field.getBlockField(i).getField(0));
-    }
-  }
   template <typename FloatType, unsigned int Dim>
-  ScalerWriter(std::string varname,
-               const BlockFieldManager<GenericField<ArrayType<datatype>, 1>, FloatType,
-                                       Dim>& blockFM)
+  ScalerWriter(
+    std::string varname,
+    const BlockFieldManager<GenericField<ArrayType, 1>, FloatType, Dim>& blockFM)
       : VarName(varname) {
-    for (const BlockField<GenericField<ArrayType<datatype>, 1>, FloatType, Dim>& blockF :
+    for (const BlockField<GenericField<ArrayType, 1>, FloatType, Dim>& blockF :
          blockFM.getBlockFields()) {
       _scalerwriters.emplace_back(varname, blockF.getField().getField(0));
     }
   }
-  ScalerWriter(std::string varname,
-               std::vector<GenericField<ArrayType<datatype>, 1>*> field)
-      : VarName(varname) {
-    for (int i = 0; i < field.size(); ++i) {
-      _scalerwriters.emplace_back(varname, field[i]->getField(0));
-    }
-  }
   // create a writer for a single field
-  ScalerWriter(std::string varname, GenericField<ArrayType<datatype>, 1>& field)
+  ScalerWriter(std::string varname, GenericField<ArrayType, 1>& field)
       : VarName(varname) {
     _scalerwriters.emplace_back(varname, field.getField(0));
   }
 
   template <typename FloatType, unsigned int Dim>
-  void Init(const BlockFieldManager<GenericField<ArrayType<datatype>, 1>, FloatType, Dim>&
-              blockFM) {
+  void Init(
+    const BlockFieldManager<GenericField<ArrayType, 1>, FloatType, Dim>& blockFM) {
     _scalerwriters.clear();
-    for (const BlockField<GenericField<ArrayType<datatype>, 1>, FloatType, Dim>& blockF :
+    for (const BlockField<GenericField<ArrayType, 1>, FloatType, Dim>& blockF :
          blockFM.getBlockFields()) {
       _scalerwriters.emplace_back(VarName, blockF.getField().getField(0));
     }
   }
 
-  vtiwriter::AbstractWriter* getWriter(int i) override { return &_scalerwriters[i]; }
+  const vtiwriter::AbstractWriter& getWriter(int i) const override {
+    return _scalerwriters[i];
+  }
 };
 
 // GenericArray<Vector<datatype, D>> &Array
@@ -258,12 +266,6 @@ class VectorWriter : public vtiwriter::AbstWriterSet {
   std::string VarName;
 
  public:
-  VectorWriter(std::string varname, const BlockVectFieldAOS<datatype, D>& field)
-      : VarName(varname) {
-    for (int i = 0; i < field.getBlockNum(); ++i) {
-      _vectorwriters.emplace_back(varname, field.getBlockField(i).getField(0));
-    }
-  }
   template <typename FloatType, unsigned int Dim>
   VectorWriter(
     std::string varname,
@@ -296,63 +298,53 @@ class VectorWriter : public vtiwriter::AbstWriterSet {
     }
   }
 
-  vtiwriter::AbstractWriter* getWriter(int i) override { return &_vectorwriters[i]; }
+  const vtiwriter::AbstractWriter& getWriter(int i) const override {
+    return _vectorwriters[i];
+  }
 };
 
-// GenericField<ArrayType<datatype>, D>
-template <template <typename> class ArrayType, typename datatype, unsigned int D>
+// GenericField<ArrayType, D>
+template <typename ArrayType, unsigned int D>
 class VectorSOAWriter : public vtiwriter::AbstWriterSet {
  private:
-  std::vector<vtiwriter::VectorSOAWriter<ArrayType, datatype, D>> _vectorsoawriters;
+  std::vector<vtiwriter::VectorSOAWriter<ArrayType, D>> _vectorsoawriters;
   std::string VarName;
 
  public:
-  VectorSOAWriter(std::string varname, const BlockFStruct<ArrayType, datatype, D>& field)
-      : VarName(varname) {
-    for (int i = 0; i < field.getBlockNum(); ++i) {
-      _vectorsoawriters.emplace_back(varname, field.getBlockField(i));
-    }
-  }
-
   template <typename FloatType, unsigned int Dim>
-  VectorSOAWriter(std::string varname,
-                  const BlockFieldManager<GenericField<ArrayType<datatype>, D>, FloatType,
-                                          Dim>& blockFM)
+  VectorSOAWriter(
+    std::string varname,
+    const BlockFieldManager<GenericField<ArrayType, D>, FloatType, Dim>& blockFM)
       : VarName(varname) {
-    for (const BlockField<GenericField<ArrayType<datatype>, D>, FloatType, Dim>& blockF :
+    for (const BlockField<GenericField<ArrayType, D>, FloatType, Dim>& blockF :
          blockFM.getBlockFields()) {
       _vectorsoawriters.emplace_back(varname, blockF.getField());
     }
   }
-  VectorSOAWriter(std::string varname,
-                  std::vector<GenericField<ArrayType<datatype>, D>*> field)
-      : VarName(varname) {
-    for (int i = 0; i < field.size(); ++i) {
-      _vectorsoawriters.emplace_back(varname, &field[i]);
-    }
-  }
   // create a writer for a single field
-  VectorSOAWriter(std::string varname, GenericField<ArrayType<datatype>, D>& field)
+  VectorSOAWriter(std::string varname, GenericField<ArrayType, D>& field)
       : VarName(varname) {
     _vectorsoawriters.emplace_back(varname, &field);
   }
 
   template <typename FloatType, unsigned int Dim>
-  void Init(const BlockFieldManager<GenericField<ArrayType<datatype>, D>, FloatType, Dim>&
-              blockFM) {
+  void Init(
+    const BlockFieldManager<GenericField<ArrayType, D>, FloatType, Dim>& blockFM) {
     _vectorsoawriters.clear();
-    for (const BlockField<GenericField<ArrayType<datatype>, D>, FloatType, Dim>& blockF :
+    for (const BlockField<GenericField<ArrayType, D>, FloatType, Dim>& blockF :
          blockFM.getBlockFields()) {
       _vectorsoawriters.emplace_back(VarName, blockF.getField());
     }
   }
 
-  vtiwriter::AbstractWriter* getWriter(int i) override { return &_vectorsoawriters[i]; }
+  const vtiwriter::AbstractWriter& getWriter(int i) const override {
+    return _vectorsoawriters[i];
+  }
 };
 
 }  // namespace vtmwriter
 
-// vtm writer with handling overlap 
+// vtm writer with handling overlap
 namespace vtmo {
 
 // manager of generating a vtm file and series of vti files
@@ -365,6 +357,10 @@ class vtmWriter {
   std::vector<vtino::vtiManager<T, D>> _vtiwriters;
   // if block overlap is larger than this value, use overlap - threshold
   // if block overlap is smaller than or equal to this value, use 0
+  // you could set it as:
+  // default: -1, use default overlap, vtmo::vtmWriter becomes vtmwriter::vtmWriter
+  // 0, no overlap, not recommended for paraview-surface rendering
+  // 1, each block has 1 overlap
   int _Overlap_Threshold;
   BlockGeometry<T, D>& BlockGeo;
 
@@ -389,7 +385,7 @@ class vtmWriter {
       const Vector<T, D> origin = block.getMinCenter();
       int overlap;
       if (_Overlap_Threshold == -1) {
-        overlap = block.getOverlap();
+        overlap = 0;
       } else {
         if (_Overlap_Threshold < block.getOverlap()) {
           overlap = block.getOverlap() - _Overlap_Threshold;
@@ -401,61 +397,94 @@ class vtmWriter {
     }
   }
 
-  void addWriterSet(vtino::AbstWriterSet* writerset) {
+  void addWriterSet(const vtino::AbstWriterSet& writerset) {
     int i = 0;
     for (vtino::vtiManager<T, D>& vti : _vtiwriters) {
-      vti.addWriter(writerset->getWriter(i));
+      vti.addWriter(writerset.getWriter(i));
       ++i;
     }
   }
   template <typename... Args>
-  void addWriterSet(vtino::AbstWriterSet* writerset, Args... args) {
+  void addWriterSet(const vtino::AbstWriterSet& writerset, const Args&... args) {
     addWriterSet(writerset);
     addWriterSet(args...);
   }
 
   void WriteBinary() {
-    std::string fullName = _vtidirname + _filename + ".vtm";
-    vtmHeader(fullName);
+    mpi().barrier();
+    // write vtis
 #pragma omp parallel for num_threads(Thread_Num)
     for (vtino::vtiManager<T, D>& vti : _vtiwriters) {
       vti.WriteBinary();
-      writevtm(fullName, vti.getFileName(), vti.getBlockId());
     }
+    // write vtm
+    std::string fullName = _vtidirname + _filename + ".vtm";
+    IF_MPI_RANK(0) { vtmHeader(fullName); }
+#ifdef MPI_ENABLED
+    int vtisize = _vtiwriters.size();
+    int totalvtisize;
+    mpi().reduce(vtisize, totalvtisize, 1);
+    MPI_RANK(0)
+    for (int i = 0; i < totalvtisize; ++i) {
+      writevtm(fullName, getvtiFileName(i), i);
+    }
+#else
+    for (int i = 0; i < _vtiwriters.size(); ++i) {
+      writevtm(fullName, getvtiFileName(i), i);
+    }
+#endif
     vtmEnd(fullName);
   }
+
   void WriteBinary(int step) {
-    std::string fullName = _vtidirname + _filename + std::to_string(step) + ".vtm";
-    vtmHeader(fullName);
+    mpi().barrier();
+    // write vtis
 #pragma omp parallel for num_threads(Thread_Num)
     for (vtino::vtiManager<T, D>& vti : _vtiwriters) {
       vti.WriteBinary(step);
-      writevtm(fullName, vti.getFileName(step), vti.getBlockId());
     }
+    // write vtm
+    std::string fullName = _vtidirname + _filename + std::to_string(step) + ".vtm";
+    IF_MPI_RANK(0) { vtmHeader(fullName); }
+    vtmHeader(fullName);
+#ifdef MPI_ENABLED
+    int vtisize = _vtiwriters.size();
+    int totalvtisize;
+    mpi().reduce(vtisize, totalvtisize, 1);
+    MPI_RANK(0)
+    for (int i = 0; i < totalvtisize; ++i) {
+      writevtm(fullName, getvtiFileName(i, step), i);
+    }
+#else
+    for (int i = 0; i < _vtiwriters.size(); ++i) {
+      writevtm(fullName, getvtiFileName(i, step), i);
+    }
+#endif
     vtmEnd(fullName);
   }
+
   void MPIWriteBinary() {
-    Mpi().barrier();
+    mpi().barrier();
     for (vtino::vtiManager<T, D>& vti : _vtiwriters) {
       vti.WriteBinary();
     }
     MPI_RANK(0)
     std::string fullName = _vtidirname + _filename + ".vtm";
     vtmHeader(fullName);
-    for (int i = 0; i < Mpi().getSize(); ++i) {
+    for (int i = 0; i < mpi().getSize(); ++i) {
       writevtm(fullName, getvtiFileName(i), i);
     }
     vtmEnd(fullName);
   }
   void MPIWriteBinary(int step) {
-    Mpi().barrier();
+    mpi().barrier();
     for (vtino::vtiManager<T, D>& vti : _vtiwriters) {
       vti.WriteBinary(step);
     }
     MPI_RANK(0)
     std::string fullName = _vtidirname + _filename + std::to_string(step) + ".vtm";
     vtmHeader(fullName);
-    for (int i = 0; i < Mpi().getSize(); ++i) {
+    for (int i = 0; i < mpi().getSize(); ++i) {
       writevtm(fullName, getvtiFileName(i, step), i);
     }
     vtmEnd(fullName);
@@ -495,23 +524,14 @@ class vtmWriter {
   }
 };
 
-template <template <typename> class ArrayType, typename datatype, unsigned int Dim>
+template <typename ArrayType, unsigned int Dim>
 class ScalerWriter : public vtino::AbstWriterSet {
  private:
-  std::vector<vtino::ScalerWriter<ArrayType, datatype, Dim>> _scalerwriters;
+  std::vector<vtino::ScalerWriter<ArrayType, Dim>> _scalerwriters;
   std::string VarName;
 
  public:
-  ScalerWriter(std::string varname, const BlockFStruct<ArrayType, datatype, 1>& field,
-               std::vector<Vector<int, Dim>*> meshes)
-      : VarName(varname) {
-    for (int i = 0; i < field.getBlockNum(); ++i) {
-      _scalerwriters.emplace_back(varname, field.getBlockField(i).getField(0),
-                                  *meshes[i]);
-    }
-  }
-  ScalerWriter(std::string varname,
-               std::vector<GenericField<ArrayType<datatype>, 1>*> field,
+  ScalerWriter(std::string varname, std::vector<GenericField<ArrayType, 1>*> field,
                std::vector<Vector<int, Dim>*> meshes)
       : VarName(varname) {
     for (int i = 0; i < field.size(); ++i) {
@@ -519,11 +539,11 @@ class ScalerWriter : public vtino::AbstWriterSet {
     }
   }
   template <typename FloatType>
-  ScalerWriter(std::string varname,
-               const BlockFieldManager<GenericField<ArrayType<datatype>, 1>, FloatType,
-                                       Dim>& blockFM)
+  ScalerWriter(
+    std::string varname,
+    const BlockFieldManager<GenericField<ArrayType, 1>, FloatType, Dim>& blockFM)
       : VarName(varname) {
-    for (const BlockField<GenericField<ArrayType<datatype>, 1>, FloatType, Dim>& blockF :
+    for (const BlockField<GenericField<ArrayType, 1>, FloatType, Dim>& blockF :
          blockFM.getBlockFields()) {
       _scalerwriters.emplace_back(varname, blockF.getField().getField(0),
                                   blockF.getBlock().getMesh());
@@ -531,17 +551,19 @@ class ScalerWriter : public vtino::AbstWriterSet {
   }
 
   template <typename FloatType>
-  void Init(const BlockFieldManager<GenericField<ArrayType<datatype>, 1>, FloatType, Dim>&
-              blockFM) {
+  void Init(
+    const BlockFieldManager<GenericField<ArrayType, 1>, FloatType, Dim>& blockFM) {
     _scalerwriters.clear();
-    for (const BlockField<GenericField<ArrayType<datatype>, 1>, FloatType, Dim>& blockF :
+    for (const BlockField<GenericField<ArrayType, 1>, FloatType, Dim>& blockF :
          blockFM.getBlockFields()) {
       _scalerwriters.emplace_back(VarName, blockF.getField().getField(0),
                                   blockF.getBlock().getMesh());
     }
   }
 
-  vtino::AbstractWriter* getWriter(int i) override { return &_scalerwriters[i]; }
+  const vtino::AbstractWriter& getWriter(int i) const override {
+    return _scalerwriters[i];
+  }
 };
 
 template <typename datatype, unsigned int Dim, unsigned int D>
@@ -551,14 +573,6 @@ class VectorWriter : public vtino::AbstWriterSet {
   std::string VarName;
 
  public:
-  VectorWriter(std::string varname, const BlockVectFieldAOS<datatype, D>& field,
-               std::vector<Vector<int, Dim>*> meshes)
-      : VarName(varname) {
-    for (int i = 0; i < field.getBlockNum(); ++i) {
-      _vectorwriters.emplace_back(varname, field.getBlockField(i).getField(0),
-                                  *meshes[i]);
-    }
-  }
   VectorWriter(std::string varname, std::vector<VectorFieldAOS<datatype, D>*> field,
                std::vector<Vector<int, Dim>*> meshes)
       : VarName(varname) {
@@ -589,26 +603,19 @@ class VectorWriter : public vtino::AbstWriterSet {
     }
   }
 
-  vtino::AbstractWriter* getWriter(int i) override { return &_vectorwriters[i]; }
+  const vtino::AbstractWriter& getWriter(int i) const override {
+    return _vectorwriters[i];
+  }
 };
 
-template <template <typename> class ArrayType, typename datatype, unsigned int Dim,
-          unsigned int D>
+template <typename ArrayType, unsigned int Dim, unsigned int D>
 class VectorSOAWriter : public vtino::AbstWriterSet {
  private:
-  std::vector<vtino::VectorSOAWriter<ArrayType, datatype, Dim, D>> _vectorsoawriters;
+  std::vector<vtino::VectorSOAWriter<ArrayType, Dim, D>> _vectorsoawriters;
   std::string VarName;
 
  public:
-  VectorSOAWriter(std::string varname, const BlockFStruct<ArrayType, datatype, D>& field,
-                  std::vector<Vector<int, Dim>*> meshes)
-      : VarName(varname) {
-    for (int i = 0; i < field.getBlockNum(); ++i) {
-      _vectorsoawriters.emplace_back(varname, field.getBlockField(i), *meshes[i]);
-    }
-  }
-  VectorSOAWriter(std::string varname,
-                  std::vector<GenericField<ArrayType<datatype>, D>*> field,
+  VectorSOAWriter(std::string varname, std::vector<GenericField<ArrayType, D>*> field,
                   std::vector<Vector<int, Dim>*> meshes)
       : VarName(varname) {
     for (int i = 0; i < field.size(); ++i) {
@@ -616,11 +623,11 @@ class VectorSOAWriter : public vtino::AbstWriterSet {
     }
   }
   template <typename FloatType>
-  VectorSOAWriter(std::string varname,
-                  const BlockFieldManager<GenericField<ArrayType<datatype>, D>, FloatType,
-                                          Dim>& blockFM)
+  VectorSOAWriter(
+    std::string varname,
+    const BlockFieldManager<GenericField<ArrayType, D>, FloatType, Dim>& blockFM)
       : VarName(varname) {
-    for (const BlockField<GenericField<ArrayType<datatype>, D>, FloatType, Dim>& blockF :
+    for (const BlockField<GenericField<ArrayType, D>, FloatType, Dim>& blockF :
          blockFM.getBlockFields()) {
       _vectorsoawriters.emplace_back(varname, blockF.getField(),
                                      blockF.getBlock().getMesh());
@@ -628,17 +635,19 @@ class VectorSOAWriter : public vtino::AbstWriterSet {
   }
 
   template <typename FloatType>
-  void Init(const BlockFieldManager<GenericField<ArrayType<datatype>, D>, FloatType, Dim>&
-              blockFM) {
+  void Init(
+    const BlockFieldManager<GenericField<ArrayType, D>, FloatType, Dim>& blockFM) {
     _vectorsoawriters.clear();
-    for (const BlockField<GenericField<ArrayType<datatype>, D>, FloatType, Dim>& blockF :
+    for (const BlockField<GenericField<ArrayType, D>, FloatType, Dim>& blockF :
          blockFM.getBlockFields()) {
       _vectorsoawriters.emplace_back(VarName, blockF.getField(),
                                      blockF.getBlock().getMesh());
     }
   }
 
-  vtino::AbstractWriter* getWriter(int i) override { return &_vectorsoawriters[i]; }
+  const vtino::AbstractWriter& getWriter(int i) const override {
+    return _vectorsoawriters[i];
+  }
 };
 
 }  // namespace vtmo

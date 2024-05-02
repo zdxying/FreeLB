@@ -13,6 +13,7 @@ FLAGS += -DMPI_ENABLED
 
 OUTPUT += vtkoutput
 
+# use mpic++ to compile
 CXXC := mpic++
 
 include $(ROOT)/make.mk

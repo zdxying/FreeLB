@@ -1,21 +1,21 @@
 /* This file is part of FreeLB
- * 
+ *
  * Copyright (C) 2024 Yuan Man
  * E-mail contact: ymmanyuan@outlook.com
  * The most recent progress of FreeLB will be updated at
  * <https://github.com/zdxying/FreeLB>
- * 
- * FreeLB is free software: you can redistribute it and/or modify it under the terms of the GNU
- * General Public License as published by the Free Software Foundation, either version 3 of the
- * License, or (at your option) any later version.
- * 
- * FreeLB is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the
- * implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public
- * License for more details.
- * 
- * You should have received a copy of the GNU General Public License along with FreeLB. If not, see
- * <https://www.gnu.org/licenses/>.
- * 
+ *
+ * FreeLB is free software: you can redistribute it and/or modify it under the terms of
+ * the GNU General Public License as published by the Free Software Foundation, either
+ * version 3 of the License, or (at your option) any later version.
+ *
+ * FreeLB is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
+ * without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
+ * PURPOSE. See the GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License along with FreeLB. If
+ * not, see <https://www.gnu.org/licenses/>.
+ *
  */
 
 /*Lattice Boltzmann Unit Converter*/
@@ -170,7 +170,8 @@ struct BaseConverter final : public AbstractConverter<T> {
 
   T getPhysTime(T Lattice_Time) { return Lattice_Time * deltaT; }
   /*--------------------Basic Converters--------------------*/
-  void Converter(T deltaX_, T deltaT_, T rho_, T charL_, T charU_, T VisKine_, T charP_ = T(0)) {
+  void Converter(T deltaX_, T deltaT_, T rho_, T charL_, T charU_, T VisKine_,
+                 T charP_ = T(0)) {
     /*------------phys param-------------*/
     deltaX = deltaX_;
     deltaT = deltaT_;
@@ -186,10 +187,10 @@ struct BaseConverter final : public AbstractConverter<T> {
     Conv_U = Conv_L / Conv_Time;                      // dx / dt
     Conv_Mass = Conv_rho * Conv_L * Conv_L * Conv_L;  // m = rho * dx^3
     Conv_VisKine = Conv_L * Conv_L / Conv_Time;       // nu = dx^2 / dt
-    Conv_Force =
-      Conv_Mass * Conv_L / Conv_Time / Conv_Time;  // F = m * dx / dt^2 = rho * dx^4 / dt^2
-    Conv_Acc = Conv_L / Conv_Time / Conv_Time;     // a = dx / dt^2
-    Conv_P = Conv_Force / Conv_L / Conv_L;         // P = F / dx^2 = rho * dx^2 / dt^2
+    Conv_Force = Conv_Mass * Conv_L / Conv_Time /
+                 Conv_Time;                     // F = m * dx / dt^2 = rho * dx^4 / dt^2
+    Conv_Acc = Conv_L / Conv_Time / Conv_Time;  // a = dx / dt^2
+    Conv_P = Conv_Force / Conv_L / Conv_L;      // P = F / dx^2 = rho * dx^2 / dt^2
     /*-----------lattice param------------*/
     Lattice_charU = charU / Conv_U;
     Lattice_charL = charL / Conv_L;
@@ -203,20 +204,20 @@ struct BaseConverter final : public AbstractConverter<T> {
   /*-------------------- Converters--------------------*/
   void ConvertFromRT(T deltaX_, T LatRT_, T rho_, T charL_, T charU_, T VisKine_) {
     Lattice_RT = LatRT_;
-    Converter(deltaX_, (LatRT_ - T(0.5)) * cs2 * deltaX_ * deltaX_ / VisKine_, rho_, charL_, charU_,
-              VisKine_);
+    Converter(deltaX_, (LatRT_ - T(0.5)) * cs2 * deltaX_ * deltaX_ / VisKine_, rho_,
+              charL_, charU_, VisKine_);
   }
   void ConvertFromTimeStep(T deltaX_, T deltaT_, T rho_, T charL_, T charU_, T VisKine_) {
     Lattice_RT = T(0.5) + deltaT_ * VisKine_ / (cs2 * deltaX_ * deltaX_);
     Converter(deltaX_, deltaT_, rho_, charL_, charU_, VisKine_);
   }
+  // deltaX, deltaT, rho = 1
   void SimplifiedConvertFromViscosity(int Ni_, T charU_, T VisKine_) {
-    // deltaX, deltaT, rho = 1
     Lattice_RT = T(0.5) + VisKine_ / cs2;
     Converter(T(1), T(1), T(1), static_cast<T>(Ni_), charU_, VisKine_);
   }
+  // deltaX, deltaT, rho = 1
   void SimplifiedConverterFromRT(int Ni_, T charU_, T LatRT_) {
-    // deltaX, deltaT, rho = 1
     Lattice_RT = LatRT_;
     Converter(T(1), T(1), T(1), static_cast<T>(Ni_), charU_, (LatRT_ - T(0.5)) * cs2);
   }
@@ -226,17 +227,17 @@ struct BaseConverter final : public AbstractConverter<T> {
 
 template <typename T>
 struct TempConverter final : public AbstractConverter<T> {
-  T Th;                // K      //characteristic physical high temperature
-  T Tl;                // K      //characteristic physical low temperature
-  T TCond;             // W / (mm K)// thermal conductivity
-  T SHeatCap;          // J / (g K) = 10^9 * mm^2 / s^2 / K // specific heat capacity at
-                       // constant pressure
-  T TDiff;             // mm^2 / s  // thermal diffusion
-  T Ra;                // Rayleigh number, Ra = g*beta*(Th-Tl)*L^3/(nu*alpha),thermal
-                       // expansion coefficient, thermal diffusivity and kinematic viscosity
-  T Pr;                // Prandtl number, Pr = nu/alpha
-  T Texpan_Coeff;      // 1 / K  // thermal expansion coefficient
-  T LatentHeat;        // J / g = 10^9 * mm^2 / s^2 // latent heat of phase change
+  T Th;            // K      //characteristic physical high temperature
+  T Tl;            // K      //characteristic physical low temperature
+  T TCond;         // W / (mm K)// thermal conductivity
+  T SHeatCap;      // J / (g K) = 10^9 * mm^2 / s^2 / K // specific heat capacity at
+                   // constant pressure
+  T TDiff;         // mm^2 / s  // thermal diffusion
+  T Ra;            // Rayleigh number, Ra = g*beta*(Th-Tl)*L^3/(nu*alpha),thermal
+                   // expansion coefficient, thermal diffusivity and kinematic viscosity
+  T Pr;            // Prandtl number, Pr = nu/alpha
+  T Texpan_Coeff;  // 1 / K  // thermal expansion coefficient
+  T LatentHeat;    // J / g = 10^9 * mm^2 / s^2 // latent heat of phase change
   T LatHeat_SHeatCap;  // K // ratio of latent heat to specific heat capacity
   /*-----------*/
   T Conv_dT;     // K
@@ -277,7 +278,7 @@ struct TempConverter final : public AbstractConverter<T> {
   T getLatticeDTemp(T dT_phys) { return dT_phys / Conv_dT; }
   T getPhysDTemp(T Lattice_dT) { return Lattice_dT * Conv_dT; }
   TempConverter(T cs2_, BaseConverter<T> &baseconv, T init)
-      : cs2(cs2_), TInit(init), BaseConv(baseconv)  {}
+      : cs2(cs2_), TInit(init), BaseConv(baseconv) {}
   /*--------------------Converters--------------------*/
   void Converter(T Tl_, T Th_, T TDiff_) {
     Tl = Tl_;
@@ -289,7 +290,8 @@ struct TempConverter final : public AbstractConverter<T> {
     Conv_TDiff = BaseConv.Conv_VisKine;
     /*-----------lattice param------------*/
     Lattice_TDiff = TDiff_ / Conv_TDiff;
-    Lattice_RTT = T(0.5) + BaseConv.deltaT * TDiff_ / (cs2 * BaseConv.deltaX * BaseConv.deltaX);
+    Lattice_RTT =
+      T(0.5) + BaseConv.deltaT * TDiff_ / (cs2 * BaseConv.deltaX * BaseConv.deltaX);
     OMEGAT = T(1) / Lattice_RTT;
     SetLatInit_fromPhys(TInit);
   }
@@ -326,13 +328,15 @@ struct TempConverter final : public AbstractConverter<T> {
     Ra = Ra_;  // Ra = g*beta*(Th-Tl)*L^3/(nu*alpha)
     // Lattice_gbetaT = Ra * VisKine * TDiff / (charL * charL * charL * Conv_dT)
     // / Conv_Acc * Conv_dT;
-    Lattice_gbetaT = Ra_ * BaseConv.VisKine * TDiff_ / pow(BaseConv.charL, 3) / BaseConv.Conv_Acc;
+    Lattice_gbetaT =
+      Ra_ * BaseConv.VisKine * TDiff_ / pow(BaseConv.charL, 3) / BaseConv.Conv_Acc;
     Lattice_betaT = Lattice_gbetaT / BaseConv.Lattice_g;
     Texpan_Coeff = Lattice_betaT / Conv_dT;
 
     TExpanConverted = true;
   }
-  void ConvertTempFromSHeatCap_and_TCond_with_Ra(T Tl_, T Th_, T TCond_, T SHeatCap_, T Ra_) {
+  void ConvertTempFromSHeatCap_and_TCond_with_Ra(T Tl_, T Th_, T TCond_, T SHeatCap_,
+                                                 T Ra_) {
     Converter(Tl_, Th_, TCond_ / SHeatCap_ / BaseConv.rho);
     TCond = TCond_;
     SHeatCap = SHeatCap_;
@@ -408,7 +412,8 @@ struct ConcConverter final : public AbstractConverter<T> {
     Conv_ConcDiff = BaseConv.Conv_VisKine;
     /*-----------lattice param------------*/
     Lattice_CDiff = CDiff_ / Conv_ConcDiff;
-    Lattice_RTC = T(0.5) + BaseConv.deltaT * CDiff_ / (cs2 * BaseConv.deltaX * BaseConv.deltaX);
+    Lattice_RTC =
+      T(0.5) + BaseConv.deltaT * CDiff_ / (cs2 * BaseConv.deltaX * BaseConv.deltaX);
     OMEGAC = T(1) / Lattice_RTC;
     SetLatInit_fromPhys(CInit);
   }
@@ -430,7 +435,9 @@ struct ConcConverter final : public AbstractConverter<T> {
 
     CExpanConverted = true;
   }
-  void Enable_Non_Uniform_TimeStep(int TimeStepCoeff_ = 100) { TimeStepCoeff = TimeStepCoeff_; }
+  void Enable_Non_Uniform_TimeStep(int TimeStepCoeff_ = 100) {
+    TimeStepCoeff = TimeStepCoeff_;
+  }
   void check(int &check_status);
 };
 
@@ -450,8 +457,8 @@ struct PhaseDiagramConverter {
   TempConverter<T> &TempConv;
   ConcConverter<T> &ConcConv;
 
-  PhaseDiagramConverter(TempConverter<T> &TempConv_, ConcConverter<T> &ConcConv_, T t_melt,
-                        T t_eute, T m_solidus, T m_liquidus)
+  PhaseDiagramConverter(TempConverter<T> &TempConv_, ConcConverter<T> &ConcConv_,
+                        T t_melt, T t_eute, T m_solidus, T m_liquidus)
       : TempConv(TempConv_), ConcConv(ConcConv_), T_Melt(t_melt), T_Eute(t_eute),
         m_Solidus(m_solidus), m_Liquidus(m_liquidus) {
     Lattice_T_Melt = TempConv.getLatticeRho(T_Melt);
@@ -486,10 +493,12 @@ struct ZSConverter final : public PhaseDiagramConverter<T> {
   T Lattice_GT_Coef;
 
   BaseConverter<T> &BaseConv;
-  ZSConverter(BaseConverter<T> &BaseConv_, TempConverter<T> &TempConv_, ConcConverter<T> &ConcConv_,
-              T t_melt, T t_eute, T m_solidus, T m_liquidus, T gt_coef)
-      : PhaseDiagramConverter<T>(TempConv_, ConcConv_, t_melt, t_eute, m_solidus, m_liquidus), GT_Coef(gt_coef),
-        BaseConv(BaseConv_) {
+  ZSConverter(BaseConverter<T> &BaseConv_, TempConverter<T> &TempConv_,
+              ConcConverter<T> &ConcConv_, T t_melt, T t_eute, T m_solidus, T m_liquidus,
+              T gt_coef)
+      : PhaseDiagramConverter<T>(TempConv_, ConcConv_, t_melt, t_eute, m_solidus,
+                                 m_liquidus),
+        GT_Coef(gt_coef), BaseConv(BaseConv_) {
     Lattice_GT_Coef = GT_Coef / BaseConv.Conv_L / this->TempConv.Conv_dT;
   }
   void check(int &check_status) override;
@@ -519,12 +528,14 @@ struct GandinConverter final : public PhaseDiagramConverter<T> {
   ConcConverter<T> &ConcConv;
 
   GandinConverter(BaseConverter<T> &BaseConv_, TempConverter<T> &TempConv_,
-                  ConcConverter<T> &ConcConv_, T t_melt, T t_eute, T m_solidus, T m_liquidus)
-      : PhaseDiagramConverter<T>(TempConv_, ConcConv_, t_melt, t_eute, m_solidus, m_liquidus),
+                  ConcConverter<T> &ConcConv_, T t_melt, T t_eute, T m_solidus,
+                  T m_liquidus)
+      : PhaseDiagramConverter<T>(TempConv_, ConcConv_, t_melt, t_eute, m_solidus,
+                                 m_liquidus),
         BaseConv(BaseConv_), TempConv(TempConv_), ConcConv(ConcConv_) {}
 
-  void ConvertCA(T dt_mean_bulk, T dt_std_bulk, T dt_mean_surf, T dt_std_surf, T nuc_dens_bulk,
-                 T nuc_dens_surf, T growthpara) {
+  void ConvertCA(T dt_mean_bulk, T dt_std_bulk, T dt_mean_surf, T dt_std_surf,
+                 T nuc_dens_bulk, T nuc_dens_surf, T growthpara) {
     DT_Mean_Bulk = dt_mean_bulk;
     DT_Std_Bulk = dt_std_bulk;
     DT_Mean_Surf = dt_mean_surf;
@@ -540,8 +551,8 @@ struct GandinConverter final : public PhaseDiagramConverter<T> {
     Lattice_DT_Std_Surf = TempConv.getLatticeDTemp(DT_Std_Surf);
     Lattice_NucDens_Bulk = Nuc_Dens_Bulk * BaseConv.Conv_L * BaseConv.Conv_L;
     Lattice_NucDens_Surf = Nuc_Dens_Surf * BaseConv.Conv_L;
-    Lattice_GrowthPara =
-      GrowthPara / BaseConv.Conv_L * BaseConv.Conv_Time * TempConv.Conv_dT * TempConv.Conv_dT;
+    Lattice_GrowthPara = GrowthPara / BaseConv.Conv_L * BaseConv.Conv_Time *
+                         TempConv.Conv_dT * TempConv.Conv_dT;
   }
   // phase diagram, use normalized concentration
   // T get_LatTliq(T conc) {
@@ -612,15 +623,30 @@ struct RefineConverter {
     return getOmegaC(getOmegaC(omegaF, level - 1));
   }
 
-  // continuous distribution function remains unchanged between different refinement levels
-  // gC + (0.5*1/Lat_RTC)(geq - gC) = gF + (0.5*1/Lat_RTF)(geq - gF)
-  // gC = gF + (0.5*1/Lat_RTF)(geq - gF) = gF + (0.5*OmegaF)(gF - geq)
-  // gF = gC - (0.25*1/Lat_RTC)(geq - gC) = gC - (0.25*OmegaC)(gC - geq)
+  // continuous distribution function remains unchanged between different refinement
+  // levels gC + (0.5*1/Lat_RTC)(geq - gC) = gF + (0.5*1/Lat_RTF)(geq - gF) gC = gF +
+  // (0.5*1/Lat_RTF)(geq - gF) = gF + (0.5*OmegaF)(gF - geq) gF = gC -
+  // (0.25*1/Lat_RTC)(geq - gC) = gC - (0.25*OmegaC)(gC - geq)
   static inline T getPopF(T popC, T popeq, T omegaC) {
     return popC - T(0.25) * omegaC * (popC - popeq);
   }
+  template <unsigned int q>
+  static inline void computePopF(std::array<T *, q> popC, const std::array<T, q> &feq,
+                                 T omegaC) {
+    for (unsigned int i = 0; i < q; ++i) {
+      *(popC[i]) -= T(0.25) * omegaC * (*(popC[i]) - feq[i]);
+    }
+  }
+
   static inline T getPopC(T popF, T popeq, T omegaF) {
     return popF + T(0.5) * omegaF * (popF - popeq);
+  }
+  template <unsigned int q>
+  static inline void computePopC(std::array<T *, q> popF, const std::array<T, q> &feq,
+                                 T omegaF) {
+    for (unsigned int i = 0; i < q; ++i) {
+      *(popF[i]) += T(0.5) * omegaF * (*(popF[i]) - feq[i]);
+    }
   }
 
   // get lattice g beta

@@ -48,6 +48,9 @@ class Vector {
   std::array<T, D> _data;
 
  public:
+  using value_type = T;
+  static constexpr unsigned int vector_dim = D;
+
   // constructors
   constexpr Vector() { _data.fill(T(0)); }
 

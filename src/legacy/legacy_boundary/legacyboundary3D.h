@@ -303,7 +303,7 @@ class BoundaryManager3D {
   BoundaryManager3D(std::vector<BasicBoundary3D<T, LatSet> *> &boundaries)
       : _Boundaries(boundaries) {}
   template <typename... Args>
-  BoundaryManager3D(Args... args) : _Boundaries{args...} {}
+  BoundaryManager3D(Args*... args) : _Boundaries{args...} {}
 
   void Setup(std::vector<PopulationNbr<T, LatSet>> &pop) {
     for (BasicBoundary3D<T, LatSet> *boundary : _Boundaries)

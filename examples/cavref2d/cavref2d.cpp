@@ -46,16 +46,16 @@ T RT;
 int Thread_Num;
 int BlockCellNx;
 
-/*physical property*/
+// physical properties
 T rho_ref;    // g/mm^3
 T Dyna_Visc;  // Pa·s Dynamic viscosity of the liquid
 T Kine_Visc;  // mm^2/s kinematic viscosity of the liquid
 T Ra;         // Rayleigh number
-/*init conditions*/
+// init conditions
 Vector<T, 2> U_Ini;  // mm/s
 T U_Max;
 
-/*bcs*/
+// bcs
 Vector<T, 2> U_Wall;  // mm/s
 
 // Simulation settings
@@ -65,27 +65,26 @@ T tol;
 std::string work_dir;
 
 void readParam() {
-  /*reader*/
-  iniReader param_reader("cavref2d.ini");
-  // Thread_Num = param_reader.getValue<int>("OMP", "Thread_Num");
-  /*mesh*/
+  
+  iniReader param_reader("cavityref2d.ini");
+  // mesh
   work_dir = param_reader.getValue<std::string>("workdir", "workdir_");
   // parallel
   Thread_Num = param_reader.getValue<int>("parallel", "thread_num");
-  /*mesh*/
+  // mesh
   Ni = param_reader.getValue<int>("Mesh", "Ni");
   Nj = param_reader.getValue<int>("Mesh", "Nj");
   Cell_Len = param_reader.getValue<T>("Mesh", "Cell_Len");
   BlockCellNx = param_reader.getValue<int>("Mesh", "BlockCellNx");
-  /*physical property*/
+  // physical properties
   rho_ref = param_reader.getValue<T>("Physical_Property", "rho_ref");
   Dyna_Visc = param_reader.getValue<T>("Physical_Property", "Dyna_Visc");
   Kine_Visc = param_reader.getValue<T>("Physical_Property", "Kine_Visc");
-  /*init conditions*/
+  // init conditions
   U_Ini[0] = param_reader.getValue<T>("Init_Conditions", "U_Ini0");
   U_Ini[1] = param_reader.getValue<T>("Init_Conditions", "U_Ini1");
   U_Max = param_reader.getValue<T>("Init_Conditions", "U_Max");
-  /*bcs*/
+  // bcs
   U_Wall[0] = param_reader.getValue<T>("Boundary_Conditions", "Velo_Wall0");
   U_Wall[1] = param_reader.getValue<T>("Boundary_Conditions", "Velo_Wall1");
   // LB
@@ -95,7 +94,7 @@ void readParam() {
   OutputStep = param_reader.getValue<int>("Simulation_Settings", "OutputStep");
   tol = param_reader.getValue<T>("tolerance", "tol");
 
-  /*output to console*/
+  
   std::cout << "------------Simulation Parameters:-------------\n" << std::endl;
   std::cout << "[Simulation_Settings]:"
             << "TotalStep:         " << MaxStep << "\n"
@@ -119,7 +118,7 @@ int main() {
 
   // converters
   BaseConverter<T> BaseConv(LatSet::cs2);
-  BaseConv.SimplifiedConvertFromViscosity(Ni, U_Max, Kine_Visc);
+  BaseConv.ConvertFromRT(Cell_Len, RT, rho_ref, Ni*Cell_Len, U_Max, Kine_Visc);
   UnitConvManager<T> ConvManager(&BaseConv);
   ConvManager.Check_and_Print();
 
@@ -136,7 +135,7 @@ int main() {
                  T(Nj * Cell_Len) * (BlockCellNx - 1) / BlockCellNx));
 
   // geometry helper
-  BlockGeometryHelper2D<T> GeoHelper(Ni, Nj, Ni / BlockCellNx, cavity, Cell_Len);
+  BlockGeometryHelper2D<T> GeoHelper(Ni, Nj, cavity, Cell_Len, Ni / BlockCellNx);
   GeoHelper.forEachBlockCell([&](BasicBlock<T, 2>& block) {
     if (!isOverlapped(block, innercavity)) {
       block.refine();
@@ -144,6 +143,7 @@ int main() {
   });
   GeoHelper.CreateBlocks();
   GeoHelper.AdaptiveOptimization(16);
+  GeoHelper.LoadBalancing();
 
   BlockGeometry2D<T> Geo(GeoHelper);
 
@@ -158,15 +158,16 @@ int main() {
 
   vtmo::ScalerWriter FlagWriter("flag", FlagFM);
   vtmo::vtmWriter<T, LatSet::d> GeoWriter("GeoFlag", Geo, 1);
-  GeoWriter.addWriterSet(&FlagWriter);
+  GeoWriter.addWriterSet(FlagWriter);
   GeoWriter.WriteBinary();
 
   // ------------------ define lattice ------------------
   // velocity field
   BlockFieldManager<VectorFieldAOS<T, 2>, T, 2> VelocityFM(Geo);
   // set initial value of field
+  Vector<T, 2> LatU_Wall = BaseConv.getLatticeU(U_Wall);
   VelocityFM.forEach(FlagFM, BBMovingWallFlag,
-                     [&](auto& field, std::size_t id) { field.SetField(id, U_Wall); });
+                     [&](auto& field, std::size_t id) { field.SetField(id, LatU_Wall); });
   // lattice
   BlockLatticeManager<T, LatSet> NSLattice(Geo, BaseConv, VelocityFM);
   NSLattice.EnableToleranceU();
@@ -184,7 +185,7 @@ int main() {
   vtmo::ScalerWriter RhoWriter("Rho", NSLattice.getRhoFM());
   vtmo::VectorWriter VecWriter("Velocity", VelocityFM);
   vtmo::vtmWriter<T, LatSet::d> NSWriter("cavref2d", Geo, 1);
-  NSWriter.addWriterSet(&RhoWriter, &VecWriter);
+  NSWriter.addWriterSet(RhoWriter, VecWriter);
 
   // count and timer
   Timer MainLoopTimer;
@@ -219,9 +220,10 @@ int main() {
       NSWriter.WriteBinary(MainLoopTimer());
     }
   }
-  NSWriter.WriteBinary(MainLoopTimer());
   Printer::Print_BigBanner(std::string("Calculation Complete!"));
   MainLoopTimer.Print_MainLoopPerformance(Geo.getTotalCellNum());
+  Printer::Print("Total PhysTime", BaseConv.getPhysTime(MainLoopTimer()));
+  Printer::Endl();
 
   return 0;
 }

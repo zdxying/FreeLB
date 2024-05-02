@@ -26,7 +26,7 @@ int Nj;
 T Cell_Len;
 
 void readParam() {
-  /*reader*/
+  
   iniReader param_reader("divblockm.ini");
   Ni = param_reader.getValue<int>("Mesh", "Ni");
   Nj = param_reader.getValue<int>("Mesh", "Nj");
@@ -41,11 +41,11 @@ int main(int argc, char* argv[]) {
 
   // Printer::Print_BigBanner(std::string("Initializing..."));
 
-  Mpi().init(&argc, &argv);
+  mpi().init(&argc, &argv);
 
   MPI_DEBUG_WAIT
 
-  int world_size = Mpi().getSize();
+  int world_size = mpi().getSize();
 
   readParam();
 
@@ -57,13 +57,13 @@ int main(int argc, char* argv[]) {
   Circle<T> circle(T(Ni * Cell_Len / 8), Vector<T, 2>(T(Ni * Cell_Len / 2), T(Nj * Cell_Len / 2)));
 
   BlockGeometryMPIHelper2D<T> GeoHelper(Ni, Nj, world_size, cavity, Cell_Len);
-  const BasicBlock<T, 2>& Block = GeoHelper.getBlock(Mpi().getRank());
+  const BasicBlock<T, 2>& Block = GeoHelper.getBlock(mpi().getRank());
   const AABB<int, 2>& idxblock = Block.getIdxBlock();
   const AABB<T, 2>& aabb = Block.getAABB();
 
-  Block2D<T> Geo(aabb, idxblock, Mpi().getRank(), Cell_Len, AABBFlag, VoidFlag);
+  Block2D<T> Geo(aabb, idxblock, mpi().getRank(), Cell_Len, AABBFlag, VoidFlag);
   GeoHelper.InitMPIBlockCommStru(Geo.getMPIBlockComm());
-  mpi::MPIBlockBufferInit(Geo.getMPIBlockComm(), Geo.getMPIBlockBuffer());
+  MPIBlockBufferInit(Geo.getMPIBlockComm(), Geo.getMPIBlockBuffer());
 
   
 }

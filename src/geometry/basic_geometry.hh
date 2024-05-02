@@ -317,7 +317,7 @@ template <typename T, unsigned int D>
 Vector<T, D> BasicBlock<T, D>::getLoc_t(Vector<int, D>& locidx) const {
   return MinCenter + (VoxelSize * locidx);
 }
-
+//TODO: delete -1 in idxmax calculation
 template <typename T, unsigned int D>
 void BasicBlock<T, D>::getLocIdxRange(const AABB<T, D>& AABBs, Vector<int, D>& idx_min,
                                       Vector<int, D>& idx_max) const {
@@ -421,10 +421,10 @@ void BasicBlock<T, D>::forEach(const GenericArray<flagtype>& flag, std::uint8_t 
 }
 
 template <typename T, unsigned int D>
-void BasicBlock<T, D>::getCellIdx(const AABB<T, D>& base, const AABB<T, D>& AABBs,
+void BasicBlock<T, D>::getCellIdx(const AABB<T, D>& AABB0, const AABB<T, D>& AABB1,
                                   std::vector<std::size_t>& cellIdx) const {
-  // get intersection of AABBs and IndexBlock
-  const AABB<T, D> intsec = getIntersection(base, AABBs);
+  // get intersection
+  const AABB<T, D> intsec = getIntersection(AABB0, AABB1);
   // get Mesh index range
   Vector<int, D> idx_min;
   Vector<int, D> idx_max;
@@ -435,7 +435,6 @@ void BasicBlock<T, D>::getCellIdx(const AABB<T, D>& base, const AABB<T, D>& AABB
     for (int j = idx_min[1]; j <= idx_max[1]; ++j) {
       for (int i = idx_min[0]; i <= idx_max[0]; ++i) {
         const Vector<int, 2> idx = Vector<int, 2>{i, j};
-        const Vector<T, 2> pt = MinCenter + (VoxelSize * idx);
         cellIdx.push_back(getIndex(idx));
       }
     }
@@ -446,7 +445,6 @@ void BasicBlock<T, D>::getCellIdx(const AABB<T, D>& base, const AABB<T, D>& AABB
       for (int j = idx_min[1]; j <= idx_max[1]; ++j) {
         for (int i = idx_min[0]; i <= idx_max[0]; ++i) {
           const Vector<int, 3> idx = Vector<int, 3>{i, j, k};
-          const Vector<T, 3> pt = MinCenter + (VoxelSize * idx);
           cellIdx.push_back(getIndex(idx));
         }
       }

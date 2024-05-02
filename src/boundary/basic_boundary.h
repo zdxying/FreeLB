@@ -192,7 +192,7 @@ class BoundaryManager {
     printinfo();
   }
   template <typename... Args>
-  BoundaryManager(Args... args) : _Boundaries{args...} {
+  BoundaryManager(Args*... args) : _Boundaries{args...} {
     printinfo();
   }
 
@@ -222,7 +222,7 @@ class BlockBoundaryManager {
       : _Boundaries(boundaries) {}
 
   template <typename... Args>
-  BlockBoundaryManager(Args... args) : _Boundaries{args...} {}
+  BlockBoundaryManager(Args*... args) : _Boundaries{args...} {}
 
   void Apply(std::int64_t count) {
     for (AbstractBlockBoundary *boundary : _Boundaries) boundary->Apply(count);

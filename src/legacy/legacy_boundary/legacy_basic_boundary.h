@@ -280,7 +280,7 @@ class GenericBoundaryManager {
   GenericBoundaryManager(std::vector<GenericBoundary<T, LatSet> *> &boundaries)
       : _Boundaries(boundaries) {}
   template <typename... Args>
-  GenericBoundaryManager(Args... args) : _Boundaries{args...} {}
+  GenericBoundaryManager(Args*... args) : _Boundaries{args...} {}
 
   void Setup(std::vector<PopulationNbr<T, LatSet>> &pop) {
     for (GenericBoundary<T, LatSet> *boundary : _Boundaries)

@@ -27,17 +27,17 @@ int Thread_Num;
         physical param
 ---------------------*/
 
-/*physical property*/
+// physical properties
 T rho_ref;    // g/mm^3
 T Dyna_Visc;  // Pa·s Dynamic viscosity of the liquid
 T Kine_Visc;  // mm^2/s kinematic viscosity of the liquid
 T Ra;         // Rayleigh number
-/*init conditions*/
+// init conditions
 Vector<T, 2> U_Ini;  // mm/s
 T U_Max;
 T P_char;
 
-/*bcs*/
+// bcs
 Vector<T, 2> U_Wall;  // mm/s
 
 // Simulation settings
@@ -47,27 +47,27 @@ T tol;
 std::string work_dir;
 
 void readParam() {
-  /*reader*/
+  
   iniReader param_reader("Couetteparam.ini");
   // Thread_Num = param_reader.getValue<int>("OMP", "Thread_Num");
-  /*mesh*/
+  // mesh
   work_dir = param_reader.getValue<std::string>("workdir", "workdir_");
   // parallel
   Thread_Num = param_reader.getValue<int>("parallel", "thread_num");
-  /*CA mesh*/
+  
   Ni = param_reader.getValue<int>("Mesh", "Ni");
   Nj = param_reader.getValue<int>("Mesh", "Nj");
   Cell_Len = param_reader.getValue<T>("Mesh", "Cell_Len");
-  /*physical property*/
+  // physical properties
   rho_ref = param_reader.getValue<T>("Physical_Property", "rho_ref");
   Dyna_Visc = param_reader.getValue<T>("Physical_Property", "Dyna_Visc");
   Kine_Visc = param_reader.getValue<T>("Physical_Property", "Kine_Visc");
-  /*init conditions*/
+  // init conditions
   U_Ini[0] = param_reader.getValue<T>("Init_Conditions", "U_Ini0");
   U_Ini[1] = param_reader.getValue<T>("Init_Conditions", "U_Ini1");
   U_Max = param_reader.getValue<T>("Init_Conditions", "U_Max");
   P_char = param_reader.getValue<T>("Init_Conditions", "P_char");
-  /*bcs*/
+  // bcs
   U_Wall[0] = param_reader.getValue<T>("Boundary_Conditions", "Velo_Wall0");
   U_Wall[1] = param_reader.getValue<T>("Boundary_Conditions", "Velo_Wall1");
   // LB
@@ -77,7 +77,7 @@ void readParam() {
   OutputStep = param_reader.getValue<int>("Simulation_Settings", "OutputStep");
   tol = param_reader.getValue<T>("tolerance", "tol");
 
-  /*output to console*/
+  
   std::cout << "------------Simulation Parameters:-------------\n" << std::endl;
   std::cout << "[Simulation_Settings]:"
             << "TotalStep:         " << MaxStep << "\n"
@@ -150,7 +150,7 @@ int main() {
 
   T res = 1;
 
-  /*count and timer*/
+  // count and timer
   Timer MainLoopTimer;
   Timer OutputTimer;
 

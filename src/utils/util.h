@@ -1,21 +1,21 @@
 /* This file is part of FreeLB
- * 
+ *
  * Copyright (C) 2024 Yuan Man
  * E-mail contact: ymmanyuan@outlook.com
  * The most recent progress of FreeLB will be updated at
  * <https://github.com/zdxying/FreeLB>
- * 
- * FreeLB is free software: you can redistribute it and/or modify it under the terms of the GNU
- * General Public License as published by the Free Software Foundation, either version 3 of the
- * License, or (at your option) any later version.
- * 
- * FreeLB is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the
- * implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public
- * License for more details.
- * 
- * You should have received a copy of the GNU General Public License along with FreeLB. If not, see
- * <https://www.gnu.org/licenses/>.
- * 
+ *
+ * FreeLB is free software: you can redistribute it and/or modify it under the terms of
+ * the GNU General Public License as published by the Free Software Foundation, either
+ * version 3 of the License, or (at your option) any later version.
+ *
+ * FreeLB is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
+ * without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
+ * PURPOSE. See the GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License along with FreeLB. If
+ * not, see <https://www.gnu.org/licenses/>.
+ *
  */
 
 // utility functions
@@ -24,38 +24,35 @@
 #include <math.h>
 #include <omp.h>
 
+#include <algorithm>
+#include <array>
 #include <iostream>
 #include <limits>
 #include <type_traits>
-#include <vector>
-#include <array>
 #include <utility>
+#include <vector>
 
 #include "data_struct/Vector.h"
 #include "head.h"
 
 
 template <typename T, unsigned D, typename F, std::size_t... INDICES>
-std::array<T,D> make_array_impl(F&& f, std::index_sequence<INDICES...>)
-{
-    return { (static_cast<void>(INDICES), f())... };
+std::array<T, D> make_array_impl(F &&f, std::index_sequence<INDICES...>) {
+  return {(static_cast<void>(INDICES), f())...};
 }
 
 template <typename T, unsigned D, typename F>
-std::array<T,D> make_array(F&& f)
-{
-    return make_array_impl<T, D>(std::forward<F>(f), std::make_index_sequence<D>{});
+std::array<T, D> make_array(F &&f) {
+  return make_array_impl<T, D>(std::forward<F>(f), std::make_index_sequence<D>{});
 }
 
 template <typename T, unsigned D, typename F, std::size_t... INDICES>
-std::array<T,D> make_Array_impl(F&& f, std::index_sequence<INDICES...>)
-{
-    return { f(INDICES)... };
+std::array<T, D> make_Array_impl(F &&f, std::index_sequence<INDICES...>) {
+  return {f(INDICES)...};
 }
 template <typename T, unsigned D, typename F>
-std::array<T,D> make_Array(F&& f)
-{
-    return make_Array_impl<T, D>(std::forward<F>(f), std::make_index_sequence<D>{});
+std::array<T, D> make_Array(F &&f) {
+  return make_Array_impl<T, D>(std::forward<F>(f), std::make_index_sequence<D>{});
 }
 // /// construct a std::array<T,D> where T is an object of class
 // template <typename T, unsigned D, typename F, std::size_t... INDICES>
@@ -121,8 +118,7 @@ struct OMP_helper {
 
   // performing reserve for all vectors in vec_th, and push_back for all
   template <typename T>
-  static void Setup_Thread_Vec(std::vector<std::vector<T>> &vec_th,
-                               int TotalReserveSize,
+  static void Setup_Thread_Vec(std::vector<std::vector<T>> &vec_th, int TotalReserveSize,
                                int SubVecNum = Thread_Num) {
     int size_thread = TotalReserveSize / SubVecNum + 1;
     for (int i = 0; i < SubVecNum; i++) {
@@ -144,8 +140,7 @@ struct OMP_helper {
 
   // merge all vectors in vec_th to vec, do not clear vec_th
   template <typename T>
-  static void Merge(std::vector<T> &vec,
-                    const std::vector<std::vector<T>> &vec_th) {
+  static void Merge(std::vector<T> &vec, const std::vector<std::vector<T>> &vec_th) {
     for (int i = 0; i < vec_th.size(); i++) {
       vec.insert(vec.end(), vec_th[i].begin(), vec_th[i].end());
     }
@@ -160,8 +155,7 @@ struct OMP_helper {
   }
 
   template <typename T>
-  static void Clear_and_Merge(std::vector<T> &vec,
-                              std::vector<std::vector<T>> &vec_th) {
+  static void Clear_and_Merge(std::vector<T> &vec, std::vector<std::vector<T>> &vec_th) {
     vec.clear();
     for (int i = 0; i < vec_th.size(); i++) {
       vec.insert(vec.end(), vec_th[i].begin(), vec_th[i].end());
@@ -170,8 +164,7 @@ struct OMP_helper {
 
   // merge all vectors in vec_th to vec, and clear vec_th
   template <typename T>
-  static void Merge_and_Clear(std::vector<T> &vec,
-                              std::vector<std::vector<T>> &vec_th) {
+  static void Merge_and_Clear(std::vector<T> &vec, std::vector<std::vector<T>> &vec_th) {
     for (int i = 0; i < vec_th.size(); i++) {
       vec.insert(vec.end(), vec_th[i].begin(), vec_th[i].end());
       vec_th[i].clear();
@@ -182,8 +175,7 @@ struct OMP_helper {
   // get max and min size of sub-vectors
   // if max/min > x, then re-divide vector into sub-vectors
   template <typename T>
-  static void LoadBalancer(std::vector<T> &vec,
-                           std::vector<std::vector<T>> &vec_th,
+  static void LoadBalancer(std::vector<T> &vec, std::vector<std::vector<T>> &vec_th,
                            int load_ratio = 2, int Num = Thread_Num) {
     // get max and min size of sub-vectors
     int max = 0, min = vec.size();
@@ -200,8 +192,8 @@ struct OMP_helper {
   // if max/min > x, then re-divide vector into sub-vectors
   // just need to pass sub-vectors
   template <typename T>
-  static void LoadBalancer(std::vector<std::vector<T>> &vec_th,
-                           int load_ratio = 2, int Num = Thread_Num) {
+  static void LoadBalancer(std::vector<std::vector<T>> &vec_th, int load_ratio = 2,
+                           int Num = Thread_Num) {
     // get max and min size of sub-vectors
     int max = 0, min = vec_th[0].size(), total_size = 0;
     for (int i = 0; i < vec_th.size(); i++) {
@@ -224,8 +216,8 @@ struct OMP_helper {
   // start and end will be used like:
   // Func(start[i], end[i] ...){
   // for (int i = start; i < end; i++) {...}}
-  static void Divide_Index(std::vector<int> &start, std::vector<int> &end,
-                           int num, int Npart = Thread_Num) {
+  static void Divide_Index(std::vector<int> &start, std::vector<int> &end, int num,
+                           int Npart = Thread_Num) {
     start.clear();
     end.clear();
     int size_th = num / Npart;
@@ -261,8 +253,7 @@ struct OMP_helper {
 
   // divide a certain num to N(default: Thread_Num) parts
   // and store the result in vec
-  static void Divide_Num(std::vector<int> &vec, int num,
-                         int Npart = Thread_Num) {
+  static void Divide_Num(std::vector<int> &vec, int num, int Npart = Thread_Num) {
     vec.clear();
     vec.reserve(Npart);
     int size_th = num / Npart;
@@ -285,8 +276,7 @@ struct OMP_helper {
   // need to define std::vector<std::vector<T>> vec_th first
   // and setup vec_th using Setup_Thread_Vec<>(vec_th, N)
   template <typename T>
-  static void Divide(const std::vector<T> &vec,
-                     std::vector<std::vector<T>> &vec_th,
+  static void Divide(const std::vector<T> &vec, std::vector<std::vector<T>> &vec_th,
                      int Npart = Thread_Num) {
     std::vector<int> vec_th_size = Divide_Num(vec.size(), Npart);
     auto it = vec.begin();
@@ -323,7 +313,6 @@ struct OMP_helper {
 };
 
 
-
 namespace util {
 // return true if a is close to zero
 template <typename T>
@@ -350,8 +339,32 @@ inline bool nearZero(T a, T epsilon) {
 
 // compare 2 uint8_t flags by bitwise AND operation
 // return static_cast<bool>(uint8_t flag1 & uint8_t flag2);
-inline bool isFlag(std::uint8_t flag1, std::uint8_t flag2){
+inline bool isFlag(std::uint8_t flag1, std::uint8_t flag2) {
   return static_cast<bool>(flag1 & flag2);
+}
+
+// copy data from field
+template <typename ArrayType, unsigned int Dim>
+void CopyFromFieldArray(const Vector<int, Dim> &Mesh, int Overlap, const ArrayType &Array,
+                        typename ArrayType::value_type *dst) {
+  int delta_x = Mesh[0] - 2 * Overlap;
+  std::size_t id = 0;
+  if constexpr (Dim == 2) {
+    for (int j = Overlap; j < Mesh[1] - Overlap; ++j) {
+      std::size_t start = Overlap + j * Mesh[0];
+      std::copy(Array.getdataPtr(start), Array.getdataPtr(start + delta_x), dst + id);
+      id += delta_x;
+    }
+  } else if constexpr (Dim == 3) {
+    std::size_t XY = Mesh[0] * Mesh[1];
+    for (int k = Overlap; k < Mesh[2] - Overlap; ++k) {
+      for (int j = Overlap; j < Mesh[1] - Overlap; ++j) {
+        std::size_t start = Overlap + j * Mesh[0] + k * XY;
+        std::copy(Array.getdataPtr(start), Array.getdataPtr(start + delta_x), dst + id);
+        id += delta_x;
+      }
+    }
+  }
 }
 
 }  // namespace util

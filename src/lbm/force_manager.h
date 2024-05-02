@@ -99,7 +99,7 @@ class Buoyancy {
     // }
   }
   template <typename... Args>
-  void AddSource(RhoLattice<T> *lat, Args... args) {
+  void AddSource(RhoLattice<T> *lat, Args*... args) {
     Source.push_back(lat);
     AddSource(args...);
   }

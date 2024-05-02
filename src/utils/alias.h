@@ -36,7 +36,7 @@ using InterpStruct = std::conditional_t<D == 2, BasicInterp2D, BasicInterp3D>;
 
 using InterpSource2D = std::array<std::size_t, 4>;
 using InterpSource3D = std::array<std::size_t, 8>;
-// std::array<int, 4/8>
+// std::array<std::size_t, 4/8>
 template <unsigned int D>
 using InterpSource = std::conditional_t<D == 2, InterpSource2D, InterpSource3D>;
 
@@ -125,17 +125,7 @@ template <typename T, unsigned int q>
 using PopulationField = GenericField<CyclicArray<T>, q>;
 
 // ---------block field alias-----------
-template <typename FieldType, typename T>
-class BlockFieldStruct;
 
-template <typename T, unsigned int D>
-using BlockVectFieldAOS = BlockFieldStruct<VectorFieldAOS<T, D>, Vector<T, D>>;
-
-template <typename T>
-using BlockScalerField = BlockFieldStruct<ScalerField<T>, T>;
-
-template <template <typename> class ArrayType, typename T, unsigned int D>
-using BlockFStruct = BlockFieldStruct<GenericField<ArrayType<T>, D>, T>;
 
 
 

@@ -76,12 +76,15 @@ struct Timer : public Counter {
                    GetDurationCount() / double(1000);
     std::cout << "[Main_Loop Performance]:"
               << "\n"
-              << "Time Elapsed: " << GetTimeElapsed() << " s"
+              << "Time Elapsed:  " << GetTimeElapsed() << " s"
               << "\n"
-              << "Total Step:   " << count << "\n"
-              << "Ave_MLUPs:    " << MLUPs << std::endl;
+              << "Total Step:    " << count << "\n"
+              << "Average_MLUPs: " << MLUPs << std::endl;
 #ifdef _OPENMP
-    std::cout << "MLUPs/Thread: " << MLUPs / Thread_Num << std::endl;
+    std::cout << "MLUPs/Thread:  " << MLUPs / Thread_Num << std::endl;
+#endif
+#ifdef MPI_ENABLED
+    std::cout << "MLUPs/Process: " << MLUPs / mpi().getSize() << std::endl;
 #endif
   }
 

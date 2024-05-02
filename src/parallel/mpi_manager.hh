@@ -28,7 +28,7 @@
 
 #include "parallel/mpi_manager.h"
 
-MpiManager& Mpi() {
+MpiManager& mpi() {
   static MpiManager instance;
   return instance;
 }
@@ -215,7 +215,7 @@ std::size_t MpiManager::probeReceiveSize(int source, MPI_Datatype type, int tag,
     if (requestSize == MPI_UNDEFINED) {
       std::cout << "MPI_UNDEFINED in probeReceiveSize(" + std::to_string(source) + "," +
                      std::to_string(tag) + ")" + " ranks " + std::to_string(source) + " -> " +
-                     std::to_string(Mpi().getRank())
+                     std::to_string(mpi().getRank())
                 << std::endl;
       exit(-1);
     }

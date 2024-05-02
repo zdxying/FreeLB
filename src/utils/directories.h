@@ -44,7 +44,7 @@ struct DirCreator {
   // DO NOT FORGET the "." at the beginning of the path if relative path is used
   // DO NOT create directory with sub-directory in one call, e.g. "./dir/subdir"
   static void MPI_Create_Dir(const std::string& DirName) {
-    if (Mpi().isMainProcessor()) {
+    if (mpi().isMainProcessor()) {
       Create_Dir(DirName);
     }
   }

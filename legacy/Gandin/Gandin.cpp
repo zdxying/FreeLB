@@ -43,7 +43,7 @@ T T_Eute;      // K
 T m_Liquidus;  // abs slope of The liquidus;
 T m_Solidus;   // abs slope of The solidus;
 
-/*physical property*/
+// physical properties
 T rho_ref;              // g/mm^3
 T Solutal_Expan_Coeff;  // wt.%^-1 Solutal expansion coefficient
 T Thermal_Expan_Coeff;  // K^-1 Thermal expansion coefficient
@@ -59,14 +59,14 @@ T Dyna_Visc;            // Pa·s Dynamic viscosity of the liquid
 T Kine_Visc;            // mm^2/s kinematic viscosity of the liquid
 T TDiff;                // mm^2/s Thermal diffusivity of the liquid
 T Ra;                   // Rayleigh number
-/*init conditions*/
+// init conditions
 T Temp_Ini;  // K
 T Conc_Ini;  // wt.%
 T U_Ini[2];  // mm/s
 T U_Max;
 T P_char;
 
-/*bcs*/
+// bcs
 T Temp_Wall;  // K
 T Conc_Wall;  // wt.%
 T U_Wall[2];
@@ -85,13 +85,13 @@ T tol;
 std::string work_dir;
 
 void readParam() {
-  /*reader*/
+  
   iniReader param_reader("Gandinparam.ini");
-  /*mesh*/
+  // mesh
   work_dir = param_reader.getValue<std::string>("workdir", "workdir_");
   // parallel
   Thread_Num = param_reader.getValue<int>("parallel", "thread_num");
-  /*CA mesh*/
+  
   Ni = param_reader.getValue<int>("Mesh", "Ni");
   Nj = param_reader.getValue<int>("Mesh", "Nj");
   Cell_Len = param_reader.getValue<T>("Mesh", "Cell_Len");
@@ -110,7 +110,7 @@ void readParam() {
   T_Eute = param_reader.getValue<T>("Phase_Diagram", "T_Eute");
   m_Liquidus = param_reader.getValue<T>("Phase_Diagram", "m_Liquidus");
   m_Solidus = param_reader.getValue<T>("Phase_Diagram", "m_Solidus");
-  /*physical property*/
+  // physical properties
   rho_ref = param_reader.getValue<T>("Phys_Prop", "rho_ref");
   Solutal_Expan_Coeff =
       param_reader.getValue<T>("Phys_Prop", "Solutal_Expan_Coeff");
@@ -129,7 +129,7 @@ void readParam() {
   Ra = param_reader.getValue<T>("Phys_Prop", "Ra");
   // Kine_Visc = Dyna_Visc / rho_ref;
   TDiff = param_reader.getValue<T>("Phys_Prop", "TDiff");
-  /*init conditions*/
+  // init conditions
   Temp_Ini = param_reader.getValue<T>("ICs", "Temp_Ini");
   Th = param_reader.getValue<T>("ICs", "Th");
   Tl = param_reader.getValue<T>("ICs", "Tl");
@@ -138,7 +138,7 @@ void readParam() {
   U_Ini[1] = param_reader.getValue<T>("ICs", "U_Ini1");
   U_Max = param_reader.getValue<T>("ICs", "U_Max");
   P_char = param_reader.getValue<T>("ICs", "P_char");
-  /*bcs*/
+  // bcs
   Conc_Wall = param_reader.getValue<T>("BCs", "Conc_Wall");
   Temp_Wall = param_reader.getValue<T>("BCs", "Temp_Wall");
   U_Wall[0] = param_reader.getValue<T>("BCs", "Velo_Wall0");
@@ -153,7 +153,7 @@ void readParam() {
   Cl = 0;
   Ch = (T_Melt - T_Eute) / m_Liquidus;
 
-  /*output to console*/
+  
   std::cout << "------------Simulation Parameters:-------------\n" << std::endl;
   std::cout << "[Simulation_Settings]:"
             << "TotalStep:         " << MaxStep << "\n"
@@ -292,7 +292,7 @@ int main() {
   // datWriter.Write_Geometry();
   // FLBplot<T> plotZS(work_dir, "/FLBplotZS");
   // FLBplot<T> plotPop(work_dir, "/FLBplotPop");
-  /*count and timer*/
+  // count and timer
   Timer MainLoopTimer;
   Timer OutputTimer;
 

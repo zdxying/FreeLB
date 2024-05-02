@@ -47,6 +47,10 @@ class GenericField {
   std::array<ArrayType, D> _Data;
 
  public:
+  using array_type = ArrayType;
+  using value_type = typename ArrayType::value_type;
+  static constexpr unsigned int array_dim = D;
+
   GenericField() : _Data{} {}
   GenericField(std::size_t size)
       : _Data(make_array<ArrayType, D>([&]() { return ArrayType(size); })) {}
@@ -154,6 +158,8 @@ class GenericArray {
   T* data;
 
  public:
+  using value_type = T;
+
   GenericArray() : count(0), data(nullptr) {}
   GenericArray(std::size_t size) : count(size), data(new T[size]{}) {
     std::fill(data, data + size, T{});
@@ -207,6 +213,7 @@ class GenericArray {
   const T& operator[](std::size_t i) const { return data[i]; }
   T& operator[](std::size_t i) { return data[i]; }
 
+  // return pointer to the data
   T* getdata() { return data; }
   const T* getdata() const { return data; }
   // return the pointer of ith element
@@ -255,6 +262,8 @@ class CyclicArray {
   std::ptrdiff_t lastOffset;
 
  public:
+  using value_type = T;
+
   CyclicArray()
       : count(0), data(nullptr), shift(0), remainder(0), lastOffset(0), start{} {}
   CyclicArray(std::size_t size)
@@ -420,7 +429,7 @@ void FieldInterpolation2D(const GenericField<ArrayType<datatype>, D>& CField,
                           const BasicBlock<FloatType, 2>& FBlock,
                           const BasicBlock<FloatType, 2>& FBaseBlock) {
   const FloatType Cvoxsize = CBlock.getVoxelSize();
-  const FloatType Fvoxsize = FBlock.getVoxelSize();                          
+  const FloatType Fvoxsize = FBlock.getVoxelSize();
   // get intersection
   const AABB<FloatType, 2> intsec = getIntersection(CBaseBlock, FBaseBlock);
   int CNx = static_cast<int>(std::round(intsec.getExtension()[0] / Cvoxsize));
@@ -575,6 +584,53 @@ void FieldCopy2D(const GenericField<ArrayType<datatype>, D>& FromField,
         ToArray[Toid] = FromArray[Fromid];
       }
     }
+  }
+}
+
+template <typename FloatType, unsigned int Dim, typename ArrayType>
+typename ArrayType::value_type getAverage(const ArrayType& Arr,
+                                          const InterpSource<Dim>& src) {
+  using datatype = typename ArrayType::value_type;
+  datatype Aver = datatype{};
+  if constexpr (Dim == 2) {
+    Aver = (Arr[src[0]] + Arr[src[1]] + Arr[src[2]] + Arr[src[3]]) * FloatType(0.25);
+  } else if constexpr (Dim == 3) {
+    Aver = (Arr[src[0]] + Arr[src[1]] + Arr[src[2]] + Arr[src[3]] + Arr[src[4]] +
+            Arr[src[5]] + Arr[src[6]] + Arr[src[7]]) *
+           FloatType(0.125);
+  }
+  return Aver;
+}
+
+template <typename T, unsigned int D>
+struct InterpBlockComm;
+
+template <unsigned int D, typename FloatType, unsigned int Dim, typename ArrayType>
+typename ArrayType::value_type getInterpolation(const ArrayType& Arr,
+                                                const InterpSource<Dim>& src) {
+  using datatype = typename ArrayType::value_type;
+  datatype Intp = datatype{};
+  if constexpr (Dim == 2) {
+    Intp = Arr[src[0]] * InterpBlockComm<FloatType, Dim>::getIntpWeight()[D][0] +
+           Arr[src[1]] * InterpBlockComm<FloatType, Dim>::getIntpWeight()[D][1] +
+           Arr[src[2]] * InterpBlockComm<FloatType, Dim>::getIntpWeight()[D][2] +
+           Arr[src[3]] * InterpBlockComm<FloatType, Dim>::getIntpWeight()[D][3];
+  }
+  return Intp;
+}
+
+template <typename FloatType, unsigned int Dim, typename ArrayType>
+void getInterpolation(const ArrayType& Arr,
+                      const std::vector<InterpSource<Dim>>& srcs,
+                      std::size_t srcidx,
+                      std::vector<typename ArrayType::value_type>& Buffer,
+                      std::size_t Bufferidx) {
+  if constexpr (Dim == 2) {
+    Buffer[Bufferidx] = getInterpolation<0, FloatType, Dim>(Arr, srcs[srcidx]);
+    Buffer[Bufferidx + 1] = getInterpolation<1, FloatType, Dim>(Arr, srcs[srcidx + 1]);
+    Buffer[Bufferidx + 2] = getInterpolation<2, FloatType, Dim>(Arr, srcs[srcidx + 2]);
+    Buffer[Bufferidx + 3] = getInterpolation<3, FloatType, Dim>(Arr, srcs[srcidx + 3]);
+  } else if constexpr (Dim == 3) {
   }
 }
 

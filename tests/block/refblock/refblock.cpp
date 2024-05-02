@@ -48,7 +48,7 @@ int BlockNumX;
 int BlockNum;
 
 void readParam() {
-  /*reader*/
+  
   iniReader param_reader("refblock.ini");
   Ni = param_reader.getValue<int>("Mesh", "Ni");
   Nj = param_reader.getValue<int>("Mesh", "Nj");
@@ -87,7 +87,7 @@ int main() {
     Vector<T, 2>(T(Ni * Cell_Len) * (BlockNumX / 2 + 1) / BlockNumX,
                  T(Nj * Cell_Len) * (BlockNumX / 2 + 1) / BlockNumX));
 
-  BlockGeometryHelper2D<T> GeoHelper(Ni, Nj, Ni / BlockNumX, cavity, Cell_Len);
+  BlockGeometryHelper2D<T> GeoHelper(Ni, Nj, cavity, Cell_Len, Ni / BlockNumX);
 
   GeoHelper.forEachBlockCell([&](BasicBlock<T, 2>& block) {
     if (!isOverlapped(block, outercavity)) {
@@ -102,6 +102,7 @@ int main() {
   GeoHelper.CheckRefine();
   GeoHelper.CreateBlocks();
   GeoHelper.AdaptiveOptimization(BlockNum);
+  GeoHelper.LoadBalancing();
 
   // geometry
   BlockGeometry2D<T> Geo(GeoHelper);
@@ -113,6 +114,6 @@ int main() {
 
   vtmo::ScalerWriter FlagWriter("flag", FlagFM);
   vtmo::vtmWriter<T, 2> GeoWriter("GeoFlag", Geo, 1);
-  GeoWriter.addWriterSet(&FlagWriter);
+  GeoWriter.addWriterSet(FlagWriter);
   GeoWriter.WriteBinary();
 }

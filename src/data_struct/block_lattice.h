@@ -26,11 +26,11 @@
 #include "utils/fdm_solver.h"
 
 template <typename T, typename LatSet>
-struct BlockLatCommStru {
+struct BlockLatComm {
   BlockLattice<T, LatSet>* SendBlock;
   BlockComm<T, LatSet::d>* Comm;
 
-  BlockLatCommStru(BlockLattice<T, LatSet>* sblock, BlockComm<T, LatSet::d>* blockcomm)
+  BlockLatComm(BlockLattice<T, LatSet>* sblock, BlockComm<T, LatSet::d>* blockcomm)
       : SendBlock(sblock), Comm(blockcomm) {}
 
   std::vector<std::size_t>& getSends() { return Comm->SendCells; }
@@ -38,17 +38,17 @@ struct BlockLatCommStru {
 };
 
 template <typename T, typename LatSet>
-struct InterpBlockLatCommStru {
+struct InterpBlockLatComm {
   BlockLattice<T, LatSet>* SendBlock;
   InterpBlockComm<T, LatSet::d>* Comm;
 
-  InterpBlockLatCommStru(BlockLattice<T, LatSet>* sblock,
+  InterpBlockLatComm(BlockLattice<T, LatSet>* sblock,
                          InterpBlockComm<T, LatSet::d>* interpcomm)
       : SendBlock(sblock), Comm(interpcomm) {}
 
   std::vector<std::size_t>& getRecvs() { return Comm->RecvCells; }
   std::vector<InterpSource<LatSet::d>>& getSends() { return Comm->SendCells; }
-  std::vector<InterpWeight<T, LatSet::d>>& getWeights() { return Comm->InterpWeights; }
+  // std::vector<InterpWeight<T, LatSet::d>>& getWeights() { return Comm->InterpWeights; }
 };
 
 
@@ -93,11 +93,11 @@ class BlockLattice : public BlockRhoLattice<T> {
 
   // --- lattice communication structure ---
   // conmmunicate with same level block
-  std::vector<BlockLatCommStru<T, LatSet>> Communicators;
+  std::vector<BlockLatComm<T, LatSet>> Communicators;
   // average blocklat comm, get from higher level block
-  std::vector<InterpBlockLatCommStru<T, LatSet>> AverageComm;
+  std::vector<InterpBlockLatComm<T, LatSet>> AverageComm;
   // interp blocklat comm, get from lower level block
-  std::vector<InterpBlockLatCommStru<T, LatSet>> InterpComm;
+  std::vector<InterpBlockLatComm<T, LatSet>> InterpComm;
 
   // omega
   T Omega;
@@ -114,9 +114,16 @@ class BlockLattice : public BlockRhoLattice<T> {
 // MPI
 #ifdef MPI_ENABLED
   int _Rank;
-  bool _NeedMPIComm;
   // buffers
   MPIBlockBuffer<T> MPIBuffer;
+
+  MPIBlockBuffer<T> MPIAverBuffer;
+  MPIBlockBuffer<T> MPIAverBufferRho;
+  MPIBlockBuffer<Vector<T, LatSet::d>> MPIAverBufferU;
+
+  MPIBlockBuffer<T> MPIInterpBuffer;
+  MPIBlockBuffer<T> MPIInterpBufferRho;
+  MPIBlockBuffer<Vector<T, LatSet::d>> MPIInterpBufferU;
 #endif
 
  public:
@@ -160,12 +167,16 @@ class BlockLattice : public BlockRhoLattice<T> {
   std::uint8_t getLevel() const { return BlockGeo.getLevel(); }
   const Vector<int, LatSet::d>& getProjection() const { return BlockGeo.getProjection(); }
   Vector<T, LatSet::d>& getVelocity(int i) { return Velocity.get(i); }
-  std::vector<BlockLatCommStru<T, LatSet>>& getCommunicators() { return Communicators; }
-  std::vector<InterpBlockLatCommStru<T, LatSet>>& getAverageComm() { return AverageComm; }
-  std::vector<InterpBlockLatCommStru<T, LatSet>>& getInterpComm() { return InterpComm; }
-  BlockLatCommStru<T, LatSet>& getCommunicator(int i) { return Communicators[i]; }
+  std::vector<BlockLatComm<T, LatSet>>& getCommunicators() { return Communicators; }
+  std::vector<InterpBlockLatComm<T, LatSet>>& getAverageComm() { return AverageComm; }
+  std::vector<InterpBlockLatComm<T, LatSet>>& getInterpComm() { return InterpComm; }
+  BlockLatComm<T, LatSet>& getCommunicator(int i) { return Communicators[i]; }
 
-  // communication, before streaming
+  // convert from fine to coarse, call after all average communication(including pops)
+  void PopConvFineToCoarse();
+  // convert from coarse to fine, call after all interp communication(including pops)
+  void PopConvCoarseToFine();
+  // normal communication, which can be done using normalcommunicate() in blockFM
   void communicate();
   // average communication
   void avercommunicate();
@@ -205,12 +216,13 @@ class BlockLattice : public BlockRhoLattice<T> {
 
 #ifdef MPI_ENABLED
   int getRank() const { return _Rank; }
-  bool getNeedMPIComm() const { return _NeedMPIComm; }
 
   MPIBlockBuffer<T>& getMPIBlockBuffer() { return MPIBuffer; }
   const MPIBlockBuffer<T>& getMPIBlockBuffer() const { return MPIBuffer; }
 
-  void MPIcommunicate(MPIBlockCommStru& MPIComm);
+  void MPInormalcommunicate();
+  void MPIavercommunicate();
+  void MPIinterpcommunicate();
 #endif
 };
 
@@ -237,7 +249,7 @@ class BlockLatticeManager {
 
   AbstractConverter<T>& getConverter() { return Conv; }
 
-  void InitCommunicators();
+  void InitComm();
   void InitAverComm();
   void InitIntpComm();
 

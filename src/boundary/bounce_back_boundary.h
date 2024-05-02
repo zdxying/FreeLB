@@ -100,7 +100,7 @@ class BBLikeFixedBoundary final : public FixedBoundary<T, LatSet, flagType> {
 
  public:
   BBLikeFixedBoundary(std::string name, BasicLattice<T, LatSet> &lat, std::uint8_t cellflag,
-                      std::uint8_t voidflag = std::uint8_t(0))
+                      std::uint8_t voidflag = std::uint8_t(1))
       : FixedBoundary<T, LatSet, flagType>(lat, cellflag, voidflag), _name(name) {}
 
   void Apply() override;
@@ -208,10 +208,6 @@ class BBLikeMovingBlockBdManager final : public AbstractBlockBoundary {
                              BlockFieldManager<ScalerField<flagType>, T, LatSet::d> &BlockFM,
                              std::uint8_t voidflag,
                              std::uint8_t cellflag = std::uint8_t(0));
-  // this version is for mpi, may be removed
-  // BBLikeMovingBlockBdManager(std::string name, std::vector<BlockLattice<T, LatSet> *> lats,
-  // std::vector<std::vector<std::size_t>*> idss,
-  //                           std::uint8_t cellflag, std::uint8_t voidflag = std::uint8_t(0));
 
   void Init();
   void Apply(std::int64_t count) override;
