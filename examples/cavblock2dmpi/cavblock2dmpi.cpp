@@ -36,7 +36,6 @@ T Ra;         // Rayleigh number
 // init conditions
 Vector<T, 2> U_Ini;  // mm/s
 T U_Max;
-T P_char;
 
 // bcs
 Vector<T, 2> U_Wall;  // mm/s
@@ -67,7 +66,6 @@ void readParam() {
   U_Ini[0] = param_reader.getValue<T>("Init_Conditions", "U_Ini0");
   U_Ini[1] = param_reader.getValue<T>("Init_Conditions", "U_Ini1");
   U_Max = param_reader.getValue<T>("Init_Conditions", "U_Max");
-  P_char = param_reader.getValue<T>("Init_Conditions", "P_char");
   // bcs
   U_Wall[0] = param_reader.getValue<T>("Boundary_Conditions", "Velo_Wall0");
   U_Wall[1] = param_reader.getValue<T>("Boundary_Conditions", "Velo_Wall1");
@@ -114,11 +112,21 @@ int main(int argc, char* argv[]) {
   // ------------------ define geometry ------------------
   AABB<T, 2> cavity(Vector<T, 2>(T(0), T(0)),
                     Vector<T, 2>(T(Ni * Cell_Len), T(Nj * Cell_Len)));
-  AABB<T, 2> toplid(Vector<T, 2>(Cell_Len, T((Nj - 1) * Cell_Len)),
-                    Vector<T, 2>(T((Ni - 1) * Cell_Len), T(Nj * Cell_Len)));
+  // use 0.5 for refined block
+  AABB<T, 2> toplid(Vector<T, 2>(Cell_Len / 2, T((Nj - 1) * Cell_Len)),
+                    Vector<T, 2>(T((Ni - 0.5) * Cell_Len), T(Nj * Cell_Len)));
+  // for refined block
+  AABB<T, 2> innercavity(
+    Vector<T, 2>(T(Ni * Cell_Len) / BlockCellNx, T(Nj * Cell_Len) / BlockCellNx),
+    Vector<T, 2>(T(Ni * Cell_Len) * (BlockCellNx - 1) / BlockCellNx,
+                 T(Nj * Cell_Len) * (BlockCellNx - 1) / BlockCellNx));
 
-  BlockGeometryHelper2D<T> GeoHelper(Ni, Nj, cavity, Cell_Len);
-
+  BlockGeometryHelper2D<T> GeoHelper(Ni, Nj, cavity, Cell_Len, Ni / BlockCellNx);
+  GeoHelper.forEachBlockCell([&](BasicBlock<T, 2>& block) {
+    if (!isOverlapped(block, innercavity)) {
+      block.refine();
+    }
+  });
   GeoHelper.CreateBlocks();
   GeoHelper.AdaptiveOptimization(mpi().getSize());
   GeoHelper.LoadBalancing(mpi().getSize());
@@ -134,8 +142,8 @@ int main(int argc, char* argv[]) {
     if (util::isFlag(field.get(id), BouncebackFlag)) field.SetField(id, BBMovingWallFlag);
   });
 
-  vtmwriter::ScalerWriter FlagWriter("flag", FlagFM);
-  vtmwriter::vtmWriter<T, 2> GeoWriter("GeoFlag", Geo);
+  vtmo::ScalerWriter FlagWriter("flag", FlagFM);
+  vtmo::vtmWriter<T, LatSet::d> GeoWriter("GeoFlag", Geo, 1);
   GeoWriter.addWriterSet(FlagWriter);
   GeoWriter.WriteBinary();
 
@@ -162,9 +170,9 @@ int main(int argc, char* argv[]) {
   BlockBoundaryManager BM(&NS_BB, &NS_BBMW);
 
   // writers
-  vtmwriter::ScalerWriter RhoWriter("Rho", NSLattice.getRhoFM());
-  vtmwriter::VectorWriter VecWriter("Velocity", VelocityFM);
-  vtmwriter::vtmWriter<T, LatSet::d> NSWriter("cavityblock2d", Geo);
+  vtmo::ScalerWriter RhoWriter("Rho", NSLattice.getRhoFM());
+  vtmo::VectorWriter VecWriter("Velocity", VelocityFM);
+  vtmo::vtmWriter<T, LatSet::d> NSWriter("cavref2d", Geo, 1);
   NSWriter.addWriterSet(RhoWriter, VecWriter);
 
   // count and timer
@@ -189,7 +197,7 @@ int main(int argc, char* argv[]) {
     ++OutputTimer;
 
     if (MainLoopTimer() % OutputStep == 0) {
-      res = NSLattice.getToleranceU();
+      res = NSLattice.getToleranceU(1);
       OutputTimer.Print_InnerLoopPerformance(GeoHelper.getN(), OutputStep);
       Printer::Print_Res<T>(res);
       Printer::Endl();

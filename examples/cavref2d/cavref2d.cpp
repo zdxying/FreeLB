@@ -142,8 +142,8 @@ int main() {
     }
   });
   GeoHelper.CreateBlocks();
-  GeoHelper.AdaptiveOptimization(16);
-  GeoHelper.LoadBalancing();
+  GeoHelper.AdaptiveOptimization(Thread_Num);
+  GeoHelper.LoadBalancing(mpi().getSize());
 
   BlockGeometry2D<T> Geo(GeoHelper);
 

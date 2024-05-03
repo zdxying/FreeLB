@@ -110,7 +110,6 @@ struct MPIBlockBuffer {
 template <typename T>
 void MPIBlockBufferInit(const MPIBlockComm& MPIComm, MPIBlockBuffer<T>& MPIBuffer,
                         unsigned int Size = 1) {
-  mpi().barrier();
   MPIBuffer.SendBuffers.resize(MPIComm.Senders.size(), std::vector<T>{});
   for (int i = 0; i < MPIComm.Senders.size(); ++i) {
     MPIBuffer.SendBuffers[i].resize(Size * MPIComm.Senders[i].SendCells.size(), T{});
@@ -124,7 +123,6 @@ void MPIBlockBufferInit(const MPIBlockComm& MPIComm, MPIBlockBuffer<T>& MPIBuffe
 template <typename FloatType, unsigned int Dim, typename T>
 void MPIBlockBufferInit(const MPIInterpBlockComm<FloatType,Dim>& MPIComm, MPIBlockBuffer<T>& MPIBuffer,
                         unsigned int Size = 1) {
-  mpi().barrier();
   MPIBuffer.SendBuffers.resize(MPIComm.Senders.size(), std::vector<T>{});
   for (int i = 0; i < MPIComm.Senders.size(); ++i) {
     MPIBuffer.SendBuffers[i].resize(Size * MPIComm.Senders[i].SendCells.size(), T{});

@@ -42,17 +42,6 @@ BlockLattice<T, LatSet>::BlockLattice(Block<T, LatSet::d>& block, ScalerField<T>
       Pops.getField(i).Init(this->getLatRhoInit() * LatSet::w[i]);
     }
   }
-#ifdef MPI_ENABLED
-  MPIBlockBufferInit(BlockGeo.getMPIBlockComm(), MPIBuffer, LatSet::q);
-
-  MPIBlockBufferInit(BlockGeo.getMPIAverBlockComm(), MPIAverBuffer, LatSet::q);
-  MPIBlockBufferInit(BlockGeo.getMPIAverBlockComm(), MPIAverBufferRho, 1);
-  MPIBlockBufferInit(BlockGeo.getMPIAverBlockComm(), MPIAverBufferU, 1);
-
-  MPIBlockBufferInit(BlockGeo.getMPIInterpBlockComm(), MPIInterpBuffer, LatSet::q);
-  MPIBlockBufferInit(BlockGeo.getMPIInterpBlockComm(), MPIAverBufferRho, 1);
-  MPIBlockBufferInit(BlockGeo.getMPIInterpBlockComm(), MPIAverBufferU, 1);
-#endif
 }
 
 template <typename T, typename LatSet>
@@ -224,277 +213,6 @@ void BlockLattice<T, LatSet>::interpcommunicate() {
   }
 }
 
-#ifdef MPI_ENABLED
-
-template <typename T, typename LatSet>
-void BlockLattice<T, LatSet>::MPInormalcommunicate() {
-  if (!BlockGeo._NeedMPIComm) {
-    return;
-  }
-  mpi().barrier();
-  MPIBlockComm& MPIComm = BlockGeo.getMPIBlockComm();
-  // add to send buffer
-  for (int i = 0; i < MPIComm.Senders.size(); ++i) {
-    std::vector<T>& buffer = MPIBuffer.SendBuffers[i];
-    const std::vector<std::size_t>& sendcells = MPIComm.Senders[i].SendCells;
-    int bufidx = 0;
-    for (int k = 0; k < LatSet::q; ++k) {
-      const CyclicArray<T>& arrk = Pops.getField(k);
-      for (std::size_t id : sendcells) {
-        buffer[bufidx] = arrk[id];
-        ++bufidx;
-      }
-    }
-  }
-  // non-blocking send
-  std::vector<MPI_Request> requests;
-  for (int i = 0; i < MPIComm.Senders.size(); ++i) {
-    std::vector<T>& buffer = MPIBuffer.SendBuffers[i];
-    MPI_Request request;
-    mpi().iSend(buffer.data(), buffer.size(), MPIComm.Senders[i].RecvRank, &request, 0,
-                MPI_COMM_WORLD);
-    requests.push_back(request);
-  }
-  // non-blocking recv
-  for (int i = 0; i < MPIComm.Recvers.size(); ++i) {
-    std::vector<T>& buffer = MPIBuffer.RecvBuffers[i];
-    MPI_Request request;
-    mpi().iRecv(buffer.data(), buffer.size(), MPIComm.Recvers[i].SendRank, &request, 0,
-                MPI_COMM_WORLD);
-    requests.push_back(request);
-  }
-  // wait
-  MPI_Waitall(requests.size(), requests.data(), MPI_STATUSES_IGNORE);
-  // set field from recv buffer
-  for (int i = 0; i < MPIComm.Recvers.size(); ++i) {
-    const std::vector<T>& buffer = MPIBuffer.RecvBuffers[i];
-    const std::vector<std::size_t>& recvcells = MPIComm.Recvers[i].RecvCells;
-    int bufidx = 0;
-    for (int k = 0; k < LatSet::q; ++k) {
-      CyclicArray<T>& arrk = Pops.getField(k);
-      for (std::size_t id : recvcells) {
-        arrk.set(id, buffer[bufidx]);
-        ++bufidx;
-      }
-    }
-  }
-}
-
-template <typename T, typename LatSet>
-void BlockLattice<T, LatSet>::MPIavercommunicate() {
-  if (!BlockGeo._NeedMPIComm) {
-    return;
-  }
-  mpi().barrier();
-  const MPIInterpBlockComm<T, LatSet::d>& MPIComm = BlockGeo.getMPIAverBlockComm();
-  const T OmegaF = RefineConverter<T>::getOmegaF(getOmega());
-  // --- send data ---
-  // add to send buffer
-  const auto& RhoArr = this->Rho.getField(0);
-  const auto& UArr = Velocity.getField(0);
-  for (int i = 0; i < MPIComm.Senders.size(); ++i) {
-    const std::vector<InterpSource<LatSet::d>>& sendcells = MPIComm.Senders[i].SendCells;
-    constexpr T weight = InterpBlockComm<T, LatSet::d>::getUniformWeight();
-    std::vector<T>& SendBufferPop = MPIAverBuffer.SendBuffers[i];
-    std::vector<T>& SendBufferRho = MPIAverBufferRho.SendBuffers[i];
-    std::vector<Vector<T, LatSet::d>>& SendBufferU = MPIAverBufferU.SendBuffers[i];
-    std::size_t bufidx = 0;
-    for (const InterpSource<LatSet::d>& sends : sendcells) {
-      SendBufferRho[bufidx] = getAverage<T, LatSet::d>(RhoArr, sends);
-      SendBufferU[bufidx] = getAverage<T, LatSet::d>(UArr, sends);
-      ++bufidx;
-    }
-    bufidx = 0;
-    for (unsigned int iArr = 0; iArr < LatSet::q; ++iArr) {
-      const auto& PopArr = Pops.getField(iArr);
-      for (const InterpSource<LatSet::d>& sends : sendcells) {
-        SendBufferPop[bufidx] = getAverage<T, LatSet::d>(PopArr, sends);
-        ++bufidx;
-      }
-    }
-  }
-  // non-blocking send
-  std::vector<MPI_Request> requests;
-  requests.reserve(MPIComm.Senders.size() * 3 + MPIComm.Recvers.size() * 3);
-  // send pop
-  for (int i = 0; i < MPIComm.Senders.size(); ++i) {
-    MPI_Request request;
-    std::vector<T>& buffer = MPIAverBuffer.SendBuffers[i];
-    mpi().iSend(buffer.data(), buffer.size(), MPIComm.Senders[i].RecvRank, &request);
-    requests.push_back(request);
-  }
-  // send rho
-  for (int i = 0; i < MPIComm.Senders.size(); ++i) {
-    MPI_Request request;
-    std::vector<T>& buffer = MPIAverBufferRho.SendBuffers[i];
-    mpi().iSend(buffer.data(), buffer.size(), MPIComm.Senders[i].RecvRank, &request);
-    requests.push_back(request);
-  }
-  // send u
-  for (int i = 0; i < MPIComm.Senders.size(); ++i) {
-    MPI_Request request;
-    std::vector<Vector<T, LatSet::d>>& buffer = MPIAverBufferU.SendBuffers[i];
-    mpi().iSend(buffer.data(), buffer.size(), MPIComm.Senders[i].RecvRank, &request);
-    requests.push_back(request);
-  }
-  // --- receive data ---
-  // non-blocking recv
-  // recv pop
-  for (int i = 0; i < MPIComm.Recvers.size(); ++i) {
-    MPI_Request request;
-    std::vector<T>& buffer = MPIAverBuffer.RecvBuffers[i];
-    mpi().iRecv(buffer.data(), buffer.size(), MPIComm.Recvers[i].SendRank, &request);
-    requests.push_back(request);
-  }
-  // recv rho
-  for (int i = 0; i < MPIComm.Recvers.size(); ++i) {
-    MPI_Request request;
-    std::vector<T>& buffer = MPIAverBufferRho.RecvBuffers[i];
-    mpi().iRecv(buffer.data(), buffer.size(), MPIComm.Recvers[i].SendRank, &request);
-    requests.push_back(request);
-  }
-  // recv u
-  for (int i = 0; i < MPIComm.Recvers.size(); ++i) {
-    MPI_Request request;
-    std::vector<Vector<T, LatSet::d>>& buffer = MPIAverBufferU.RecvBuffers[i];
-    mpi().iRecv(buffer.data(), buffer.size(), MPIComm.Recvers[i].SendRank, &request);
-    requests.push_back(request);
-  }
-  // wait
-  MPI_Waitall(requests.size(), requests.data(), MPI_STATUSES_IGNORE);
-  // set field data
-  for (int i = 0; i < MPIComm.Recvers.size(); ++i) {
-    const std::vector<T>& RecvBufferPop = MPIAverBuffer.RecvBuffers[i];
-    const std::vector<T>& RecvBufferRho = MPIAverBufferRho.RecvBuffers[i];
-    const std::vector<Vector<T, LatSet::d>>& RecvBufferU = MPIAverBufferU.RecvBuffers[i];
-    const std::vector<std::size_t>& recvcells = MPIComm.Recvers[i].RecvCells;
-    std::size_t bufidx = 0;
-    const std::size_t shift = recvcells.size();
-    for (std::size_t id : recvcells) {
-      std::array<T, LatSet::q> feq{};
-      Equilibrium<T, LatSet>::SecondOrder(feq, RecvBufferU[bufidx],
-                                          RecvBufferRho[bufidx]);
-      std::array<T*, LatSet::q> CellPop = Pops.template getArray<T>(id);
-      for (unsigned int k = 0; k < LatSet::q; ++k) {
-        *(CellPop[k]) =
-          RefineConverter<T>::getPopC(RecvBufferPop[bufidx + shift * k], feq[k], OmegaF);
-      }
-      ++bufidx;
-    }
-  }
-}
-
-template <typename T, typename LatSet>
-void BlockLattice<T, LatSet>::MPIinterpcommunicate() {
-  if (!BlockGeo._NeedMPIComm) {
-    return;
-  }
-  mpi().barrier();
-  const MPIInterpBlockComm<T, LatSet::d>& MPIComm = BlockGeo.getMPIInterpBlockComm();
-  const T OmegaC = RefineConverter<T>::getOmegaC(getOmega());
-  // --- send data ---
-  using IntpComm = InterpBlockComm<T, LatSet::d>;
-  // add to send buffer
-  const auto& RhoArr = this->Rho.getField(0);
-  const auto& UArr = Velocity.getField(0);
-  for (int i = 0; i < MPIComm.Senders.size(); ++i) {
-    const std::vector<InterpSource<LatSet::d>>& sendcells = MPIComm.Senders[i].SendCells;
-    std::vector<T>& SendBufferPop = MPIInterpBuffer.SendBuffers[i];
-    std::vector<T>& SendBufferRho = MPIInterpBufferRho.SendBuffers[i];
-    std::vector<Vector<T, LatSet::d>>& SendBufferU = MPIInterpBufferU.SendBuffers[i];
-    std::size_t bufidx = 0;
-    const std::size_t size = sendcells.size();
-    if constexpr (LatSet::d == 2) {
-      for (std::size_t i = 0; i < size; i += 4) {
-        getInterpolation<T, LatSet::d>(RhoArr, sendcells, i, SendBufferRho, bufidx);
-        getInterpolation<T, LatSet::d>(UArr, sendcells, i, SendBufferU, bufidx);
-        bufidx += 4;
-      }
-    }
-    bufidx = 0;
-    for (unsigned int iArr = 0; iArr < LatSet::q; ++iArr) {
-      const auto& PopArr = Pops.getField(iArr);
-      if constexpr (LatSet::d == 2) {
-        for (std::size_t i = 0; i < size; i += 4) {
-          getInterpolation<T, LatSet::d>(PopArr, sendcells, i, SendBufferPop, bufidx);
-          bufidx += 4;
-        }
-      }
-    }
-  }
-  // non-blocking send
-  std::vector<MPI_Request> requests;
-  requests.reserve(MPIComm.Senders.size() * 3 + MPIComm.Recvers.size() * 3);
-  // send pop
-  for (int i = 0; i < MPIComm.Senders.size(); ++i) {
-    MPI_Request request;
-    std::vector<T>& buffer = MPIInterpBuffer.SendBuffers[i];
-    mpi().iSend(buffer.data(), buffer.size(), MPIComm.Senders[i].RecvRank, &request);
-    requests.push_back(request);
-  }
-  // send rho
-  for (int i = 0; i < MPIComm.Senders.size(); ++i) {
-    MPI_Request request;
-    std::vector<T>& buffer = MPIInterpBufferRho.SendBuffers[i];
-    mpi().iSend(buffer.data(), buffer.size(), MPIComm.Senders[i].RecvRank, &request);
-    requests.push_back(request);
-  }
-  // send u
-  for (int i = 0; i < MPIComm.Senders.size(); ++i) {
-    MPI_Request request;
-    std::vector<Vector<T, LatSet::d>>& buffer = MPIInterpBufferU.SendBuffers[i];
-    mpi().iSend(buffer.data(), buffer.size(), MPIComm.Senders[i].RecvRank, &request);
-    requests.push_back(request);
-  }
-  // --- receive data ---
-  // non-blocking recv
-  // recv pop
-  for (int i = 0; i < MPIComm.Recvers.size(); ++i) {
-    MPI_Request request;
-    std::vector<T>& buffer = MPIInterpBuffer.RecvBuffers[i];
-    mpi().iRecv(buffer.data(), buffer.size(), MPIComm.Recvers[i].SendRank, &request);
-    requests.push_back(request);
-  }
-  // recv rho
-  for (int i = 0; i < MPIComm.Recvers.size(); ++i) {
-    MPI_Request request;
-    std::vector<T>& buffer = MPIInterpBufferRho.RecvBuffers[i];
-    mpi().iRecv(buffer.data(), buffer.size(), MPIComm.Recvers[i].SendRank, &request);
-    requests.push_back(request);
-  }
-  // recv u
-  for (int i = 0; i < MPIComm.Recvers.size(); ++i) {
-    MPI_Request request;
-    std::vector<Vector<T, LatSet::d>>& buffer = MPIInterpBufferU.RecvBuffers[i];
-    mpi().iRecv(buffer.data(), buffer.size(), MPIComm.Recvers[i].SendRank, &request);
-    requests.push_back(request);
-  }
-  // wait
-  MPI_Waitall(requests.size(), requests.data(), MPI_STATUSES_IGNORE);
-  // set field data
-  for (int i = 0; i < MPIComm.Recvers.size(); ++i) {
-    const std::vector<T>& RecvBufferPop = MPIInterpBuffer.RecvBuffers[i];
-    const std::vector<T>& RecvBufferRho = MPIInterpBufferRho.RecvBuffers[i];
-    const std::vector<Vector<T, LatSet::d>>& RecvBufferU =
-      MPIInterpBufferU.RecvBuffers[i];
-    const std::vector<std::size_t>& recvcells = MPIComm.Recvers[i].RecvCells;
-    std::size_t bufidx = 0;
-    const std::size_t shift = recvcells.size();
-    for (std::size_t id : recvcells) {
-      std::array<T, LatSet::q> feq{};
-      Equilibrium<T, LatSet>::SecondOrder(feq, RecvBufferU[bufidx],
-                                          RecvBufferRho[bufidx]);
-      std::array<T*, LatSet::q> CellPop = Pops.template getArray<T>(id);
-      for (unsigned int k = 0; k < LatSet::q; ++k) {
-        *(CellPop[k]) =
-          RefineConverter<T>::getPopF(RecvBufferPop[bufidx + shift * k], feq[k], OmegaC);
-      }
-      ++bufidx;
-    }
-  }
-}
-
-#endif
 
 template <typename T, typename LatSet>
 template <typename flagtype>
@@ -759,7 +477,7 @@ template <typename flagtype>
 void BlockLatticeManager<T, LatSet>::UpdateRho(
   std::int64_t count, std::uint8_t flag,
   const BlockFieldManager<ScalerField<flagtype>, T, LatSet::d>& BFM) {
-    mpi().barrier();
+  mpi().barrier();
 #pragma omp parallel for num_threads(Thread_Num)
   for (int i = 0; i < BlockLats.size(); ++i) {
     const int deLevel = static_cast<int>(getMaxLevel() - BlockLats[i].getLevel());
@@ -775,7 +493,7 @@ void BlockLatticeManager<T, LatSet>::UpdateRho_Source(
   std::int64_t count, std::uint8_t flag,
   const BlockFieldManager<ScalerField<flagtype>, T, LatSet::d>& BFM,
   const BlockFieldManager<ScalerField<T>, T, LatSet::d>& source) {
-    mpi().barrier();
+  mpi().barrier();
 #pragma omp parallel for num_threads(Thread_Num)
   for (int i = 0; i < BlockLats.size(); ++i) {
     const int deLevel = static_cast<int>(getMaxLevel() - BlockLats[i].getLevel());
@@ -790,7 +508,7 @@ template <typename flagtype>
 void BlockLatticeManager<T, LatSet>::UpdateU(
   std::int64_t count, std::uint8_t flag,
   const BlockFieldManager<ScalerField<flagtype>, T, LatSet::d>& BFM) {
-    mpi().barrier();
+  mpi().barrier();
 #pragma omp parallel for num_threads(Thread_Num)
   for (int i = 0; i < BlockLats.size(); ++i) {
     const int deLevel = static_cast<int>(getMaxLevel() - BlockLats[i].getLevel());
@@ -805,7 +523,7 @@ template <void (*GetFeq)(std::array<T, LatSet::q>&, const Vector<T, LatSet::d>&,
 void BlockLatticeManager<T, LatSet>::BGK(
   std::int64_t count, std::uint8_t flag,
   const BlockFieldManager<ScalerField<flagtype>, T, LatSet::d>& BFM) {
-    mpi().barrier();
+  mpi().barrier();
 #pragma omp parallel for num_threads(Thread_Num)
   for (int i = 0; i < BlockLats.size(); ++i) {
     const int deLevel = static_cast<int>(getMaxLevel() - BlockLats[i].getLevel());
@@ -823,7 +541,7 @@ void BlockLatticeManager<T, LatSet>::BGK_Source(
   std::int64_t count, std::uint8_t flag,
   const BlockFieldManager<ScalerField<flagtype>, T, LatSet::d>& BFM,
   const BlockFieldManager<ScalerField<T>, T, LatSet::d>& source) {
-    mpi().barrier();
+  mpi().barrier();
 #pragma omp parallel for num_threads(Thread_Num)
   for (int i = 0; i < BlockLats.size(); ++i) {
     const int deLevel = static_cast<int>(getMaxLevel() - BlockLats[i].getLevel());
@@ -844,9 +562,139 @@ void BlockLatticeManager<T, LatSet>::Stream(std::int64_t count) {
   }
 }
 
+#ifdef MPI_ENABLED
+template <typename T, typename LatSet>
+void BlockLatticeManager<T, LatSet>::MPIAverComm(std::int64_t count) {
+  mpi().barrier();
+  std::vector<MPI_Request> SendRequestsRho;
+  RhoFM.MPIAverSend(count, SendRequestsRho);
+  std::vector<MPI_Request> RecvRequestsRho;
+  RhoFM.MPIAverRecv(count, RecvRequestsRho);
+
+  std::vector<MPI_Request> SendRequestsU;
+  VelocityFM.MPIAverSend(count, SendRequestsU);
+  std::vector<MPI_Request> RecvRequestsU;
+  VelocityFM.MPIAverRecv(count, RecvRequestsU);
+
+  std::vector<MPI_Request> SendRequestsPop;
+  PopsFM.MPIAverSend(count, SendRequestsPop);
+  std::vector<MPI_Request> RecvRequestsPop;
+  PopsFM.MPIAverRecv(count, RecvRequestsPop);
+
+  // wait for all requests
+  MPI_Waitall(SendRequestsRho.size(), SendRequestsRho.data(), MPI_STATUSES_IGNORE);
+  MPI_Waitall(SendRequestsU.size(), SendRequestsU.data(), MPI_STATUSES_IGNORE);
+  MPI_Waitall(SendRequestsPop.size(), SendRequestsPop.data(), MPI_STATUSES_IGNORE);
+  // pop conversion
+  int reqidx = 0;
+  int ifield = 0;
+  for (BlockLattice<T, LatSet>& BLat : BlockLats) {
+    if ((count % (static_cast<int>(pow(2, int(getMaxLevel() - BLat.getLevel())))) == 0) &&
+        BLat.getGeo()._NeedMPIComm) {
+      const MPIInterpBlockComm<T, LatSet::d>& MPIComm =
+        BLat.getGeo().getMPIAverBlockComm();
+      const T OmegaF = RefineConverter<T>::getOmegaF(BLat.getOmega());
+
+      for (int i = 0; i < MPIComm.Recvers.size(); ++i) {
+        MPI_Wait(&RecvRequestsRho[i + reqidx], MPI_STATUS_IGNORE);
+        MPI_Wait(&RecvRequestsU[i + reqidx], MPI_STATUS_IGNORE);
+        MPI_Wait(&RecvRequestsPop[i + reqidx], MPI_STATUS_IGNORE);
+
+        std::vector<T>& rhobuffer =
+          RhoFM.getBlockField(ifield).getMPIAverBuffer().RecvBuffers[i];
+        std::vector<Vector<T, LatSet::d>>& ubuffer =
+          VelocityFM.getBlockField(ifield).getMPIAverBuffer().RecvBuffers[i];
+        std::vector<T>& popbuffer =
+          PopsFM.getBlockField(ifield).getMPIAverBuffer().RecvBuffers[i];
+
+        const std::vector<std::size_t>& recvcells = MPIComm.Recvers[i].RecvCells;
+        std::size_t bufidx = 0;
+        const std::size_t shift = recvcells.size();
+        for (std::size_t id : recvcells) {
+          std::array<T, LatSet::q> feq{};
+          Equilibrium<T, LatSet>::SecondOrder(feq, ubuffer[bufidx], rhobuffer[bufidx]);
+          std::array<T*, LatSet::q> CellPop = BLat.getPop(id);
+          for (unsigned int k = 0; k < LatSet::q; ++k) {
+            *(CellPop[k]) =
+              RefineConverter<T>::getPopC(popbuffer[bufidx + shift * k], feq[k], OmegaF);
+          }
+          ++bufidx;
+        }
+      }
+      reqidx += MPIComm.Recvers.size();
+    }
+    ++ifield;
+  }
+}
+
+template <typename T, typename LatSet>
+void BlockLatticeManager<T, LatSet>::MPIInterpComm(std::int64_t count) {
+  mpi().barrier();
+  std::vector<MPI_Request> SendRequestsRho;
+  RhoFM.MPIInterpSend(count, SendRequestsRho);
+  std::vector<MPI_Request> RecvRequestsRho;
+  RhoFM.MPIInterpRecv(count, RecvRequestsRho);
+
+  std::vector<MPI_Request> SendRequestsU;
+  VelocityFM.MPIInterpSend(count, SendRequestsU);
+  std::vector<MPI_Request> RecvRequestsU;
+  VelocityFM.MPIInterpRecv(count, RecvRequestsU);
+
+  std::vector<MPI_Request> SendRequestsPop;
+  PopsFM.MPIInterpSend(count, SendRequestsPop);
+  std::vector<MPI_Request> RecvRequestsPop;
+  PopsFM.MPIInterpRecv(count, RecvRequestsPop);
+
+  // wait for all requests
+  MPI_Waitall(SendRequestsRho.size(), SendRequestsRho.data(), MPI_STATUSES_IGNORE);
+  MPI_Waitall(SendRequestsU.size(), SendRequestsU.data(), MPI_STATUSES_IGNORE);
+  MPI_Waitall(SendRequestsPop.size(), SendRequestsPop.data(), MPI_STATUSES_IGNORE);
+  // pop conversion
+  int reqidx = 0;
+  int ifield = 0;
+  for (BlockLattice<T, LatSet>& BLat : BlockLats) {
+    if ((count % (static_cast<int>(pow(2, int(getMaxLevel() - BLat.getLevel())))) == 0) &&
+        BLat.getGeo()._NeedMPIComm) {
+      const MPIInterpBlockComm<T, LatSet::d>& MPIComm =
+        BLat.getGeo().getMPIInterpBlockComm();
+      const T OmegaC = RefineConverter<T>::getOmegaC(BLat.getOmega());
+
+      for (int i = 0; i < MPIComm.Recvers.size(); ++i) {
+        MPI_Wait(&RecvRequestsRho[i + reqidx], MPI_STATUS_IGNORE);
+        MPI_Wait(&RecvRequestsU[i + reqidx], MPI_STATUS_IGNORE);
+        MPI_Wait(&RecvRequestsPop[i + reqidx], MPI_STATUS_IGNORE);
+
+        std::vector<T>& rhobuffer =
+          RhoFM.getBlockField(ifield).getMPIInterpBuffer().RecvBuffers[i];
+        std::vector<Vector<T, LatSet::d>>& ubuffer =
+          VelocityFM.getBlockField(ifield).getMPIInterpBuffer().RecvBuffers[i];
+        std::vector<T>& popbuffer =
+          PopsFM.getBlockField(ifield).getMPIInterpBuffer().RecvBuffers[i];
+
+        const std::vector<std::size_t>& recvcells = MPIComm.Recvers[i].RecvCells;
+        std::size_t bufidx = 0;
+        const std::size_t shift = recvcells.size();
+        for (std::size_t id : recvcells) {
+          std::array<T, LatSet::q> feq{};
+          Equilibrium<T, LatSet>::SecondOrder(feq, ubuffer[bufidx], rhobuffer[bufidx]);
+          std::array<T*, LatSet::q> CellPop = BLat.getPop(id);
+          for (unsigned int k = 0; k < LatSet::q; ++k) {
+            *(CellPop[k]) =
+              RefineConverter<T>::getPopF(popbuffer[bufidx + shift * k], feq[k], OmegaC);
+          }
+          ++bufidx;
+        }
+      }
+      reqidx += MPIComm.Recvers.size();
+    }
+    ++ifield;
+  }
+}
+
+#endif
+
 template <typename T, typename LatSet>
 void BlockLatticeManager<T, LatSet>::Communicate(std::int64_t count) {
-  mpi().barrier();
 #pragma omp parallel for num_threads(Thread_Num)
   for (BlockLattice<T, LatSet>& BLat : BlockLats) {
     if (count % (static_cast<int>(pow(2, int(getMaxLevel() - BLat.getLevel())))) == 0)
@@ -874,18 +722,13 @@ void BlockLatticeManager<T, LatSet>::Communicate(std::int64_t count) {
   }
 
 #ifdef MPI_ENABLED
-  for (BlockLattice<T, LatSet>& BLat : BlockLats) {
-    if (count % (static_cast<int>(pow(2, int(getMaxLevel() - BLat.getLevel())))) == 0)
-      BLat.MPInormalcommunicate();
-  }
-  for (BlockLattice<T, LatSet>& BLat : BlockLats) {
-    if (count % (static_cast<int>(pow(2, int(getMaxLevel() - BLat.getLevel())))) == 0)
-      BLat.MPIavercommunicate();
-  }
-  for (BlockLattice<T, LatSet>& BLat : BlockLats) {
-    if (count % (static_cast<int>(pow(2, int(getMaxLevel() - BLat.getLevel())))) == 0)
-      BLat.MPIinterpcommunicate();
-  }
+  // MPI normal communicate
+  PopsFM.MPINormalCommunicate(count);
+  // MPI aver communicate
+  MPIAverComm(count);
+  // MPI interp communicate
+  MPIInterpComm(count);
+
 #endif
 }
 
@@ -912,10 +755,10 @@ T BlockLatticeManager<T, LatSet>::getToleranceRho(int shift) {
     }
     maxres = std::max(temp, maxres);
   }
-  #ifdef MPI_ENABLED
+#ifdef MPI_ENABLED
   mpi().barrier();
   mpi().reduceAndBcast(maxres, MPI_MAX);
-  #endif
+#endif
   return maxres;
 }
 
@@ -933,10 +776,10 @@ T BlockLatticeManager<T, LatSet>::getToleranceU(int shift) {
     }
     maxres = std::max(temp, maxres);
   }
-  #ifdef MPI_ENABLED
+#ifdef MPI_ENABLED
   mpi().barrier();
   mpi().reduceAndBcast(maxres, MPI_MAX);
-  #endif
+#endif
   return maxres;
 }
 

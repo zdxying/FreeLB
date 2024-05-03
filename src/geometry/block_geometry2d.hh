@@ -963,6 +963,12 @@ void BlockGeometryHelper2D<T>::LoadBalancing(int ProcessNum) {
 
 #ifdef MPI_ENABLED
   SetupMPINbrs();
+  // print info
+  MPI_RANK(0)
+  std::cout << "[LoadBalancing result]: " << "\n";
+  for (int i = 0; i < BlockIndex.size(); ++i) {
+    std::cout << "Rank " << i << ": " << BlockIndex[i].size() << " Blocks" << std::endl;
+  }
 #endif
 }
 
@@ -1051,93 +1057,6 @@ void BlockGeometryHelper2D<T>::Refine() {
       // reset tag
       _BlockCellTags[i] = BlockCellTag::none;
     }
-  }
-}
-
-// helper class for MPI
-
-template <typename T>
-BlockGeometryMPIHelper2D<T>::BlockGeometryMPIHelper2D(int Nx, int Ny, int blocknum,
-                                                      const AABB<T, 2> &block,
-                                                      T voxelSize, int overlap,
-                                                      bool refine)
-    : BasicBlock<T, 2>(voxelSize, block.getExtended(Vector<T, 2>{voxelSize}),
-                       AABB<int, 2>(Vector<int, 2>{0}, Vector<int, 2>{Nx + 1, Ny + 1})),
-      _BaseBlock(voxelSize, block,
-                 AABB<int, 2>(Vector<int, 2>{1}, Vector<int, 2>{Nx, Ny})),
-      _BlockNum(blocknum) {
-  DivideBlocks(_BlockNum);
-  CreateBlocks();
-  SetupNbrs();
-}
-
-template <typename T>
-void BlockGeometryMPIHelper2D<T>::DivideBlocks(int blocknum) {
-  _BlockAABBs.clear();
-  _BlockAABBs.reserve(blocknum);
-  DivideBlock2D(_BaseBlock, blocknum, _BlockAABBs);
-}
-
-template <typename T>
-void BlockGeometryMPIHelper2D<T>::CreateBlocks() {
-  // get std::vector<BasicBlock<T, 2>>
-  _Blocks.clear();
-  _Blocks.reserve(_BlockNum);
-  int blockid = 0;
-  for (const AABB<int, 2> &block : _BlockAABBs) {
-    Vector<T, 2> MIN =
-      block.getMin() * _BaseBlock.getVoxelSize() + BasicBlock<T, 2>::_min;
-    Vector<T, 2> MAX = (block.getMax() + Vector<T, 2>{T(1)}) * _BaseBlock.getVoxelSize() +
-                       BasicBlock<T, 2>::_min;
-    AABB<T, 2> aabb(MIN, MAX);
-    _Blocks.emplace_back(_BaseBlock.getVoxelSize(), aabb, block, blockid);
-    ++blockid;
-  }
-}
-
-template <typename T>
-void BlockGeometryMPIHelper2D<T>::SetupNbrs() {
-  _BlockNbrRanks.resize(_BlockNum, std::vector<int>{});
-  for (const BasicBlock<T, 2> &block : _Blocks) {
-    int selfrank = block.getBlockId();
-    AABB<int, 2> ExtIdxblock = block.getIdxBlock().getExtended(Vector<int, 2>{1});
-    for (const BasicBlock<T, 2> &blockn : _Blocks) {
-      int rankn = blockn.getBlockId();
-      if (rankn != selfrank) {
-        if (isOverlapped(ExtIdxblock, blockn.getIdxBlock())) {
-          _BlockNbrRanks[selfrank].push_back(rankn);
-        }
-      }
-    }
-  }
-}
-
-template <typename T>
-void BlockGeometryMPIHelper2D<T>::InitMPIBlockCommStru(MPIBlockComm &BlockComm) {
-  int rank = mpi().getRank();
-  // senders
-  // get basicblock to call getCellIdx
-  const BasicBlock<T, 2> ExtBlock = _Blocks[rank].getExtBlock();
-  // ext block to init recvers
-  const AABB<T, 2> ExtAABB = ExtBlock.getAABB();
-  // base block to init senders
-  const AABB<T, 2> BaseAABB = _Blocks[rank].getAABB();
-  // const AABB<int, 2> Idxblock = _Blocks[rank].getIdxBlock();
-  // get neighbor ranks
-  std::vector<int> &nbrRanks = _BlockNbrRanks[rank];
-  for (int nbrRank : nbrRanks) {
-    BlockComm.Senders.emplace_back(nbrRank, nbrRank);
-    MPIBlockSendStru &send = BlockComm.Senders.back();
-    const AABB<T, 2> ExtAABBn = _Blocks[nbrRank].getExtBlock().getAABB();
-    ExtBlock.getCellIdx(BaseAABB, ExtAABBn, send.SendCells);
-  }
-  // recvers
-  // get basicblock
-  for (int nbrRank : nbrRanks) {
-    BlockComm.Recvers.emplace_back(nbrRank, nbrRank);
-    MPIBlockRecvStru &recv = BlockComm.Recvers.back();
-    const AABB<T, 2> BaseAABBn = _Blocks[nbrRank].getAABB();
-    ExtBlock.getCellIdx(BaseAABBn, ExtAABB, recv.RecvCells);
   }
 }
 

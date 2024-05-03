@@ -53,8 +53,7 @@ class vtmWriter {
   }
 
   void create_vtiwriters(BlockGeometry<T, D>& blockgeo) {
-    for (int i = 0; i < blockgeo.getBlockNum(); ++i) {
-      const Block<T, D>& block = blockgeo.getBlock(i);
+    for (const Block<T, D>& block : blockgeo.getBlocks()) {
       T voxsize = block.getVoxelSize();
       const Vector<int, D> ext = block.getMesh() - Vector<int, D>{1};
       const Vector<T, D> origin = block.getMinCenter();
@@ -147,32 +146,6 @@ class vtmWriter {
       writevtm(fullName, getvtiFileName(i, step), i);
     }
 #endif
-    vtmEnd(fullName);
-  }
-  void MPIWriteBinary() {
-    mpi().barrier();
-    for (vtiwriter::vtiManager<T, D>& vti : _vtiwriters) {
-      vti.WriteBinary();
-    }
-    MPI_RANK(0)
-    std::string fullName = _vtidirname + _filename + ".vtm";
-    vtmHeader(fullName);
-    for (int i = 0; i < mpi().getSize(); ++i) {
-      writevtm(fullName, getvtiFileName(i), i);
-    }
-    vtmEnd(fullName);
-  }
-  void MPIWriteBinary(int step) {
-    mpi().barrier();
-    for (vtiwriter::vtiManager<T, D>& vti : _vtiwriters) {
-      vti.WriteBinary(step);
-    }
-    MPI_RANK(0)
-    std::string fullName = _vtidirname + _filename + std::to_string(step) + ".vtm";
-    vtmHeader(fullName);
-    for (int i = 0; i < mpi().getSize(); ++i) {
-      writevtm(fullName, getvtiFileName(i, step), i);
-    }
     vtmEnd(fullName);
   }
 
@@ -368,8 +341,7 @@ class vtmWriter {
   }
 
   void create_vtiwriters(BlockGeometry<T, D>& blockgeo) {
-    for (int i = 0; i < blockgeo.getBlockNum(); ++i) {
-      const Block<T, D>& block = blockgeo.getBlock(i);
+    for (const Block<T, D>& block : blockgeo.getBlocks()) {
       T voxsize = block.getVoxelSize();
       const Vector<int, D> ext = block.getMesh() - Vector<int, D>{1};
       const Vector<T, D> origin = block.getMinCenter();
@@ -450,33 +422,6 @@ class vtmWriter {
       writevtm(fullName, getvtiFileName(i, step), i);
     }
 #endif
-    vtmEnd(fullName);
-  }
-
-  void MPIWriteBinary() {
-    mpi().barrier();
-    for (vtino::vtiManager<T, D>& vti : _vtiwriters) {
-      vti.WriteBinary();
-    }
-    MPI_RANK(0)
-    std::string fullName = _vtidirname + _filename + ".vtm";
-    vtmHeader(fullName);
-    for (int i = 0; i < mpi().getSize(); ++i) {
-      writevtm(fullName, getvtiFileName(i), i);
-    }
-    vtmEnd(fullName);
-  }
-  void MPIWriteBinary(int step) {
-    mpi().barrier();
-    for (vtino::vtiManager<T, D>& vti : _vtiwriters) {
-      vti.WriteBinary(step);
-    }
-    MPI_RANK(0)
-    std::string fullName = _vtidirname + _filename + std::to_string(step) + ".vtm";
-    vtmHeader(fullName);
-    for (int i = 0; i < mpi().getSize(); ++i) {
-      writevtm(fullName, getvtiFileName(i, step), i);
-    }
     vtmEnd(fullName);
   }
 

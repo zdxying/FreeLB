@@ -43,7 +43,7 @@ struct InterpBlockLatComm {
   InterpBlockComm<T, LatSet::d>* Comm;
 
   InterpBlockLatComm(BlockLattice<T, LatSet>* sblock,
-                         InterpBlockComm<T, LatSet::d>* interpcomm)
+                     InterpBlockComm<T, LatSet::d>* interpcomm)
       : SendBlock(sblock), Comm(interpcomm) {}
 
   std::vector<std::size_t>& getRecvs() { return Comm->RecvCells; }
@@ -111,20 +111,6 @@ class BlockLattice : public BlockRhoLattice<T> {
   std::vector<T> RhoOld;
   T URes;
   std::vector<Vector<T, LatSet::d>> UOld;
-// MPI
-#ifdef MPI_ENABLED
-  int _Rank;
-  // buffers
-  MPIBlockBuffer<T> MPIBuffer;
-
-  MPIBlockBuffer<T> MPIAverBuffer;
-  MPIBlockBuffer<T> MPIAverBufferRho;
-  MPIBlockBuffer<Vector<T, LatSet::d>> MPIAverBufferU;
-
-  MPIBlockBuffer<T> MPIInterpBuffer;
-  MPIBlockBuffer<T> MPIInterpBufferRho;
-  MPIBlockBuffer<Vector<T, LatSet::d>> MPIInterpBufferU;
-#endif
 
  public:
   BlockLattice(Block<T, LatSet::d>& block, ScalerField<T>& rho,
@@ -212,18 +198,6 @@ class BlockLattice : public BlockRhoLattice<T> {
   // get inner block tolerance
   T getTolRho(int shift = 1);
   T getTolU(int shift = 1);
-
-
-#ifdef MPI_ENABLED
-  int getRank() const { return _Rank; }
-
-  MPIBlockBuffer<T>& getMPIBlockBuffer() { return MPIBuffer; }
-  const MPIBlockBuffer<T>& getMPIBlockBuffer() const { return MPIBuffer; }
-
-  void MPInormalcommunicate();
-  void MPIavercommunicate();
-  void MPIinterpcommunicate();
-#endif
 };
 
 // block lattice manager
@@ -312,6 +286,11 @@ class BlockLatticeManager {
                   const BlockFieldManager<ScalerField<T>, T, LatSet::d>& source);
 
   void Stream(std::int64_t count);
+
+#ifdef MPI_ENABLED
+  void MPIAverComm(std::int64_t count);
+  void MPIInterpComm(std::int64_t count);
+#endif
 
   void Communicate(std::int64_t count);
 

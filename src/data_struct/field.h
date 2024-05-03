@@ -620,16 +620,15 @@ typename ArrayType::value_type getInterpolation(const ArrayType& Arr,
 }
 
 template <typename FloatType, unsigned int Dim, typename ArrayType>
-void getInterpolation(const ArrayType& Arr,
-                      const std::vector<InterpSource<Dim>>& srcs,
-                      std::size_t srcidx,
+void getInterpolation(const ArrayType& Arr, const std::vector<InterpSource<Dim>>& srcs,
+                      std::size_t& srcidx,
                       std::vector<typename ArrayType::value_type>& Buffer,
-                      std::size_t Bufferidx) {
+                      std::size_t& Bufferidx) {
   if constexpr (Dim == 2) {
-    Buffer[Bufferidx] = getInterpolation<0, FloatType, Dim>(Arr, srcs[srcidx]);
-    Buffer[Bufferidx + 1] = getInterpolation<1, FloatType, Dim>(Arr, srcs[srcidx + 1]);
-    Buffer[Bufferidx + 2] = getInterpolation<2, FloatType, Dim>(Arr, srcs[srcidx + 2]);
-    Buffer[Bufferidx + 3] = getInterpolation<3, FloatType, Dim>(Arr, srcs[srcidx + 3]);
+    Buffer[Bufferidx++] = getInterpolation<0, FloatType, Dim>(Arr, srcs[srcidx++]);
+    Buffer[Bufferidx++] = getInterpolation<1, FloatType, Dim>(Arr, srcs[srcidx++]);
+    Buffer[Bufferidx++] = getInterpolation<2, FloatType, Dim>(Arr, srcs[srcidx++]);
+    Buffer[Bufferidx++] = getInterpolation<3, FloatType, Dim>(Arr, srcs[srcidx++]);
   } else if constexpr (Dim == 3) {
   }
 }
