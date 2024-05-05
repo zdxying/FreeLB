@@ -116,7 +116,7 @@ void BlockLattice<T, LatSet>::avercommunicate() {
       Equilibrium<T, LatSet>::SecondOrder(feq, averU, averRho);
 
       std::array<T*, LatSet::q> CellPop = Pops.template getArray<T>(comm.getRecvs()[i]);
-      for (int k = 0; k < LatSet::q; ++k) {
+      for (unsigned int k = 0; k < LatSet::q; ++k) {
         T averpop = getAverage<T, LatSet::d>(nBlockLat->getPopField().getField(k), sends);
         // convert from fine to coarse
         *(CellPop[k]) = RefineConverter<T>::getPopC(averpop, feq[k], OmegaF);
@@ -147,7 +147,7 @@ void BlockLattice<T, LatSet>::interpcommunicate() {
 
           std::array<T*, LatSet::q> CellPop =
             Pops.template getArray<T>(comm.getRecvs()[i]);
-          for (int k = 0; k < LatSet::q; ++k) {
+          for (unsigned int k = 0; k < LatSet::q; ++k) {
             T averpop = getInterpolation<0, T, LatSet::d>(
               nBlockLat->getPopField().getField(k), sends);
             // convert from coarse to fine
@@ -165,7 +165,7 @@ void BlockLattice<T, LatSet>::interpcommunicate() {
 
           std::array<T*, LatSet::q> CellPop =
             Pops.template getArray<T>(comm.getRecvs()[i + 1]);
-          for (int k = 0; k < LatSet::q; ++k) {
+          for (unsigned int k = 0; k < LatSet::q; ++k) {
             T averpop = getInterpolation<1, T, LatSet::d>(
               nBlockLat->getPopField().getField(k), sends);
             // convert from coarse to fine
@@ -183,7 +183,7 @@ void BlockLattice<T, LatSet>::interpcommunicate() {
 
           std::array<T*, LatSet::q> CellPop =
             Pops.template getArray<T>(comm.getRecvs()[i + 2]);
-          for (int k = 0; k < LatSet::q; ++k) {
+          for (unsigned int k = 0; k < LatSet::q; ++k) {
             T averpop = getInterpolation<2, T, LatSet::d>(
               nBlockLat->getPopField().getField(k), sends);
             // convert from coarse to fine
@@ -201,7 +201,7 @@ void BlockLattice<T, LatSet>::interpcommunicate() {
 
           std::array<T*, LatSet::q> CellPop =
             Pops.template getArray<T>(comm.getRecvs()[i + 3]);
-          for (int k = 0; k < LatSet::q; ++k) {
+          for (unsigned int k = 0; k < LatSet::q; ++k) {
             T averpop = getInterpolation<3, T, LatSet::d>(
               nBlockLat->getPopField().getField(k), sends);
             // convert from coarse to fine
@@ -418,7 +418,6 @@ BlockLatticeManager<T, LatSet>::BlockLatticeManager(
   InitComm();
   InitAverComm();
   InitIntpComm();
-  UpdateMaxLevel();
 }
 
 template <typename T, typename LatSet>
@@ -432,7 +431,6 @@ void BlockLatticeManager<T, LatSet>::Init() {
   InitComm();
   InitAverComm();
   InitIntpComm();
-  UpdateMaxLevel();
 }
 
 template <typename T, typename LatSet>
@@ -443,7 +441,7 @@ void BlockLatticeManager<T, LatSet>::InitComm() {
     std::vector<BlockLatComm<T, LatSet>>& latcomm = BlockLat.getCommunicators();
     latcomm.clear();
     for (BlockComm<T, LatSet::d>& comm : block.getCommunicators()) {
-      latcomm.emplace_back(&BlockLats[comm.getSendId()], &comm);
+      latcomm.emplace_back(&findBlockLat(comm.getSendId()), &comm);
     }
   }
 }
@@ -455,7 +453,7 @@ void BlockLatticeManager<T, LatSet>::InitAverComm() {
     std::vector<InterpBlockLatComm<T, LatSet>>& latcomm = BlockLat.getAverageComm();
     latcomm.clear();
     for (InterpBlockComm<T, LatSet::d>& comm : block.getAverageBlockComm()) {
-      latcomm.emplace_back(&BlockLats[comm.getSendId()], &comm);
+      latcomm.emplace_back(&findBlockLat(comm.getSendId()), &comm);
     }
   }
 }
@@ -467,7 +465,7 @@ void BlockLatticeManager<T, LatSet>::InitIntpComm() {
     std::vector<InterpBlockLatComm<T, LatSet>>& latcomm = BlockLat.getInterpComm();
     latcomm.clear();
     for (InterpBlockComm<T, LatSet::d>& comm : block.getInterpBlockComm()) {
-      latcomm.emplace_back(&BlockLats[comm.getSendId()], &comm);
+      latcomm.emplace_back(&findBlockLat(comm.getSendId()), &comm);
     }
   }
 }
@@ -566,141 +564,179 @@ void BlockLatticeManager<T, LatSet>::Stream(std::int64_t count) {
 template <typename T, typename LatSet>
 void BlockLatticeManager<T, LatSet>::MPIAverComm(std::int64_t count) {
   mpi().barrier();
-  std::vector<MPI_Request> SendRequestsRho;
-  RhoFM.MPIAverSend(count, SendRequestsRho);
-  std::vector<MPI_Request> RecvRequestsRho;
-  RhoFM.MPIAverRecv(count, RecvRequestsRho);
-
-  std::vector<MPI_Request> SendRequestsU;
-  VelocityFM.MPIAverSend(count, SendRequestsU);
-  std::vector<MPI_Request> RecvRequestsU;
-  VelocityFM.MPIAverRecv(count, RecvRequestsU);
-
+  // pop conversion before communication
   std::vector<MPI_Request> SendRequestsPop;
-  PopsFM.MPIAverSend(count, SendRequestsPop);
-  std::vector<MPI_Request> RecvRequestsPop;
-  PopsFM.MPIAverRecv(count, RecvRequestsPop);
-
-  // wait for all requests
-  MPI_Waitall(SendRequestsRho.size(), SendRequestsRho.data(), MPI_STATUSES_IGNORE);
-  MPI_Waitall(SendRequestsU.size(), SendRequestsU.data(), MPI_STATUSES_IGNORE);
-  MPI_Waitall(SendRequestsPop.size(), SendRequestsPop.data(), MPI_STATUSES_IGNORE);
-  // pop conversion
-  int reqidx = 0;
   int ifield = 0;
   for (BlockLattice<T, LatSet>& BLat : BlockLats) {
-    if ((count % (static_cast<int>(pow(2, int(getMaxLevel() - BLat.getLevel())))) == 0) &&
-        BLat.getGeo()._NeedMPIComm) {
-      const MPIInterpBlockComm<T, LatSet::d>& MPIComm =
-        BLat.getGeo().getMPIAverBlockComm();
-      const T OmegaF = RefineConverter<T>::getOmegaF(BLat.getOmega());
+    // send data to lower level, deLevel+1
+    const int deLevel = static_cast<int>(getMaxLevel() - BLat.getLevel()) + 1;
+    if (BLat.getLevel() != std::uint8_t(0)) {
+      if ((count % (static_cast<int>(pow(2, deLevel))) == 0) &&
+          BLat.getGeo()._NeedMPIComm) {
+        const MPIInterpBlockComm<T, LatSet::d>& MPIComm =
+          BLat.getGeo().getMPIAverBlockComm();
 
-      for (int i = 0; i < MPIComm.Recvers.size(); ++i) {
-        MPI_Wait(&RecvRequestsRho[i + reqidx], MPI_STATUS_IGNORE);
-        MPI_Wait(&RecvRequestsU[i + reqidx], MPI_STATUS_IGNORE);
-        MPI_Wait(&RecvRequestsPop[i + reqidx], MPI_STATUS_IGNORE);
+        const T OmegaF = BLat.getOmega();
 
-        std::vector<T>& rhobuffer =
-          RhoFM.getBlockField(ifield).getMPIAverBuffer().RecvBuffers[i];
-        std::vector<Vector<T, LatSet::d>>& ubuffer =
-          VelocityFM.getBlockField(ifield).getMPIAverBuffer().RecvBuffers[i];
-        std::vector<T>& popbuffer =
-          PopsFM.getBlockField(ifield).getMPIAverBuffer().RecvBuffers[i];
+        for (int i = 0; i < MPIComm.Senders.size(); ++i) {
+          const std::vector<InterpSource<LatSet::d>>& sendcells =
+            MPIComm.Senders[i].SendCells;
 
-        const std::vector<std::size_t>& recvcells = MPIComm.Recvers[i].RecvCells;
-        std::size_t bufidx = 0;
-        const std::size_t shift = recvcells.size();
-        for (std::size_t id : recvcells) {
-          std::array<T, LatSet::q> feq{};
-          Equilibrium<T, LatSet>::SecondOrder(feq, ubuffer[bufidx], rhobuffer[bufidx]);
-          std::array<T*, LatSet::q> CellPop = BLat.getPop(id);
-          for (unsigned int k = 0; k < LatSet::q; ++k) {
-            *(CellPop[k]) =
-              RefineConverter<T>::getPopC(popbuffer[bufidx + shift * k], feq[k], OmegaF);
+          std::vector<T>& rhobuffer =
+            RhoFM.getBlockField(ifield).getMPIAverBuffer().SendBuffers[i];
+          std::vector<Vector<T, LatSet::d>>& ubuffer =
+            VelocityFM.getBlockField(ifield).getMPIAverBuffer().SendBuffers[i];
+          std::vector<T>& popbuffer =
+            PopsFM.getBlockField(ifield).getMPIAverBuffer().SendBuffers[i];
+
+          const auto& RhoArray = RhoFM.getBlockField(ifield).getField().getField(0);
+          const auto& UArray = VelocityFM.getBlockField(ifield).getField().getField(0);
+
+          std::size_t bufidx = 0;
+          for (const InterpSource<LatSet::d>& sends : sendcells) {
+            rhobuffer[bufidx] = getAverage<T, LatSet::d>(RhoArray, sends);
+            ubuffer[bufidx] = getAverage<T, LatSet::d>(UArray, sends);
+            ++bufidx;
           }
-          ++bufidx;
+          bufidx = 0;
+          for (unsigned int iArr = 0; iArr < LatSet::q; ++iArr) {
+            const auto& PopArray = PopsFM.getBlockField(ifield).getField().getField(iArr);
+            for (const InterpSource<LatSet::d>& sends : sendcells) {
+              popbuffer[bufidx] = getAverage<T, LatSet::d>(PopArray, sends);
+              ++bufidx;
+            }
+          }
+
+          // pop conversion
+          const std::size_t shift = sendcells.size();
+          for (std::size_t id = 0; id < shift; ++id) {
+            std::array<T, LatSet::q> feq{};
+            Equilibrium<T, LatSet>::SecondOrder(feq, ubuffer[id], rhobuffer[id]);
+            for (unsigned int k = 0; k < LatSet::q; ++k) {
+              popbuffer[id + shift * k] =
+                RefineConverter<T>::getPopC(popbuffer[id + shift * k], feq[k], OmegaF);
+            }
+          }
+        }
+        // non-blocking send pop buffer
+        for (int i = 0; i < MPIComm.Senders.size(); ++i) {
+          MPI_Request request;
+          std::vector<T>& popbuffer =
+            PopsFM.getBlockField(ifield).getMPIAverBuffer().SendBuffers[i];
+          mpi().iSend(popbuffer.data(), popbuffer.size(), MPIComm.Senders[i].RecvRank,
+                      &request, MPIComm.Senders[i].RecvBlockid);
+          SendRequestsPop.push_back(request);
         }
       }
-      reqidx += MPIComm.Recvers.size();
     }
     ++ifield;
   }
+  // recv pop buffer
+  std::vector<MPI_Request> RecvRequestsPop;
+  PopsFM.MPIAverRecv(count, RecvRequestsPop);
+  // wait for all requests
+  MPI_Waitall(SendRequestsPop.size(), SendRequestsPop.data(), MPI_STATUSES_IGNORE);
+  // MPI_Waitall(RecvRequestsPop.size(), RecvRequestsPop.data(), MPI_STATUSES_IGNORE);
+  PopsFM.MPIAverSet(count, RecvRequestsPop);
 }
 
 template <typename T, typename LatSet>
 void BlockLatticeManager<T, LatSet>::MPIInterpComm(std::int64_t count) {
   mpi().barrier();
-  std::vector<MPI_Request> SendRequestsRho;
-  RhoFM.MPIInterpSend(count, SendRequestsRho);
-  std::vector<MPI_Request> RecvRequestsRho;
-  RhoFM.MPIInterpRecv(count, RecvRequestsRho);
-
-  std::vector<MPI_Request> SendRequestsU;
-  VelocityFM.MPIInterpSend(count, SendRequestsU);
-  std::vector<MPI_Request> RecvRequestsU;
-  VelocityFM.MPIInterpRecv(count, RecvRequestsU);
-
+  // pop conversion before communication
   std::vector<MPI_Request> SendRequestsPop;
-  PopsFM.MPIInterpSend(count, SendRequestsPop);
-  std::vector<MPI_Request> RecvRequestsPop;
-  PopsFM.MPIInterpRecv(count, RecvRequestsPop);
-
-  // wait for all requests
-  MPI_Waitall(SendRequestsRho.size(), SendRequestsRho.data(), MPI_STATUSES_IGNORE);
-  MPI_Waitall(SendRequestsU.size(), SendRequestsU.data(), MPI_STATUSES_IGNORE);
-  MPI_Waitall(SendRequestsPop.size(), SendRequestsPop.data(), MPI_STATUSES_IGNORE);
-  // pop conversion
-  int reqidx = 0;
   int ifield = 0;
   for (BlockLattice<T, LatSet>& BLat : BlockLats) {
-    if ((count % (static_cast<int>(pow(2, int(getMaxLevel() - BLat.getLevel())))) == 0) &&
-        BLat.getGeo()._NeedMPIComm) {
-      const MPIInterpBlockComm<T, LatSet::d>& MPIComm =
-        BLat.getGeo().getMPIInterpBlockComm();
-      const T OmegaC = RefineConverter<T>::getOmegaC(BLat.getOmega());
+    // send data to higher level, deLevel-1
+    const int deLevel = static_cast<int>(getMaxLevel() - BLat.getLevel()) - 1;
+    if (deLevel != -1) {
+      if ((count % (static_cast<int>(pow(2, deLevel))) == 0) &&
+          BLat.getGeo()._NeedMPIComm) {
+        const MPIInterpBlockComm<T, LatSet::d>& MPIComm =
+          BLat.getGeo().getMPIInterpBlockComm();
 
-      for (int i = 0; i < MPIComm.Recvers.size(); ++i) {
-        MPI_Wait(&RecvRequestsRho[i + reqidx], MPI_STATUS_IGNORE);
-        MPI_Wait(&RecvRequestsU[i + reqidx], MPI_STATUS_IGNORE);
-        MPI_Wait(&RecvRequestsPop[i + reqidx], MPI_STATUS_IGNORE);
+        const T OmegaC = BLat.getOmega();
 
-        std::vector<T>& rhobuffer =
-          RhoFM.getBlockField(ifield).getMPIInterpBuffer().RecvBuffers[i];
-        std::vector<Vector<T, LatSet::d>>& ubuffer =
-          VelocityFM.getBlockField(ifield).getMPIInterpBuffer().RecvBuffers[i];
-        std::vector<T>& popbuffer =
-          PopsFM.getBlockField(ifield).getMPIInterpBuffer().RecvBuffers[i];
+        for (int i = 0; i < MPIComm.Senders.size(); ++i) {
+          const std::vector<InterpSource<LatSet::d>>& sendcells =
+            MPIComm.Senders[i].SendCells;
 
-        const std::vector<std::size_t>& recvcells = MPIComm.Recvers[i].RecvCells;
-        std::size_t bufidx = 0;
-        const std::size_t shift = recvcells.size();
-        for (std::size_t id : recvcells) {
-          std::array<T, LatSet::q> feq{};
-          Equilibrium<T, LatSet>::SecondOrder(feq, ubuffer[bufidx], rhobuffer[bufidx]);
-          std::array<T*, LatSet::q> CellPop = BLat.getPop(id);
-          for (unsigned int k = 0; k < LatSet::q; ++k) {
-            *(CellPop[k]) =
-              RefineConverter<T>::getPopF(popbuffer[bufidx + shift * k], feq[k], OmegaC);
+          std::vector<T>& rhobuffer =
+            RhoFM.getBlockField(ifield).getMPIInterpBuffer().SendBuffers[i];
+          std::vector<Vector<T, LatSet::d>>& ubuffer =
+            VelocityFM.getBlockField(ifield).getMPIInterpBuffer().SendBuffers[i];
+          std::vector<T>& popbuffer =
+            PopsFM.getBlockField(ifield).getMPIInterpBuffer().SendBuffers[i];
+
+          const auto& RhoArray = RhoFM.getBlockField(ifield).getField().getField(0);
+          const auto& UArray = VelocityFM.getBlockField(ifield).getField().getField(0);
+
+          const std::size_t size = sendcells.size();
+          std::size_t bufidx = 0;
+          for (std::size_t i = 0; i < size;) {
+            getInterpolation<T, LatSet::d>(RhoArray, sendcells, i, rhobuffer, bufidx);
           }
-          ++bufidx;
+          bufidx = 0;
+          for (std::size_t i = 0; i < size;) {
+            getInterpolation<T, LatSet::d>(UArray, sendcells, i, ubuffer, bufidx);
+          }
+          bufidx = 0;
+          for (unsigned int iArr = 0; iArr < LatSet::q; ++iArr) {
+            const auto& PopArray = PopsFM.getBlockField(ifield).getField().getField(iArr);
+            for (std::size_t i = 0; i < size;) {
+              getInterpolation<T, LatSet::d>(PopArray, sendcells, i, popbuffer, bufidx);
+            }
+          }
+          // pop conversion
+          const std::size_t shift = sendcells.size();
+          for (std::size_t id = 0; id < shift; ++id) {
+            std::array<T, LatSet::q> feq{};
+            Equilibrium<T, LatSet>::SecondOrder(feq, ubuffer[id], rhobuffer[id]);
+            for (unsigned int k = 0; k < LatSet::q; ++k) {
+              popbuffer[id + shift * k] =
+                RefineConverter<T>::getPopF(popbuffer[id + shift * k], feq[k], OmegaC);
+            }
+          }
+        }
+        // non-blocking send pop buffer
+        for (int i = 0; i < MPIComm.Senders.size(); ++i) {
+          MPI_Request request;
+          std::vector<T>& popbuffer =
+            PopsFM.getBlockField(ifield).getMPIInterpBuffer().SendBuffers[i];
+          mpi().iSend(popbuffer.data(), popbuffer.size(), MPIComm.Senders[i].RecvRank,
+                      &request, MPIComm.Senders[i].RecvBlockid);
+          SendRequestsPop.push_back(request);
         }
       }
-      reqidx += MPIComm.Recvers.size();
     }
     ++ifield;
   }
+  // recv pop buffer
+  std::vector<MPI_Request> RecvRequestsPop;
+  PopsFM.MPIInterpRecv(count, RecvRequestsPop);
+  // wait for all requests
+  MPI_Waitall(SendRequestsPop.size(), SendRequestsPop.data(), MPI_STATUSES_IGNORE);
+  // MPI_Waitall(RecvRequestsPop.size(), RecvRequestsPop.data(), MPI_STATUSES_IGNORE);
+  // set
+  PopsFM.MPIInterpSet(count, RecvRequestsPop);
 }
 
 #endif
 
 template <typename T, typename LatSet>
 void BlockLatticeManager<T, LatSet>::Communicate(std::int64_t count) {
+  // --- noraml communication ---
 #pragma omp parallel for num_threads(Thread_Num)
   for (BlockLattice<T, LatSet>& BLat : BlockLats) {
     if (count % (static_cast<int>(pow(2, int(getMaxLevel() - BLat.getLevel())))) == 0)
       BLat.communicate();
   }
 
+#ifdef MPI_ENABLED
+  PopsFM.MPINormalCommunicate(count);
+#endif
+
+  // --- average communication ---
   // RhoFM.AverCommunicate(count);
   // VelocityFM.AverCommunicate(count);
   // PopsFM.AverCommunicate(count);
@@ -711,6 +747,11 @@ void BlockLatticeManager<T, LatSet>::Communicate(std::int64_t count) {
     // BLat.PopConvFineToCoarse();
   }
 
+#ifdef MPI_ENABLED
+  MPIAverComm(count);
+#endif
+
+  // --- interpolation communication ---
   // RhoFM.InterpCommunicate(count);
   // VelocityFM.InterpCommunicate(count);
   // PopsFM.InterpCommunicate(count);
@@ -722,13 +763,7 @@ void BlockLatticeManager<T, LatSet>::Communicate(std::int64_t count) {
   }
 
 #ifdef MPI_ENABLED
-  // MPI normal communicate
-  PopsFM.MPINormalCommunicate(count);
-  // MPI aver communicate
-  MPIAverComm(count);
-  // MPI interp communicate
   MPIInterpComm(count);
-
 #endif
 }
 
@@ -750,6 +785,9 @@ T BlockLatticeManager<T, LatSet>::getToleranceRho(int shift) {
     T temp;
     if (shift == 0) {
       temp = BLat.getToleranceRho();
+    } else if (shift == -1) {
+      int autoshift = BLat.getLevel() == std::uint8_t(0) ? 1 : 2;
+      temp = BLat.getTolRho(autoshift);
     } else {
       temp = BLat.getTolRho(shift);
     }
@@ -771,6 +809,9 @@ T BlockLatticeManager<T, LatSet>::getToleranceU(int shift) {
     T temp;
     if (shift == 0) {
       temp = BLat.getToleranceU();
+    } else if (shift == -1) {
+      int autoshift = BLat.getLevel() == std::uint8_t(0) ? 1 : 2;
+      temp = BLat.getTolU(autoshift);
     } else {
       temp = BLat.getTolU(shift);
     }

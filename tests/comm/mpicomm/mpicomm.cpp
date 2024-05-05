@@ -1,44 +1,9 @@
-/* This file is part of FreeLB
- *
- * Copyright (C) 2024 Yuan Man
- * E-mail contact: ymmanyuan@outlook.com
- * The most recent progress of FreeLB will be updated at
- * <https://github.com/zdxying/FreeLB>
- *
- * FreeLB is free software: you can redistribute it and/or modify it under the terms of
- * the GNU General Public License as published by the Free Software Foundation, either
- * version 3 of the License, or (at your option) any later version.
- *
- * FreeLB is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
- * without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
- * PURPOSE. See the GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License along with FreeLB. If
- * not, see <https://www.gnu.org/licenses/>.
- *
- */
-
-// cavref2d.cpp
-
-// Lid-driven cavity flow 2d with refined block structure
-
-// the top wall is set with a constant velocity,
-// while the other walls are set with a no-slip boundary condition
-// Bounce-Back-like method is used:
-// Bounce-Back-Moving-Wall method for the top wall
-// Bounce-Back method for the other walls
-
-
 #include "freelb.h"
 #include "freelb.hh"
 
-// int Total_Macro_Step = 0;
 using T = FLOAT;
 using LatSet = D2Q9<T>;
 
-/*----------------------------------------------
-                Simulation Parameters
------------------------------------------------*/
 int Ni;
 int Nj;
 T Cell_Len;
@@ -65,12 +30,13 @@ T tol;
 std::string work_dir;
 
 void readParam() {
-  iniReader param_reader("cavityref2d.ini");
+  iniReader param_reader("mpicomm.ini");
+  // Thread_Num = param_reader.getValue<int>("OMP", "Thread_Num");
   // mesh
   work_dir = param_reader.getValue<std::string>("workdir", "workdir_");
   // parallel
   Thread_Num = param_reader.getValue<int>("parallel", "thread_num");
-  // mesh
+
   Ni = param_reader.getValue<int>("Mesh", "Ni");
   Nj = param_reader.getValue<int>("Mesh", "Nj");
   Cell_Len = param_reader.getValue<T>("Mesh", "Cell_Len");
@@ -93,25 +59,30 @@ void readParam() {
   OutputStep = param_reader.getValue<int>("Simulation_Settings", "OutputStep");
   tol = param_reader.getValue<T>("tolerance", "tol");
 
+  MPI_RANK(0)
 
   std::cout << "------------Simulation Parameters:-------------\n" << std::endl;
   std::cout << "[Simulation_Settings]:"
             << "TotalStep:         " << MaxStep << "\n"
             << "OutputStep:        " << OutputStep << "\n"
             << "Tolerance:         " << tol << "\n"
-#ifdef _OPENMP
-            << "Running on " << Thread_Num << " threads\n"
+#ifdef MPI_ENABLED
+            << "Running on " << mpi().getSize() << " processors\n"
 #endif
             << "----------------------------------------------" << std::endl;
 }
 
-int main() {
+int main(int argc, char* argv[]) {
   std::uint8_t VoidFlag = std::uint8_t(1);
   std::uint8_t AABBFlag = std::uint8_t(2);
   std::uint8_t BouncebackFlag = std::uint8_t(4);
   std::uint8_t BBMovingWallFlag = std::uint8_t(8);
 
-  Printer::Print_BigBanner(std::string("Initializing..."));
+  // Printer::Print_BigBanner(std::string("Initializing..."));
+
+  mpi().init(&argc, &argv);
+
+  MPI_DEBUG_WAIT
 
   readParam();
 
@@ -133,7 +104,6 @@ int main() {
     Vector<T, 2>(T(Ni * Cell_Len) * (BlockCellNx - 1) / BlockCellNx,
                  T(Nj * Cell_Len) * (BlockCellNx - 1) / BlockCellNx));
 
-  // geometry helper
   BlockGeometryHelper2D<T> GeoHelper(Ni, Nj, cavity, Cell_Len, Ni / BlockCellNx);
   GeoHelper.forEachBlockCell([&](BasicBlock<T, 2>& block) {
     if (!isOverlapped(block, innercavity)) {
@@ -141,7 +111,7 @@ int main() {
     }
   });
   GeoHelper.CreateBlocks();
-  GeoHelper.AdaptiveOptimization(Thread_Num);
+  GeoHelper.AdaptiveOptimization(mpi().getSize());
   GeoHelper.LoadBalancing(mpi().getSize());
 
   BlockGeometry2D<T> Geo(GeoHelper);
@@ -165,64 +135,34 @@ int main() {
   BlockFieldManager<VectorFieldAOS<T, 2>, T, 2> VelocityFM(Geo);
   // set initial value of field
   Vector<T, 2> LatU_Wall = BaseConv.getLatticeU(U_Wall);
-  VelocityFM.forEach(FlagFM, BBMovingWallFlag,
-                     [&](auto& field, std::size_t id) { field.SetField(id, LatU_Wall); });
-  // lattice
-  BlockLatticeManager<T, LatSet> NSLattice(Geo, BaseConv, VelocityFM);
-  NSLattice.EnableToleranceU();
-  T res = 1;
+  VelocityFM.forEach(
+    toplid, FlagFM, BBMovingWallFlag,
+    [&](VectorFieldAOS<T, 2>& field, std::size_t id) { field.SetField(id, LatU_Wall); });
 
-  // bcs
-  BBLikeFixedBlockBdManager<T, LatSet, BounceBackLikeMethod<T, LatSet>::normal_bounceback>
-    NS_BB("NS_BB", NSLattice, FlagFM, BouncebackFlag, VoidFlag);
-  BBLikeFixedBlockBdManager<T, LatSet,
-                            BounceBackLikeMethod<T, LatSet>::movingwall_bounceback>
-    NS_BBMW("NS_BBMW", NSLattice, FlagFM, BBMovingWallFlag, VoidFlag);
-  BlockBoundaryManager BM(&NS_BB, &NS_BBMW);
-
-  // writers
-  vtmo::ScalerWriter RhoWriter("Rho", NSLattice.getRhoFM());
   vtmo::VectorWriter VecWriter("Velocity", VelocityFM);
-  vtmo::vtmWriter<T, LatSet::d> NSWriter("cavref2d", Geo, 1);
-  NSWriter.addWriterSet(RhoWriter, VecWriter);
+  vtmo::vtmWriter<T, LatSet::d> NSWriter("mpicommtest", Geo, 1);
+  NSWriter.addWriterSet(VecWriter);
 
-  // count and timer
+  BlockLatticeManager<T, LatSet> NSLattice(Geo, BaseConv, VelocityFM);
+
+  // ok
+  NSLattice.getPopsFM().CommunicateAll();
+  // ok
+  VelocityFM.CommunicateAll();
+
   Timer MainLoopTimer;
-  Timer OutputTimer;
-  NSWriter.WriteBinary(MainLoopTimer());
+  NSLattice.Communicate(MainLoopTimer());
 
-  Printer::Print_BigBanner(std::string("Start Calculation..."));
+  while (MainLoopTimer() < MaxStep){
+  NSLattice.UpdateRho(MainLoopTimer(), AABBFlag, FlagFM);
+  NSLattice.UpdateU(MainLoopTimer(), AABBFlag, FlagFM);
 
-  while (MainLoopTimer() < MaxStep && res > tol) {
-    // update macroscopic variables
-    NSLattice.UpdateRho(MainLoopTimer(), AABBFlag, FlagFM);
-    NSLattice.UpdateU(MainLoopTimer(), AABBFlag, FlagFM);
-    // BGK collision
-    NSLattice.template BGK<Equilibrium<T, LatSet>::SecondOrder>(
-      MainLoopTimer(), std::uint8_t(AABBFlag | BouncebackFlag | BBMovingWallFlag),
-      FlagFM);
-    // streaming
-    NSLattice.Stream(MainLoopTimer());
-    // boundary conditions
-    BM.Apply(MainLoopTimer());
-    // block communication
-    NSLattice.Communicate(MainLoopTimer());
-
-    ++MainLoopTimer;
-    ++OutputTimer;
-
-    if (MainLoopTimer() % OutputStep == 0) {
-      res = NSLattice.getToleranceU(-1);
-      OutputTimer.Print_InnerLoopPerformance(GeoHelper.getTotalBaseCellNum(), OutputStep);
-      Printer::Print_Res<T>(res);
-      Printer::Endl();
-      NSWriter.WriteBinary(MainLoopTimer());
-    }
+  NSLattice.Communicate(MainLoopTimer());
+  std::cout << "Time: " << MainLoopTimer() << " of Rank: " << mpi().getRank() << std::endl;
+  ++MainLoopTimer;
   }
-  Printer::Print_BigBanner(std::string("Calculation Complete!"));
-  MainLoopTimer.Print_MainLoopPerformance(GeoHelper.getTotalBaseCellNum());
-  Printer::Print("Total PhysTime", BaseConv.getPhysTime(MainLoopTimer()));
-  Printer::Endl();
+
+  NSWriter.WriteBinary(MainLoopTimer());
 
   return 0;
 }

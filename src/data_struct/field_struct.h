@@ -129,9 +129,6 @@ class BlockField {
   std::vector<InterpBlockFieldComm<FieldType, FloatType, Dim>>& getInterpComms() {
     return InterpComms;
   }
-  MPIBlockBuffer<datatype>& getMPIBuffer() { return MPIBuffer; }
-  MPIBlockBuffer<datatype>& getMPIAverBuffer() { return MPIAverBuffer; }
-  MPIBlockBuffer<datatype>& getMPIInterpBuffer() { return MPIInterpBuffer; }
 
   void normalcommunicate() {
     for (BlockFieldComm<FieldType, FloatType, Dim>& comm : Comms) {
@@ -215,6 +212,9 @@ class BlockField {
     }
   }
 #ifdef MPI_ENABLED
+  MPIBlockBuffer<datatype>& getMPIBuffer() { return MPIBuffer; }
+  MPIBlockBuffer<datatype>& getMPIAverBuffer() { return MPIAverBuffer; }
+  MPIBlockBuffer<datatype>& getMPIInterpBuffer() { return MPIInterpBuffer; }
   // send data for normal communication
   void mpiNormalSend(std::vector<MPI_Request>& SendRequests) {
     const MPIBlockComm& MPIComm = _Block.getMPIBlockComm();
@@ -258,7 +258,7 @@ class BlockField {
     // wait and set field data
     for (int i = 0; i < MPIComm.Recvers.size(); ++i) {
       MPI_Wait(&RecvRequests[i + reqidx], MPI_STATUS_IGNORE);
-      std::vector<datatype>& buffer = MPIBuffer.RecvBuffers[i];
+      const std::vector<datatype>& buffer = MPIBuffer.RecvBuffers[i];
       const std::vector<std::size_t>& recvs = MPIComm.Recvers[i].RecvCells;
       std::size_t bufidx = 0;
       for (unsigned int iArr = 0; iArr < ArrayDim; ++iArr) {
@@ -316,7 +316,7 @@ class BlockField {
     // wait and set field data
     for (int i = 0; i < MPIComm.Recvers.size(); ++i) {
       MPI_Wait(&RecvRequests[i + reqidx], MPI_STATUS_IGNORE);
-      std::vector<datatype>& buffer = MPIAverBuffer.RecvBuffers[i];
+      const std::vector<datatype>& buffer = MPIAverBuffer.RecvBuffers[i];
       const std::vector<std::size_t>& recvcells = MPIComm.Recvers[i].RecvCells;
       std::size_t bufidx = 0;
       for (unsigned int iArr = 0; iArr < ArrayDim; ++iArr) {
@@ -373,7 +373,7 @@ class BlockField {
     // wait and set field data
     for (int i = 0; i < MPIComm.Recvers.size(); ++i) {
       MPI_Wait(&RecvRequests[i + reqidx], MPI_STATUS_IGNORE);
-      std::vector<datatype>& buffer = MPIInterpBuffer.RecvBuffers[i];
+      const std::vector<datatype>& buffer = MPIInterpBuffer.RecvBuffers[i];
       const std::vector<std::size_t>& recvcells = MPIComm.Recvers[i].RecvCells;
       std::size_t bufidx = 0;
       for (unsigned int iArr = 0; iArr < ArrayDim; ++iArr) {
@@ -514,6 +514,16 @@ class BlockFieldManager {
     return _Fields;
   }
 
+  // get block field with block id
+  BlockField<FieldType, FloatType, Dim>& findBlockField(int blockid) {
+    for (BlockField<FieldType, FloatType, Dim>& blockF : _Fields) {
+      if (blockF.getBlock().getBlockId() == blockid) return blockF;
+    }
+    std::cerr << "[BlockFieldManager]: can't find blockF with blockid " << blockid
+              << std::endl;
+    exit(1);
+  }
+
   void InitComm() {
     int blockid = 0;
     for (BlockField<FieldType, FloatType, Dim>& blockF : _Fields) {
@@ -523,21 +533,21 @@ class BlockFieldManager {
       std::vector<BlockFieldComm<FieldType, FloatType, Dim>>& Fcomms = blockF.getComms();
       Fcomms.clear();
       for (BlockComm<FloatType, Dim>& comm : block.getCommunicators()) {
-        Fcomms.emplace_back(&_Fields[comm.getSendId()], &comm);
+        Fcomms.emplace_back(&findBlockField(comm.getSendId()), &comm);
       }
       // average communication
       std::vector<InterpBlockFieldComm<FieldType, FloatType, Dim>>& Avercomms =
         blockF.getAverComms();
       Avercomms.clear();
       for (InterpBlockComm<FloatType, Dim>& comm : block.getAverageBlockComm()) {
-        Avercomms.emplace_back(&_Fields[comm.getSendId()], &comm);
+        Avercomms.emplace_back(&findBlockField(comm.getSendId()), &comm);
       }
       // interp communication
       std::vector<InterpBlockFieldComm<FieldType, FloatType, Dim>>& Interpcomms =
         blockF.getInterpComms();
       Interpcomms.clear();
       for (InterpBlockComm<FloatType, Dim>& comm : block.getInterpBlockComm()) {
-        Interpcomms.emplace_back(&_Fields[comm.getSendId()], &comm);
+        Interpcomms.emplace_back(&findBlockField(comm.getSendId()), &comm);
       }
     }
   }
@@ -709,10 +719,16 @@ class BlockFieldManager {
 
   void CommunicateAll(std::int64_t count) {
     NormalCommunicate(count);
+#ifdef MPI_ENABLED
+    MPINormalCommunicate(count);
+#endif
     AverCommunicate(count);
+#ifdef MPI_ENABLED
+    MPIAverCommunicate(count);
+#endif
     InterpCommunicate(count);
 #ifdef MPI_ENABLED
-    MPICommunicateAll(count);
+    MPIInterpCommunicate(count);
 #endif
   }
 
@@ -736,10 +752,16 @@ class BlockFieldManager {
   }
   void CommunicateAll() {
     NormalCommunicate();
+#ifdef MPI_ENABLED
+    MPINormalCommunicate();
+#endif
     AverCommunicate();
+#ifdef MPI_ENABLED
+    MPIAverCommunicate();
+#endif
     InterpCommunicate();
 #ifdef MPI_ENABLED
-    MPICommunicateAll();
+    MPIInterpCommunicate();
 #endif
   }
 
@@ -767,6 +789,9 @@ class BlockFieldManager {
         blockF.mpiNormalRecv(RecvRequests);
       }
     }
+    // wait for all send requests to complete
+    MPI_Waitall(SendRequests.size(), SendRequests.data(), MPI_STATUSES_IGNORE);
+    // MPI_Waitall(RecvRequests.size(), RecvRequests.data(), MPI_STATUSES_IGNORE);
     // --- wait and set field data ---
     int reqidx = 0;
     for (BlockField<FieldType, FloatType, Dim>& blockF : _Fields) {
@@ -777,17 +802,18 @@ class BlockFieldManager {
         blockF.mpiNormalSet(reqidx, RecvRequests);
       }
     }
-    // wait for all send requests to complete
-    MPI_Waitall(SendRequests.size(), SendRequests.data(), MPI_STATUSES_IGNORE);
   }
 
+  // send data to lower level, deLevel+1
   void MPIAverSend(std::int64_t count, std::vector<MPI_Request>& SendRequests) {
     for (BlockField<FieldType, FloatType, Dim>& blockF : _Fields) {
       const int deLevel =
         static_cast<int>(_BlockGeo.getMaxLevel() - blockF.getBlock().getLevel());
-      if ((count % (static_cast<int>(pow(2, deLevel))) == 0) &&
-          blockF.getBlock()._NeedMPIComm) {
-        blockF.mpiAverSend(SendRequests);
+      if (blockF.getBlock().getLevel() != std::uint8_t(0)) {
+        if ((count % (static_cast<int>(pow(2, deLevel + 1))) == 0) &&
+            blockF.getBlock()._NeedMPIComm) {
+          blockF.mpiAverSend(SendRequests);
+        }
       }
     }
   }
@@ -821,19 +847,21 @@ class BlockFieldManager {
     // --- receive data ---
     std::vector<MPI_Request> RecvRequests;
     MPIAverRecv(count, RecvRequests);
-    // --- wait and set field data ---
-    MPIAverSet(count, RecvRequests);
     // wait for all send requests to complete
     MPI_Waitall(SendRequests.size(), SendRequests.data(), MPI_STATUSES_IGNORE);
+    // --- wait and set field data ---
+    MPIAverSet(count, RecvRequests);
   }
-
+  // send data to higher level, deLevel-1
   void MPIInterpSend(std::int64_t count, std::vector<MPI_Request>& SendRequests) {
     for (BlockField<FieldType, FloatType, Dim>& blockF : _Fields) {
       const int deLevel =
-        static_cast<int>(_BlockGeo.getMaxLevel() - blockF.getBlock().getLevel());
-      if ((count % (static_cast<int>(pow(2, deLevel))) == 0) &&
-          blockF.getBlock()._NeedMPIComm) {
-        blockF.mpiIntpSend(SendRequests);
+        static_cast<int>(_BlockGeo.getMaxLevel() - blockF.getBlock().getLevel()) - 1;
+      if (deLevel != -1) {
+        if ((count % (static_cast<int>(pow(2, deLevel))) == 0) &&
+            blockF.getBlock()._NeedMPIComm) {
+          blockF.mpiIntpSend(SendRequests);
+        }
       }
     }
   }
@@ -866,16 +894,10 @@ class BlockFieldManager {
     // --- receive data ---
     std::vector<MPI_Request> RecvRequests;
     MPIInterpRecv(count, RecvRequests);
-    // --- wait and set field data ---
-    MPIInterpSet(count, RecvRequests);
     // wait for all send requests to complete
     MPI_Waitall(SendRequests.size(), SendRequests.data(), MPI_STATUSES_IGNORE);
-  }
-
-  void MPICommunicateAll(std::int64_t count) {
-    MPINormalCommunicate(count);
-    MPIAverCommunicate(count);
-    MPIInterpCommunicate(count);
+    // --- wait and set field data ---
+    MPIInterpSet(count, RecvRequests);
   }
 
   void MPINormalCommunicate() {
@@ -894,6 +916,9 @@ class BlockFieldManager {
         blockF.mpiNormalRecv(RecvRequests);
       }
     }
+    // wait for all send requests to complete
+    MPI_Waitall(SendRequests.size(), SendRequests.data(), MPI_STATUSES_IGNORE);
+    // MPI_Waitall(RecvRequests.size(), RecvRequests.data(), MPI_STATUSES_IGNORE);
     // --- wait and set field data ---
     int reqidx = 0;
     for (BlockField<FieldType, FloatType, Dim>& blockF : _Fields) {
@@ -901,8 +926,6 @@ class BlockFieldManager {
         blockF.mpiNormalSet(reqidx, RecvRequests);
       }
     }
-    // wait for all send requests to complete
-    MPI_Waitall(SendRequests.size(), SendRequests.data(), MPI_STATUSES_IGNORE);
   }
   void MPIAverCommunicate() {
     mpi().barrier();
@@ -920,6 +943,9 @@ class BlockFieldManager {
         blockF.mpiAverRecv(RecvRequests);
       }
     }
+    // wait for all send requests to complete
+    MPI_Waitall(SendRequests.size(), SendRequests.data(), MPI_STATUSES_IGNORE);
+    // MPI_Waitall(RecvRequests.size(), RecvRequests.data(), MPI_STATUSES_IGNORE);
     // --- wait and set field data ---
     int reqidx = 0;
     for (BlockField<FieldType, FloatType, Dim>& blockF : _Fields) {
@@ -927,8 +953,6 @@ class BlockFieldManager {
         blockF.mpiAverSet(reqidx, RecvRequests);
       }
     }
-    // wait for all send requests to complete
-    MPI_Waitall(SendRequests.size(), SendRequests.data(), MPI_STATUSES_IGNORE);
   }
   void MPIInterpCommunicate() {
     mpi().barrier();
@@ -946,6 +970,9 @@ class BlockFieldManager {
         blockF.mpiIntpRecv(RecvRequests);
       }
     }
+    // wait for all send requests to complete
+    MPI_Waitall(SendRequests.size(), SendRequests.data(), MPI_STATUSES_IGNORE);
+    // MPI_Waitall(RecvRequests.size(), RecvRequests.data(), MPI_STATUSES_IGNORE);
     // --- wait and set field data ---
     int reqidx = 0;
     for (BlockField<FieldType, FloatType, Dim>& blockF : _Fields) {
@@ -953,14 +980,6 @@ class BlockFieldManager {
         blockF.mpiIntpSet(reqidx, RecvRequests);
       }
     }
-    // wait for all send requests to complete
-    MPI_Waitall(SendRequests.size(), SendRequests.data(), MPI_STATUSES_IGNORE);
-  }
-
-  void MPICommunicateAll() {
-    MPINormalCommunicate();
-    MPIAverCommunicate();
-    MPIInterpCommunicate();
   }
 #endif
 };

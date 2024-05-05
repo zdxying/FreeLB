@@ -81,13 +81,10 @@ class Block2D : public BasicBlock<T, 2> {
   const Block2D<T>& getNeighbor(int id) const { return *_Neighbors[id]; }
 
   std::vector<BlockComm<T, 2>>& getCommunicators() { return Communicators; }
-  BlockComm<T, 2>& getCommunicator(int id) { return Communicators[id]; }
 
   std::vector<InterpBlockComm<T, 2>>& getInterpBlockComm() { return InterpComm; }
-  InterpBlockComm<T, 2>& getInterpBlockComm(int id) { return InterpComm[id]; }
 
   std::vector<InterpBlockComm<T, 2>>& getAverageBlockComm() { return AverageComm; }
-  InterpBlockComm<T, 2>& getAverageBlockComm(int id) { return AverageComm[id]; }
 
 #ifdef MPI_ENABLED
   int getRank() const { return _Rank; }
@@ -143,7 +140,6 @@ class BlockGeometry2D : public BasicBlock<T, 2> {
   Block2D<T>& getBlock(int id) { return _Blocks[id]; }
   const Block2D<T>& getBlock(int id) const { return _Blocks[id]; }
 
-  void UpdateMaxLevel();
   inline std::uint8_t getMaxLevel() const { return _MaxLevel; }
 
   int getBlockNum() const { return _Blocks.size(); }
@@ -251,6 +247,14 @@ class BlockGeometryHelper2D : public BasicBlock<T, 2> {
 
   int getCellsNx() const { return CellsNx; }
   int getCellsNy() const { return CellsNy; }
+
+  std::size_t getTotalBaseCellNum() {
+    std::size_t sum = 0;
+    for (BasicBlock<T, 2>& block : getAllBasicBlocks()) {
+      sum += block.getN();
+    }
+    return sum;
+  }
 
   // get all new basic blocks
   std::vector<BasicBlock<T, 2>>& getAllBasicBlocks() {

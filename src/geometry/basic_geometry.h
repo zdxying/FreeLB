@@ -181,7 +181,7 @@ class BasicBlock : public AABB<T, D> {
  public:
   BasicBlock() = default;
   BasicBlock(T voxsize, const AABB<T, D>& aabb, const AABB<int, D>& idxblock,
-             int blockid = 1)
+             int blockid = -1)
       : VoxelSize(voxsize), AABB<T, D>(aabb),
         MinCenter(aabb.getMin() + Vector<T, D>{T(0.5) * voxsize}), IndexBlock(idxblock),
         Mesh(idxblock.getExtension() + Vector<int, D>{1}), BlockId(blockid),

@@ -156,7 +156,6 @@ class BlockLattice : public BlockRhoLattice<T> {
   std::vector<BlockLatComm<T, LatSet>>& getCommunicators() { return Communicators; }
   std::vector<InterpBlockLatComm<T, LatSet>>& getAverageComm() { return AverageComm; }
   std::vector<InterpBlockLatComm<T, LatSet>>& getInterpComm() { return InterpComm; }
-  BlockLatComm<T, LatSet>& getCommunicator(int i) { return Communicators[i]; }
 
   // convert from fine to coarse, call after all average communication(including pops)
   void PopConvFineToCoarse();
@@ -227,7 +226,16 @@ class BlockLatticeManager {
   void InitAverComm();
   void InitIntpComm();
 
-  void UpdateMaxLevel() { BlockGeo.UpdateMaxLevel(); }
+  // get block lattice with block id
+  BlockLattice<T, LatSet>& findBlockLat(int blockid){
+    for (BlockLattice<T, LatSet>& blocklat : BlockLats) {
+      if (blocklat.getGeo().getBlockId() == blockid) return blocklat;
+    }
+    std::cerr << "[BlockLatticeManager]: can't find blocklat with blockid " << blockid
+              << std::endl;
+    exit(1);
+  }
+
   inline std::uint8_t getMaxLevel() const { return BlockGeo.getMaxLevel(); }
 
   BlockFieldManager<ScalerField<T>, T, LatSet::d>& getRhoFM() { return RhoFM; }

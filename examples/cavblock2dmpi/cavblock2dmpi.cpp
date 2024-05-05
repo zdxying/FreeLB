@@ -152,9 +152,8 @@ int main(int argc, char* argv[]) {
   BlockFieldManager<VectorFieldAOS<T, 2>, T, 2> VelocityFM(Geo);
   // set initial value of field
   Vector<T, 2> LatU_Wall = BaseConv.getLatticeU(U_Wall);
-  VelocityFM.forEach(
-    toplid, FlagFM, BBMovingWallFlag,
-    [&](VectorFieldAOS<T, 2>& field, std::size_t id) { field.SetField(id, LatU_Wall); });
+  VelocityFM.forEach(FlagFM, BBMovingWallFlag,
+                     [&](auto& field, std::size_t id) { field.SetField(id, LatU_Wall); });
 
   // lattice
   BlockLatticeManager<T, LatSet> NSLattice(Geo, BaseConv, VelocityFM);
@@ -197,13 +196,15 @@ int main(int argc, char* argv[]) {
     ++OutputTimer;
 
     if (MainLoopTimer() % OutputStep == 0) {
-      res = NSLattice.getToleranceU(1);
-      OutputTimer.Print_InnerLoopPerformance(GeoHelper.getN(), OutputStep);
+      res = NSLattice.getToleranceU(-1);
+      OutputTimer.Print_InnerLoopPerformance(GeoHelper.getTotalBaseCellNum(), OutputStep);
       Printer::Print_Res<T>(res);
       Printer::Endl();
       NSWriter.WriteBinary(MainLoopTimer());
     }
   }
   Printer::Print_BigBanner(std::string("Calculation Complete!"));
-  MainLoopTimer.Print_MainLoopPerformance(GeoHelper.getN());
+  MainLoopTimer.Print_MainLoopPerformance(GeoHelper.getTotalBaseCellNum());
+  Printer::Print("Total PhysTime", BaseConv.getPhysTime(MainLoopTimer()));
+  Printer::Endl();
 }

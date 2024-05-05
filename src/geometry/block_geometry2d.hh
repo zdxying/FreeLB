@@ -124,7 +124,7 @@ BlockGeometry2D<T>::BlockGeometry2D(int Nx, int Ny, int blocknum, const AABB<T, 
                        AABB<int, 2>(Vector<int, 2>{0}, Vector<int, 2>{Nx + 1, Ny + 1})),
       _BaseBlock(voxelSize, block,
                  AABB<int, 2>(Vector<int, 2>{1}, Vector<int, 2>{Nx, Ny})),
-      _overlap(overlap) {
+      _overlap(overlap), _MaxLevel(std::uint8_t(0)) {
   DivideBlocks(blocknum);
   CreateBlocks();
   SetupNbrs();
@@ -137,7 +137,7 @@ BlockGeometry2D<T>::BlockGeometry2D(int Nx, int Ny, int blocknum, const AABB<T, 
 template <typename T>
 BlockGeometry2D<T>::BlockGeometry2D(BlockGeometryHelper2D<T> &GeoHelper)
     : _BaseBlock(GeoHelper.getBaseBlock()), BasicBlock<T, 2>(GeoHelper),
-      _overlap(GeoHelper.getExt()) {
+      _overlap(GeoHelper.getExt()), _MaxLevel(GeoHelper.getMaxLevel()) {
   // create blocks from GeoHelper
   for (BasicBlock<T, 2> *baseblock : GeoHelper.getBasicBlocks()) {
     int overlap = (baseblock->getLevel() != std::uint8_t(0)) ? 2 : 1;
@@ -145,7 +145,6 @@ BlockGeometry2D<T>::BlockGeometry2D(BlockGeometryHelper2D<T> &GeoHelper)
   }
   SetupNbrs();
   InitAllComm();
-  UpdateMaxLevel();
 #ifdef MPI_ENABLED
   InitAllMPIComm(GeoHelper);
 #else
@@ -170,19 +169,11 @@ void BlockGeometry2D<T>::Init(BlockGeometryHelper2D<T> &GeoHelper) {
   }
   SetupNbrs();
   InitAllComm();
-  UpdateMaxLevel();
 #ifdef MPI_ENABLED
   InitAllMPIComm(GeoHelper);
 #else
   PrintInfo();
 #endif
-}
-
-template <typename T>
-void BlockGeometry2D<T>::UpdateMaxLevel() {
-  _MaxLevel = std::uint8_t(0);
-  for (const Block2D<T> &block : _Blocks)
-    _MaxLevel = std::max(_MaxLevel, block.getLevel());
 }
 
 template <typename T>
@@ -586,7 +577,7 @@ void BlockGeometry2D<T>::InitMPIIntpComm(BlockGeometryHelper2D<T> &GeoHelper) {
         const T Cvoxsize = nbaseblock.getVoxelSize();
         const T Fvoxsize = block.getVoxelSize();
         // get intersection
-        const AABB<T, 2> intsec = getIntersection(baseblock_ext2, nbaseblock);
+        const AABB<T, 2> intsec = getIntersection(block, nbaseblock);
         // use coarse grid size here, convient for calculating fine cell index
         int CNx = static_cast<int>(std::round(intsec.getExtension()[0] / Cvoxsize));
         int CNy = static_cast<int>(std::round(intsec.getExtension()[1] / Cvoxsize));
@@ -602,8 +593,8 @@ void BlockGeometry2D<T>::InitMPIIntpComm(BlockGeometryHelper2D<T> &GeoHelper) {
             std::size_t Fid3 = Fid2 + 1;
             recver.RecvCells.push_back(Fid0);
             recver.RecvCells.push_back(Fid1);
-            recver.RecvCells.push_back(Fid3);
             recver.RecvCells.push_back(Fid2);
+            recver.RecvCells.push_back(Fid3);
           }
         }
         block._NeedMPIComm = true;
