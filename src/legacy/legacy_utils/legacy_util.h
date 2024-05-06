@@ -2,36 +2,9 @@
 
 #pragma once
 
-
 #include <vector>
 #include <omp.h>
 #include <math.h>
-
-// old 2D vector, including operations
-// NOTICE: use a unified Vector<T,D> in data_struct/Vector.h
-template <typename T>
-struct Vector2D {
-  T x;
-  T y;
-  Vector2D(T x_ = 0, T y_ = 0) : x(x_), y(y_) {}
-  // overloaded operations:
-  Vector2D operator+(const Vector2D &b) const {
-    return Vector2D(x + b.x, y + b.y);
-  }
-  Vector2D operator-(const Vector2D &b) const {
-    return Vector2D(x - b.x, y - b.y);
-  }
-  // dot product
-  T operator*(const Vector2D &b) const { return x * b.x + y * b.y; }
-  // cross product
-  T operator^(const Vector2D &b) const { return x * b.y - b.x * y; }
-
-  // self operations:
-  // norm
-  T norm() const { return sqrt(x * x + y * y); }
-  // square
-  T sqr() const { return x * x + y * y; }
-};
 
 template <typename T>
 struct Vect2D {
@@ -73,30 +46,6 @@ struct Vect2D {
     loc[1] = -dx * sin(theta) + dy * cos(theta);
   }
 };
-
-// template <typename T>
-// struct Vect3D {
-//   static T dot(const T *a, const int *b) { return a[0] * b[0] + a[1] * b[1] +
-//   a[2] * b[2]; } static T dot(const T *a, const T *b) { return a[0] * b[0] +
-//   a[1] * b[1] + a[2] * b[2]; } static T cross(const T *a, const int *b) {
-//   return a[0] * b[1] - b[0] * a[1] + a[2] * b[1] - b[2] * a[1] + a[0] * b[2]
-//   - b[0] * a[2]; } static T cross(const T *a, const T *b) { return a[0] *
-//   b[1] - b[0] * a[1]; } static T sqr(const T *a) { return a[0] * a[0] + a[1]
-//   * a[1] + a[2] * a[2]; } static T norm(const T *a) { return sqrt(sqr(a)); }
-//   static int quad(const T *a) {
-//     // 2 | 1
-//     // -----
-//     // 3 | 4
-//     if (a[0] >= 0 && a[1] >= 0)
-//       return 0;
-//     else if (a[0] < 0 && a[1] >= 0)
-//       return 1;
-//     else if (a[0] < 0 && a[1] < 0)
-//       return 2;
-//     else
-//       return 3;
-//   }
-// };
 
 // index
 struct Index2D {
@@ -234,57 +183,6 @@ struct Index2D {
     for (int j = 1 + offset; j < Nj - 1 - offset; j++) {
       id = GetId(Ni - 1 - offset, j, Ni);
       func(id);
-    }
-  }
-};
-
-struct Index3D {
-  static inline int GetId(int i, int j, int k, int Ni, int NiNj) {
-    return k * NiNj + j * Ni + i;
-  }
-  // traverse cuboid area
-  template <typename T>
-  static void Traverse_Array_Value(int Ni, int Nj, int Nk, int offset, T *array,
-                                   T value) {
-    int id;
-    int NiNj = Ni * Nj;
-#pragma omp parallel for private(id) num_threads(Thread_Num)
-    for (int k = offset; k < Nk - offset; k++) {
-      for (int j = offset; j < Nj - offset; j++) {
-        for (int i = offset; i < Ni - offset; i++) {
-          id = GetId(i, j, k, Ni, NiNj);
-          array[id] = value;
-        }
-      }
-    }
-  }
-  template <typename T>
-  static void TraverseVector(int Ni, int Nj, int Nk, int offset,
-                             std::vector<T *> &array, std::vector<T> &value) {
-    int id;
-    int NiNj = Ni * Nj;
-#pragma omp parallel for private(id) num_threads(Thread_Num)
-    for (int k = offset; k < Nk - offset; k++) {
-      for (int j = offset; j < Nj - offset; j++) {
-        for (int i = offset; i < Ni - offset; i++) {
-          id = GetId(i, j, k, Ni, NiNj);
-          for (int m = 0; m < value.size(); m++) {
-            array.at(m)[id] = value.at(m);
-          }
-        }
-      }
-    }
-  }
-  template <typename T>
-  static void TraverseFunc(int Ni, int Nj, int Nk, int offset, T value,
-                           void (*func)(int, int, int, T)) {
-#pragma omp parallel for num_threads(Thread_Num)
-    for (int k = offset; k < Nk - offset; k++) {
-      for (int j = offset; j < Nj - offset; j++) {
-        for (int i = offset; i < Ni - offset; i++) {
-          func(i, j, k, value);
-        }
-      }
     }
   }
 };

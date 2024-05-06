@@ -1,9 +1,7 @@
 // bcs 2d
 #pragma once
 
-#include "legacy/legacy_boundary/legacy_basic_boundary.h"
 #include "legacy/legacy_lattice/legacyfield.h"
-
 
 // flow direction, used to handle boundary cells' streaming and bcs
 template <int q>

@@ -30,7 +30,6 @@ int Thread_Num;
 // physical properties
 T rho_ref;    // g/mm^3
 T Kine_Visc;  // mm^2/s kinematic viscosity of the liquid
-T Ra;         // Rayleigh number
 /*free surface*/
 // surface tension: N/m = kg/s^2
 // water: 0.0728 N/m at 20 C = 0.0728 kg/s^2 = 72.8 g/s^2
@@ -42,7 +41,6 @@ T lonelyThreshold;
 // init conditions
 Vector<T, 2> U_Ini;  // mm/s
 T U_Max;
-T P_char;
 
 // bcs
 Vector<T, 2> U_Wall;  // mm/s
@@ -79,7 +77,6 @@ void readParam() {
   U_Ini[0] = param_reader.getValue<T>("Init_Conditions", "U_Ini0");
   U_Ini[1] = param_reader.getValue<T>("Init_Conditions", "U_Ini1");
   U_Max = param_reader.getValue<T>("Init_Conditions", "U_Max");
-  P_char = param_reader.getValue<T>("Init_Conditions", "P_char");
   // bcs
   U_Wall[0] = param_reader.getValue<T>("Boundary_Conditions", "Velo_Wall0");
   U_Wall[1] = param_reader.getValue<T>("Boundary_Conditions", "Velo_Wall1");
@@ -102,7 +99,7 @@ void readParam() {
 }
 
 int main() {
-  std::uint8_t BouncebackFlag = std::uint8_t(3);
+  std::uint8_t BouncebackFlag = std::uint8_t(4);
 
   Printer::Print_BigBanner(std::string("Initializing..."));
 
@@ -123,10 +120,10 @@ int main() {
       Vector<T, 2>(T(0), T(0)),
       Vector<T, 2>(T(int(Ni / 4) * Cell_Len), T(int(1 * Nj / 3) * Cell_Len)));
 
-  Geometry2D<T> Geo(Ni, Nj, cavity, Cell_Len, Vector<T, 2>{}, Type::Gas,
-                    Type::Solid);
-  Geo.SetupBoundary<LatSet>(Type::Gas, BouncebackFlag);
-  Geo.setFlag(water, Type::Gas, Type::Fluid);
+  Geometry2D<T> Geo(Ni, Nj, cavity, Cell_Len, Vector<T, 2>{}, FSType::Gas,
+                    FSType::Solid);
+  Geo.SetupBoundary<LatSet>(FSType::Gas, BouncebackFlag);
+  Geo.setFlag(water, FSType::Gas, FSType::Fluid);
 
   vtkWriter::FieldFlagWriter<std::uint8_t> flagwriter(
       "flag", Geo.getGeoFlagField().getField().getdata(),
@@ -162,35 +159,35 @@ int main() {
                                 surface_tension_coefficient);
   // set cell type for free surface
   // set solid
-  Geo.forEachVoxel(Type::Solid, [&FreeSurface](int id) {
-    FreeSurface.getType().SetField(id, Type::Solid);
+  Geo.forEachVoxel(FSType::Solid, [&FreeSurface](int id) {
+    FreeSurface.getType().SetField(id, FSType::Solid);
   });
   // set gas
-  Geo.forEachVoxel(Type::Gas, [&FreeSurface](int id) {
-    FreeSurface.getType().SetField(id, Type::Gas);
+  Geo.forEachVoxel(FSType::Gas, [&FreeSurface](int id) {
+    FreeSurface.getType().SetField(id, FSType::Gas);
   });
   // set fluid
   Geo.forEachVoxel(water, [&FreeSurface](int id) {
-    FreeSurface.getType().SetField(id, Type::Fluid);
+    FreeSurface.getType().SetField(id, FSType::Fluid);
   });
   // set interface
   FreeSurface.getType().getField().for_isflag(
-      Type::Fluid, [&FreeSurface, &Geo](std::size_t id) {
-        if (Geo.template hasNeighborFlag<LatSet>(id, Type::Gas)) {
-          FreeSurface.getType().SetField(id, Type::Interface);
+      FSType::Fluid, [&FreeSurface, &Geo](std::size_t id) {
+        if (Geo.template hasNeighborFlag<LatSet>(id, FSType::Gas)) {
+          FreeSurface.getType().SetField(id, FSType::Interface);
         }
       });
   // set pops
   FreeSurface.getType().getField().for_isflag(
-      Type::Fluid, [&NSLattice](std::size_t id) {
+      FSType::Fluid, [&NSLattice](std::size_t id) {
         NSLattice.InitPop(id, NSLattice.getLatRhoInit());
       });
   FreeSurface.getType().getField().for_isflag(
-      Type::Interface, [&NSLattice](std::size_t id) {
+      FSType::Interface, [&NSLattice](std::size_t id) {
         NSLattice.InitPop(id, NSLattice.getLatRhoInit() / 2);
       });
   FreeSurface.getType().getField().for_isflag(
-      Type::Gas, [&NSLattice](std::size_t id) { NSLattice.InitPop(id, T(0)); });
+      FSType::Gas, [&NSLattice](std::size_t id) { NSLattice.InitPop(id, T(0)); });
 
   FreeSurface.Initialize();
   //// end free surface
@@ -206,7 +203,7 @@ int main() {
   vtkWriter::FieldVectorWriter_AOS<T, LatSet::d> VelocityWriter(
       "velocity", NSLattice.getVelocityField().getField().getdata(),
       NSLattice.getVelocityField().getField().size());
-  vtkWriter::FieldFlagWriter<Type> Typewriter(
+  vtkWriter::FieldFlagWriter<FSType> Typewriter(
       "type", FreeSurface.getType().getField().getdata(),
       FreeSurface.getType().getField().size());
   vtkWriter::FieldFlagWriter<Flag> Flagwriter(

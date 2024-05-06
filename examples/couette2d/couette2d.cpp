@@ -1,4 +1,24 @@
-// Couette.cpp
+/* This file is part of FreeLB
+ *
+ * Copyright (C) 2024 Yuan Man
+ * E-mail contact: ymmanyuan@outlook.com
+ * The most recent progress of FreeLB will be updated at
+ * <https://github.com/zdxying/FreeLB>
+ *
+ * FreeLB is free software: you can redistribute it and/or modify it under the terms of
+ * the GNU General Public License as published by the Free Software Foundation, either
+ * version 3 of the License, or (at your option) any later version.
+ *
+ * FreeLB is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
+ * without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
+ * PURPOSE. See the GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License along with FreeLB. If
+ * not, see <https://www.gnu.org/licenses/>.
+ *
+ */
+
+// couette2d.cpp
 // Couette flow 2d
 // this is a benchmark for the freeLB library
 
@@ -35,7 +55,6 @@ T Ra;         // Rayleigh number
 // init conditions
 Vector<T, 2> U_Ini;  // mm/s
 T U_Max;
-T P_char;
 
 // bcs
 Vector<T, 2> U_Wall;  // mm/s
@@ -47,14 +66,13 @@ T tol;
 std::string work_dir;
 
 void readParam() {
-  
   iniReader param_reader("Couetteparam.ini");
   // Thread_Num = param_reader.getValue<int>("OMP", "Thread_Num");
   // mesh
   work_dir = param_reader.getValue<std::string>("workdir", "workdir_");
   // parallel
   Thread_Num = param_reader.getValue<int>("parallel", "thread_num");
-  
+
   Ni = param_reader.getValue<int>("Mesh", "Ni");
   Nj = param_reader.getValue<int>("Mesh", "Nj");
   Cell_Len = param_reader.getValue<T>("Mesh", "Cell_Len");
@@ -66,7 +84,6 @@ void readParam() {
   U_Ini[0] = param_reader.getValue<T>("Init_Conditions", "U_Ini0");
   U_Ini[1] = param_reader.getValue<T>("Init_Conditions", "U_Ini1");
   U_Max = param_reader.getValue<T>("Init_Conditions", "U_Max");
-  P_char = param_reader.getValue<T>("Init_Conditions", "P_char");
   // bcs
   U_Wall[0] = param_reader.getValue<T>("Boundary_Conditions", "Velo_Wall0");
   U_Wall[1] = param_reader.getValue<T>("Boundary_Conditions", "Velo_Wall1");
@@ -77,7 +94,7 @@ void readParam() {
   OutputStep = param_reader.getValue<int>("Simulation_Settings", "OutputStep");
   tol = param_reader.getValue<T>("tolerance", "tol");
 
-  
+
   std::cout << "------------Simulation Parameters:-------------\n" << std::endl;
   std::cout << "[Simulation_Settings]:"
             << "TotalStep:         " << MaxStep << "\n"
@@ -90,10 +107,10 @@ void readParam() {
 }
 
 int main() {
-  std::uint8_t BouncebackFlag = std::uint8_t(2);
-  std::uint8_t PeriodicFlag1 = std::uint8_t(3);
-  std::uint8_t PeriodicFlag2 = std::uint8_t(4);
-  std::uint8_t BBMovingWallFlag = std::uint8_t(5);
+  std::uint8_t BouncebackFlag = std::uint8_t(4);
+  std::uint8_t PeriodicFlag1 = std::uint8_t(8);
+  std::uint8_t PeriodicFlag2 = std::uint8_t(16);
+  std::uint8_t BBMovingWallFlag = std::uint8_t(32);
 
   Printer::Print_BigBanner(std::string("Initializing..."));
 
@@ -121,8 +138,8 @@ int main() {
   Geo.setFlag(toplid, BouncebackFlag, BBMovingWallFlag);
 
   vtkWriter::FieldFlagWriter<std::uint8_t> flagwriter(
-      "flag", Geo.getGeoFlagField().getField().getdata(),
-      Geo.getGeoFlagField().getField().size());
+    "flag", Geo.getGeoFlagField().getField().getdata(),
+    Geo.getGeoFlagField().getField().size());
   vtkStruPointsWriter<T, LatSet::d> GeoWriter("CavGeo", Geo);
   GeoWriter.addtoWriteList(&flagwriter);
   GeoWriter.Write();
@@ -132,17 +149,15 @@ int main() {
   VectorFieldAOS<T, LatSet::d> Velocity(Geo.getVoxelsNum());
   // set initial value of field
   Geo.forEachVoxel(toplid, BBMovingWallFlag,
-                     [&Velocity](int id) { Velocity.SetField(id, U_Wall); });
+                   [&Velocity](int id) { Velocity.SetField(id, U_Wall); });
   // lattice
   BasicLattice<T, LatSet> NSLattice(Geo, BaseConv, Velocity);
   NSLattice.EnableToleranceU();
   // bcs
-  BBLikeFixedBoundary<
-      T, LatSet, BounceBackLikeMethod<T, LatSet>::normal_bounceback>
-      NS_BB("NS_BB", NSLattice, BouncebackFlag);
-  BBLikeFixedBoundary<
-      T, LatSet, BounceBackLikeMethod<T, LatSet>::movingwall_bounceback>
-      NS_BBMW("NS_BBMW", NSLattice, BBMovingWallFlag);
+  BBLikeFixedBoundary<T, LatSet, BounceBackLikeMethod<T, LatSet>::normal_bounceback>
+    NS_BB("NS_BB", NSLattice, BouncebackFlag);
+  BBLikeFixedBoundary<T, LatSet, BounceBackLikeMethod<T, LatSet>::movingwall_bounceback>
+    NS_BBMW("NS_BBMW", NSLattice, BBMovingWallFlag);
   FixedPeriodicBoundary<T, LatSet> NS_Pleft(NSLattice, left, right, PeriodicFlag1);
   FixedPeriodicBoundary<T, LatSet> NS_Pright(NSLattice, right, left, PeriodicFlag2);
   BoundaryManager BM1(&NS_BB, &NS_BBMW);
@@ -154,12 +169,12 @@ int main() {
   Timer MainLoopTimer;
   Timer OutputTimer;
 
-  vtkWriter::FieldScalerWriter<T> RhoWriter(
-      "rho", NSLattice.getRhoField().getField().getdata(),
-      NSLattice.getRhoField().getField().size());
+  vtkWriter::FieldScalerWriter<T> RhoWriter("rho",
+                                            NSLattice.getRhoField().getField().getdata(),
+                                            NSLattice.getRhoField().getField().size());
   vtkWriter::FieldVectorWriter_AOS<T, LatSet::d> VelocityWriter(
-      "velocity", NSLattice.getVelocityField().getField().getdata(),
-      NSLattice.getVelocityField().getField().size());
+    "velocity", NSLattice.getVelocityField().getField().getdata(),
+    NSLattice.getVelocityField().getField().size());
   vtkStruPointsWriter<T, LatSet::d> NSWriter("NS", Geo);
   NSWriter.addtoWriteList(&RhoWriter, &VelocityWriter);
 
@@ -183,6 +198,7 @@ int main() {
       res = NSLattice.getToleranceU();
       OutputTimer.Print_InnerLoopPerformance(NSLattice.getN(), OutputStep);
       Printer::Print_Res<T>(res);
+      Printer::Endl();
       // NSWriter.Write(MainLoopTimer());
     }
   }

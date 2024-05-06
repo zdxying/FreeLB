@@ -342,6 +342,11 @@ inline bool nearZero(T a, T epsilon) {
 inline bool isFlag(std::uint8_t flag1, std::uint8_t flag2) {
   return static_cast<bool>(flag1 & flag2);
 }
+// compare 2 uint8_t flags by bitwise AND operation
+// return static_cast<bool>(uint16_t flag1 & uint16_t flag2);
+inline bool isFlag(std::uint16_t flag1, std::uint16_t flag2) {
+  return static_cast<bool>(flag1 & flag2);
+}
 
 // copy data from field
 template <typename ArrayType, unsigned int Dim>

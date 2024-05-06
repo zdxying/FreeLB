@@ -195,14 +195,6 @@ class ZhuStefanescu2D {
   // get Lphi
   // inline T getLphi(T phi);
   // get vertice of polygonal
-  // inline Vector2D<T> getVertice(int id);
-  // check if a point is inside a polygon
-  // bool InPolygon(Vector2D<T>& point, std::vector<Vector2D<T>>& polygon);
-  // sort the vertices of the polygonal
-  // void SortPolygon();
-  // // check if a point is on a line segment
-  // inline bool OnSegment(Vector2D<T>& p1, Vector2D<T>& p2, Vector2D<T>& point);
-  // inline bool OnSegment_(Vector2D<T>& p1, Vector2D<T>& p2, Vector2D<T>& point);
   // return 3 state -1, 0, 1, compared with epsilon and 0
   inline int sign(T x);
   // get position of neighbors with State = -1

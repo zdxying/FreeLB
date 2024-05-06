@@ -81,21 +81,6 @@ class BlockGeometryHelper3D;
 template <typename T, unsigned int D>
 using BlockGeometryHelper = std::conditional_t<D == 2, BlockGeometryHelper2D<T>, BlockGeometryHelper3D<T>>;
 
-// legacy alias
-template <typename T>
-class VoxelGeometry2D;
-template <typename T>
-class VoxelGeometry3D;
-template <typename T, unsigned int D>
-using VoxelGeometry = std::conditional_t<D == 2, VoxelGeometry2D<T>, VoxelGeometry3D<T>>;
-// legacy alias
-template <typename T>
-class RefinedGeometry2D;
-template <typename T>
-class RefinedGeometry3D;
-template <typename T, unsigned int D>
-using RefinedGeometry = std::conditional_t<D == 2, RefinedGeometry2D<T>, RefinedGeometry3D<T>>;
-
 // ---------field alias-----------
 template <typename ArrayType, unsigned int D>
 class GenericField;

@@ -24,13 +24,13 @@ template <typename T, typename LatSet>
 void FreeSurface2D<T, LatSet>::Initialize() {
   for (int Id = 0; Id < N; ++Id) {
     Mass.SetField(Id, T(0));
-    if (isType(Id, Type::Interface)) {
+    if (isType(Id, FSType::Interface)) {
       Fv.SetField(Id, T(0.5));
       Mass.SetField(Id, T(0.5));
-    } else if (isType(Id, Type::Gas)) {
+    } else if (isType(Id, FSType::Gas)) {
       Fv.SetField(Id, T(0));
       Mass.SetField(Id, T(0));
-    } else if (isType(Id, Type::Fluid)) {
+    } else if (isType(Id, FSType::Fluid)) {
       Fv.SetField(Id, T(1));
       Mass.SetField(Id, T(1));
     }
@@ -43,11 +43,11 @@ NbrInfo FreeSurface2D<T, LatSet>::getNbrInfo(int id) {
   NbrInfo nbrInfo;
   for (int i = 1; i < LatSet::q; ++i) {
     int nbrId = Geo.template getNeighborId<LatSet>(id, i);
-    if (isType(nbrId, Type::Gas)) {
+    if (isType(nbrId, FSType::Gas)) {
       nbrInfo.hasGasNbr = true;
-    } else if (isType(nbrId, Type::Fluid)) {
+    } else if (isType(nbrId, FSType::Fluid)) {
       nbrInfo.hasFluidNbr = true;
-    } else if (isType(nbrId, Type::Interface)) {
+    } else if (isType(nbrId, FSType::Interface)) {
       ++nbrInfo.InterfaceNbrNum;
     }
   }
@@ -120,7 +120,7 @@ T FreeSurface2D<T, LatSet>::calculateSurfaceTensionCurvature2D(int id) {
   for (int i = 1; i < LatSet::q; ++i) {
     int nbrId = Geo.template getNeighborId<LatSet>(id, i);
 
-    if (!isType(nbrId, Type::Interface) || !hasNeighborType(nbrId, Type::Gas)) {
+    if (!isType(nbrId, FSType::Interface) || !hasNeighborType(nbrId, FSType::Gas)) {
       continue;
     }
 
@@ -301,9 +301,9 @@ inline void FreeSurface2D<T, LatSet>::Prepare() {
     // Remove all cell flags
     setFlag(Id, Flag::None);
     // add to index
-    if (isType(Id, Type::Fluid))
+    if (isType(Id, FSType::Fluid))
       FluidIdx.push_back(Id);
-    else if (isType(Id, Type::Interface))
+    else if (isType(Id, FSType::Interface))
       InterfaceIdx.push_back(Id);
   }
 }
@@ -315,7 +315,7 @@ void FreeSurface2D<T, LatSet>::Post_Stream() {
     const BasicCell<T, LatSet> cell(Id, NS);
     for (int i = 1; i < LatSet::q; ++i) {
       int nbrId = Geo.template getNeighborId<LatSet>(Id, i);
-      if (isType(nbrId, static_cast<Type>(Type::Fluid | Type::Interface))) {
+      if (isType(nbrId, static_cast<FSType>(FSType::Fluid | FSType::Interface))) {
         const BasicCell<T, LatSet> celli(nbrId, NS);
         Mass.get(Id) += cell[LatSet::opp[i]] - celli[i];
       }
@@ -336,12 +336,12 @@ void FreeSurface2D<T, LatSet>::Post_Stream() {
       int nbrId = Geo.template getNeighborId<LatSet>(Id, i);
       const BasicCell<T, LatSet> celli(nbrId, NS);
       int iopp = LatSet::opp[i];
-      if (isType(nbrId, Type::Fluid)) {
+      if (isType(nbrId, FSType::Fluid)) {
         mass += cell[iopp] - celli[i];
-      } else if (isType(nbrId, Type::Interface)) {
+      } else if (isType(nbrId, FSType::Interface)) {
         T massflow = cell[iopp] - celli[i];
         mass += massflow * T(0.5) * (getF(Id) + getF(nbrId));
-      } else if (isType(nbrId, Type::Gas)) {
+      } else if (isType(nbrId, FSType::Gas)) {
         // reconstruct interface pops streamed from gas cells
         Vector<T, LatSet::d> u = PREVIOUS_VELOCITY.get(Id);
         T u2 = u.getnorm2();
@@ -375,7 +375,7 @@ void FreeSurface2D<T, LatSet>::ToFluidCellConversion() {
  */
 #pragma omp parallel for num_threads(Thread_Num)
   for (int Id = 0; Id < N; ++Id) {
-    if (isType(Id, Type::Gas)) {
+    if (isType(Id, FSType::Gas)) {
       if (hasNeighborFlag(Id, Flag::ToFluid)) {
         BasicCell<T, LatSet> cell(Id, NS);
         setFlag(Id, Flag::NewInterface);
@@ -384,7 +384,7 @@ void FreeSurface2D<T, LatSet>::ToFluidCellConversion() {
         int ctr = 0;
         for (int i = 1; i < LatSet::q; i++) {
           int nbrId = Geo.template getNeighborId<LatSet>(Id, i);
-          if (isType(nbrId, static_cast<Type>(Type::Fluid | Type::Interface))) {
+          if (isType(nbrId, static_cast<FSType>(FSType::Fluid | FSType::Interface))) {
             T rho_tmp = 0.;
             Vector<T, LatSet::d> u_tmp{};
             ++ctr;
@@ -419,7 +419,7 @@ void FreeSurface2D<T, LatSet>::ToGasCellConversion() {
    */
 #pragma omp parallel for num_threads(Thread_Num)
   for (int Id = 0; Id < N; ++Id) {
-    if (isType(Id, Type::Fluid) && hasNeighborFlag(Id, Flag::ToGas)) {
+    if (isType(Id, FSType::Fluid) && hasNeighborFlag(Id, Flag::ToGas)) {
       BasicCell<T, LatSet> cell(Id, NS);
       setFlag(Id, Flag::NewInterface);
       Mass.SetField(Id, moment::Rho<T, LatSet>::get(cell));
@@ -459,7 +459,7 @@ void FreeSurface2D<T, LatSet>::MassExcess() {
 
     for (int i = 1; i < LatSet::q; ++i) {
       int nbrId = Geo.template getNeighborId<LatSet>(Id, i);
-      if (isType(nbrId, Type::Interface) && (isFlag(nbrId, Flag::None)))
+      if (isType(nbrId, FSType::Interface) && (isFlag(nbrId, Flag::None)))
         ++product_total;
     }
 
@@ -470,7 +470,7 @@ void FreeSurface2D<T, LatSet>::MassExcess() {
       T product_fraction = 1. / product_total;
       for (int i = 1; i < LatSet::q; ++i) {
         int nbrId = Geo.template getNeighborId<LatSet>(Id, i);
-        if (isType(nbrId, Type::Interface) && (isFlag(nbrId, Flag::None))) {
+        if (isType(nbrId, FSType::Interface) && (isFlag(nbrId, Flag::None))) {
           mass_excess_vector[i] = mass_excess * product_fraction;
         } else {
           mass_excess_vector[i] = 0.;
@@ -495,27 +495,27 @@ void FreeSurface2D<T, LatSet>::FinalizeConversion() {
 
     switch (flags) {
       case Flag::ToFluid: {
-        setType(Id, Type::Fluid);
+        setType(Id, FSType::Fluid);
         Fv.SetField(Id, T(1));
         Mass.get(Id) += TEMP_MASS_EXCHANGE.get(Id)[0];
       } break;
       case Flag::ToGas: {
-        setType(Id, Type::Gas);
+        setType(Id, FSType::Gas);
         Fv.SetField(Id, T(0));
         Mass.get(Id) += TEMP_MASS_EXCHANGE.get(Id)[0];
       } break;
       case Flag::NewInterface: {
-        setType(Id, Type::Interface);
+        setType(Id, FSType::Interface);
       } break;
       default:
         break;
     }  // end switch flags
 
-    Type type = Types.get(Id);
+    FSType type = Types.get(Id);
 
     /* Collection of mass excess in a pulling step */
     switch (type) {
-      case Type::Interface: {
+      case FSType::Interface: {
         T collected_excess = 0.;
         for (int i = 1; i < LatSet::q; ++i) {
           int nbrId = Geo.template getNeighborId<LatSet>(Id, i);
@@ -539,7 +539,7 @@ void FreeSurface2D<T, LatSet>::FinalizeConversion() {
         Mass.SetField(Id, mass_tmp);
         PREVIOUS_VELOCITY.SetField(Id, u);
       } break;
-      case Type::Fluid: {
+      case FSType::Fluid: {
         T collected_excess = 0.;
 
         for (int i = 1; i < LatSet::q; ++i) {
@@ -563,15 +563,15 @@ void FreeSurface2D<T, LatSet>::FinalizeConversion() {
 
 ///////////////////////////////////
 // namespace FreeSurface
-namespace FreeSurface {
+namespace FS {
 template <typename T, typename LatSet>
 void FreeSurface2D<T, LatSet>::Collide(T omega, T _omega,
                                        const Vector<T, LatSet::d> &force) {
 #pragma omp parallel for num_threads(Thread_Num)
   for (const Voxel<T, LatSet::d> &vox : Voxels) {
     int Id = vox.getId();
-    if (isType(Id, static_cast<FreeSurface::Type>(FreeSurface::Type::Solid |
-                                                  FreeSurface::Type::Gas)))
+    if (isType(Id, static_cast<FSType>(FSType::Solid |
+                                                  FSType::Gas)))
       continue;
     NS.getPop(Id).Compute_rhoU();
     NS.getPop(Id).BGK_O2(omega, _omega);
@@ -589,12 +589,12 @@ void FreeSurface2D<T, LatSet>::Stream() {
   for (const Voxel<T, LatSet::d> &vox : Voxels) {
     int Id = vox.getId();
 
-    if (isType(Id, static_cast<FreeSurface::Type>(FreeSurface::Type::Solid |
-                                                  FreeSurface::Type::Gas)))
+    if (isType(Id, static_cast<FSType>(FSType::Solid |
+                                                  FSType::Gas)))
       continue;
 
     // fluid
-    if (isType(Id, FreeSurface::Type::Fluid)) {
+    if (isType(Id, FSType::Fluid)) {
       // local streaming
       NS.getPop(Id).f[0] = NS.getPop(Id).fpostcol[0];
 
@@ -602,9 +602,9 @@ void FreeSurface2D<T, LatSet>::Stream() {
         int nbrId = vox.getNeighborId(i);
         int iopp = LatSet::opp[i];
         // streaming
-        if (isType(nbrId, static_cast<FreeSurface::Type>(
-                              FreeSurface::Type::Fluid |
-                              FreeSurface::Type::Interface))) {
+        if (isType(nbrId, static_cast<FSType>(
+                              FSType::Fluid |
+                              FSType::Interface))) {
           // streaming
           NS.getPop(Id).f[iopp] = NS.getPop(nbrId).fpostcol[iopp];
           // mass exchange
@@ -615,7 +615,7 @@ void FreeSurface2D<T, LatSet>::Stream() {
           NS.getPop(Id).f[iopp] = NS.getPop(Id).fpostcol[i];
         }
       }
-    } else if (isType(Id, FreeSurface::Type::Interface)) {
+    } else if (isType(Id, FSType::Interface)) {
       // Interface
       // get fraction filled
       T epsilon = getEpsilon(_Type[Id], rho_prev[Id], mass_prev[Id]);
@@ -633,7 +633,7 @@ void FreeSurface2D<T, LatSet>::Stream() {
         int iopp = LatSet::opp[i];
         // streaming
         // fluid cell
-        if (isType(nbrId, FreeSurface::Type::Fluid)) {
+        if (isType(nbrId, FSType::Fluid)) {
           // streaming
           NS.getPop(Id).f[iopp] = NS.getPop(nbrId).fpostcol[iopp];
           // mass exchange
@@ -641,7 +641,7 @@ void FreeSurface2D<T, LatSet>::Stream() {
               NS.getPop(nbrId).fpostcol[iopp] - NS.getPop(Id).fpostcol[i];
 
           // interface cell
-        } else if (isType(nbrId, FreeSurface::Type::Interface)) {
+        } else if (isType(nbrId, FSType::Interface)) {
           // streaming
           NS.getPop(Id).f[iopp] = NS.getPop(nbrId).fpostcol[iopp];
           // mass exchange
@@ -649,24 +649,24 @@ void FreeSurface2D<T, LatSet>::Stream() {
               getEpsilon(_Type[nbrId], rho_prev[nbrId], mass_prev[nbrId]);
 
           T massflow = T(0);
-          if (isType(Id, FreeSurface::Type::NO_FLUID_NEIGH)) {
-            if (isType(nbrId, FreeSurface::Type::NO_FLUID_NEIGH)) {
+          if (isType(Id, FSType::NO_FLUID_NEIGH)) {
+            if (isType(nbrId, FSType::NO_FLUID_NEIGH)) {
               massflow =
                   NS.getPop(nbrId).fpostcol[iopp] - NS.getPop(Id).fpostcol[i];
             } else {
               massflow = -NS.getPop(Id).fpostcol[i];
             }
-          } else if (isType(Id, FreeSurface::Type::NO_EMPTY_NEIGH)) {
-            if (isType(nbrId, FreeSurface::Type::NO_EMPTY_NEIGH)) {
+          } else if (isType(Id, FSType::NO_EMPTY_NEIGH)) {
+            if (isType(nbrId, FSType::NO_EMPTY_NEIGH)) {
               massflow =
                   NS.getPop(nbrId).fpostcol[iopp] - NS.getPop(Id).fpostcol[i];
             } else {
               massflow = NS.getPop(nbrId).fpostcol[iopp];
             }
           } else {
-            if (isType(nbrId, FreeSurface::Type::NO_FLUID_NEIGH)) {
+            if (isType(nbrId, FSType::NO_FLUID_NEIGH)) {
               massflow = NS.getPop(nbrId).fpostcol[iopp];
-            } else if (isType(nbrId, FreeSurface::Type::NO_EMPTY_NEIGH)) {
+            } else if (isType(nbrId, FSType::NO_EMPTY_NEIGH)) {
               massflow = NS.getPop(Id).fpostcol[i];
             } else {
               massflow =
@@ -676,7 +676,7 @@ void FreeSurface2D<T, LatSet>::Stream() {
           _Mass[Id] += massflow * T(0.5) * (epsilon + epsilon_nei);
 
           // gas cell
-        } else if (isType(nbrId, FreeSurface::Type::Gas)) {
+        } else if (isType(nbrId, FSType::Gas)) {
           NS.getPop(Id).f[iopp] =
               feq[iopp] + feq[i] - NS.getPop(Id).fpostcol[i];
           // solid cell
@@ -700,7 +700,7 @@ void FreeSurface2D<T, LatSet>::Stream() {
 
     // calculate density and velocity
     NS.getPop(Id).Compute_rhoU();
-    if (isType(Id, FreeSurface::Type::Fluid)) NS.getPop(Id).rho = _Mass[Id];
+    if (isType(Id, FSType::Fluid)) NS.getPop(Id).rho = _Mass[Id];
   }
 }
 
@@ -721,40 +721,40 @@ void FreeSurface2D<T, LatSet>::Conversion() {
 #pragma omp parallel for num_threads(Thread_Num)
   for (const Voxel<T, LatSet::d> &vox : Voxels) {
     int Id = vox.getId();
-    if (isType(Id, FreeSurface::Type::Interface)) {
+    if (isType(Id, FSType::Interface)) {
       T mass = _Mass[Id];
       T rho = NS.getPop(Id).rho;
       // T rho = 1;
       if (mass > (1 + fill_offset) * rho ||
           (mass >= (1 - lonely_tresh) * rho &&
-           isType(Id, FreeSurface::Type::NO_EMPTY_NEIGH))) {
-        setType(Id, FreeSurface::Type::TO_FLUID);
+           isType(Id, FSType::NO_EMPTY_NEIGH))) {
+        setType(Id, FSType::TO_FLUID);
       } else if (mass < -fill_offset * rho ||
                  (mass <= lonely_tresh * rho &&
-                  isType(Id, FreeSurface::Type::NO_FLUID_NEIGH)) ||
-                 isType(Id, static_cast<FreeSurface::Type>(
-                                FreeSurface::Type::NO_IFACE_NEIGH |
-                                FreeSurface::Type::NO_FLUID_NEIGH))) {
-        setType(Id, FreeSurface::Type::TO_GAS);
+                  isType(Id, FSType::NO_FLUID_NEIGH)) ||
+                 isType(Id, static_cast<FSType>(
+                                FSType::NO_IFACE_NEIGH |
+                                FSType::NO_FLUID_NEIGH))) {
+        setType(Id, FSType::TO_GAS);
       }
     }
     // remove neighbor flags
 
-    _Type[Id] = static_cast<FreeSurface::Type>(
-        _Type[Id] & (~(FreeSurface::Type::NO_FLUID_NEIGH |
-                       FreeSurface::Type::NO_EMPTY_NEIGH |
-                       FreeSurface::Type::NO_IFACE_NEIGH)));
+    _Type[Id] = static_cast<FSType>(
+        _Type[Id] & (~(FSType::NO_FLUID_NEIGH |
+                       FSType::NO_EMPTY_NEIGH |
+                       FSType::NO_IFACE_NEIGH)));
   }
 
 // interface -> fluid
 #pragma omp parallel for num_threads(Thread_Num)
   for (const Voxel<T, LatSet::d> &vox : Voxels) {
     int Id = vox.getId();
-    if (isType(Id, FreeSurface::Type::TO_FLUID)) {
+    if (isType(Id, FSType::TO_FLUID)) {
       for (int i = 1; i < LatSet::q; ++i) {
         int nbrId = vox.getNeighborId(i);
-        if (isType(nbrId, FreeSurface::Type::Gas)) {
-          setType(nbrId, FreeSurface::Type::Interface);
+        if (isType(nbrId, FSType::Gas)) {
+          setType(nbrId, FSType::Interface);
 
           T rho_avg = 0.;
           Vector<T, LatSet::d> u_avg{};
@@ -764,10 +764,10 @@ void FreeSurface2D<T, LatSet>::Conversion() {
           int ctr = 0;
           for (int iPop = 1; iPop < LatSet::q; iPop++) {
             int nbrnbrId = nbrvox.getNeighborId(iPop);
-            if (isType(nbrnbrId, static_cast<FreeSurface::Type>(
-                                     FreeSurface::Type::Fluid |
-                                     FreeSurface::Type::Interface |
-                                     FreeSurface::Type::TO_FLUID))) {
+            if (isType(nbrnbrId, static_cast<FSType>(
+                                     FSType::Fluid |
+                                     FSType::Interface |
+                                     FSType::TO_FLUID))) {
               ++ctr;
               rho_avg += rho_prev[nbrnbrId];
               u_avg = u_avg + u_prev[nbrnbrId];
@@ -799,11 +799,11 @@ void FreeSurface2D<T, LatSet>::Conversion() {
 #pragma omp parallel for num_threads(Thread_Num)
   for (const Voxel<T, LatSet::d> &vox : Voxels) {
     int Id = vox.getId();
-    if (isType(Id, FreeSurface::Type::TO_GAS)) {
+    if (isType(Id, FSType::TO_GAS)) {
       for (int i = 1; i < LatSet::q; ++i) {
         int nbrId = vox.getNeighborId(i);
-        if (isType(nbrId, FreeSurface::Type::Fluid)) {
-          setType(nbrId, FreeSurface::Type::Interface);
+        if (isType(nbrId, FSType::Fluid)) {
+          setType(nbrId, FSType::Interface);
         }
       }
     }
@@ -812,14 +812,14 @@ void FreeSurface2D<T, LatSet>::Conversion() {
 #pragma omp parallel for num_threads(Thread_Num)
   for (const Voxel<T, LatSet::d> &vox : Voxels) {
     int Id = vox.getId();
-    if (isType(Id, FreeSurface::Type::Solid)) continue;
+    if (isType(Id, FSType::Solid)) continue;
     Vector<T, LatSet::d> normal =
         get_normal(Id, cell_type_prev, rho_prev, mass_prev);
     T mex = 0.;
-    if (isType(Id, FreeSurface::Type::TO_FLUID)) {
+    if (isType(Id, FSType::TO_FLUID)) {
       mex = _Mass[Id] - NS.getPop(Id).rho;
       _Mass[Id] = NS.getPop(Id).rho;
-    } else if (isType(Id, FreeSurface::Type::TO_GAS)) {
+    } else if (isType(Id, FSType::TO_GAS)) {
       mex = _Mass[Id];
       normal = {-normal[0], -normal[1]};
       _Mass[Id] = 0.;
@@ -835,7 +835,7 @@ void FreeSurface2D<T, LatSet>::Conversion() {
     for (int iPop = 1; iPop < LatSet::q; iPop++) {
       int nbrId = vox.getNeighborId(iPop);
 
-      if (isType(nbrId, FreeSurface::Type::Interface)) {
+      if (isType(nbrId, FSType::Interface)) {
         eta[iPop] = normal * LatSet::c[iPop];
         if (eta[iPop] <= 0) {
           eta[iPop] = 0.;
@@ -867,15 +867,15 @@ void FreeSurface2D<T, LatSet>::Conversion() {
 #pragma omp parallel for num_threads(Thread_Num)
   for (const Voxel<T, LatSet::d> &vox : Voxels) {
     int Id = vox.getId();
-    if (isType(Id, FreeSurface::Type::Interface)) {
+    if (isType(Id, FSType::Interface)) {
       for (int iPop = 1; iPop < LatSet::q; iPop++) {
         int nbrId = vox.getNeighborId(iPop);
         _Mass[Id] += TEMP_MASS_EXCHANGE[nbrId][iPop];
       }
-    } else if (isType(Id, FreeSurface::Type::TO_FLUID)) {
-      setType(Id, FreeSurface::Type::Fluid);
-    } else if (isType(Id, FreeSurface::Type::TO_GAS)) {
-      setType(Id, FreeSurface::Type::Gas);
+    } else if (isType(Id, FSType::TO_FLUID)) {
+      setType(Id, FSType::Fluid);
+    } else if (isType(Id, FSType::TO_GAS)) {
+      setType(Id, FSType::Gas);
     }
   }
 
@@ -883,23 +883,23 @@ void FreeSurface2D<T, LatSet>::Conversion() {
 #pragma omp parallel for num_threads(Thread_Num)
   for (const Voxel<T, LatSet::d> &vox : Voxels) {
     int Id = vox.getId();
-    if (isType(Id, FreeSurface::Type::Solid)) continue;
+    if (isType(Id, FSType::Solid)) continue;
 
-    _Type[Id] = static_cast<FreeSurface::Type>(
+    _Type[Id] = static_cast<FSType>(
         _Type[Id] |
-        (FreeSurface::Type::NO_FLUID_NEIGH | FreeSurface::Type::NO_EMPTY_NEIGH |
-         FreeSurface::Type::NO_IFACE_NEIGH));
+        (FSType::NO_FLUID_NEIGH | FSType::NO_EMPTY_NEIGH |
+         FSType::NO_IFACE_NEIGH));
     for (int iPop = 1; iPop < LatSet::q; iPop++) {
       int nbrId = vox.getNeighborId(iPop);
-      if (isType(nbrId, FreeSurface::Type::Fluid)) {
-        _Type[Id] = static_cast<FreeSurface::Type>(
-            _Type[Id] & (~FreeSurface::Type::NO_FLUID_NEIGH));
-      } else if (isType(nbrId, FreeSurface::Type::Interface)) {
-        _Type[Id] = static_cast<FreeSurface::Type>(
-            _Type[Id] & (~FreeSurface::Type::NO_IFACE_NEIGH));
-      } else if (isType(nbrId, FreeSurface::Type::Gas)) {
-        _Type[Id] = static_cast<FreeSurface::Type>(
-            _Type[Id] & (~FreeSurface::Type::NO_EMPTY_NEIGH));
+      if (isType(nbrId, FSType::Fluid)) {
+        _Type[Id] = static_cast<FSType>(
+            _Type[Id] & (~FSType::NO_FLUID_NEIGH));
+      } else if (isType(nbrId, FSType::Interface)) {
+        _Type[Id] = static_cast<FSType>(
+            _Type[Id] & (~FSType::NO_IFACE_NEIGH));
+      } else if (isType(nbrId, FSType::Gas)) {
+        _Type[Id] = static_cast<FSType>(
+            _Type[Id] & (~FSType::NO_EMPTY_NEIGH));
       }
     }
   }
@@ -908,7 +908,7 @@ void FreeSurface2D<T, LatSet>::Conversion() {
   // #pragma omp parallel for num_threads(Thread_Num)
   //   for (const Voxel<T, LatSet::d> &vox : Voxels) {
   //     int Id = vox.getId();
-  //     if (isType(Id, Type::Gas)) {
+  //     if (isType(Id, FSType::Gas)) {
   //       if (hasNeighborFlag(Id, Flag::ToFluid)) {
   //         setFlag(Id, Flag::NewInterface);
   //         T rho_avg = 0.;
@@ -917,8 +917,8 @@ void FreeSurface2D<T, LatSet>::Conversion() {
   //         int ctr = 0;
   //         for (int iPop = 1; iPop < LatSet::q; iPop++) {
   //           int nbrId = vox.getNeighborId(iPop);
-  //           if (isType(nbrId, Type::Fluid) || isType(nbrId,
-  //           Type::Interface))
+  //           if (isType(nbrId, FSType::Fluid) || isType(nbrId,
+  //           FSType::Interface))
   //           {
   //             T rho_tmp = 0.;
   //             Vector<T, LatSet::d> u_tmp{};
@@ -953,7 +953,7 @@ void FreeSurface2D<T, LatSet>::Conversion() {
   // #pragma omp parallel for num_threads(Thread_Num)
   //   for (const Voxel<T, LatSet::d> &vox : Voxels) {
   //     int Id = vox.getId();
-  //     if (isType(Id, Type::Fluid) && hasNeighborFlag(Id, Flag::ToGas)) {
+  //     if (isType(Id, FSType::Fluid) && hasNeighborFlag(Id, Flag::ToGas)) {
   //       setFlag(Id, Flag::NewInterface);
   //       T rho = T(0);
   //       NS.getPop(Id).Compute_rho(rho);
@@ -991,7 +991,7 @@ void FreeSurface2D<T, LatSet>::Conversion() {
   //     for (int iPop = 1; iPop < LatSet::q; iPop++) {
   //       int nbrId = vox.getNeighborId(iPop);
 
-  //       if (isType(nbrId, Type::Interface)) {
+  //       if (isType(nbrId, FSType::Interface)) {
   //         eta[iPop] = normal * LatSet::c[iPop];
   //         if (eta[iPop] <= 0) {
   //           eta[iPop] = 0.;
@@ -1038,13 +1038,13 @@ void FreeSurface2D<T, LatSet>::Conversion() {
   //     PREVIOUS_VELOCITY[Id] = u;
 
   //     if (isFlag(Id, Flag::ToFluid)) {
-  //       setType(Id, Type::Fluid);
+  //       setType(Id, FSType::Fluid);
   //       _F[Id] = T(1);
   //     } else if (isFlag(Id, Flag::ToGas)) {
-  //       setType(Id, Type::Gas);
+  //       setType(Id, FSType::Gas);
   //       _F[Id] = T(0);
   //     } else if (isFlag(Id, Flag::NewInterface)) {
-  //       setType(Id, Type::Interface);
+  //       setType(Id, FSType::Interface);
   //     }
   //   }
 
@@ -1058,26 +1058,26 @@ void FreeSurface2D<T, LatSet>::Conversion() {
 
   //     switch (flags) {
   //       case Flag::ToFluid: {
-  //         setType(Id, Type::Fluid);
+  //         setType(Id, FSType::Fluid);
   //         _F[Id] = T(1);
   //         _Mass[Id] += TEMP_MASS_EXCHANGE[Id][0];
   //       } break;
   //       case Flag::ToGas: {
-  //         setType(Id, Type::Gas);
+  //         setType(Id, FSType::Gas);
   //         _F[Id] = T(0);
   //         _Mass[Id] += TEMP_MASS_EXCHANGE[Id][0];
   //       } break;
   //       case Flag::NewInterface: {
-  //         setType(Id, Type::Interface);
+  //         setType(Id, FSType::Interface);
   //       } break;
   //       default:
   //         break;
   //     }  // end switch flags
 
-  //     Type type = _Type[Id];
+  //     FSType type = _Type[Id];
   //     /* Collection of mass excess in a pulling step */
   //     switch (type) {
-  //       case Type::Interface: {
+  //       case FSType::Interface: {
   //         T collected_excess = 0.;
   //         for (int iPop = 1; iPop < LatSet::q; ++iPop) {
   //           int nbrId = vox.getNeighborId(iPop);
@@ -1102,7 +1102,7 @@ void FreeSurface2D<T, LatSet>::Conversion() {
   //         PREVIOUS_VELOCITY[Id] = u;
 
   //       } break;
-  //       case Type::Fluid: {
+  //       case FSType::Fluid: {
   //         T collected_excess = 0.;
 
   //         for (int iPop = 1; iPop < LatSet::q; ++iPop) {
@@ -1125,7 +1125,7 @@ void FreeSurface2D<T, LatSet>::Conversion() {
 
 template <typename T, typename LatSet>
 Vector<T, LatSet::d> FreeSurface2D<T, LatSet>::get_normal(
-    int id, const std::vector<FreeSurface::Type> &types,
+    int id, const std::vector<FSType> &types,
     const std::vector<T> &rho_prev, const std::vector<T> &mass_prev) {
   int id1 = Voxels[id].getNeighborId(1);
   int id2 = Voxels[id].getNeighborId(2);
@@ -1144,9 +1144,9 @@ void FreeSurface2D<T, LatSet>::Initialize() {
   for (const Voxel<T, LatSet::d> &vox : Voxels) {
     int Id = vox.getId();
     _Mass[Id] = NS.getPoprho(Id);
-    // if (isType(Id, Type::Interface)) {
+    // if (isType(Id, FSType::Interface)) {
     //   _F[Id] = T(0.5);
-    // } else if (isType(Id, Type::Gas)) {
+    // } else if (isType(Id, FSType::Gas)) {
     //   _F[Id] = T(0);
     // } else {
     //   _F[Id] = T(1);
@@ -1156,7 +1156,7 @@ void FreeSurface2D<T, LatSet>::Initialize() {
 
 template <typename T, typename LatSet>
 bool FreeSurface2D<T, LatSet>::hasNeighborType(int id,
-                                               const FreeSurface::Type &type) {
+                                               const FSType &type) {
   const Voxel<T, 2> &voxel = Voxels[id];
   for (int i = 1; i < LatSet::q; ++i) {
     if (voxel.getNeighbor(i) != nullptr) {
@@ -1168,11 +1168,11 @@ bool FreeSurface2D<T, LatSet>::hasNeighborType(int id,
 }
 
 template <typename T, typename LatSet>
-bool FreeSurface2D<T, LatSet>::isType(int id, const FreeSurface::Type &type) {
+bool FreeSurface2D<T, LatSet>::isType(int id, const FSType &type) {
   return static_cast<bool>(_Type[id] & type);
 }
 template <typename T, typename LatSet>
-void FreeSurface2D<T, LatSet>::setType(int id, const FreeSurface::Type &type) {
+void FreeSurface2D<T, LatSet>::setType(int id, const FSType &type) {
   _Type[id] = type;
 }
 

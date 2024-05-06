@@ -30,17 +30,4 @@ enum CAType : std::uint8_t { Boundary = 1, Interface = 2, Fluid = 4, Solid = 8 }
 
 enum CAFlag : std::uint8_t { None = 1, toInterface = 2, toSolid = 4 };
 
-template <typename T>
-class ZhuStefanescu {
- protected:
-  // state field std::uint8_t
-  ScalerField<CAType> State;
-  // flag field std::uint8_t
-  ScalerField<CAFlag> Flag;
-  // solid fraction
-  ScalerField<T> Fs;
-  // delta solid fraction
-  ScalerField<T> Delta_Fs;
-};
-
 }  // namespace CA

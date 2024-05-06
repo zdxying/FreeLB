@@ -58,7 +58,7 @@
 //   FixedPeriodicBoundaryBlock(BlockLattice<T, LatSet> &vlat, BlockLattice<T, LatSet> &rlat,
 //   AABB<T, LatSet::d> &box,
 //                         AABB<T, LatSet::d> &frombox, std::uint8_t cellflag,
-//                         std::uint8_t voidflag = std::uint8_t(0))
+//                         std::uint8_t voidflag = std::uint8_t(1))
 //       : VLat(vlat),
 //         RLat(rlat),
 //         Geo(vlat.getGeo()),
@@ -162,7 +162,7 @@ class FixedPeriodicBoundary final : public AbstractBoundary {
  public:
   FixedPeriodicBoundary(BasicLattice<T, LatSet> &lat, AABB<T, LatSet::d> &box,
                         AABB<T, LatSet::d> &frombox, std::uint8_t cellflag,
-                        std::uint8_t voidflag = std::uint8_t(0))
+                        std::uint8_t voidflag = std::uint8_t(1))
       : Lat(lat), Geo(lat.getGeo()), Field(lat.getGeo().getGeoFlagField().getField()),
         Box(box), FromBox(frombox), BdCellFlag(cellflag), voidFlag(voidflag) {
     Vector<T, LatSet::d> boxext = Box.getExtension();

@@ -1,5 +1,5 @@
 
-TARGET = couette2d
+TARGET = couette2d.exe
 ROOT := ../..
 
 FLAGS += -O3 -march=native -fopenmp
