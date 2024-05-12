@@ -62,13 +62,13 @@ class BlockBuoyancy {
     for (BlockRhoLattice<T> *lat : Source) {
       T latRhoInit = lat->getLatRhoInit();
       T latgbeta = lat->getLatgBeta(NSLat.getLevel());
-      for (int id = 0; id < NSLat.getN(); ++id) {
+      for (std::size_t id = 0; id < NSLat.getN(); ++id) {
         if (util::isFlag(flagarr[id], flag))
           Force.get(id) += (lat->getRho(id) - latRhoInit) * latgbeta;
       }
     }
   }
-  Vector<T, LatSet::d> getForce(int id) const {
+  Vector<T, LatSet::d> getForce(std::size_t id) const {
     if constexpr (LatSet::d == 3) {
       return Vector<T, LatSet::d>{T(0), T(0), Force.get(id)};
     } else if constexpr (LatSet::d == 2) {
@@ -80,7 +80,7 @@ class BlockBuoyancy {
   template <void (*GetFeq)(std::array<T, LatSet::q> &, const Vector<T, LatSet::d> &, T),
             typename flagtype>
   void BGK_U(const GenericArray<flagtype> &flagarr, std::uint8_t flag) {
-    for (int id = 0; id < NSLat.getN(); ++id) {
+    for (std::size_t id = 0; id < NSLat.getN(); ++id) {
       if (util::isFlag(flagarr[id], flag)) {
         BCell<T, LatSet> cell(id, NSLat);
         std::array<T, LatSet::q> Fi{};
@@ -96,7 +96,7 @@ class BlockBuoyancy {
   template <void (*GetFeq)(std::array<T, LatSet::q> &, const Vector<T, LatSet::d> &, T),
             typename flagtype>
   void BGK(const GenericArray<flagtype> &flagarr, std::uint8_t flag) {
-    for (int id = 0; id < NSLat.getN(); ++id) {
+    for (std::size_t id = 0; id < NSLat.getN(); ++id) {
       if (util::isFlag(flagarr[id], flag)) {
         BCell<T, LatSet> cell(id, NSLat);
         std::array<T, LatSet::q> Fi{};
@@ -128,7 +128,7 @@ class BlockBuoyancyManager {
     }
   }
 
-  void Init(){
+  void Init() {
     _Buoyancys.clear();
     for (int i = 0; i < NSLatMan.getBlockLats().size(); ++i) {
       _Buoyancys.emplace_back(NSLatMan.getBlockLat(i),

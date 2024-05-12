@@ -25,6 +25,7 @@
 #include "data_struct/lattice.h"
 #include "utils/util.h"
 
+// const force for basiclattice
 template <typename T, typename LatSet>
 class ConstBulkForce {
  private:
@@ -67,6 +68,7 @@ class ConstBulkForce {
   }
 };
 
+// buoyancy for basiclattice
 template <typename T, typename LatSet>
 class Buoyancy {
  private:

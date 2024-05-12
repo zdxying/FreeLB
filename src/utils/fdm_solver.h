@@ -1,21 +1,21 @@
 /* This file is part of FreeLB
- * 
+ *
  * Copyright (C) 2024 Yuan Man
  * E-mail contact: ymmanyuan@outlook.com
  * The most recent progress of FreeLB will be updated at
  * <https://github.com/zdxying/FreeLB>
- * 
- * FreeLB is free software: you can redistribute it and/or modify it under the terms of the GNU
- * General Public License as published by the Free Software Foundation, either version 3 of the
- * License, or (at your option) any later version.
- * 
- * FreeLB is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the
- * implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public
- * License for more details.
- * 
- * You should have received a copy of the GNU General Public License along with FreeLB. If not, see
- * <https://www.gnu.org/licenses/>.
- * 
+ *
+ * FreeLB is free software: you can redistribute it and/or modify it under the terms of
+ * the GNU General Public License as published by the Free Software Foundation, either
+ * version 3 of the License, or (at your option) any later version.
+ *
+ * FreeLB is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
+ * without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
+ * PURPOSE. See the GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License along with FreeLB. If
+ * not, see <https://www.gnu.org/licenses/>.
+ *
  */
 
 // 2D finite difference solver
@@ -50,13 +50,21 @@ class FDM2D {
   ~FDM2D() {}
   // FDM parser
   // partial x, central difference
-  inline T p_x(std::size_t id) const { return (f[id + Nbr[0]] - f[id + Nbr[2]]) * T(0.5); }
+  inline T p_x(std::size_t id) const {
+    return (f[id + Nbr[0]] - f[id + Nbr[2]]) * T(0.5);
+  }
   // partial y, central difference
-  inline T p_y(std::size_t id) const { return (f[id + Nbr[1]] - f[id + Nbr[3]]) * T(0.5); }
+  inline T p_y(std::size_t id) const {
+    return (f[id + Nbr[1]] - f[id + Nbr[3]]) * T(0.5);
+  }
   // partial xx
-  inline T p_xx(std::size_t id) const { return (f[id + Nbr[0]] - 2 * f[id] + f[id + Nbr[2]]); }
+  inline T p_xx(std::size_t id) const {
+    return (f[id + Nbr[0]] - 2 * f[id] + f[id + Nbr[2]]);
+  }
   // partial yy
-  inline T p_yy(std::size_t id) const { return (f[id + Nbr[1]] - 2 * f[id] + f[id + Nbr[3]]); }
+  inline T p_yy(std::size_t id) const {
+    return (f[id + Nbr[1]] - 2 * f[id] + f[id + Nbr[3]]);
+  }
   // partial xy
   // corrected at 2023-11-16, it should be f[id + Nbr[7]] - f[id + Nbr[6]]
   // instead of f[id + Nbr[6]] - f[id + Nbr[7]]
@@ -65,7 +73,9 @@ class FDM2D {
     return (f[id + Nbr[7]] - f[id + Nbr[6]] - f[id + Nbr[5]] + f[id + Nbr[4]]) * T(0.25);
   }
   // get gradient: grad = {partial x, partial y}
-  inline Vector<T, 2> grad(std::size_t id) const { return Vector<T, 2>{p_x(id), p_y(id)}; }
+  inline Vector<T, 2> grad(std::size_t id) const {
+    return Vector<T, 2>{p_x(id), p_y(id)};
+  }
   // get Normalizedgradient = grad / |grad|
   inline Vector<T, 2> ngrad(std::size_t id) const {
     Vector<T, 2> grad_ = grad(id);
@@ -80,6 +90,12 @@ class FDM2D {
   }
   // get norm of gradient
   inline T gradnorm(std::size_t id) const { return std::sqrt(gradnorm2(id)); }
+
+  // get interface normal vector of a point in a 2D scalar field
+  // towards the smaller value side
+  inline Vector<T, 2> InterfaceNormal(std::size_t id) const {
+    return Vector<T, 2>{-p_x(id), -p_y(id)};
+  }
 };
 
 template <typename T>
@@ -109,8 +125,8 @@ class FDM3D {
 
  public:
   FDM3D(Geometry3D<T> &geo, GenericArray<T> &f_)
-      : Geo(geo), Ni(geo.getNx()), Nj(geo.getNy()), Nk(geo.getNz()), DIdx(geo.getDeltaIndex()),
-        f(f_) {}
+      : Geo(geo), Ni(geo.getNx()), Nj(geo.getNy()), Nk(geo.getNz()),
+        DIdx(geo.getDeltaIndex()), f(f_) {}
   ~FDM3D() {}
   // FDM parser
   // partial x, central difference
@@ -127,18 +143,23 @@ class FDM3D {
   inline T p_zz(int id) const { return (f[id + DIdx[5]] + f[id + DIdx[6]] - 2 * f[id]); }
   // partial xy
   inline T p_xy(int id) const {
-    return (f[id + DIdx[7]] + f[id + DIdx[8]] - f[id + DIdx[13]] - f[id + DIdx[14]]) * T(0.25);
+    return (f[id + DIdx[7]] + f[id + DIdx[8]] - f[id + DIdx[13]] - f[id + DIdx[14]]) *
+           T(0.25);
   }
   // partial xz
   inline T p_xz(int id) const {
-    return (f[id + DIdx[9]] + f[id + DIdx[10]] - f[id + DIdx[15]] - f[id + DIdx[16]]) * T(0.25);
+    return (f[id + DIdx[9]] + f[id + DIdx[10]] - f[id + DIdx[15]] - f[id + DIdx[16]]) *
+           T(0.25);
   }
   // partial yz
   inline T p_yz(int id) const {
-    return (f[id + DIdx[11]] + f[id + DIdx[12]] - f[id + DIdx[17]] - f[id + DIdx[18]]) * T(0.25);
+    return (f[id + DIdx[11]] + f[id + DIdx[12]] - f[id + DIdx[17]] - f[id + DIdx[18]]) *
+           T(0.25);
   }
   // get gradient: grad = {partial x, partial y, partial z}
-  inline Vector<T, 3> grad(int id) const { return Vector<T, 3>{p_x(id), p_y(id), p_z(id)}; }
+  inline Vector<T, 3> grad(int id) const {
+    return Vector<T, 3>{p_x(id), p_y(id), p_z(id)};
+  }
   // get Normalizedgradient = grad / |grad|
   inline Vector<T, 3> ngrad(int id) const {
     Vector<T, 3> grad_ = grad(id);
@@ -146,7 +167,9 @@ class FDM3D {
     return grad_;
   }
   // Inabla(grad) = (partial_xx, partial_xy, partial_xz)^T
-  Vector<T, 3> Inablagrad(int id) const { return Vector<T, 3>(p_xx(id), p_yy(id), p_zz(id)); }
+  Vector<T, 3> Inablagrad(int id) const {
+    return Vector<T, 3>(p_xx(id), p_yy(id), p_zz(id));
+  }
 };
 
 

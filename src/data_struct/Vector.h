@@ -52,7 +52,7 @@ class Vector {
   static constexpr unsigned int vector_dim = D;
 
   // constructors
-  constexpr Vector() { _data.fill(T(0)); }
+  constexpr Vector() { _data.fill(T{}); }
 
   constexpr Vector(T value) { _data.fill(value); }
 
@@ -188,6 +188,14 @@ template <typename T, typename U, unsigned int D>
 constexpr Vector<decltype(T{} - U{}), D> operator-(T a, const Vector<U, D> &b) {
   return Vector<T, D>(a) - b;
 }
+// -=: return type will be deduced by decltype(c++11)
+template <typename T, typename U, unsigned int D>
+constexpr Vector<decltype(T{} - U{}), D> &operator-=(Vector<T, D> &a, const Vector<U, D> &b) {
+  for (unsigned int i = 0; i < D; ++i) {
+    a[i] -= b[i];
+  }
+  return a;
+}
 // *: inner(dot) product, return type will be deduced by decltype(c++11)
 template <typename T, typename U, unsigned int D>
 constexpr decltype(T{} * U{}) operator*(const Vector<T, D> &a, const Vector<U, D> &b) {
@@ -224,6 +232,14 @@ constexpr Vector<decltype(T{} / U{}), D> operator/(const Vector<T, D> &a, U b) {
     result[i] = a[i] / b;
   }
   return result;
+}
+// /=: Vector divides a scaler, return type will be deduced by decltype(c++11)
+template <typename T, typename U, unsigned int D>
+constexpr Vector<decltype(T{} / U{}), D> &operator/=(Vector<T, D> &a, U b) {
+  for (unsigned int i = 0; i < D; ++i) {
+    a[i] /= b;
+  }
+  return a;
 }
 
 // other mathematical operations

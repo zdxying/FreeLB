@@ -56,7 +56,7 @@ void BlockLattice<T, LatSet>::PopConvFineToCoarse() {
       Equilibrium<T, LatSet>::SecondOrder(feq, VeloArr[idrecv], RhoArr[idrecv]);
       // convert
       RefineConverter<T>::template computePopC<LatSet::q>(
-        Pops.template getArray<T>(idrecv), feq, OmegaF);
+        Pops.getArray(idrecv), feq, OmegaF);
     }
   }
 }
@@ -73,7 +73,7 @@ void BlockLattice<T, LatSet>::PopConvCoarseToFine() {
       Equilibrium<T, LatSet>::SecondOrder(feq, VeloArr[idrecv], RhoArr[idrecv]);
       // convert
       RefineConverter<T>::template computePopF<LatSet::q>(
-        Pops.template getArray<T>(idrecv), feq, OmegaC);
+        Pops.getArray(idrecv), feq, OmegaC);
     }
   }
 }
@@ -115,7 +115,7 @@ void BlockLattice<T, LatSet>::avercommunicate() {
       std::array<T, LatSet::q> feq{};
       Equilibrium<T, LatSet>::SecondOrder(feq, averU, averRho);
 
-      std::array<T*, LatSet::q> CellPop = Pops.template getArray<T>(comm.getRecvs()[i]);
+      std::array<T*, LatSet::q> CellPop = Pops.getArray(comm.getRecvs()[i]);
       for (unsigned int k = 0; k < LatSet::q; ++k) {
         T averpop = getAverage<T, LatSet::d>(nBlockLat->getPopField().getField(k), sends);
         // convert from fine to coarse
@@ -146,7 +146,7 @@ void BlockLattice<T, LatSet>::interpcommunicate() {
           Equilibrium<T, LatSet>::SecondOrder(feq, averU, averRho);
 
           std::array<T*, LatSet::q> CellPop =
-            Pops.template getArray<T>(comm.getRecvs()[i]);
+            Pops.getArray(comm.getRecvs()[i]);
           for (unsigned int k = 0; k < LatSet::q; ++k) {
             T averpop = getInterpolation<0, T, LatSet::d>(
               nBlockLat->getPopField().getField(k), sends);
@@ -164,7 +164,7 @@ void BlockLattice<T, LatSet>::interpcommunicate() {
           Equilibrium<T, LatSet>::SecondOrder(feq, averU, averRho);
 
           std::array<T*, LatSet::q> CellPop =
-            Pops.template getArray<T>(comm.getRecvs()[i + 1]);
+            Pops.getArray(comm.getRecvs()[i + 1]);
           for (unsigned int k = 0; k < LatSet::q; ++k) {
             T averpop = getInterpolation<1, T, LatSet::d>(
               nBlockLat->getPopField().getField(k), sends);
@@ -182,7 +182,7 @@ void BlockLattice<T, LatSet>::interpcommunicate() {
           Equilibrium<T, LatSet>::SecondOrder(feq, averU, averRho);
 
           std::array<T*, LatSet::q> CellPop =
-            Pops.template getArray<T>(comm.getRecvs()[i + 2]);
+            Pops.getArray(comm.getRecvs()[i + 2]);
           for (unsigned int k = 0; k < LatSet::q; ++k) {
             T averpop = getInterpolation<2, T, LatSet::d>(
               nBlockLat->getPopField().getField(k), sends);
@@ -200,7 +200,7 @@ void BlockLattice<T, LatSet>::interpcommunicate() {
           Equilibrium<T, LatSet>::SecondOrder(feq, averU, averRho);
 
           std::array<T*, LatSet::q> CellPop =
-            Pops.template getArray<T>(comm.getRecvs()[i + 3]);
+            Pops.getArray(comm.getRecvs()[i + 3]);
           for (unsigned int k = 0; k < LatSet::q; ++k) {
             T averpop = getInterpolation<3, T, LatSet::d>(
               nBlockLat->getPopField().getField(k), sends);
@@ -475,7 +475,6 @@ template <typename flagtype>
 void BlockLatticeManager<T, LatSet>::UpdateRho(
   std::int64_t count, std::uint8_t flag,
   const BlockFieldManager<ScalerField<flagtype>, T, LatSet::d>& BFM) {
-  mpi().barrier();
 #pragma omp parallel for num_threads(Thread_Num)
   for (int i = 0; i < BlockLats.size(); ++i) {
     const int deLevel = static_cast<int>(getMaxLevel() - BlockLats[i].getLevel());
@@ -491,7 +490,6 @@ void BlockLatticeManager<T, LatSet>::UpdateRho_Source(
   std::int64_t count, std::uint8_t flag,
   const BlockFieldManager<ScalerField<flagtype>, T, LatSet::d>& BFM,
   const BlockFieldManager<ScalerField<T>, T, LatSet::d>& source) {
-  mpi().barrier();
 #pragma omp parallel for num_threads(Thread_Num)
   for (int i = 0; i < BlockLats.size(); ++i) {
     const int deLevel = static_cast<int>(getMaxLevel() - BlockLats[i].getLevel());
@@ -506,7 +504,6 @@ template <typename flagtype>
 void BlockLatticeManager<T, LatSet>::UpdateU(
   std::int64_t count, std::uint8_t flag,
   const BlockFieldManager<ScalerField<flagtype>, T, LatSet::d>& BFM) {
-  mpi().barrier();
 #pragma omp parallel for num_threads(Thread_Num)
   for (int i = 0; i < BlockLats.size(); ++i) {
     const int deLevel = static_cast<int>(getMaxLevel() - BlockLats[i].getLevel());
@@ -521,7 +518,6 @@ template <void (*GetFeq)(std::array<T, LatSet::q>&, const Vector<T, LatSet::d>&,
 void BlockLatticeManager<T, LatSet>::BGK(
   std::int64_t count, std::uint8_t flag,
   const BlockFieldManager<ScalerField<flagtype>, T, LatSet::d>& BFM) {
-  mpi().barrier();
 #pragma omp parallel for num_threads(Thread_Num)
   for (int i = 0; i < BlockLats.size(); ++i) {
     const int deLevel = static_cast<int>(getMaxLevel() - BlockLats[i].getLevel());
@@ -539,7 +535,6 @@ void BlockLatticeManager<T, LatSet>::BGK_Source(
   std::int64_t count, std::uint8_t flag,
   const BlockFieldManager<ScalerField<flagtype>, T, LatSet::d>& BFM,
   const BlockFieldManager<ScalerField<T>, T, LatSet::d>& source) {
-  mpi().barrier();
 #pragma omp parallel for num_threads(Thread_Num)
   for (int i = 0; i < BlockLats.size(); ++i) {
     const int deLevel = static_cast<int>(getMaxLevel() - BlockLats[i].getLevel());
@@ -552,7 +547,6 @@ void BlockLatticeManager<T, LatSet>::BGK_Source(
 
 template <typename T, typename LatSet>
 void BlockLatticeManager<T, LatSet>::Stream(std::int64_t count) {
-  mpi().barrier();
 #pragma omp parallel for num_threads(Thread_Num) schedule(static)
   for (BlockLattice<T, LatSet>& BLat : BlockLats) {
     if (count % (static_cast<int>(pow(2, int(getMaxLevel() - BLat.getLevel())))) == 0)
@@ -765,6 +759,8 @@ void BlockLatticeManager<T, LatSet>::Communicate(std::int64_t count) {
 #ifdef MPI_ENABLED
   MPIInterpComm(count);
 #endif
+
+mpi().barrier();
 }
 
 template <typename T, typename LatSet>
@@ -778,7 +774,6 @@ void BlockLatticeManager<T, LatSet>::EnableToleranceU(T ures) {
 
 template <typename T, typename LatSet>
 T BlockLatticeManager<T, LatSet>::getToleranceRho(int shift) {
-  mpi().barrier();
   T maxres = T(0);
 #pragma omp parallel for num_threads(Thread_Num) schedule(static) reduction(max : maxres)
   for (BlockLattice<T, LatSet>& BLat : BlockLats) {
@@ -802,7 +797,6 @@ T BlockLatticeManager<T, LatSet>::getToleranceRho(int shift) {
 
 template <typename T, typename LatSet>
 T BlockLatticeManager<T, LatSet>::getToleranceU(int shift) {
-  mpi().barrier();
   T maxres = T(0);
 #pragma omp parallel for num_threads(Thread_Num) schedule(static) reduction(max : maxres)
   for (BlockLattice<T, LatSet>& BLat : BlockLats) {
@@ -996,7 +990,7 @@ void DynamicBlockLatticeHelper2D<T, LatSet>::PopConversionFineToCoarse(
   for (int iy = starty; iy < starty + Ny; ++iy) {
     for (int ix = startx; ix < startx + Nx; ++ix) {
       std::size_t id = iy * CBlock.getNx() + ix;
-      std::array<T*, LatSet::q> Pops = PopsF.template getArray<T>(id);
+      std::array<T*, LatSet::q> Pops = PopsF.getArray(id);
       // get feq, peparing for pop conversion
       std::array<T, LatSet::q> feq{};
       Equilibrium<T, LatSet>::SecondOrder(feq, VelocityArr[id], RhoArr[id]);
@@ -1032,7 +1026,7 @@ void DynamicBlockLatticeHelper2D<T, LatSet>::PopConversionCoarseToFine(
   for (int iy = starty; iy < starty + Ny; ++iy) {
     for (int ix = startx; ix < startx + Nx; ++ix) {
       std::size_t id = iy * FBlock.getNx() + ix;
-      std::array<T*, LatSet::q> Pops = PopsF.template getArray<T>(id);
+      std::array<T*, LatSet::q> Pops = PopsF.getArray(id);
       // get feq, peparing for pop conversion
       std::array<T, LatSet::q> feq{};
       Equilibrium<T, LatSet>::SecondOrder(feq, VelocityArr[id], RhoArr[id]);

@@ -347,6 +347,14 @@ void BasicBlock<T, D>::getLocIdxRange(const AABB<T, D>& AABBs, Vector<int, D>& i
 
 template <typename T, unsigned int D>
 template <typename Func>
+void BasicBlock<T, D>::forEach(Func func) {
+  for (std::size_t id = 0; id < N; ++id) {
+    func(id);
+  }
+}
+
+template <typename T, unsigned int D>
+template <typename Func>
 void BasicBlock<T, D>::forEach(const AABB<T, D>& AABBs, Func func) {
   Vector<int, D> idx_min;
   Vector<int, D> idx_max;

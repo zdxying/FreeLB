@@ -1,149 +1,184 @@
 /* This file is part of FreeLB
- * 
+ *
  * Copyright (C) 2024 Yuan Man
  * E-mail contact: ymmanyuan@outlook.com
  * The most recent progress of FreeLB will be updated at
  * <https://github.com/zdxying/FreeLB>
- * 
- * FreeLB is free software: you can redistribute it and/or modify it under the terms of the GNU
- * General Public License as published by the Free Software Foundation, either version 3 of the
- * License, or (at your option) any later version.
- * 
- * FreeLB is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the
- * implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public
- * License for more details.
- * 
- * You should have received a copy of the GNU General Public License along with FreeLB. If not, see
- * <https://www.gnu.org/licenses/>.
- * 
+ *
+ * FreeLB is free software: you can redistribute it and/or modify it under the terms of
+ * the GNU General Public License as published by the Free Software Foundation, either
+ * version 3 of the License, or (at your option) any later version.
+ *
+ * FreeLB is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
+ * without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
+ * PURPOSE. See the GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License along with FreeLB. If
+ * not, see <https://www.gnu.org/licenses/>.
+ *
  */
 
 // free surface model
 #pragma once
 
-#include "data_struct/lattice.h"
+#include "data_struct/block_lattice.h"
 
 // namespace FreeSurface
 
 namespace FS {
 
-enum FSType : std::uint16_t {
-  Fluid = 1,
+enum FSType : std::uint8_t {
+  Void = 0,
+  Gas = 1,
   Interface = 2,
-  Gas = 4,
-  Solid = 8,
-  NO_FLUID_NEIGH = 16,
-  NO_EMPTY_NEIGH = 32,
-  NO_IFACE_NEIGH = 64,
-  TO_FLUID = 128,
-  TO_GAS = 256
+  Fluid = 4,
+  To_Fluid = 8,
+  To_Gas = 16,
+  To_Interface = 32
 };
+
+template <typename T, typename LatSet>
+T ComputeCurvature(BCell<T, LatSet>& cell);
 
 template <typename T, typename LatSet>
 class FreeSurface2D {
  private:
-  Genericlbm2D<T, LatSet>& NS;
-  Block2D<T>& Geo;
-  std::vector<Voxel<T, LatSet::d>>& Voxels;
+  // interface cells
+  std::vector<std::size_t> Interface;
 
-  // index
-  // std::vector<int> InterfaceIdx;
-  // std::vector<int> FluidIdx;
+  BlockLattice<T, LatSet>& NS;
+  ScalerField<FSType>& State;
+  ScalerField<T>& Mass;
+  PopulationField<T, LatSet::q>& ExcessMass;
+  ScalerField<T>& VolumeFrac;
 
-  // fluid fraction
-  std::vector<FSType> _Type;
-  // std::vector<Flag> _Flag;
-  std::vector<T> _Mass;
-  std::vector<T> mass_prev;
-  std::vector<T> rho_prev;
-  std::vector<Vector<T, LatSet::d>> u_prev;
-  std::vector<FSType> cell_type_prev;
-  std::vector<Vector<T, LatSet::q>> TEMP_MASS_EXCHANGE;
-  std::vector<Vector<T, LatSet::d>> PREVIOUS_VELOCITY;
+  T Lonely_Threshold;
+  T VOF_Trans_Threshold;
 
-  // FREE SURFACE PARAMETERS
-  T surface_tension_parameter;  // surface_tension_coefficient_factor *
-                                // surface_tension_coefficient
-  T lonely_threshold = 0.1;
-  T transitionThreshold = 0.03;
-  bool drop_isolated_cells = true;
-  bool has_surface_tension = false;
+  bool Surface_Tension_Enabled;
+  T surface_tension_parameter;  // coefficient_factor * coefficient
 
  public:
-  FreeSurface2D(Genericlbm2D<T, LatSet>& ns)
-      : NS(ns), Geo(ns.getGeo()), Voxels(ns.getGeo().getVoxels()) {
-    _Type.resize(Voxels.size(), FSType::Gas);
-    _Mass.resize(Voxels.size(), T(0));
-    TEMP_MASS_EXCHANGE.resize(Voxels.size(), Vector<T, LatSet::q>{});
-    PREVIOUS_VELOCITY.resize(Voxels.size(), Vector<T, LatSet::d>{});
-    mass_prev.resize(Voxels.size(), T(0));
-    rho_prev.resize(Voxels.size(), T(0));
-    u_prev.resize(Voxels.size(), Vector<T, LatSet::d>{});
-    cell_type_prev.resize(Voxels.size(), FSType::Gas);
+  FreeSurface2D(BlockLattice<T, LatSet>& ns, ScalerField<FSType>& type,
+                ScalerField<T>& mass, PopulationField<T, LatSet::q>& exmass,
+                ScalerField<T>& vf, T lth, T vtth)
+      : NS(ns), State(type), Mass(mass), ExcessMass(exmass), VolumeFrac(vf),
+        Lonely_Threshold(lth), VOF_Trans_Threshold(vtth) {}
+
+
+  inline bool hasNeighborType(std::size_t id, FSType fstype) const;
+
+  inline T getClampedVOF(std::size_t id) const {
+    return std::clamp(VolumeFrac.get(id), T(0), T(1));
   }
 
-  void Initialize();
-  void setSrufaceTension(T value) {
-    if (value > 1e-3) {
-      std::cout << "Surface tension may be too large" << std::endl;
-    }
-    surface_tension_parameter = value;
-    has_surface_tension = true;
-  }
-
-  // NbrInfo getNbrInfo(int id);
-  bool hasNeighborType(int id, const FSType& type);
-  // bool hasNeighborFlag(int id, const Flag& flag);
-  bool isType(int id, const FSType& type);
-  // bool isFlag(int id, const Flag& flag);
-  void setType(int id, const FSType& type);
-  // void setFlag(int id, const Flag& flag);
-
-  T getEpsilon(const FSType& tp, const T rho_prev,
-               const T mass_prev) const {
-    // cell type:
-    //  const FSType& type = _Type[id];
-    if (static_cast<bool>(
-            tp & (FSType::Fluid | FSType::Solid))) {
-      return T(1);
-    } else if (static_cast<bool>(tp & FSType::Gas)) {
-      return T(0);
-    } else {
-      if (rho_prev > 0) {
-        T eps = mass_prev / rho_prev;
-        return std::max(std::min(eps, T(1)), T(0));
-      } else {
-        return T(0.5);
-      }
-    }
-  }
-
-  void Collide(T omega, T _omega, const Vector<T, LatSet::d>& force);
-  void Stream();
-  void Conversion();
-  Vector<T, LatSet::d> getNormal(int id);
-  Vector<T, LatSet::d> get_normal(int id,
-                                  const std::vector<FSType>& types,
-                                  const std::vector<T>& rho_prev,
-                                  const std::vector<T>& mass_prev);
-
-  void Apply() {
-    // Prepare() will be called at the beginning of each time step
-    // Collide();
-    Stream();
-    Conversion();
-  }
-
-  // get
-  std::vector<FSType>& getType() { return _Type; }
-  std::vector<T>& getMass() { return _Mass; }
-
-  // set
+  // mass transfer/ advection
+  void MassTransfer();
+  // prepare for To_Fluid conversion
+  void ToFluidNbrConversion();
+  // prepare for To_Interface conversion
+  void GasToInterfacePopInit();
+  // prepare for To_Gas conversion
+  void ToGasNbrConversion();
+  // excess mass
+  void InterfaceExcessMass();
+  // finalize conversion
+  void FinalizeConversion();
+  // collect excess mass
+  void CollectExcessMass();
 };
 
 template <typename T, typename LatSet>
 class FreeSurface2DManager {
+ private:
+  std::vector<FreeSurface2D<T, LatSet>> BlockFS;
+  // free surface state
+  BlockFieldManager<ScalerField<FSType>, T, 2> StateFM;
+  // mass = rho * volumefraction
+  BlockFieldManager<ScalerField<T>, T, 2> MassFM;
+  // Excess mass
+  BlockFieldManager<PopulationField<T, LatSet::q>, T, 2> ExcessMassFM;
+  // fill level/ volume fraction in VOF
+  BlockFieldManager<ScalerField<T>, T, 2> VolumeFracFM;
+
+  BlockLatticeManager<T, LatSet>& LatMan;
+
+  T Lonely_Threshold = 0.1;
+  // vof transition threshold
+  T VOF_Trans_Threshold = 0.003;
+
+  bool Surface_Tension_Enabled = false;
+  T surface_tension_parameter;  // coefficient_factor * coefficient
+
+ public:
+  FreeSurface2DManager(BlockLatticeManager<T, LatSet>& lm)
+      : LatMan(lm), StateFM(lm.getGeo(), FSType::Void), MassFM(lm.getGeo(), T{}),
+        ExcessMassFM(lm.getGeo(), T{}), VolumeFracFM(lm.getGeo(), T{}) {
+    // init FreeSurface2D
+    for (int i = 0; i < LatMan.getGeo().getBlockNum(); ++i) {
+      BlockFS.emplace_back(
+        lm.getBlockLat(i), StateFM.getBlockField(i).getField(),
+        MassFM.getBlockField(i).getField(), ExcessMassFM.getBlockField(i).getField(),
+        VolumeFracFM.getBlockField(i).getField(), Lonely_Threshold, VOF_Trans_Threshold);
+    }
+  }
+
+  // get
+  BlockFieldManager<ScalerField<FSType>, T, 2>& getStateFM() { return StateFM; }
+  BlockFieldManager<ScalerField<T>, T, 2>& getMassFM() { return MassFM; }
+  BlockFieldManager<PopulationField<T, LatSet::q>, T, 2>& getExcessMassFM() {
+    return ExcessMassFM;
+  }
+  BlockFieldManager<ScalerField<T>, T, 2>& getVolumeFracFM() { return VolumeFracFM; }
+
+  void setSrufaceTension(T value) {
+    if (value > 1e-3)
+      std::cout << "Surface tension: " << value << " may be too large" << std::endl;
+    surface_tension_parameter = value;
+    Surface_Tension_Enabled = true;
+  }
+
+  void Init() {
+    // set interface cells
+    StateFM.forEach([&](auto& blockfield, std::size_t id) {
+      auto& field = blockfield.getField();
+      const auto& block = blockfield.getBlock();
+      if (util::isFlag(field.get(id), FSType::Fluid)) {
+        for (int i = 1; i < LatSet::q; ++i) {
+          std::size_t idn = id + LatSet::c[i] * block.getProjection();
+          if (util::isFlag(field.get(idn), FSType::Gas)) {
+            util::removeFlag(FSType::Gas, field.getField(0).getUnderlying(idn));
+            util::addFlag(FSType::Interface, field.getField(0).getUnderlying(idn));
+          }
+        }
+      }
+    });
+    // set mass and volume fraction
+    MassFM.forEach(StateFM, FSType::Fluid,
+                   [&](auto& field, std::size_t id) { field.SetField(id, T(1)); });
+    MassFM.forEach(StateFM, FSType::Interface,
+                   [&](auto& field, std::size_t id) { field.SetField(id, T(0.5)); });
+    VolumeFracFM.forEach(StateFM, FSType::Fluid,
+                         [&](auto& field, std::size_t id) { field.SetField(id, T(1)); });
+    VolumeFracFM.forEach(StateFM, FSType::Interface, [&](auto& field, std::size_t id) {
+      field.SetField(id, T(0.5));
+    });
+  }
+  void Apply() {
+    for (FreeSurface2D<T, LatSet>& fs : BlockFS) {
+      fs.MassTransfer();
+      // for cells with to_fluid flag, check neighbors and set transition flag
+      fs.ToFluidNbrConversion();
+      // for (gas) cells with to_interface flag, init pop using nbr fluid/interface cells
+      fs.GasToInterfacePopInit();
+      // for cells with to_gas flag, check neighbors and set transition flag
+      fs.ToGasNbrConversion();
+      // excess mass
+      fs.InterfaceExcessMass();
+      fs.FinalizeConversion();
+      fs.CollectExcessMass();
+    }
+  }
 };
 
-
-}  // namespace FreeSurface
+}  // namespace FS

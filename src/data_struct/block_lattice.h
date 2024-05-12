@@ -122,7 +122,7 @@ class BlockLattice : public BlockRhoLattice<T> {
     for (int i = 0; i < LatSet::q; ++i) Pops.getField(i)[Id] = rho * LatSet::w[i];
   }
   std::array<T*, LatSet::q> getPop(std::size_t id) {
-    return Pops.template getArray<T>(id);
+    return Pops.getArray(id);
   }
   T& getPopdir(std::size_t id, int dir) { return Pops.getField(dir)[id]; }
   const T& getPopdir(std::size_t id, int dir) const { return Pops.getField(dir)[id]; }
@@ -146,6 +146,7 @@ class BlockLattice : public BlockRhoLattice<T> {
   int getNx() const { return BlockGeo.getNx(); }
   int getNy() const { return BlockGeo.getNy(); }
   int getNz() const { return BlockGeo.getNz(); }
+  int getOverlap() const { return BlockGeo.getOverlap(); }
   std::size_t getN() const { return BlockGeo.getN(); }
   inline T getOmega() const { return Omega; }
   inline T get_Omega() const { return _Omega; }

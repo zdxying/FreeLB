@@ -31,14 +31,6 @@
 #include "utils/alias.h"
 #include "utils/util.h"
 
-// template <typename ArrayType>
-// class AbstractGenericField {
-//  public:
-//   virtual ArrayType& getField(std::size_t i = 0) = 0;
-//   virtual const ArrayType& getField(std::size_t i = 0) const = 0;
-// };
-
-// class GenericField final : public AbstractGenericField<ArrayType>
 
 template <typename ArrayType, unsigned int D>
 class GenericField {
@@ -54,8 +46,7 @@ class GenericField {
   GenericField() : _Data{} {}
   GenericField(std::size_t size)
       : _Data(make_array<ArrayType, D>([&]() { return ArrayType(size); })) {}
-  template <typename T>
-  GenericField(std::size_t size, T initialValue)
+  GenericField(std::size_t size, value_type initialValue)
       : _Data(make_array<ArrayType, D>([&]() { return ArrayType(size, initialValue); })) {
   }
   // Copy constructor
@@ -104,28 +95,23 @@ class GenericField {
   auto& get(std::size_t id, unsigned int dir) { return _Data[dir][id]; }
   const auto& get(std::size_t id, unsigned int dir) const { return _Data[dir][id]; }
   // get pointer to ith data in all arrays
-  template <typename T>
-  std::array<T*, D> getArray(std::size_t id) {
-    std::array<T*, D> data{};
+  std::array<value_type*, D> getArray(std::size_t id) {
+    std::array<value_type*, D> data{};
     for (unsigned int i = 0; i < D; ++i) data[i] = _Data[i].getdataPtr(id);
     return data;
   }
   // get all arrays
-  template <typename T>
-  std::array<T*, D> getArray() {
-    std::array<T*, D> data{};
+  std::array<value_type*, D> getArray() {
+    std::array<value_type*, D> data{};
     for (unsigned int i = 0; i < D; ++i) data[i] = _Data[i].getdata();
     return data;
   }
 
-  // you can directly call this function like: GeometryFlag.SetField(id, flag)
-  // template <typename T, unsigned int i = 0> _Data[i].set(id, value);
-  template <typename T, unsigned int i = 0>
-  void SetField(std::size_t id, T value) {
+  template <unsigned int i = 0>
+  void SetField(std::size_t id, value_type value) {
     _Data[i].set(id, value);
   }
-  template <typename T>
-  void SetField(int i, std::size_t id, T value) {
+  void SetField(int i, std::size_t id, value_type value) {
     _Data[i].set(id, value);
   }
   // resize each array/field
@@ -133,21 +119,12 @@ class GenericField {
     for (unsigned int i = 0; i < D; ++i) _Data[i].Resize(size);
   }
   // init
-  template <typename T>
-  void Init(T value) {
+  void Init(value_type value = value_type{}) {
     for (unsigned int i = 0; i < D; ++i) _Data[i].Init(value);
   }
 
   constexpr unsigned int Size() const { return D; }
 };
-
-// template <typename T>
-// class AbstractArray {
-//  public:
-//   virtual const T& operator[](std::size_t i) const = 0;
-//   virtual T& operator[](std::size_t i) = 0;
-//   virtual std::size_t size() const = 0;
-// };
 
 template <typename T>
 class GenericArray {
@@ -212,6 +189,35 @@ class GenericArray {
 
   const T& operator[](std::size_t i) const { return data[i]; }
   T& operator[](std::size_t i) { return data[i]; }
+
+  // Specialization for enums based on std::uint8_t
+  // template <typename U = T>
+  // typename std::enable_if<std::is_enum<U>::value &&
+  //                           std::is_same<std::underlying_type_t<U>, uint8_t>::value,
+  //                         uint8_t&>::type
+  // getUint8(std::size_t index) {
+  //   return reinterpret_cast<uint8_t&>(data[index]);
+  // }
+  // template <typename U = T>
+  // typename std::enable_if<std::is_enum<U>::value &&
+  //                           std::is_same<std::underlying_type_t<U>, uint8_t>::value,
+  //                         const uint8_t&>::type
+  // getUint8(std::size_t index) const {
+  //   return reinterpret_cast<uint8_t&>(data[index]);
+  // }
+
+  // get underlying value from enum
+  template <typename U = T>
+  typename std::enable_if<std::is_enum<U>::value, std::underlying_type_t<U>&>::type
+  getUnderlying(std::size_t index) {
+    return reinterpret_cast<std::underlying_type_t<U>&>(data[index]);
+  }
+
+  template <typename U = T>
+  typename std::enable_if<std::is_enum<U>::value, const std::underlying_type_t<U>&>::type
+  getUnderlying(std::size_t index) const {
+    return reinterpret_cast<const std::underlying_type_t<U>&>(data[index]);
+  }
 
   // return pointer to the data
   T* getdata() { return data; }

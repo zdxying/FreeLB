@@ -637,6 +637,17 @@ class BlockFieldManager {
 #endif
   }
 
+
+  template <typename Func>
+  void forEach(Func func) {
+    int iblock = 0;
+    for (Block<FloatType, Dim>& blockgeo : _BlockGeo.getBlocks()) {
+      BlockField<FieldType, FloatType, Dim>& blockfield = _Fields[iblock];
+      blockgeo.forEach([&blockfield, &func](std::size_t id) { func(blockfield, id); });
+      ++iblock;
+    }
+  }
+
   // call forEach(AABBs, [&](FieldType& field, std::size_t id){});
   template <typename Func>
   void forEach(const AABB<FloatType, Dim>& AABBs, Func func) {

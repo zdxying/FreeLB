@@ -66,54 +66,6 @@ void Block2D<T>::SetupBoundary(const AABB<T, 2> &block, FieldType &field,
   }
 }
 
-#ifdef MPI_ENABLED
-
-// template <typename T>
-// void Block2D<T>::GeoFlagMPIComm() {
-//   mpi().barrier();
-//   // send data
-//   // send buffer
-//   // add to send buffer
-//   for (int i = 0; i < MPIComm.Senders.size(); ++i) {
-//     std::vector<std::uint8_t> &buffer = MPIBuffer.SendBuffers[i];
-//     const std::vector<std::size_t> &sendcells = MPIComm.Senders[i].SendCells;
-//     for (std::size_t id = 0; id < sendcells.size(); ++id) {
-//       buffer[id] = GeometryFlag.get(sendcells[id]);
-//     }
-//   }
-//   // non-blocking send
-//   std::vector<MPI_Request> requests;
-//   for (int i = 0; i < MPIComm.Senders.size(); ++i) {
-//     std::vector<std::uint8_t> &buffer = MPIBuffer.SendBuffers[i];
-//     MPI_Request request;
-//     mpi().iSend(buffer.data(), buffer.size(), MPIComm.Senders[i].RecvRank, &request, 0,
-//                 MPI_COMM_WORLD);
-//     // MPI_ISend()
-//     requests.push_back(request);
-//   }
-//   // non-blocking recv
-//   for (int i = 0; i < MPIComm.Recvers.size(); ++i) {
-//     std::vector<std::uint8_t> &buffer = MPIBuffer.RecvBuffers[i];
-//     MPI_Request request;
-//     mpi().iRecv(buffer.data(), buffer.size(), MPIComm.Recvers[i].SendRank, &request, 0,
-//                 MPI_COMM_WORLD);
-//     requests.push_back(request);
-//   }
-//   // wait for all requests
-//   MPI_Waitall(requests.size(), requests.data(), MPI_STATUSES_IGNORE);
-//   // set flag based on recv buffer
-//   for (int i = 0; i < MPIComm.Recvers.size(); ++i) {
-//     const std::vector<std::uint8_t> &buffer = MPIBuffer.RecvBuffers[i];
-//     const std::vector<int> &recvcells = MPIComm.Recvers[i].RecvCells;
-//     for (int j = 0; j < buffer.size(); ++j) {
-//       GeometryFlag.SetField(recvcells[j], buffer[j]);
-//     }
-//   }
-//   mpi().barrier();
-// }
-
-#endif
-
 // -----------blockgeometry2d----------------
 
 

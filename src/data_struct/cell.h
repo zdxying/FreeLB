@@ -92,14 +92,14 @@ class Cell final : public BasicCell<T, LatSet> {
   const Vector<T, LatSet::d>& getVelocity() const { return Lat.getVelocity(Id); }
   Vector<T, LatSet::d>& getVelocity() { return Lat.getVelocity(Id); }
 
-  template <typename ArrayType, unsigned int D, unsigned int i = 0>
-  auto& getFieldData(const GenericField<ArrayType, D>& Field) const {
+  template <typename FieldType, unsigned int i = 0>
+  auto& getFieldData(const FieldType& Field) const {
     return Field.template get<i>(Id);
   }
   // set field
-  template <typename ArrayType, unsigned int D, typename U, unsigned int i = 0>
-  void setFieldData(GenericField<ArrayType, D>& Field, U value) {
-    Field.template SetField<U, i>(Id, value);
+  template <typename FieldType, unsigned int i = 0>
+  void setFieldData(FieldType& Field, typename FieldType::value_type value) {
+    Field.template SetField<i>(Id, value);
   }
   // equilibrium
   template <void (*get_feq)(T*, const Vector<T, LatSet::d>&, T)>
@@ -149,14 +149,14 @@ class BCell final : public BasicCell<T, LatSet> {
   const Vector<T, LatSet::d>& getVelocity() const { return Lat.getVelocityField().get(Id); }
   Vector<T, LatSet::d>& getVelocity() { return Lat.getVelocityField().get(Id); }
 
-  template <typename ArrayType, unsigned int D, unsigned int i = 0>
-  auto& getFieldData(const GenericField<ArrayType, D>& Field) const {
+  template <typename FieldType, unsigned int i = 0>
+  auto& getFieldData(const FieldType& Field) const {
     return Field.template get<i>(Id);
   }
   // set field
-  template <typename ArrayType, unsigned int D, typename U, unsigned int i = 0>
-  void setFieldData(GenericField<ArrayType, D>& Field, U value) {
-    Field.template SetField<U, i>(Id, value);
+  template <typename FieldType, unsigned int i = 0>
+  void setFieldData(FieldType& Field, typename FieldType::value_type value) {
+    Field.template SetField<i>(Id, value);
   }
   // equilibrium
   template <void (*get_feq)(T*, const Vector<T, LatSet::d>&, T)>

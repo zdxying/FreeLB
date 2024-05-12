@@ -1,12 +1,12 @@
 
-TARGET = dambreak2d
+TARGET = dambreak2d.exe
 ROOT := ../..
 
 # FLAGS += -O3 -march=native -fopenmp
 # FLAGS += -march=native
-FLAGS += -g
+# FLAGS += -g
 FLAGS += -DFLOAT_TYPE=double
 
 OUTPUT += vtkoutput
 
-include $(ROOT)/Makefile
+include $(ROOT)/make.mk

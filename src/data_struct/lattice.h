@@ -104,7 +104,7 @@ class BasicLattice : public RhoLattice<T> {
   void InitPop(int Id, T rho) {
     for (int i = 0; i < LatSet::q; ++i) Pops.getField(i)[Id] = rho * LatSet::w[i];
   }
-  std::array<T*, LatSet::q> getPop(std::size_t id) { return Pops.template getArray<T>(id); }
+  std::array<T*, LatSet::q> getPop(std::size_t id) { return Pops.getArray(id); }
 
   T& getPopdir(std::size_t id, int dir) { return Pops.getField(dir)[id]; }
   const T& getPopdir(std::size_t id, int dir) const { return Pops.getField(dir)[id]; }
@@ -173,19 +173,4 @@ class BasicLattice : public RhoLattice<T> {
   // experimental
   T getTolRho(int shift = 1);
   T getTolU(int shift = 1);
-};
-
-
-// refined lattice
-template <typename T, typename LatSet>
-class RefinedLattice {
- protected:
-  RefinedGeometry<T, LatSet::d>& Geo;
-  BasicLattice<T, LatSet> BasicLat;
-  std::vector<BasicLattice<T, LatSet>> RefinedLats;
-
- public:
-  RefinedLattice(RefinedGeometry<T, LatSet::d>& geo, AbstractConverter<T>& conv,
-                 VectorFieldAOS<T, LatSet::d>& velocity)
-      : Geo(geo), BasicLat(geo.getCoarseGeo(), conv, velocity) {}
 };

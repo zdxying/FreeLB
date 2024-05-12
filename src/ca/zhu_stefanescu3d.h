@@ -30,9 +30,7 @@
 #include "data_struct/field_struct.h"
 #include "ca/cazs.h"
 #include "lbm/lattice_set.h"
-#include "legacy/legacy_lattice/legacyfield3D.h"
 #include "lbm/unit_converter.h"
-#include "legacy/legacy_lbm/lbm3D.h"
 #include "utils/fdm_solver.h"
 #include "utils/util.h"
 

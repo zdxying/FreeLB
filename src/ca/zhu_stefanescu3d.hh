@@ -278,14 +278,14 @@ void ZhuStefanescu3D<T, LatSet, RhoLatSet>::UpdateNGradFs() {
     T normgradFs = gradFs.getnorm();
     // if (normgradFs < std::numeric_limits<T>::epsilon())
     if (normgradFs < lim) {
-      NGradFs.template SetField<T, 0>(id, T(0));
-      NGradFs.template SetField<T, 1>(id, T(0));
-      NGradFs.template SetField<T, 2>(id, T(0));
+      NGradFs.template SetField<0>(id, T(0));
+      NGradFs.template SetField<1>(id, T(0));
+      NGradFs.template SetField<2>(id, T(0));
       Q.SetField(id, T(0));
     } else {
-      NGradFs.template SetField<T, 0>(id, gradFs[0] / normgradFs);
-      NGradFs.template SetField<T, 1>(id, gradFs[1] / normgradFs);
-      NGradFs.template SetField<T, 2>(id, gradFs[2] / normgradFs);
+      NGradFs.template SetField<0>(id, gradFs[0] / normgradFs);
+      NGradFs.template SetField<1>(id, gradFs[1] / normgradFs);
+      NGradFs.template SetField<2>(id, gradFs[2] / normgradFs);
       Q.SetField(id, pow(NGradFs.getField(0)[id], 4) +
                          pow(NGradFs.getField(1)[id], 4) +
                          pow(NGradFs.getField(2)[id], 4));

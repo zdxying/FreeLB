@@ -313,6 +313,9 @@ struct OMP_helper {
 };
 
 
+template <typename T>
+class GenericArray;
+
 namespace util {
 // return true if a is close to zero
 template <typename T>
@@ -347,6 +350,11 @@ inline bool isFlag(std::uint8_t flag1, std::uint8_t flag2) {
 inline bool isFlag(std::uint16_t flag1, std::uint16_t flag2) {
   return static_cast<bool>(flag1 & flag2);
 }
+// add flagx to existing flag
+inline void addFlag(std::uint8_t src, std::uint8_t &dst) { dst |= src; }
+// remove flagx from existing flag
+inline void removeFlag(std::uint8_t src, std::uint8_t &dst) { dst &= ~src; }
+
 
 // copy data from field
 template <typename ArrayType, unsigned int Dim>
@@ -371,5 +379,43 @@ void CopyFromFieldArray(const Vector<int, Dim> &Mesh, int Overlap, const ArrayTy
     }
   }
 }
+
+template <typename T, typename LatSet>
+class Parker_YoungsNormal2D {
+ private:
+  int Nx;
+  int Ny;
+  std::array<int, LatSet::q> Nbr;
+  std::array<int, LatSet::q> Weight;
+  const T *f;
+
+ public:
+  Parker_YoungsNormal2D(int nx, int ny, const GenericArray<T> &f_)
+      : Nx(nx), Ny(ny), f(f_.getdata()) {
+    Nbr = make_Array<int, LatSet::q>(
+      [&](int i) { return LatSet::c[i] * Vector<int, 2>{1, Nx}; });
+
+    Weight = make_Array<int, LatSet::q>([&](int i) {
+      int weight = 1;
+      if (LatSet::c[i][0] != 0) weight *= 2;
+      if (LatSet::c[i][1] != 0) weight *= 2;
+      weight /= 2;
+      return weight;
+    });
+  }
+
+  // Parker & Youngs (1992) interface normal
+  Vector<T, 2> get(std::size_t id) const {
+    T x = T{};
+    T y = T{};
+    for (int i = 1; i < LatSet::q; ++i) {
+      std::size_t idn = id + Nbr[i];
+      T clampedvof = std::clamp(f[idn], T(0), T(1));
+      x -= Weight[i] * LatSet::c[i][0] * clampedvof;
+      y -= Weight[i] * LatSet::c[i][1] * clampedvof;
+    }
+    return Vector<T, 2>{x, y};
+  }
+};
 
 }  // namespace util

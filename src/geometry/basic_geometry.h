@@ -266,6 +266,9 @@ class BasicBlock : public AABB<T, D> {
 
   // lambda functions take LOCAL index: func(std::size_t idx)
   template <typename Func>
+  void forEach(Func func);
+  
+  template <typename Func>
   void forEach(const AABB<T, D>& AABBs, Func func);
 
   // lambda functions take LOCAL index, for cells with specific flag

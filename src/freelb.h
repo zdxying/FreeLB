@@ -28,4 +28,5 @@
 #include "lbm/lattice_set.h"
 #include "lbm/force_manager.h"
 #include "lbm/buoyancy.h"
+#include "lbm/const_force.h"
 #include "utils/timer.h"
