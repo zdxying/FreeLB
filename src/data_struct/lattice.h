@@ -139,17 +139,17 @@ class BasicLattice : public RhoLattice<T> {
   void UpdateRho(const std::vector<int>& index);
   // update rho based on a flag field of flagtype(usually std::uint8_t or enum
   // of std::uint8_t)
-  template <typename flagtype>
-  void UpdateRho(const GenericArray<flagtype>& flagarr, std::uint8_t flag);
+  template <typename ArrayType>
+  void UpdateRho(const ArrayType& flagarr, std::uint8_t flag);
   // update rho based on a flag field of flagtype(usually std::uint8_t or enum
   // of std::uint8_t) from a source
-  template <typename flagtype>
-  void UpdateRho_Source(const GenericArray<flagtype>& flagarr, std::uint8_t flag,
+  template <typename ArrayType>
+  void UpdateRho_Source(const ArrayType& flagarr, std::uint8_t flag,
                         const GenericArray<T>& source);
 
   void UpdateU(const std::vector<int>& index);
-  template <typename flagtype>
-  void UpdateU(const GenericArray<flagtype>& flagarr, std::uint8_t flag);
+  template <typename ArrayType>
+  void UpdateU(const ArrayType& flagarr, std::uint8_t flag);
 
   void UpdateRhoU(const std::vector<int>& index);
 
@@ -158,10 +158,10 @@ class BasicLattice : public RhoLattice<T> {
   void BGK();
   template <void (*get_feq)(std::array<T, LatSet::q>&, const Vector<T, LatSet::d>&, T)>
   void BGK(const std::vector<int>& index);
-  template <void (*get_feq)(std::array<T, LatSet::q>&, const Vector<T, LatSet::d>&, T), typename flagtype = std::uint8_t>
-  void BGK(const GenericArray<flagtype>& flagarr, std::uint8_t flag);
-  template <void (*GetFeq)(std::array<T, LatSet::q>&, const Vector<T, LatSet::d>&, T), typename flagtype = std::uint8_t>
-  void BGK_Source(const GenericArray<flagtype>& flagarr, std::uint8_t flag,
+  template <void (*get_feq)(std::array<T, LatSet::q>&, const Vector<T, LatSet::d>&, T), typename ArrayType>
+  void BGK(const ArrayType& flagarr, std::uint8_t flag);
+  template <void (*GetFeq)(std::array<T, LatSet::q>&, const Vector<T, LatSet::d>&, T), typename ArrayType>
+  void BGK_Source(const ArrayType& flagarr, std::uint8_t flag,
                   const GenericArray<T>& source);
 
   void Stream();

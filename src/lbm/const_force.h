@@ -46,22 +46,28 @@ class BlockConstForce {
       : Lat(lat), Velocity(velocity), Force(force), Omega(lat.getOmega()),
         _Omega(lat.get_Omega()), fOmega(T(1) - lat.getOmega() * T(0.5)) {}
   std::uint8_t getLevel() const { return Lat.getLevel(); }
-  template <void (*GetFeq)(std::array<T, LatSet::q> &, const Vector<T, LatSet::d> &, T),
-            typename flagtype>
-  void BGK_U(const GenericArray<flagtype> &flagarr, std::uint8_t flag) {
+  // template <void (*GetFeq)(std::array<T, LatSet::q> &, const Vector<T, LatSet::d> &,
+  // T),
+  //           typename flagtype>
+  template <typename ArrayType>
+  void BGK_U(const ArrayType &flagarr, std::uint8_t flag) {
     for (std::size_t id = 0; id < Lat.getN(); ++id) {
-      BCell<T, LatSet> cell(id, Lat);
-      std::array<T, LatSet::q> Fi{};
-      force::Force<T, LatSet>::ComputeForcePop(Fi, Velocity.get(id), Force);
-      moment::Velocity<T, LatSet>::apply(cell, Velocity.get(id), Fi);
-      collision::BGK<T, LatSet>::template applySource<GetFeq>(cell, Fi);
+      if (util::isFlag(flagarr[id], flag)) {
+        BCell<T, LatSet> cell(id, Lat);
+        std::array<T, LatSet::q> Fi{};
+        force::Force<T, LatSet>::ComputeForcePop(Fi, Velocity.get(id), Force);
+        moment::Velocity<T, LatSet>::apply(cell, Velocity.get(id), Fi);
+        collision::BGK<T, LatSet>::template Apply<
+          equilibrium::SecondOrder<BCell<T, LatSet>>>::apply(cell);
+        collision::BGK<T, LatSet>::Source::apply(cell, Fi);
+      }
     }
   }
 };
 
 template <typename T, typename LatSet>
 class ConstForceManager {
-  std::vector<BlockConstForce<T, LatSet> > ConstForces;
+  std::vector<BlockConstForce<T, LatSet>> ConstForces;
 
   BlockLatticeManager<T, LatSet> &LatMan;
 
@@ -81,17 +87,18 @@ class ConstForceManager {
     }
   }
 
-  template <void (*GetFeq)(std::array<T, LatSet::q> &, const Vector<T, LatSet::d> &, T),
-            typename flagtype>
+  // template <void (*GetFeq)(std::array<T, LatSet::q> &, const Vector<T, LatSet::d> &,
+  // T),
+  //           typename flagtype>
+  template <typename FieldType>
   void BGK_U(std::int64_t count, std::uint8_t flag,
-             const BlockFieldManager<ScalerField<flagtype>, T, LatSet::d> &BFM) {
+             const BlockFieldManager<FieldType, T, LatSet::d> &BFM) {
     std::uint8_t MaxLevel = LatMan.getMaxLevel();
 #pragma omp parallel for num_threads(Thread_Num)
     for (int i = 0; i < ConstForces.size(); ++i) {
       if (count % (static_cast<int>(pow(2, int(MaxLevel - ConstForces[i].getLevel())))) ==
           0)
-        ConstForces[i].template BGK_U<GetFeq>(BFM.getBlockField(i).getField().getField(0),
-                                              flag);
+        ConstForces[i].BGK_U(BFM.getBlockField(i).getField().getField(0), flag);
     }
   }
 };

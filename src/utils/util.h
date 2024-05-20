@@ -355,6 +355,93 @@ inline void addFlag(std::uint8_t src, std::uint8_t &dst) { dst |= src; }
 // remove flagx from existing flag
 inline void removeFlag(std::uint8_t src, std::uint8_t &dst) { dst &= ~src; }
 
+// a sequence of integers
+template <auto I, auto... Is>
+struct int_sequence {
+  static constexpr auto first = I;
+  using rest = int_sequence<Is...>;
+  static constexpr std::size_t rest_size = sizeof...(Is);
+};
+template <auto I>
+struct int_sequence<I> {
+  static constexpr auto first = I;
+  static constexpr std::size_t rest_size = 0;
+};
+
+// need c++20
+// lambda-expression in template-argument only available with ‘-std=c++20’ or
+// ‘-std=gnu++20’
+template <typename Func, std::size_t... Indices>
+auto make_int_sequence_impl(Func &&f, std::index_sequence<Indices...>) {
+  return int_sequence<f(Indices)...>{};
+}
+template <std::size_t size, typename Func>
+auto make_int_sequence(Func &&f) {
+  return make_int_sequence_impl(std::forward<Func>(f), std::make_index_sequence<size>{});
+}
+
+// key-value pair, use:
+// using pair = Key_TypeWrapper<KeyValue, Type>;
+template <auto KeyValue, typename Type>
+struct Key_TypeWrapper {
+  // key is typically an int value (uint8_t, uint16_t, etc.)
+  static constexpr auto key = KeyValue;
+  // type is the type of the struct
+  static auto apply() { return Type::apply(); }
+  using key_type = decltype(KeyValue);
+  using type = Type;
+};
+// a wrapper class for tuple
+template <typename... Types>
+struct TupleWrapper {
+ private:
+  template <auto KeyValue, std::size_t I, std::size_t... Is>
+  static auto get_by_key(std::index_sequence<I, Is...>) {
+    if constexpr (get_by_index<I>::key == KeyValue)
+      return get_by_index<I>();
+    else if constexpr (sizeof...(Is) > 0)
+      return get_by_key<KeyValue>(std::index_sequence<Is...>{});
+  }
+
+ public:
+  using tuple = std::tuple<Types...>;
+  // access ith element in tuple
+  template <std::size_t idx>
+  using get_by_index = std::tuple_element_t<idx, tuple>;
+  // access element by key
+  template <auto KeyValue>
+  using get =
+    decltype(get_by_key<KeyValue>(std::make_index_sequence<sizeof...(Types)>{}));
+  // size
+  static constexpr std::size_t size = sizeof...(Types);
+  // key sequence
+  static auto make_int_sequence() { return int_sequence<Types::key...>{}; }
+  using make_key_sequence = int_sequence<Types::key...>;
+};
+
+// helper struct to achieve if-else structure
+template <typename TUPLEWrapper, typename FlagType, typename KeySequence>
+struct SwitchTask {
+  static void execute(FlagType flag) {
+    if (isFlag(flag, KeySequence::first)) {
+      TUPLEWrapper::template get<KeySequence::first>::apply();
+    } else if constexpr (KeySequence::rest_size > 0) {
+      // to refer to a type member of a template parameter, use typename ...
+      SwitchTask<TUPLEWrapper, FlagType, typename KeySequence::rest>::execute(flag);
+    }
+  }
+};
+
+template <typename TUPLEWrapper, typename FlagType>
+struct TaskExecutor
+{
+  static void execute(FlagType flag)
+  {
+    SwitchTask<TUPLEWrapper, FlagType,
+            typename TUPLEWrapper::make_key_sequence>::execute(flag);
+  }
+};
+
 
 // copy data from field
 template <typename ArrayType, unsigned int Dim>

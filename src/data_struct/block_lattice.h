@@ -170,23 +170,23 @@ class BlockLattice : public BlockRhoLattice<T> {
   void interpcommunicate();
   // update rho based on a flag field of flagtype(usually std::uint8_t or enum
   // of std::uint8_t)
-  template <typename flagtype>
-  void UpdateRho(const GenericArray<flagtype>& flagarr, std::uint8_t flag);
+  template <typename ArrayType>
+  void UpdateRho(const ArrayType& flagarr, std::uint8_t flag);
 
-  template <typename flagtype>
-  void UpdateRho_Source(const GenericArray<flagtype>& flagarr, std::uint8_t flag,
+  template <typename ArrayType>
+  void UpdateRho_Source(const ArrayType& flagarr, std::uint8_t flag,
                         const GenericArray<T>& source);
 
-  template <typename flagtype>
-  void UpdateU(const GenericArray<flagtype>& flagarr, std::uint8_t flag);
+  template <typename ArrayType>
+  void UpdateU(const ArrayType& flagarr, std::uint8_t flag);
 
   template <void (*GetFeq)(std::array<T, LatSet::q>&, const Vector<T, LatSet::d>&, T),
-            typename flagtype = std::uint8_t>
-  void BGK(const GenericArray<flagtype>& flagarr, std::uint8_t flag);
+            typename ArrayType>
+  void BGK(const ArrayType& flagarr, std::uint8_t flag);
 
   template <void (*GetFeq)(std::array<T, LatSet::q>&, const Vector<T, LatSet::d>&, T),
-            typename flagtype = std::uint8_t>
-  void BGK_Source(const GenericArray<flagtype>& flagarr, std::uint8_t flag,
+            typename ArrayType>
+  void BGK_Source(const ArrayType& flagarr, std::uint8_t flag,
                   const GenericArray<T>& source);
   void Stream();
 
@@ -270,28 +270,28 @@ class BlockLatticeManager {
   const BlockGeometry<T, LatSet::d>& getGeo() const { return BlockGeo; }
 
 
-  template <typename flagtype = std::uint8_t>
+  template <typename FieldType>
   void UpdateRho(std::int64_t count, std::uint8_t flag,
-                 const BlockFieldManager<ScalerField<flagtype>, T, LatSet::d>& BFM);
+                 const BlockFieldManager<FieldType, T, LatSet::d>& BFM);
 
-  template <typename flagtype = std::uint8_t>
+  template <typename FieldType>
   void UpdateRho_Source(std::int64_t count, std::uint8_t flag,
-                        const BlockFieldManager<ScalerField<flagtype>, T, LatSet::d>& BFM,
+                        const BlockFieldManager<FieldType, T, LatSet::d>& BFM,
                         const BlockFieldManager<ScalerField<T>, T, LatSet::d>& source);
 
-  template <typename flagtype = std::uint8_t>
+  template <typename FieldType>
   void UpdateU(std::int64_t count, std::uint8_t flag,
-               const BlockFieldManager<ScalerField<flagtype>, T, LatSet::d>& BFM);
+               const BlockFieldManager<FieldType, T, LatSet::d>& BFM);
 
   template <void (*GetFeq)(std::array<T, LatSet::q>&, const Vector<T, LatSet::d>&, T),
-            typename flagtype = std::uint8_t>
+            typename FieldType>
   void BGK(std::int64_t count, std::uint8_t flag,
-           const BlockFieldManager<ScalerField<flagtype>, T, LatSet::d>& BFM);
+           const BlockFieldManager<FieldType, T, LatSet::d>& BFM);
 
   template <void (*GetFeq)(std::array<T, LatSet::q>&, const Vector<T, LatSet::d>&, T),
-            typename flagtype = std::uint8_t>
+            typename FieldType>
   void BGK_Source(std::int64_t count, std::uint8_t flag,
-                  const BlockFieldManager<ScalerField<flagtype>, T, LatSet::d>& BFM,
+                  const BlockFieldManager<FieldType, T, LatSet::d>& BFM,
                   const BlockFieldManager<ScalerField<T>, T, LatSet::d>& source);
 
   void Stream(std::int64_t count);

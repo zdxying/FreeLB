@@ -475,11 +475,10 @@ class BlockFieldManager {
     InitComm();
   }
   // init with initvalue and data transfer
-  template <typename flagtype, typename Func>
-  void InitCopy(
-    BlockGeometryHelper<FloatType, Dim>& GeoHelper, datatype initvalue,
-    const BlockFieldManager<ScalerField<flagtype>, FloatType, Dim>& FlagFManager,
-    std::uint8_t flag, Func func) {
+  template <typename FlagFieldType, typename Func>
+  void InitCopy(BlockGeometryHelper<FloatType, Dim>& GeoHelper, datatype initvalue,
+                const BlockFieldManager<FlagFieldType, FloatType, Dim>& FlagFManager,
+                std::uint8_t flag, Func func) {
     std::vector<BlockField<FieldType, FloatType, Dim>> NewFields;
     for (Block<FloatType, Dim>& block : _BlockGeo.getBlocks()) {
       NewFields.emplace_back(block, initvalue);
@@ -489,8 +488,7 @@ class BlockFieldManager {
     int iblock = 0;
     for (Block<FloatType, Dim>& blockgeo : _BlockGeo.getBlocks()) {
       FieldType& field = NewFields[iblock].getField();
-      const GenericArray<flagtype>& flagarr =
-        FlagFManager.getBlockField(iblock).getField().getField(0);
+      const auto& flagarr = FlagFManager.getBlockField(iblock).getField().getField(0);
       blockgeo.forEach(flagarr, flag,
                        [&field, &func](std::size_t id) { func(field, id); });
       ++iblock;
@@ -660,16 +658,14 @@ class BlockFieldManager {
   }
 
   // call forEach(AABBs, FlagFManager, flag, [&](FieldType& field, std::size_t id){});
-  template <typename flagtype, typename Func>
-  void forEach(
-    const AABB<FloatType, Dim>& AABBs,
-    const BlockFieldManager<ScalerField<flagtype>, FloatType, Dim>& FlagFManager,
-    std::uint8_t flag, Func func) {
+  template <typename FlagFieldType, typename Func>
+  void forEach(const AABB<FloatType, Dim>& AABBs,
+               const BlockFieldManager<FlagFieldType, FloatType, Dim>& FlagFManager,
+               std::uint8_t flag, Func func) {
     int iblock = 0;
     for (Block<FloatType, Dim>& blockgeo : _BlockGeo.getBlocks()) {
       FieldType& field = _Fields[iblock].getField();
-      const GenericArray<flagtype>& flagarr =
-        FlagFManager.getBlockField(iblock).getField().getField(0);
+      const auto& flagarr = FlagFManager.getBlockField(iblock).getField().getField(0);
       blockgeo.forEach(AABBs, flagarr, flag,
                        [&field, &func](std::size_t id) { func(field, id); });
       ++iblock;
@@ -677,15 +673,13 @@ class BlockFieldManager {
   }
 
   // call forEach(FlagFManager, flag, [&](FieldType& field, std::size_t id){});
-  template <typename flagtype, typename Func>
-  void forEach(
-    const BlockFieldManager<ScalerField<flagtype>, FloatType, Dim>& FlagFManager,
-    std::uint8_t flag, Func func) {
+  template <typename FlagFieldType, typename Func>
+  void forEach(const BlockFieldManager<FlagFieldType, FloatType, Dim>& FlagFManager,
+               std::uint8_t flag, Func func) {
     int iblock = 0;
     for (Block<FloatType, Dim>& blockgeo : _BlockGeo.getBlocks()) {
       FieldType& field = _Fields[iblock].getField();
-      const GenericArray<flagtype>& flagarr =
-        FlagFManager.getBlockField(iblock).getField().getField(0);
+      const auto& flagarr = FlagFManager.getBlockField(iblock).getField().getField(0);
       blockgeo.forEach(flagarr, flag,
                        [&field, &func](std::size_t id) { func(field, id); });
       ++iblock;

@@ -119,8 +119,8 @@ class Buoyancy {
       }
     }
   }
-  template <typename flagtype>
-  void GetBuoyancy(const GenericArray<flagtype> &flagarr, std::uint8_t flag) {
+  template <typename ArrayType>
+  void GetBuoyancy(const ArrayType &flagarr, std::uint8_t flag) {
     // reset force
     Force.getField(0).Init(T(0));
     // add to buoyancy
@@ -169,8 +169,8 @@ class Buoyancy {
   // BGK with FORCE term
   // update force and u at the same time
   template <void (*GetFeq)(std::array<T, LatSet::q> &, const Vector<T, LatSet::d> &, T),
-            typename flagtype>
-  void BGK_U(const GenericArray<flagtype> &flagarr, std::uint8_t flag) {
+            typename ArrayType>
+  void BGK_U(const ArrayType &flagarr, std::uint8_t flag) {
 #pragma omp parallel for num_threads(Thread_Num) schedule(static)
     for (int id = 0; id < NSLat.getN(); ++id) {
       if (util::isFlag(flagarr[id], flag)) {
@@ -184,8 +184,8 @@ class Buoyancy {
   }
   // BGK with FORCE term
   // do not update u
-  template <void (*GetFeq)(std::array<T, LatSet::q> &, const Vector<T, LatSet::d> &, T), typename flagtype>
-  void BGK(const GenericArray<flagtype> &flagarr, std::uint8_t flag) {
+  template <void (*GetFeq)(std::array<T, LatSet::q> &, const Vector<T, LatSet::d> &, T), typename ArrayType>
+  void BGK(const ArrayType &flagarr, std::uint8_t flag) {
 #pragma omp parallel for num_threads(Thread_Num) schedule(static)
     for (int id = 0; id < NSLat.getN(); ++id) {
       if (util::isFlag(flagarr[id], flag)) {

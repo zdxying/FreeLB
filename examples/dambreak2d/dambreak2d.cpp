@@ -97,7 +97,7 @@ void readParam() {
 int main() {
   std::uint8_t VoidFlag = std::uint8_t(1);
   std::uint8_t AABBFlag = std::uint8_t(2);
-  std::uint8_t BouncebackFlag = std::uint8_t(64);
+  std::uint8_t BouncebackFlag = std::uint8_t(4);
 
   Printer::Print_BigBanner(std::string("Initializing..."));
 
@@ -113,7 +113,7 @@ int main() {
   AABB<T, 2> cavity(Vector<T, 2>(T(0), T(0)),
                     Vector<T, 2>(T(Ni * Cell_Len), T(Nj * Cell_Len)));
   AABB<T, 2> fluid(Vector<T, 2>(T(0), T(0)),
-                   Vector<T, 2>(T(int(Ni / 3) * Cell_Len), T(int(Nj / 2) * Cell_Len)));
+                   Vector<T, 2>(T(int(Ni / 2) * Cell_Len), T(int(Nj / 2) * Cell_Len)));
   BlockGeometry2D<T> Geo(Ni, Nj, 1, cavity, Cell_Len);
 
   // ------------------ define flag field ------------------
@@ -178,12 +178,13 @@ int main() {
 
     NSLattice.UpdateRho(MainLoopTimer(), (FS::FSType::Fluid | FS::FSType::Interface),
                         FreeSurface.getStateFM());
-    Gravity.BGK_U<Equilibrium<T, LatSet>::SecondOrder>(
+    // Gravity.BGK_U<Equilibrium<T, LatSet>::SecondOrder>(
+      Gravity.BGK_U(
       MainLoopTimer(), (FS::FSType::Fluid | FS::FSType::Interface),
       FreeSurface.getStateFM());
     NSLattice.Stream(MainLoopTimer());
     NS_BB.Apply(MainLoopTimer());
-    
+
     FreeSurface.Apply();
 
     if (MainLoopTimer() % OutputStep == 0) {

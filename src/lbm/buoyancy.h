@@ -54,8 +54,8 @@ class BlockBuoyancy {
 
   std::uint8_t getLevel() const { return NSLat.getLevel(); }
 
-  template <typename flagtype>
-  void GetBuoyancy(const GenericArray<flagtype> &flagarr, std::uint8_t flag) {
+  template <typename ArrayType>
+  void GetBuoyancy(const ArrayType &flagarr, std::uint8_t flag) {
     // reset force
     Force.getField(0).Init(T(0));
     // add to buoyancy
@@ -78,8 +78,8 @@ class BlockBuoyancy {
   // BGK with FORCE term
   // update force and u at the same time
   template <void (*GetFeq)(std::array<T, LatSet::q> &, const Vector<T, LatSet::d> &, T),
-            typename flagtype>
-  void BGK_U(const GenericArray<flagtype> &flagarr, std::uint8_t flag) {
+            typename ArrayType>
+  void BGK_U(const ArrayType &flagarr, std::uint8_t flag) {
     for (std::size_t id = 0; id < NSLat.getN(); ++id) {
       if (util::isFlag(flagarr[id], flag)) {
         BCell<T, LatSet> cell(id, NSLat);
@@ -94,8 +94,8 @@ class BlockBuoyancy {
   // BGK with FORCE term
   // do not update u
   template <void (*GetFeq)(std::array<T, LatSet::q> &, const Vector<T, LatSet::d> &, T),
-            typename flagtype>
-  void BGK(const GenericArray<flagtype> &flagarr, std::uint8_t flag) {
+            typename ArrayType>
+  void BGK(const ArrayType &flagarr, std::uint8_t flag) {
     for (std::size_t id = 0; id < NSLat.getN(); ++id) {
       if (util::isFlag(flagarr[id], flag)) {
         BCell<T, LatSet> cell(id, NSLat);
@@ -151,9 +151,9 @@ class BlockBuoyancyManager {
     AddSource(args...);
   }
 
-  template <typename flagtype>
+  template <typename FieldType>
   void GetBuoyancy(std::int64_t count, std::uint8_t flag,
-                   const BlockFieldManager<ScalerField<flagtype>, T, LatSet::d> &BFM) {
+                   const BlockFieldManager<FieldType, T, LatSet::d> &BFM) {
     std::uint8_t MaxLevel = NSLatMan.getMaxLevel();
 #pragma omp parallel for num_threads(Thread_Num)
     for (int i = 0; i < _Buoyancys.size(); ++i) {
@@ -164,9 +164,9 @@ class BlockBuoyancyManager {
   }
 
   template <void (*GetFeq)(std::array<T, LatSet::q> &, const Vector<T, LatSet::d> &, T),
-            typename flagtype>
+            typename FieldType>
   void BGK_U(std::int64_t count, std::uint8_t flag,
-             const BlockFieldManager<ScalerField<flagtype>, T, LatSet::d> &BFM) {
+             const BlockFieldManager<FieldType, T, LatSet::d> &BFM) {
     std::uint8_t MaxLevel = NSLatMan.getMaxLevel();
 #pragma omp parallel for num_threads(Thread_Num)
     for (int i = 0; i < _Buoyancys.size(); ++i) {
@@ -178,9 +178,9 @@ class BlockBuoyancyManager {
   }
 
   template <void (*GetFeq)(std::array<T, LatSet::q> &, const Vector<T, LatSet::d> &, T),
-            typename flagtype>
+            typename FieldType>
   void BGK(std::int64_t count, std::uint8_t flag,
-           const BlockFieldManager<ScalerField<flagtype>, T, LatSet::d> &BFM) {
+           const BlockFieldManager<FieldType, T, LatSet::d> &BFM) {
     std::uint8_t MaxLevel = NSLatMan.getMaxLevel();
 #pragma omp parallel for num_threads(Thread_Num)
     for (int i = 0; i < _Buoyancys.size(); ++i) {

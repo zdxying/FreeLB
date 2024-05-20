@@ -28,13 +28,13 @@
 namespace FS {
 
 enum FSType : std::uint8_t {
-  Void = 0,
-  Gas = 1,
-  Interface = 2,
-  Fluid = 4,
-  To_Fluid = 8,
-  To_Gas = 16,
-  To_Interface = 32
+  Solid = 1,
+  Gas = 2,
+  Interface = 4,
+  Fluid = 8,
+  To_Fluid = 16,
+  To_Gas = 32,
+  To_Interface = 64
 };
 
 template <typename T, typename LatSet>
@@ -112,7 +112,7 @@ class FreeSurface2DManager {
 
  public:
   FreeSurface2DManager(BlockLatticeManager<T, LatSet>& lm)
-      : LatMan(lm), StateFM(lm.getGeo(), FSType::Void), MassFM(lm.getGeo(), T{}),
+      : LatMan(lm), StateFM(lm.getGeo(), FSType::Solid), MassFM(lm.getGeo(), T{}),
         ExcessMassFM(lm.getGeo(), T{}), VolumeFracFM(lm.getGeo(), T{}) {
     // init FreeSurface2D
     for (int i = 0; i < LatMan.getGeo().getBlockNum(); ++i) {
@@ -139,6 +139,8 @@ class FreeSurface2DManager {
   }
 
   void Init() {
+    // set solid cells
+    // StateFM.template SetupBoundary<LatSet>(LatMan.getGeo().getBaseBlock(), FSType::Solid);
     // set interface cells
     StateFM.forEach([&](auto& blockfield, std::size_t id) {
       auto& field = blockfield.getField();

@@ -66,8 +66,8 @@ void BasicLattice<T, LatSet>::UpdateRho(const std::vector<int>& index) {
 
 
 template <typename T, typename LatSet>
-template <typename flagtype>
-void BasicLattice<T, LatSet>::UpdateRho(const GenericArray<flagtype>& flagarr, std::uint8_t flag) {
+template <typename ArrayType>
+void BasicLattice<T, LatSet>::UpdateRho(const ArrayType& flagarr, std::uint8_t flag) {
 #pragma omp parallel for num_threads(Thread_Num) schedule(static)
   for (int id = 0; id < N; ++id) {
     if (util::isFlag(flagarr[id], flag)) {
@@ -78,8 +78,8 @@ void BasicLattice<T, LatSet>::UpdateRho(const GenericArray<flagtype>& flagarr, s
 }
 
 template <typename T, typename LatSet>
-template <typename flagtype>
-void BasicLattice<T, LatSet>::UpdateRho_Source(const GenericArray<flagtype>& flagarr,
+template <typename ArrayType>
+void BasicLattice<T, LatSet>::UpdateRho_Source(const ArrayType& flagarr,
                                                std::uint8_t flag, const GenericArray<T>& source) {
 #pragma omp parallel for num_threads(Thread_Num) schedule(static)
   for (int id = 0; id < N; ++id) {
@@ -91,8 +91,8 @@ void BasicLattice<T, LatSet>::UpdateRho_Source(const GenericArray<flagtype>& fla
 }
 
 template <typename T, typename LatSet>
-template <typename flagtype>
-void BasicLattice<T, LatSet>::UpdateU(const GenericArray<flagtype>& flagarr, std::uint8_t flag) {
+template <typename ArrayType>
+void BasicLattice<T, LatSet>::UpdateU(const ArrayType& flagarr, std::uint8_t flag) {
 #pragma omp parallel for num_threads(Thread_Num) schedule(static)
   for (int id = 0; id < N; ++id) {
     if (util::isFlag(flagarr[id], flag)) {
@@ -143,8 +143,8 @@ void BasicLattice<T, LatSet>::BGK(const std::vector<int>& index) {
 
 template <typename T, typename LatSet>
 template <void (*GetFeq)(std::array<T, LatSet::q>&, const Vector<T, LatSet::d>&, T),
-          typename flagtype>
-void BasicLattice<T, LatSet>::BGK(const GenericArray<flagtype>& flagarr, std::uint8_t flag) {
+          typename ArrayType>
+void BasicLattice<T, LatSet>::BGK(const ArrayType& flagarr, std::uint8_t flag) {
 #pragma omp parallel for num_threads(Thread_Num) schedule(static)
   for (int id = 0; id < N; ++id) {
     if (util::isFlag(flagarr[id], flag)) {
@@ -156,8 +156,8 @@ void BasicLattice<T, LatSet>::BGK(const GenericArray<flagtype>& flagarr, std::ui
 
 template <typename T, typename LatSet>
 template <void (*GetFeq)(std::array<T, LatSet::q>&, const Vector<T, LatSet::d>&, T),
-          typename flagtype>
-void BasicLattice<T, LatSet>::BGK_Source(const GenericArray<flagtype>& flagarr, std::uint8_t flag,
+          typename ArrayType>
+void BasicLattice<T, LatSet>::BGK_Source(const ArrayType& flagarr, std::uint8_t flag,
                                          const GenericArray<T>& source) {
   T fOmega = T(1) - Omega * T(0.5);
 #pragma omp parallel for num_threads(Thread_Num) schedule(static)

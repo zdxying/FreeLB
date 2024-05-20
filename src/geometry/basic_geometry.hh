@@ -379,8 +379,8 @@ void BasicBlock<T, D>::forEach(const AABB<T, D>& AABBs, Func func) {
 }
 
 template <typename T, unsigned int D>
-template <typename flagtype, typename Func>
-void BasicBlock<T, D>::forEach(const AABB<T, D>& AABBs, const GenericArray<flagtype>& flag,
+template <typename ArrayType, typename Func>
+void BasicBlock<T, D>::forEach(const AABB<T, D>& AABBs, const ArrayType& flag,
                                std::uint8_t fromflag, Func func) {
   Vector<int, D> idx_min;
   Vector<int, D> idx_max;
@@ -407,8 +407,8 @@ void BasicBlock<T, D>::forEach(const AABB<T, D>& AABBs, const GenericArray<flagt
 }
 
 template <typename T, unsigned int D>
-template <typename flagtype, typename Func>
-void BasicBlock<T, D>::forEach(const GenericArray<flagtype>& flag, std::uint8_t fromflag, Func func) {
+template <typename ArrayType, typename Func>
+void BasicBlock<T, D>::forEach(const ArrayType& flag, std::uint8_t fromflag, Func func) {
   if constexpr (D == 2) {
     for (int j = 0; j < Mesh[1]; ++j) {
       for (int i = 0; i < Mesh[0]; ++i) {

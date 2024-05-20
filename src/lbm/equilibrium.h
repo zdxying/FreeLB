@@ -31,6 +31,9 @@ class BasicCell;
 template <typename T, typename LatSet>
 class Cell;
 
+template <typename T, typename LatSet>
+class BCell;
+
 // calc equilibrium distribution function
 // sum(feq_i) = rho, for both first and second order
 template <typename T, typename LatSet>
@@ -58,34 +61,16 @@ struct Equilibrium {
   //                          LatSet::InvCs2 * u2 * T(0.5));
   // }
 
-  static void Feq_firstOrder(T *feq, const Vector<T, LatSet::d> &u, T rho) {
-    for (int k = 0; k < LatSet::q; ++k) {
-      feq[k] = Order1(k, u, rho);
-    }
-  }
   static void FirstOrder(std::array<T, LatSet::q> &feq, const Vector<T, LatSet::d> &u,
                          T rho) {
     for (int k = 0; k < LatSet::q; ++k) {
       feq[k] = Order1(k, u, rho);
     }
   }
-
-  static void Feq_firstOrder_Incompresible(T *feq, const Vector<T, LatSet::d> &u, T rho) {
-    for (int k = 0; k < LatSet::q; ++k) {
-      feq[k] = Order1_Incompresible(k, u, rho);
-    }
-  }
   static void FirstOrder_Incompresible(std::array<T, LatSet::q> &feq,
                                        const Vector<T, LatSet::d> &u, T rho) {
     for (int k = 0; k < LatSet::q; ++k) {
       feq[k] = Order1_Incompresible(k, u, rho);
-    }
-  }
-
-  static void Feq_secondOrder(T *feq, const Vector<T, LatSet::d> &u, T rho) {
-    T u2 = u.getnorm2();
-    for (int k = 0; k < LatSet::q; ++k) {
-      feq[k] = Order2(k, u, rho, u2);
     }
   }
   static void SecondOrder(std::array<T, LatSet::q> &feq, const Vector<T, LatSet::d> &u,
@@ -95,26 +80,40 @@ struct Equilibrium {
       feq[k] = Order2(k, u, rho, u2);
     }
   }
-  // static void SecondOrder_Incompresible(std::array<T, LatSet::q> &feq,
-  //                                       const Vector<T, LatSet::d> &u, T rho) {
-  //   T u2 = u.getnorm2();
-  //   for (int k = 0; k < LatSet::q; ++k) {
-  //     feq[k] = Order2_Incompresible(k, u, rho, u2);
-  //   }
-  // }
 
-  // init cell to equilibrium
-  template <void (*GetFeq)(std::array<T, LatSet::q> &, const Vector<T, LatSet::d> &, T)>
-  static void InitEquilibrium(BasicCell<T, LatSet> &cell, const T rho,
-                              const Vector<T, LatSet::d> &u) {
-    std::array<T, LatSet::q> feq{};
-    GetFeq(feq, u, rho);
-    for (int i = 0; i < LatSet::q; ++i) cell[i] = feq[i];
+  // ------------- get feq from cell -------------
+  // calc equilibrium using interface BCell
+  static void FirstOrder(const BCell<T, LatSet> &cell, std::array<T, LatSet::q> &feq) {
+    const T rho = cell.getRho();
+    const Vector<T, LatSet::d> &u = cell.getVelocity();
+    for (int k = 0; k < LatSet::q; ++k) {
+      feq[k] = Order1(k, u, rho);
+    }
   }
-  template <void (*GetFeq)(std::array<T, LatSet::q> &, const Vector<T, LatSet::d> &, T)>
-  static void InitEquilibrium(Cell<T, LatSet> &cell) {
-    std::array<T, LatSet::q> feq{};
-    GetFeq(feq, cell.getVelocity(), cell.getRho());
-    for (int i = 0; i < LatSet::q; ++i) cell[i] = feq[i];
+  static void SecondOrder(const BCell<T, LatSet> &cell, std::array<T, LatSet::q> &feq) {
+    const T rho = cell.getRho();
+    const Vector<T, LatSet::d> &u = cell.getVelocity();
+    const T u2 = u.getnorm2();
+    for (int k = 0; k < LatSet::q; ++k) {
+      feq[k] = Order2(k, u, rho, u2);
+    }
   }
 };
+
+namespace equilibrium {
+
+template <typename CELL>
+struct SecondOrder {
+  using T = typename CELL::FloatType;
+  using LatSet = typename CELL::LatticeSet;
+  static void apply(const CELL &cell, std::array<T, LatSet::q> &feq, T rho,
+                    const Vector<T, LatSet::d> &u) {
+    const T u2 = u.getnorm2();
+    for (unsigned int k = 0; k < LatSet::q; ++k) {
+      feq[k] = Equilibrium<T, LatSet>::Order2(k, u, rho, u2);
+    }
+  }
+};
+
+
+}  // namespace equilibrium

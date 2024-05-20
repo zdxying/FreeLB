@@ -272,12 +272,12 @@ class BasicBlock : public AABB<T, D> {
   void forEach(const AABB<T, D>& AABBs, Func func);
 
   // lambda functions take LOCAL index, for cells with specific flag
-  template <typename flagtype, typename Func>
-  void forEach(const AABB<T, D>& AABBs, const GenericArray<flagtype>& flag,
+  template <typename ArrayType, typename Func>
+  void forEach(const AABB<T, D>& AABBs, const ArrayType& flag,
                std::uint8_t fromflag, Func func);
 
-  template <typename flagtype, typename Func>
-  void forEach(const GenericArray<flagtype>& flag, std::uint8_t fromflag, Func func);
+  template <typename ArrayType, typename Func>
+  void forEach(const ArrayType& flag, std::uint8_t fromflag, Func func);
 
   // get certain cells' indices(usually in an overlapped AABB) in the block
   // similar to void getOverlappedCellIdx(const AABB<int, D>& aabb, std::vector<int>&

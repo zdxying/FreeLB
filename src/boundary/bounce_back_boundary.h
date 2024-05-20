@@ -5,16 +5,16 @@
  * The most recent progress of FreeLB will be updated at
  * <https://github.com/zdxying/FreeLB>
  *
- * FreeLB is free software: you can redistribute it and/or modify it under the terms of the GNU
- * General Public License as published by the Free Software Foundation, either version 3 of the
- * License, or (at your option) any later version.
+ * FreeLB is free software: you can redistribute it and/or modify it under the terms of
+ * the GNU General Public License as published by the Free Software Foundation, either
+ * version 3 of the License, or (at your option) any later version.
  *
- * FreeLB is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even
- * the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General
- * Public License for more details.
+ * FreeLB is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
+ * without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
+ * PURPOSE. See the GNU General Public License for more details.
  *
- * You should have received a copy of the GNU General Public License along with FreeLB. If not, see
- * <https://www.gnu.org/licenses/>.
+ * You should have received a copy of the GNU General Public License along with FreeLB. If
+ * not, see <https://www.gnu.org/licenses/>.
  *
  */
 
@@ -39,14 +39,30 @@ struct BounceBackLikeMethod {
   static inline void anti_bounceback_simplified(BCell<T, LatSet> &cell, int k) {
     cell[k] = 2 * cell.getRho() * LatSet::w[k] - cell.getPrevious(LatSet::opp[k]);
   }
-
+  // however the velocity here is NOT Wall velocity but fluid velocity relative to wall
+  // so you don't need to specify the wall velocity when calling this function
   static inline void movingwall_bounceback(Cell<T, LatSet> &cell, int k) {
-    cell[k] = cell.getPrevious(LatSet::opp[k]) + 2 * LatSet::InvCs2 * LatSet::w[k] * cell.getRho() *
+    cell[k] = cell.getPrevious(LatSet::opp[k]) + 2 * LatSet::InvCs2 * LatSet::w[k] *
+                                                   cell.getRho() *
                                                    (cell.getVelocity() * LatSet::c[k]);
   }
   static inline void movingwall_bounceback(BCell<T, LatSet> &cell, int k) {
-    cell[k] = cell.getPrevious(LatSet::opp[k]) + 2 * LatSet::InvCs2 * LatSet::w[k] * cell.getRho() *
+    cell[k] = cell.getPrevious(LatSet::opp[k]) + 2 * LatSet::InvCs2 * LatSet::w[k] *
+                                                   cell.getRho() *
                                                    (cell.getVelocity() * LatSet::c[k]);
+  }
+
+  static inline void movingwall_bounceback(Cell<T, LatSet> &cell, int k,
+                                           const Vector<T, LatSet::d> &wall_velocity) {
+    cell[k] = cell.getPrevious(LatSet::opp[k]) - 2 * LatSet::InvCs2 * LatSet::w[k] *
+                                                   cell.getRho() *
+                                                   (wall_velocity * LatSet::c[k]);
+  }
+  static inline void movingwall_bounceback(BCell<T, LatSet> &cell, int k,
+                                           const Vector<T, LatSet::d> &wall_velocity) {
+    cell[k] = cell.getPrevious(LatSet::opp[k]) - 2 * LatSet::InvCs2 * LatSet::w[k] *
+                                                   cell.getRho() *
+                                                   (wall_velocity * LatSet::c[k]);
   }
 
   static inline void anti_bounceback_O1(Cell<T, LatSet> &cell, int k) {
@@ -99,8 +115,8 @@ class BBLikeFixedBoundary final : public FixedBoundary<T, LatSet, flagType> {
   std::string _name;
 
  public:
-  BBLikeFixedBoundary(std::string name, BasicLattice<T, LatSet> &lat, std::uint8_t cellflag,
-                      std::uint8_t voidflag = std::uint8_t(1))
+  BBLikeFixedBoundary(std::string name, BasicLattice<T, LatSet> &lat,
+                      std::uint8_t cellflag, std::uint8_t voidflag = std::uint8_t(1))
       : FixedBoundary<T, LatSet, flagType>(lat, cellflag, voidflag), _name(name) {}
 
   void Apply() override;
@@ -118,8 +134,8 @@ class BBLikeMovingBoundary final : public MovingBoundary<T, LatSet, flagType> {
 
  public:
   BBLikeMovingBoundary(std::string name, BasicLattice<T, LatSet> &lat,
-                               std::vector<std::size_t> &ids, std::uint8_t voidflag,
-                               std::uint8_t cellflag = std::uint8_t(0));
+                       std::vector<std::size_t> &ids, std::uint8_t voidflag,
+                       std::uint8_t cellflag = std::uint8_t(0));
 
   void Apply() override;
   void getinfo() override;
@@ -154,7 +170,7 @@ class BBLikeFixedBlockBdManager final : public AbstractBlockBoundary {
   std::uint8_t BdCellFlag;
   // boundary flag
   std::uint8_t voidFlag;
-  
+
   BlockLatticeManager<T, LatSet> &LatMan;
 
   BlockFieldManager<GenericField<GenericArray<flagType>, 1>, T, LatSet::d> &BlockFManager;
@@ -198,16 +214,16 @@ class BBLikeMovingBlockBdManager final : public AbstractBlockBoundary {
   std::uint8_t voidFlag;
   BlockLatticeManager<T, LatSet> &LatMan;
   // ids
-  std::vector<std::vector<std::size_t> *>& IDss;
+  std::vector<std::vector<std::size_t> *> &IDss;
 
   BlockFieldManager<ScalerField<flagType>, T, LatSet::d> &BlockFManager;
 
  public:
-  BBLikeMovingBlockBdManager(std::string name, BlockLatticeManager<T, LatSet> &lat,
-                             std::vector<std::vector<std::size_t> *>& idss,
-                             BlockFieldManager<ScalerField<flagType>, T, LatSet::d> &BlockFM,
-                             std::uint8_t voidflag,
-                             std::uint8_t cellflag = std::uint8_t(0));
+  BBLikeMovingBlockBdManager(
+    std::string name, BlockLatticeManager<T, LatSet> &lat,
+    std::vector<std::vector<std::size_t> *> &idss,
+    BlockFieldManager<ScalerField<flagType>, T, LatSet::d> &BlockFM,
+    std::uint8_t voidflag, std::uint8_t cellflag = std::uint8_t(0));
 
   void Init();
   void Apply(std::int64_t count) override;

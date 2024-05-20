@@ -215,8 +215,8 @@ void BlockLattice<T, LatSet>::interpcommunicate() {
 
 
 template <typename T, typename LatSet>
-template <typename flagtype>
-void BlockLattice<T, LatSet>::UpdateRho(const GenericArray<flagtype>& flagarr,
+template <typename ArrayType>
+void BlockLattice<T, LatSet>::UpdateRho(const ArrayType& flagarr,
                                         std::uint8_t flag) {
   for (std::size_t id = 0; id < getN(); ++id) {
     if (util::isFlag(flagarr[id], flag)) {
@@ -227,8 +227,8 @@ void BlockLattice<T, LatSet>::UpdateRho(const GenericArray<flagtype>& flagarr,
 }
 
 template <typename T, typename LatSet>
-template <typename flagtype>
-void BlockLattice<T, LatSet>::UpdateRho_Source(const GenericArray<flagtype>& flagarr,
+template <typename ArrayType>
+void BlockLattice<T, LatSet>::UpdateRho_Source(const ArrayType& flagarr,
                                                std::uint8_t flag,
                                                const GenericArray<T>& source) {
   for (std::size_t id = 0; id < getN(); ++id) {
@@ -240,8 +240,8 @@ void BlockLattice<T, LatSet>::UpdateRho_Source(const GenericArray<flagtype>& fla
 }
 
 template <typename T, typename LatSet>
-template <typename flagtype>
-void BlockLattice<T, LatSet>::UpdateU(const GenericArray<flagtype>& flagarr,
+template <typename ArrayType>
+void BlockLattice<T, LatSet>::UpdateU(const ArrayType& flagarr,
                                       std::uint8_t flag) {
   for (std::size_t id = 0; id < getN(); ++id) {
     if (util::isFlag(flagarr[id], flag)) {
@@ -253,8 +253,8 @@ void BlockLattice<T, LatSet>::UpdateU(const GenericArray<flagtype>& flagarr,
 
 template <typename T, typename LatSet>
 template <void (*GetFeq)(std::array<T, LatSet::q>&, const Vector<T, LatSet::d>&, T),
-          typename flagtype>
-void BlockLattice<T, LatSet>::BGK(const GenericArray<flagtype>& flagarr,
+          typename ArrayType>
+void BlockLattice<T, LatSet>::BGK(const ArrayType& flagarr,
                                   std::uint8_t flag) {
   for (std::size_t id = 0; id < getN(); ++id) {
     if (util::isFlag(flagarr[id], flag)) {
@@ -266,8 +266,8 @@ void BlockLattice<T, LatSet>::BGK(const GenericArray<flagtype>& flagarr,
 
 template <typename T, typename LatSet>
 template <void (*GetFeq)(std::array<T, LatSet::q>&, const Vector<T, LatSet::d>&, T),
-          typename flagtype>
-void BlockLattice<T, LatSet>::BGK_Source(const GenericArray<flagtype>& flagarr,
+          typename ArrayType>
+void BlockLattice<T, LatSet>::BGK_Source(const ArrayType& flagarr,
                                          std::uint8_t flag,
                                          const GenericArray<T>& source) {
   for (std::size_t id = 0; id < getN(); ++id) {
@@ -471,10 +471,10 @@ void BlockLatticeManager<T, LatSet>::InitIntpComm() {
 }
 
 template <typename T, typename LatSet>
-template <typename flagtype>
+template <typename FieldType>
 void BlockLatticeManager<T, LatSet>::UpdateRho(
   std::int64_t count, std::uint8_t flag,
-  const BlockFieldManager<ScalerField<flagtype>, T, LatSet::d>& BFM) {
+  const BlockFieldManager<FieldType, T, LatSet::d>& BFM) {
 #pragma omp parallel for num_threads(Thread_Num)
   for (int i = 0; i < BlockLats.size(); ++i) {
     const int deLevel = static_cast<int>(getMaxLevel() - BlockLats[i].getLevel());
@@ -485,10 +485,10 @@ void BlockLatticeManager<T, LatSet>::UpdateRho(
 
 
 template <typename T, typename LatSet>
-template <typename flagtype>
+template <typename FieldType>
 void BlockLatticeManager<T, LatSet>::UpdateRho_Source(
   std::int64_t count, std::uint8_t flag,
-  const BlockFieldManager<ScalerField<flagtype>, T, LatSet::d>& BFM,
+  const BlockFieldManager<FieldType, T, LatSet::d>& BFM,
   const BlockFieldManager<ScalerField<T>, T, LatSet::d>& source) {
 #pragma omp parallel for num_threads(Thread_Num)
   for (int i = 0; i < BlockLats.size(); ++i) {
@@ -500,10 +500,10 @@ void BlockLatticeManager<T, LatSet>::UpdateRho_Source(
 }
 
 template <typename T, typename LatSet>
-template <typename flagtype>
+template <typename FieldType>
 void BlockLatticeManager<T, LatSet>::UpdateU(
   std::int64_t count, std::uint8_t flag,
-  const BlockFieldManager<ScalerField<flagtype>, T, LatSet::d>& BFM) {
+  const BlockFieldManager<FieldType, T, LatSet::d>& BFM) {
 #pragma omp parallel for num_threads(Thread_Num)
   for (int i = 0; i < BlockLats.size(); ++i) {
     const int deLevel = static_cast<int>(getMaxLevel() - BlockLats[i].getLevel());
@@ -514,15 +514,15 @@ void BlockLatticeManager<T, LatSet>::UpdateU(
 
 template <typename T, typename LatSet>
 template <void (*GetFeq)(std::array<T, LatSet::q>&, const Vector<T, LatSet::d>&, T),
-          typename flagtype>
+          typename FieldType>
 void BlockLatticeManager<T, LatSet>::BGK(
   std::int64_t count, std::uint8_t flag,
-  const BlockFieldManager<ScalerField<flagtype>, T, LatSet::d>& BFM) {
+  const BlockFieldManager<FieldType, T, LatSet::d>& BFM) {
 #pragma omp parallel for num_threads(Thread_Num)
   for (int i = 0; i < BlockLats.size(); ++i) {
     const int deLevel = static_cast<int>(getMaxLevel() - BlockLats[i].getLevel());
     if (count % (static_cast<int>(pow(2, deLevel))) == 0)
-      BlockLats[i].template BGK<GetFeq, flagtype>(
+      BlockLats[i].template BGK<GetFeq, typename FieldType::array_type>(
         BFM.getBlockField(i).getField().getField(0), flag);
   }
 }
@@ -530,16 +530,16 @@ void BlockLatticeManager<T, LatSet>::BGK(
 
 template <typename T, typename LatSet>
 template <void (*GetFeq)(std::array<T, LatSet::q>&, const Vector<T, LatSet::d>&, T),
-          typename flagtype>
+          typename FieldType>
 void BlockLatticeManager<T, LatSet>::BGK_Source(
   std::int64_t count, std::uint8_t flag,
-  const BlockFieldManager<ScalerField<flagtype>, T, LatSet::d>& BFM,
+  const BlockFieldManager<FieldType, T, LatSet::d>& BFM,
   const BlockFieldManager<ScalerField<T>, T, LatSet::d>& source) {
 #pragma omp parallel for num_threads(Thread_Num)
   for (int i = 0; i < BlockLats.size(); ++i) {
     const int deLevel = static_cast<int>(getMaxLevel() - BlockLats[i].getLevel());
     if (count % (static_cast<int>(pow(2, deLevel))) == 0)
-      BlockLats[i].template BGK_Source<GetFeq, flagtype>(
+      BlockLats[i].template BGK_Source<GetFeq, typename FieldType::array_type>(
         BFM.getBlockField(i).getField().getField(0), flag,
         source.getBlockField(i).getField().getField(0));
   }
@@ -919,6 +919,7 @@ void DynamicBlockLatticeHelper2D<T, LatSet>::GeoRefine(int OptProcNum, int MaxPr
   // update BasicBlocks in GeoHelper
   BlockGeoHelper.CreateBlocks();
   BlockGeoHelper.AdaptiveOptimization(OptProcNum, MaxProcNum, enforce);
+  BlockGeoHelper.LoadBalancing();
 }
 
 
