@@ -30,8 +30,9 @@ namespace collision {
 // a typical BGK collision process with:
 // macroscopic variables updated
 // equilibrium distribution function calculated
-template <typename EquilibriumScheme, typename CELL, bool Write_To_Field = false>
-struct bgk_feq_rhou {
+template <typename EquilibriumScheme, bool WriteToField = false>
+struct BGK_Feq_RhoU {
+  using CELL = typename EquilibriumScheme::CELLTYPE;
   using T = typename CELL::FloatType;
   using LatSet = typename CELL::LatticeSet;
   using equilibriumscheme = EquilibriumScheme;
@@ -40,7 +41,7 @@ struct bgk_feq_rhou {
     // update macroscopic variables
     T rho{};
     Vector<T, LatSet::d> u{};
-    moment::template rhou<CELL, Write_To_Field>::apply(cell, rho, u);
+    moment::template rhou<CELL, WriteToField>::apply(cell, rho, u);
     // equilibrium distribution function
     std::array<T, LatSet::q> feq{};
     EquilibriumScheme::apply(cell, feq, rho, u);
@@ -58,8 +59,9 @@ struct bgk_feq_rhou {
 
 // a typical BGK collision process with:
 // equilibrium distribution function calculated
-template <typename EquilibriumScheme, typename CELL, bool Write_To_Field = false>
-struct bgk_feq {
+template <typename EquilibriumScheme, bool WriteToField = false>
+struct BGK_Feq {
+  using CELL = typename EquilibriumScheme::CELLTYPE;
   using T = typename CELL::FloatType;
   using LatSet = typename CELL::LatticeSet;
   using equilibriumscheme = EquilibriumScheme;
@@ -78,7 +80,7 @@ struct bgk_feq {
 };
 
 // a typical BGK collision process
-template <typename CELL, bool Write_To_Field = false>
+template <typename CELL, bool WriteToField = false>
 struct bgk {
   using T = typename CELL::FloatType;
   using LatSet = typename CELL::LatticeSet;

@@ -55,8 +55,8 @@ void BlockLattice<T, LatSet>::PopConvFineToCoarse() {
       std::array<T, LatSet::q> feq{};
       Equilibrium<T, LatSet>::SecondOrder(feq, VeloArr[idrecv], RhoArr[idrecv]);
       // convert
-      RefineConverter<T>::template computePopC<LatSet::q>(
-        Pops.getArray(idrecv), feq, OmegaF);
+      RefineConverter<T>::template computePopC<LatSet::q>(Pops.getArray(idrecv), feq,
+                                                          OmegaF);
     }
   }
 }
@@ -72,8 +72,8 @@ void BlockLattice<T, LatSet>::PopConvCoarseToFine() {
       std::array<T, LatSet::q> feq{};
       Equilibrium<T, LatSet>::SecondOrder(feq, VeloArr[idrecv], RhoArr[idrecv]);
       // convert
-      RefineConverter<T>::template computePopF<LatSet::q>(
-        Pops.getArray(idrecv), feq, OmegaC);
+      RefineConverter<T>::template computePopF<LatSet::q>(Pops.getArray(idrecv), feq,
+                                                          OmegaC);
     }
   }
 }
@@ -145,8 +145,7 @@ void BlockLattice<T, LatSet>::interpcommunicate() {
           std::array<T, LatSet::q> feq{};
           Equilibrium<T, LatSet>::SecondOrder(feq, averU, averRho);
 
-          std::array<T*, LatSet::q> CellPop =
-            Pops.getArray(comm.getRecvs()[i]);
+          std::array<T*, LatSet::q> CellPop = Pops.getArray(comm.getRecvs()[i]);
           for (unsigned int k = 0; k < LatSet::q; ++k) {
             T averpop = getInterpolation<0, T, LatSet::d>(
               nBlockLat->getPopField().getField(k), sends);
@@ -163,8 +162,7 @@ void BlockLattice<T, LatSet>::interpcommunicate() {
           std::array<T, LatSet::q> feq{};
           Equilibrium<T, LatSet>::SecondOrder(feq, averU, averRho);
 
-          std::array<T*, LatSet::q> CellPop =
-            Pops.getArray(comm.getRecvs()[i + 1]);
+          std::array<T*, LatSet::q> CellPop = Pops.getArray(comm.getRecvs()[i + 1]);
           for (unsigned int k = 0; k < LatSet::q; ++k) {
             T averpop = getInterpolation<1, T, LatSet::d>(
               nBlockLat->getPopField().getField(k), sends);
@@ -181,8 +179,7 @@ void BlockLattice<T, LatSet>::interpcommunicate() {
           std::array<T, LatSet::q> feq{};
           Equilibrium<T, LatSet>::SecondOrder(feq, averU, averRho);
 
-          std::array<T*, LatSet::q> CellPop =
-            Pops.getArray(comm.getRecvs()[i + 2]);
+          std::array<T*, LatSet::q> CellPop = Pops.getArray(comm.getRecvs()[i + 2]);
           for (unsigned int k = 0; k < LatSet::q; ++k) {
             T averpop = getInterpolation<2, T, LatSet::d>(
               nBlockLat->getPopField().getField(k), sends);
@@ -199,8 +196,7 @@ void BlockLattice<T, LatSet>::interpcommunicate() {
           std::array<T, LatSet::q> feq{};
           Equilibrium<T, LatSet>::SecondOrder(feq, averU, averRho);
 
-          std::array<T*, LatSet::q> CellPop =
-            Pops.getArray(comm.getRecvs()[i + 3]);
+          std::array<T*, LatSet::q> CellPop = Pops.getArray(comm.getRecvs()[i + 3]);
           for (unsigned int k = 0; k < LatSet::q; ++k) {
             T averpop = getInterpolation<3, T, LatSet::d>(
               nBlockLat->getPopField().getField(k), sends);
@@ -216,8 +212,7 @@ void BlockLattice<T, LatSet>::interpcommunicate() {
 
 template <typename T, typename LatSet>
 template <typename ArrayType>
-void BlockLattice<T, LatSet>::UpdateRho(const ArrayType& flagarr,
-                                        std::uint8_t flag) {
+void BlockLattice<T, LatSet>::UpdateRho(const ArrayType& flagarr, std::uint8_t flag) {
   for (std::size_t id = 0; id < getN(); ++id) {
     if (util::isFlag(flagarr[id], flag)) {
       BasicCell<T, LatSet> cell(id, *this);
@@ -241,8 +236,7 @@ void BlockLattice<T, LatSet>::UpdateRho_Source(const ArrayType& flagarr,
 
 template <typename T, typename LatSet>
 template <typename ArrayType>
-void BlockLattice<T, LatSet>::UpdateU(const ArrayType& flagarr,
-                                      std::uint8_t flag) {
+void BlockLattice<T, LatSet>::UpdateU(const ArrayType& flagarr, std::uint8_t flag) {
   for (std::size_t id = 0; id < getN(); ++id) {
     if (util::isFlag(flagarr[id], flag)) {
       BasicCell<T, LatSet> cell(id, *this);
@@ -254,8 +248,7 @@ void BlockLattice<T, LatSet>::UpdateU(const ArrayType& flagarr,
 template <typename T, typename LatSet>
 template <void (*GetFeq)(std::array<T, LatSet::q>&, const Vector<T, LatSet::d>&, T),
           typename ArrayType>
-void BlockLattice<T, LatSet>::BGK(const ArrayType& flagarr,
-                                  std::uint8_t flag) {
+void BlockLattice<T, LatSet>::BGK(const ArrayType& flagarr, std::uint8_t flag) {
   for (std::size_t id = 0; id < getN(); ++id) {
     if (util::isFlag(flagarr[id], flag)) {
       BCell<T, LatSet> cell(id, *this);
@@ -267,8 +260,7 @@ void BlockLattice<T, LatSet>::BGK(const ArrayType& flagarr,
 template <typename T, typename LatSet>
 template <void (*GetFeq)(std::array<T, LatSet::q>&, const Vector<T, LatSet::d>&, T),
           typename ArrayType>
-void BlockLattice<T, LatSet>::BGK_Source(const ArrayType& flagarr,
-                                         std::uint8_t flag,
+void BlockLattice<T, LatSet>::BGK_Source(const ArrayType& flagarr, std::uint8_t flag,
                                          const GenericArray<T>& source) {
   for (std::size_t id = 0; id < getN(); ++id) {
     if (util::isFlag(flagarr[id], flag)) {
@@ -281,6 +273,15 @@ template <typename T, typename LatSet>
 void BlockLattice<T, LatSet>::Stream() {
   for (int i = 1; i < LatSet::q; ++i) {
     Pops.getField(i).rotate(Delta_Index[i]);
+  }
+}
+
+template <typename T, typename LatSet>
+template <typename CELLDYNAMICS, typename ArrayType>
+void BlockLattice<T, LatSet>::ApplyCellDynamics(const ArrayType& flagarr) {
+  for (std::size_t id = 0; id < getN(); ++id) {
+    BCell<T, LatSet> cell(id, *this);
+    CELLDYNAMICS::Execute(flagarr[id], cell);
   }
 }
 
@@ -554,6 +555,21 @@ void BlockLatticeManager<T, LatSet>::Stream(std::int64_t count) {
   }
 }
 
+template <typename T, typename LatSet>
+template <typename CELLDYNAMICS, typename FieldType>
+void BlockLatticeManager<T, LatSet>::ApplyCellDynamics(
+  std::int64_t count, const BlockFieldManager<FieldType, T, LatSet::d>& BFM) {
+#pragma omp parallel for num_threads(Thread_Num)
+  for (int i = 0; i < BlockLats.size(); ++i) {
+    const int deLevel = static_cast<int>(getMaxLevel() - BlockLats[i].getLevel());
+    if (count % (static_cast<int>(pow(2, deLevel))) == 0) {
+      BlockLats[i]
+        .template ApplyCellDynamics<CELLDYNAMICS, typename FieldType::array_type>(
+          BFM.getBlockField(i).getField().getField(0));
+    }
+  }
+}
+
 #ifdef MPI_ENABLED
 template <typename T, typename LatSet>
 void BlockLatticeManager<T, LatSet>::MPIAverComm(std::int64_t count) {
@@ -760,7 +776,7 @@ void BlockLatticeManager<T, LatSet>::Communicate(std::int64_t count) {
   MPIInterpComm(count);
 #endif
 
-mpi().barrier();
+  mpi().barrier();
 }
 
 template <typename T, typename LatSet>

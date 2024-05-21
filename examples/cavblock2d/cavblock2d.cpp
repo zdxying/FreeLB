@@ -95,8 +95,7 @@ void readParam() {
 
 
   std::cout << "------------Simulation Parameters:-------------\n" << std::endl;
-  std::cout << "[Simulation_Settings]:"
-            << "TotalStep:         " << MaxStep << "\n"
+  std::cout << "[Simulation_Settings]:" << "TotalStep:         " << MaxStep << "\n"
             << "OutputStep:        " << OutputStep << "\n"
             << "Tolerance:         " << tol << "\n"
 #ifdef _OPENMP
@@ -106,10 +105,10 @@ void readParam() {
 }
 
 int main() {
-  std::uint8_t VoidFlag = std::uint8_t(1);
-  std::uint8_t AABBFlag = std::uint8_t(2);
-  std::uint8_t BouncebackFlag = std::uint8_t(4);
-  std::uint8_t BBMovingWallFlag = std::uint8_t(8);
+  constexpr std::uint8_t VoidFlag = std::uint8_t(1);
+  constexpr std::uint8_t AABBFlag = std::uint8_t(2);
+  constexpr std::uint8_t BouncebackFlag = std::uint8_t(4);
+  constexpr std::uint8_t BBMovingWallFlag = std::uint8_t(8);
 
   Printer::Print_BigBanner(std::string("Initializing..."));
 
@@ -165,6 +164,24 @@ int main() {
     NS_BBMW("NS_BBMW", NSLattice, FlagFM, BBMovingWallFlag, VoidFlag);
   BlockBoundaryManager BM(&NS_BB, &NS_BBMW);
 
+  // new feature: cell task/ dynamics
+  // define task/ dynamics:
+  // bulk task
+  using BulkTask = util::Key_TypePair<
+    AABBFlag, collision::BGK_Feq_RhoU<equilibrium::SecondOrder<BCell<T, LatSet>>>>;
+  // wall task
+  using WallTask =
+    util::Key_TypePair<BouncebackFlag | BBMovingWallFlag,
+                       collision::BGK_Feq<equilibrium::SecondOrder<BCell<T, LatSet>>>>;
+  // task collection
+  using TaskCollection = util::TupleWrapper<BulkTask, WallTask>;
+  // task executor
+  using TaskExecutor = util::TaskExecutor<TaskCollection, std::uint8_t, BCell<T, LatSet>>;
+  // task: update rho and u
+  using RhoUTask = util::Key_TypePair<AABBFlag, moment::rhou<BCell<T, LatSet>>>;
+  using TaskCollectionRhoU = util::TupleWrapper<RhoUTask>;
+  using TaskExecutorRhoU = util::TaskExecutor<TaskCollectionRhoU, std::uint8_t, BCell<T, LatSet>>;
+
   // writers
   vtmwriter::ScalerWriter RhoWriter("Rho", NSLattice.getRhoFM());
   vtmwriter::VectorWriter VecWriter("Velocity", VelocityFM);
@@ -179,11 +196,16 @@ int main() {
   Printer::Print_BigBanner(std::string("Start Calculation..."));
 
   while (MainLoopTimer() < MaxStep && res > tol) {
+    // normal task
     NSLattice.UpdateRho(MainLoopTimer(), AABBFlag, FlagFM);
     NSLattice.UpdateU(MainLoopTimer(), AABBFlag, FlagFM);
     NSLattice.template BGK<Equilibrium<T, LatSet>::SecondOrder>(
       MainLoopTimer(), std::uint8_t(AABBFlag | BouncebackFlag | BBMovingWallFlag),
       FlagFM);
+
+    // cell task
+    // NSLattice.ApplyCellDynamics<TaskExecutor>(MainLoopTimer(), FlagFM);
+
     NSLattice.Stream(MainLoopTimer());
     BM.Apply(MainLoopTimer());
     NSLattice.Communicate(MainLoopTimer());
@@ -192,6 +214,9 @@ int main() {
     ++OutputTimer;
 
     if (MainLoopTimer() % OutputStep == 0) {
+      // cell task
+      // NSLattice.ApplyCellDynamics<TaskExecutorRhoU>(MainLoopTimer(), FlagFM);
+      
       res = NSLattice.getToleranceU(1);
       OutputTimer.Print_InnerLoopPerformance(Geo.getTotalCellNum(), OutputStep);
       Printer::Print_Res<T>(res);

@@ -380,14 +380,14 @@ auto make_int_sequence(Func &&f) {
   return make_int_sequence_impl(std::forward<Func>(f), std::make_index_sequence<size>{});
 }
 
-// key-value pair, use:
-// using pair = Key_TypeWrapper<KeyValue, Type>;
+// key-value pair
 template <auto KeyValue, typename Type>
-struct Key_TypeWrapper {
+struct Key_TypePair {
+  using CELL = typename Type::CELL;
   // key is typically an int value (uint8_t, uint16_t, etc.)
   static constexpr auto key = KeyValue;
   // type is the type of the struct
-  static auto apply() { return Type::apply(); }
+  static auto apply(CELL &cell) { return Type::apply(cell); }
   using key_type = decltype(KeyValue);
   using type = Type;
 };
@@ -415,30 +415,26 @@ struct TupleWrapper {
   // size
   static constexpr std::size_t size = sizeof...(Types);
   // key sequence
-  static auto make_int_sequence() { return int_sequence<Types::key...>{}; }
   using make_key_sequence = int_sequence<Types::key...>;
 };
 
 // helper struct to achieve if-else structure
-template <typename TUPLEWrapper, typename FlagType, typename KeySequence>
+template <typename TUPLE, typename FlagType, typename CELL, typename KeySequence>
 struct SwitchTask {
-  static void execute(FlagType flag) {
+  static void execute(FlagType flag, CELL &cell) {
     if (isFlag(flag, KeySequence::first)) {
-      TUPLEWrapper::template get<KeySequence::first>::apply();
+      TUPLE::template get<KeySequence::first>::apply(cell);
     } else if constexpr (KeySequence::rest_size > 0) {
       // to refer to a type member of a template parameter, use typename ...
-      SwitchTask<TUPLEWrapper, FlagType, typename KeySequence::rest>::execute(flag);
+      SwitchTask<TUPLE, FlagType, CELL, typename KeySequence::rest>::execute(flag, cell);
     }
   }
 };
 
-template <typename TUPLEWrapper, typename FlagType>
-struct TaskExecutor
-{
-  static void execute(FlagType flag)
-  {
-    SwitchTask<TUPLEWrapper, FlagType,
-            typename TUPLEWrapper::make_key_sequence>::execute(flag);
+template <typename TUPLE, typename FlagType, typename CELL>
+struct TaskExecutor {
+  static void Execute(FlagType flag, CELL &cell) {
+    SwitchTask<TUPLE, FlagType, CELL, typename TUPLE::make_key_sequence>::execute(flag, cell);
   }
 };
 

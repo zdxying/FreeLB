@@ -121,9 +121,7 @@ class BlockLattice : public BlockRhoLattice<T> {
   void InitPop(int Id, T rho) {
     for (int i = 0; i < LatSet::q; ++i) Pops.getField(i)[Id] = rho * LatSet::w[i];
   }
-  std::array<T*, LatSet::q> getPop(std::size_t id) {
-    return Pops.getArray(id);
-  }
+  std::array<T*, LatSet::q> getPop(std::size_t id) { return Pops.getArray(id); }
   T& getPopdir(std::size_t id, int dir) { return Pops.getField(dir)[id]; }
   const T& getPopdir(std::size_t id, int dir) const { return Pops.getField(dir)[id]; }
   BCell<T, LatSet> getNeighbor(const BCell<T, LatSet>& cell, int i) const {
@@ -190,6 +188,9 @@ class BlockLattice : public BlockRhoLattice<T> {
                   const GenericArray<T>& source);
   void Stream();
 
+  template <typename CELLDYNAMICS, typename ArrayType>
+  void ApplyCellDynamics(const ArrayType& flagarr);
+
   // tolerance
   void EnableToleranceRho(T rhores = T(1e-5));
   void EnableToleranceU(T ures = T(1e-5));
@@ -228,7 +229,7 @@ class BlockLatticeManager {
   void InitIntpComm();
 
   // get block lattice with block id
-  BlockLattice<T, LatSet>& findBlockLat(int blockid){
+  BlockLattice<T, LatSet>& findBlockLat(int blockid) {
     for (BlockLattice<T, LatSet>& blocklat : BlockLats) {
       if (blocklat.getGeo().getBlockId() == blockid) return blocklat;
     }
@@ -295,6 +296,10 @@ class BlockLatticeManager {
                   const BlockFieldManager<ScalerField<T>, T, LatSet::d>& source);
 
   void Stream(std::int64_t count);
+
+  template <typename CELLDYNAMICS, typename FieldType>
+  void ApplyCellDynamics(std::int64_t count,
+                         const BlockFieldManager<FieldType, T, LatSet::d>& BFM);
 
 #ifdef MPI_ENABLED
   void MPIAverComm(std::int64_t count);

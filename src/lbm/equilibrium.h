@@ -106,8 +106,9 @@ template <typename CELL>
 struct SecondOrder {
   using T = typename CELL::FloatType;
   using LatSet = typename CELL::LatticeSet;
-  static void apply(const CELL &cell, std::array<T, LatSet::q> &feq, T rho,
-                    const Vector<T, LatSet::d> &u) {
+  using CELLTYPE = CELL;
+  static inline void apply(const CELL &cell, std::array<T, LatSet::q> &feq, T rho,
+                           const Vector<T, LatSet::d> &u) {
     const T u2 = u.getnorm2();
     for (unsigned int k = 0; k < LatSet::q; ++k) {
       feq[k] = Equilibrium<T, LatSet>::Order2(k, u, rho, u2);

@@ -26,37 +26,39 @@
 
 namespace moment {
 
-template <typename CELL, bool Write_To_Field = false>
+template <typename CELLTYPE, bool WriteToField = false>
 struct rho {
+  using CELL = CELLTYPE;
   using T = typename CELL::FloatType;
   using LatSet = typename CELL::LatticeSet;
 
-  static T get(CELL& cell) {
+  static inline T get(CELL& cell) {
     T rho_value{};
     for (unsigned int i = 0; i < LatSet::q; ++i) rho_value += cell[i];
-    if constexpr (Write_To_Field) cell.getRho() = rho_value;
+    if constexpr (WriteToField) cell.getRho() = rho_value;
     return rho_value;
   }
-  static void apply(CELL& cell) {
+  static inline void apply(CELL& cell) {
     T& rho_value = cell.getRho();
     rho_value = T{};
     for (unsigned int i = 0; i < LatSet::q; ++i) rho_value += cell[i];
   }
-  static void apply(CELL& cell, T& rho_value) {
+  static inline void apply(CELL& cell, T& rho_value) {
     rho_value = T{};
     for (unsigned int i = 0; i < LatSet::q; ++i) rho_value += cell[i];
-    if constexpr (Write_To_Field) cell.getRho() = rho_value;
+    if constexpr (WriteToField) cell.getRho() = rho_value;
   }
 
   // apply with source term
 };
 
-template <typename CELL, bool Write_To_Field = false>
+template <typename CELLTYPE, bool WriteToField = false>
 struct u {
+  using CELL = CELLTYPE;
   using T = typename CELL::FloatType;
   using LatSet = typename CELL::LatticeSet;
 
-  static Vector<T, LatSet::d> get(CELL& cell) {
+  static inline Vector<T, LatSet::d> get(CELL& cell) {
     Vector<T, LatSet::d> u_value;
     T rho_value{};
     for (unsigned int i = 0; i < LatSet::q; ++i) {
@@ -64,10 +66,10 @@ struct u {
       u_value += LatSet::c[i] * cell[i];
     }
     u_value /= rho_value;
-    if constexpr (Write_To_Field) cell.getVelocity() = u_value;
+    if constexpr (WriteToField) cell.getVelocity() = u_value;
     return u_value;
   }
-  static void apply(CELL& cell) {
+  static inline void apply(CELL& cell) {
     Vector<T, LatSet::d>& u_value = cell.getVelocity();
     T rho_value{};
     for (unsigned int i = 0; i < LatSet::q; ++i) {
@@ -76,7 +78,7 @@ struct u {
     }
     u_value /= rho_value;
   }
-  static void apply(CELL& cell, Vector<T, LatSet::d>& u_value) {
+  static inline void apply(CELL& cell, Vector<T, LatSet::d>& u_value) {
     u_value.clear();
     T rho_value{};
     for (unsigned int i = 0; i < LatSet::q; ++i) {
@@ -84,16 +86,17 @@ struct u {
       u_value += LatSet::c[i] * cell[i];
     }
     u_value /= rho_value;
-    if constexpr (Write_To_Field) cell.getVelocity() = u_value;
+    if constexpr (WriteToField) cell.getVelocity() = u_value;
   }
 };
 
-template <typename CELL, bool Write_To_Field = false>
+template <typename CELLTYPE, bool WriteToField = false>
 struct rhou {
+  using CELL = CELLTYPE;
   using T = typename CELL::FloatType;
   using LatSet = typename CELL::LatticeSet;
 
-  static void apply(CELL& cell, T& rho_value, Vector<T, LatSet::d>& u_value) {
+  static inline void apply(CELL& cell, T& rho_value, Vector<T, LatSet::d>& u_value) {
     rho_value = T{};
     u_value.clear();
     for (unsigned int i = 0; i < LatSet::q; ++i) {
@@ -101,12 +104,13 @@ struct rhou {
       u_value += LatSet::c[i] * cell[i];
     }
     u_value /= rho_value;
-    if constexpr (Write_To_Field) {
+    if constexpr (WriteToField) {
       cell.getRho() = rho_value;
       cell.getVelocity() = u_value;
     }
   }
-  static void apply(CELL& cell) {
+  // will write to field regardless of WriteToField value
+  static inline void apply(CELL& cell) {
     T& rho_value = cell.getRho();
     Vector<T, LatSet::d>& u_value = cell.getVelocity();
     rho_value = T{};
