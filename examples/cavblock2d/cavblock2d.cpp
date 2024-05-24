@@ -167,20 +167,20 @@ int main() {
   // new feature: cell task/ dynamics
   // define task/ dynamics:
   // bulk task
-  using BulkTask = util::Key_TypePair<
+  using BulkTask = tmp::Key_TypePair<
     AABBFlag, collision::BGK_Feq_RhoU<equilibrium::SecondOrder<BCell<T, LatSet>>>>;
   // wall task
   using WallTask =
-    util::Key_TypePair<BouncebackFlag | BBMovingWallFlag,
+    tmp::Key_TypePair<BouncebackFlag | BBMovingWallFlag,
                        collision::BGK_Feq<equilibrium::SecondOrder<BCell<T, LatSet>>>>;
   // task collection
-  using TaskCollection = util::TupleWrapper<BulkTask, WallTask>;
+  using TaskCollection = tmp::TupleWrapper<BulkTask, WallTask>;
   // task executor
-  using TaskExecutor = util::TaskExecutor<TaskCollection, std::uint8_t, BCell<T, LatSet>>;
+  using TaskExecutor = tmp::TaskExecutor<TaskCollection, std::uint8_t, BCell<T, LatSet>>;
   // task: update rho and u
-  using RhoUTask = util::Key_TypePair<AABBFlag, moment::rhou<BCell<T, LatSet>>>;
-  using TaskCollectionRhoU = util::TupleWrapper<RhoUTask>;
-  using TaskExecutorRhoU = util::TaskExecutor<TaskCollectionRhoU, std::uint8_t, BCell<T, LatSet>>;
+  using RhoUTask = tmp::Key_TypePair<AABBFlag, moment::rhou<BCell<T, LatSet>>>;
+  using TaskCollectionRhoU = tmp::TupleWrapper<RhoUTask>;
+  using TaskExecutorRhoU = tmp::TaskExecutor<TaskCollectionRhoU, std::uint8_t, BCell<T, LatSet>>;
 
   // writers
   vtmwriter::ScalerWriter RhoWriter("Rho", NSLattice.getRhoFM());

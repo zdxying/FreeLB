@@ -58,8 +58,14 @@ class Vector {
 
   template <typename... Args>
   constexpr Vector(Args... args) : _data{args...} {}
-
+  // Copy constructor
   constexpr Vector(const Vector<T, D> &vec) {
+    for (unsigned int i = 0; i < D; ++i) {
+      _data[i] = vec[i];
+    }
+  }
+  // Move constructor
+  constexpr Vector(Vector<T, D> &&vec) {
     for (unsigned int i = 0; i < D; ++i) {
       _data[i] = vec[i];
     }
@@ -123,13 +129,14 @@ class Vector {
   constexpr T &operator[](unsigned int i) { return _data[i]; }
   // []: return const reference of the i th element
   constexpr const T &operator[](unsigned int i) const { return _data[i]; }
-
+  // Copy assignment operator
   constexpr Vector &operator=(const Vector<T, D> &vec) {
     for (unsigned int i = 0; i < D; ++i) {
       _data[i] = vec[i];
     }
     return *this;
   }
+  // Move assignment operator
   constexpr Vector &operator=(const Vector<T, D> &&vec) {
     for (unsigned int i = 0; i < D; ++i) {
       _data[i] = vec[i];

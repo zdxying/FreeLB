@@ -31,6 +31,66 @@
 #include "utils/alias.h"
 #include "utils/util.h"
 
+// field base class
+template <unsigned int D>
+struct FieldBase {
+  static constexpr unsigned int array_dim = D;
+};
+
+// field base class alias
+using SingleArrayFieldBase = FieldBase<1>;
+
+template <typename LatSet>
+using SOAFieldBase = FieldBase<LatSet::d>;
+
+template <typename LatSet>
+using PopFieldBase = FieldBase<LatSet::q>;
+
+// a single std::array, type T couldn't dynamically allocate memory
+template <typename T, typename Base>
+class Array {
+ public:
+  using value_type = T;
+  static constexpr unsigned int array_dim = Base::array_dim;
+
+ private:
+  std::array<T, array_dim> _Data;
+
+ public:
+  Array() : _Data{} {}
+  // argument size will not be used
+  Array(std::size_t size)
+      : _Data(make_array<T, array_dim>([&]() { return T{}; })) {}
+  Array(std::size_t size, T initialValue)
+      : _Data(make_array<T, array_dim>([&]() { return T{initialValue}; })) {}
+  ~Array() = default;
+
+  template <unsigned int i = 0>
+  auto& get() {
+    return _Data[i];
+  }
+  template <unsigned int i = 0>
+  const auto& get() const {
+    return _Data[i];
+  }
+  auto& get(unsigned int dir) { return _Data[dir]; }
+  const auto& get(unsigned int dir) const { return _Data[dir]; }
+
+  std::array<T, array_dim>& getArray() { return _Data; }
+  const std::array<T, array_dim>& getArray() const { return _Data; }
+
+  // init
+  void Init(T value = T{}) {
+    for (unsigned int i = 0; i < array_dim; ++i) _Data[i] = value;
+  }
+  template <unsigned int i = 0>
+  void SetField(T value) {
+    _Data[i] = value;
+  }
+  void SetField(int i, T value) { _Data[i] = value; }
+
+  constexpr unsigned int Size() const { return array_dim; }
+};
 
 template <typename ArrayType, unsigned int D>
 class GenericField {
@@ -111,9 +171,7 @@ class GenericField {
   void SetField(std::size_t id, value_type value) {
     _Data[i].set(id, value);
   }
-  void SetField(int i, std::size_t id, value_type value) {
-    _Data[i].set(id, value);
-  }
+  void SetField(int i, std::size_t id, value_type value) { _Data[i].set(id, value); }
   // resize each array/field
   void Resize(std::size_t size) {
     for (unsigned int i = 0; i < D; ++i) _Data[i].Resize(size);

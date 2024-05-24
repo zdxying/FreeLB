@@ -52,6 +52,24 @@ struct rho {
   // apply with source term
 };
 
+// update rho(usually temperature or concentration in advection-diffusion problems) with
+// source term, no need to preprocess the source term
+template <typename CELLTYPE, bool WriteToField = false>
+struct sourceRho {
+  using CELL = CELLTYPE;
+  using T = typename CELL::FloatType;
+  using LatSet = typename CELL::LatticeSet;
+
+  static inline T get(CELL& cell, const T source) {
+    T rho_value{};
+    for (unsigned int i = 0; i < LatSet::q; ++i) rho_value += cell[i];
+    // fOmega: avoid lattice artifact
+    rho_value += source * T(0.5) * cell.getfOmega();
+    if constexpr (WriteToField) cell.getRho() = rho_value;
+    return rho_value;
+  }
+};
+
 template <typename CELLTYPE, bool WriteToField = false>
 struct u {
   using CELL = CELLTYPE;
@@ -120,6 +138,54 @@ struct rhou {
       u_value += LatSet::c[i] * cell[i];
     }
     u_value /= rho_value;
+  }
+};
+
+// strain rate tensor/ rate of deformation matrix
+template <typename CELLTYPE>
+struct strainRate {
+  using CELL = CELLTYPE;
+  using T = typename CELL::FloatType;
+  using LatSet = typename CELL::LatticeSet;
+  // S_ab = (-3/(2*tau))*SUM_i(f_i^(1)*c_ia*c_ib)
+  // f_i^(1) = f_i - f_i^eq
+  // PI_ab^eq = SUM_i(f_i^eq*c_ia*c_ib) = rho*U_a*U_b + rho*Cs^2*delta_ab
+  static inline void get(CELL& cell,
+                         std::array<T, util::SymmetricMatrixSize<LatSet::d>>& tensor,
+                         const T rho, const Vector<T, LatSet::d>& u) {
+    unsigned int i{};
+    const T coeff = T{-1.5} * cell.getOmega();
+    for (unsigned int alpha = 0; alpha < LatSet::d; ++alpha) {
+      for (unsigned int beta = alpha; beta < LatSet::d; ++beta) {
+        T value{};
+        for (unsigned int k = 0; k < LatSet::q; ++k) {
+          value += LatSet::c[k][alpha] * LatSet::c[k][beta] * cell[k];
+        }
+        // remove the equilibrium part: PI_ab^eq
+        value -= rho * u[alpha] * u[beta];
+        if (alpha == beta) value -= rho * LatSet::cs2;
+        // multiply by the coefficient
+        value *= coeff;
+        tensor[i] = value;
+        ++i;
+      }
+    }
+  }
+};
+
+// magnitude of shear rate
+template <typename CELLTYPE>
+struct shearRateMag {
+  using CELL = CELLTYPE;
+  using T = typename CELL::FloatType;
+  using LatSet = typename CELL::LatticeSet;
+  // \dot{gamma} = sqrt(2*trace(S^2)) = sqrt(2*SUM_{a,b}S_ab^2)
+  static inline T get(const std::array<T, util::SymmetricMatrixSize<LatSet::d>>& tensor) {
+    T value{};
+    for (unsigned int i = 0; i < util::SymmetricMatrixSize<LatSet::d>; ++i) {
+      value += tensor[i] * tensor[i];
+    }
+    return std::sqrt(T{2} * value);
   }
 };
 
