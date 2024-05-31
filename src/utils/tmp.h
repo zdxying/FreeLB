@@ -20,18 +20,19 @@
 
 #pragma once
 
-#include "head.h"
 #include <type_traits>
 #include <utility>
 
+#include "head.h"
+
 // template meta-programming library
 namespace util {
-  bool isFlag(std::uint8_t flag1, std::uint8_t flag2);
-  bool isFlag(std::uint16_t flag1, std::uint16_t flag2);
-}
+bool isFlag(std::uint8_t flag1, std::uint8_t flag2);
+bool isFlag(std::uint16_t flag1, std::uint16_t flag2);
+}  // namespace util
 
 namespace tmp {
-  // a sequence of integers
+// a sequence of integers
 template <auto I, auto... Is>
 struct int_sequence {
   static constexpr auto first = I;
@@ -96,23 +97,71 @@ struct TupleWrapper {
 
 // helper struct to achieve if-else structure
 template <typename TUPLE, typename FlagType, typename CELL, typename KeySequence>
-struct SwitchTask {
+struct SelectTask {
   static void execute(FlagType flag, CELL &cell) {
     if (util::isFlag(flag, KeySequence::first)) {
       TUPLE::template get<KeySequence::first>::apply(cell);
     } else if constexpr (KeySequence::rest_size > 0) {
-      // to refer to a type member of a template parameter, use typename ...
-      SwitchTask<TUPLE, FlagType, CELL, typename KeySequence::rest>::execute(flag, cell);
+      SelectTask<TUPLE, FlagType, CELL, typename KeySequence::rest>::execute(flag, cell);
     }
   }
 };
 
 template <typename TUPLE, typename FlagType, typename CELL>
-struct TaskExecutor {
+struct TaskSelector {
   static void Execute(FlagType flag, CELL &cell) {
-    SwitchTask<TUPLE, FlagType, CELL, typename TUPLE::make_key_sequence>::execute(flag, cell);
+    SelectTask<TUPLE, FlagType, CELL, typename TUPLE::make_key_sequence>::execute(flag,
+                                                                                  cell);
   }
+};
+
+// a simple task executor
+template <typename Type>
+struct TaskExecutor {
+  using CELL = typename Type::CELL;
+  static void Execute(CELL &cell) { Type::apply(cell); }
 };
 
 
 }  // namespace tmp
+
+
+template <typename... Parameter>
+struct TypePack {
+  using types = std::tuple<Parameter...>;
+};
+
+template <typename... Params1, typename... Params2>
+struct TypePack<TypePack<Params1...>, TypePack<Params2...>> {
+  using types = std::tuple<Params1..., Params2...>;
+};
+
+
+template <typename Type, typename Pack>
+struct isTypeInTuple {
+  static constexpr bool value = false;
+};
+
+// If Type is the same as any type in Parameter..., value is true
+template <typename Type, typename... Parameter>
+struct isTypeInTuple<Type, TypePack<Parameter...>> {
+  static constexpr bool value = (std::is_same_v<Type, Parameter> || ...);
+};
+
+
+template <typename Pack>
+struct ExtractFieldPack;
+
+template <typename... Params1, typename... Params2>
+struct ExtractFieldPack<TypePack<TypePack<Params1...>, TypePack<Params2...>>> {
+  using pack1 = TypePack<Params1...>;
+  using pack2 = TypePack<Params2...>;
+  using mergedpack = TypePack<Params1..., Params2...>;
+};
+
+template <typename... Parameter>
+struct ValuePack {
+  std::tuple<Parameter...> values;
+
+  ValuePack(Parameter... value) : values(value...) {}
+};

@@ -169,7 +169,7 @@ int main() {
   Timer MainLoopTimer;
   Timer OutputTimer;
 
-  vtkWriter::FieldScalerWriter<T> RhoWriter("rho",
+  vtkWriter::FieldScalarWriter<T> RhoWriter("rho",
                                             NSLattice.getRhoField().getField().getdata(),
                                             NSLattice.getRhoField().getField().size());
   vtkWriter::FieldVectorWriter_AOS<T, LatSet::d> VelocityWriter(

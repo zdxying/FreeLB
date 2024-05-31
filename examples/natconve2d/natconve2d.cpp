@@ -194,10 +194,10 @@ int main() {
   Buoyancy<T, LatSet0> Force(NSLattice, Velocity);
   Force.AddSource(&THLattice);
 
-  vtkWriter::FieldScalerWriter<T> RhoWriter("rho",
+  vtkWriter::FieldScalarWriter<T> RhoWriter("rho",
                                             NSLattice.getRhoField().getField().getdata(),
                                             NSLattice.getRhoField().getField().size());
-  vtkWriter::FieldScalerWriter<T> TWriter("T",
+  vtkWriter::FieldScalarWriter<T> TWriter("T",
                                           THLattice.getRhoField().getField().getdata(),
                                           THLattice.getRhoField().getField().size());
   vtkWriter::FieldVectorWriter_AOS<T, LatSet0::d> VelocityWriter(

@@ -241,20 +241,20 @@ int main() {
 
   // writer
 
-//   vtkWriter::PhysScalerWriter RhoWriter(
+//   vtkWriter::PhysScalarWriter RhoWriter(
 //       "rho", NSLattice.getRhoField().getField(), BaseConv);
-  vtkWriter::PhysScalerWriter CWriter(
+  vtkWriter::PhysScalarWriter CWriter(
       "C", SOLattice.getRhoField().getField(), ConcConv);
 //   vtkWriter::FlagWriter CellTypwWriter(
 //       "CellType", CA.getState().getField());
 //   vtkWriter::PhysVelocityWriter_AOS<T, LatSet0::d> VelocityWriter(
 //       "velocity", NSLattice.getVelocityField().getField(), BaseConv);
   //
-//   vtkWriter::ScalerWriter CurvWriter(
+//   vtkWriter::ScalarWriter CurvWriter(
 //       "Curv", CA.getCurvature().getField());
-//   vtkWriter::ScalerWriter DFsWriter(
+//   vtkWriter::ScalarWriter DFsWriter(
 //       "DFs", CA.getDeltaFs().getField());
-    //   vtkWriter::ScalerWriter FsWriter(
+    //   vtkWriter::ScalarWriter FsWriter(
     //   "Fs", CA.getFs().getField());
   vtkStruPointsWriter<T, LatSet0::d> NCWriter("CAZS2D", Geo0);
   NCWriter.addtoWriteList(&CWriter);

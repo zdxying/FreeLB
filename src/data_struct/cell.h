@@ -33,7 +33,7 @@
 template <typename T, typename LatSet>
 class BasicLattice;
 
-template <typename T, typename LatSet>
+template <typename T, typename LatSet, typename TypePack>
 class BlockLattice;
 
 template <typename T, typename LatSet>
@@ -44,7 +44,8 @@ class BasicCell {
 
  public:
   BasicCell(std::size_t id, BasicLattice<T, LatSet>& lat) : Pop(lat.getPop(id)) {}
-  BasicCell(std::size_t id, BlockLattice<T, LatSet>& lat) : Pop(lat.getPop(id)) {}
+  template <typename BLOCKLATTICE>
+  BasicCell(std::size_t id, BLOCKLATTICE& lat) : Pop(lat.getPop(id)) {}
 
   // access to pop[i]
   const T& operator[](int i) const { return *Pop[i]; }
@@ -93,57 +94,57 @@ class Cell final : public BasicCell<T, LatSet> {
 
   const Vector<T, LatSet::d>& getVelocity() const { return Lat.getVelocity(Id); }
   Vector<T, LatSet::d>& getVelocity() { return Lat.getVelocity(Id); }
-
-  template <typename FieldType, unsigned int i = 0>
-  auto& getFieldData(const FieldType& Field) const {
-    return Field.template get<i>(Id);
-  }
-  // set field
-  template <typename FieldType, unsigned int i = 0>
-  void setFieldData(FieldType& Field, typename FieldType::value_type value) {
-    Field.template SetField<i>(Id, value);
-  }
-  // equilibrium
-  template <void (*get_feq)(T*, const Vector<T, LatSet::d>&, T)>
-  void InitEquilibrium() {
-    T feq[LatSet::q];
-    get_feq(feq, Lat.getVelocity(Id), Lat.getRho(Id));
-    for (int i = 0; i < LatSet::q; ++i) {
-      *(this->Pop[i]) = feq[i];
-    }
-  }
 };
 
 // cell interface for block lattice
-template <typename T, typename LatSet>
+template <typename T, typename LatSet, typename TypePack>
 class BCell final : public BasicCell<T, LatSet> {
  protected:
   // global cell index to access field data and distribution functions
   std::size_t Id;
   // reference to lattice
-  BlockLattice<T, LatSet>& Lat;
+  BlockLattice<T, LatSet, TypePack>& Lat;
 
  public:
   using FloatType = T;
   using LatticeSet = LatSet;
+  using BLOCKLATTICE = BlockLattice<T, LatSet, TypePack>;
 
-  BCell(std::size_t id, BlockLattice<T, LatSet>& lat)
+  BCell(std::size_t id, BlockLattice<T, LatSet, TypePack>& lat)
       : Id(id), Lat(lat), BasicCell<T, LatSet>(id, lat) {}
 
-  BCell<T, LatSet> getNeighbor(int i) const { return Lat.getNeighbor(*this, i); }
-  BCell<T, LatSet> getNeighbor(const Vector<int, LatSet::d>& direction) const {
-    return Lat.getNeighbor(*this, direction);
+  template <typename FieldType, unsigned int i = 0>
+  auto& get() {
+    return Lat.template getField<FieldType>().template get<i>(Id);
   }
-  int getNeighborId(int i) const { return Id + Lat.getDelta_Index(i); }
+  template <typename FieldType, unsigned int i = 0>
+  const auto& get() const {
+    return Lat.template getField<FieldType>().template get<i>(Id);
+  }
+  template <typename FieldType>
+  auto& get(unsigned int i) {
+    return Lat.template getField<FieldType>().get(Id, i);
+  }
+  template <typename FieldType>
+  const auto& get(unsigned int i) const {
+    return Lat.template getField<FieldType>().get(Id, i);
+  }
+
+  BCell<T, LatSet, TypePack> getNeighbor(int i) const {
+    return BCell<T, LatSet, TypePack>(Id + Lat.getDelta_Index()[i], Lat);
+  }
+  BCell<T, LatSet, TypePack> getNeighbor(const Vector<int, LatSet::d>& direction) const {
+    return BCell<T, LatSet, TypePack>(Id + direction * Lat.getProjection());
+  }
 
   // get cell index
   std::size_t getId() const { return Id; }
-  // get population before streaming
-  T& getPrevious(int i) const { return Lat.getPopField().getField(i).getPrevious(Id); }
+  std::size_t getNeighborId(int i) const { return Id + Lat.getDelta_Index()[i]; }
 
-  // get field
-  const T& getRho() const { return Lat.getRhoField().get(Id); }
-  T& getRho() { return Lat.getRhoField().get(Id); }
+  // get population before streaming
+  T& getPrevious(int i) const {
+    return Lat.template getField<POP<T, LatSet::q>>().getField(i).getPrevious(Id);
+  }
   // Lat.getOmega()
   inline T getOmega() const { return Lat.getOmega(); }
   // Lat.get_Omega()
@@ -152,26 +153,9 @@ class BCell final : public BasicCell<T, LatSet> {
   inline T getfOmega() const { return Lat.getfOmega(); }
 
   const Vector<T, LatSet::d>& getVelocity() const {
-    return Lat.getVelocityField().get(Id);
+    return Lat.template getField<VELOCITY<T, LatSet::d>>().get(Id);
   }
-  Vector<T, LatSet::d>& getVelocity() { return Lat.getVelocityField().get(Id); }
-
-  template <typename FieldType, unsigned int i = 0>
-  auto& getFieldData(const FieldType& Field) const {
-    return Field.template get<i>(Id);
-  }
-  // set field
-  template <typename FieldType, unsigned int i = 0>
-  void setFieldData(FieldType& Field, typename FieldType::value_type value) {
-    Field.template SetField<i>(Id, value);
-  }
-  // equilibrium
-  template <void (*get_feq)(T*, const Vector<T, LatSet::d>&, T)>
-  void InitEquilibrium() {
-    T feq[LatSet::q];
-    get_feq(feq, Lat.getVelocity(Id), Lat.getRho(Id));
-    for (int i = 0; i < LatSet::q; ++i) {
-      *(this->Pop[i]) = feq[i];
-    }
+  Vector<T, LatSet::d>& getVelocity() {
+    return Lat.template getField<VELOCITY<T, LatSet::d>>().get(Id);
   }
 };

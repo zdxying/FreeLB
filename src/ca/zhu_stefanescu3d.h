@@ -152,24 +152,24 @@ class ZhuStefanescu3D {
   VectorFieldAOS<T, LatSet::d>& Velocity;
 
   // state field std::uint8_t
-  ScalerField<CAType> State;
+  ScalarField<CAType> State;
   // flag field std::uint8_t
-  ScalerField<CAFlag> Flag;
+  ScalarField<CAFlag> Flag;
   // solid fraction
-  ScalerField<T> Fs;
+  ScalarField<T> Fs;
   // delta solid fraction
-  ScalerField<T> Delta_Fs;
+  ScalarField<T> Delta_Fs;
   // Solid phase composition
-  ScalerField<T> C_Solids;
+  ScalarField<T> C_Solids;
   // excess rho
   VectorFieldAOS<T, RhoLatSet::q> ExcessC;
   // colleted excess rho
-  ScalerField<T> ExcessC_;
+  ScalarField<T> ExcessC_;
 
   // weighted mean curvature
-  ScalerField<T> WMC;
+  ScalarField<T> WMC;
   // Q
-  ScalerField<T> Q;
+  ScalarField<T> Q;
   // normalized gradient of solid fraction: nx, ny, nz
   VectorFieldSoA<T, 3> NGradFs;
 
@@ -184,15 +184,15 @@ class ZhuStefanescu3D {
 
   // get field data
   std::vector<std::size_t>& getInterface() { return Interface; }
-  ScalerField<CAType>& getState() { return State; }
-  ScalerField<CAFlag>& getFlag() { return Flag; }
-  ScalerField<T>& getFs() { return Fs; }
-  ScalerField<T>& getDeltaFs() { return Delta_Fs; }
-  ScalerField<T>& getCSolids() { return C_Solids; }
+  ScalarField<CAType>& getState() { return State; }
+  ScalarField<CAFlag>& getFlag() { return Flag; }
+  ScalarField<T>& getFs() { return Fs; }
+  ScalarField<T>& getDeltaFs() { return Delta_Fs; }
+  ScalarField<T>& getCSolids() { return C_Solids; }
   VectorFieldAOS<T, RhoLatSet::q>& getExcessC() { return ExcessC; }
-  ScalerField<T>& getExcessC_() { return ExcessC_; }
-  ScalerField<T>& getWMC() { return WMC; }
-  ScalerField<T>& getQ() { return Q; }
+  ScalarField<T>& getExcessC_() { return ExcessC_; }
+  ScalarField<T>& getWMC() { return WMC; }
+  ScalarField<T>& getQ() { return Q; }
   VectorFieldSoA<T, 3>& getNGradFs() { return NGradFs; }
 
   void Setup(int id, int num);

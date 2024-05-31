@@ -248,7 +248,7 @@ int main() {
                  [&](FlagField& field, std::size_t id) { field.SetField(id, AABBFlag); });
   FlagFM.template SetupBoundary<LatSet0>(cavity, BouncebackFlag);
 
-  vtmo::ScalerWriter FlagWriter("flag", FlagFM);
+  vtmo::ScalarWriter FlagWriter("flag", FlagFM);
   vtmo::vtmWriter<T, 2> GeoWriter("GeoFlag", Geo, 1);
   GeoWriter.addWriterSet(FlagWriter);
   GeoWriter.WriteBinary();
@@ -293,9 +293,9 @@ int main() {
   Force.AddSource(THLattice);
 
   // writer
-  vtmo::ScalerWriter CWriter("Conc", SOLattice.getRhoFM());
-  // vtmo::ScalerWriter TWriter("Temp", THLattice.getRhoFM());
-  vtmo::ScalerWriter StateWriter("State", CA.getStateFM());
+  vtmo::ScalarWriter CWriter("Conc", SOLattice.getRhoFM());
+  // vtmo::ScalarWriter TWriter("Temp", THLattice.getRhoFM());
+  vtmo::ScalarWriter StateWriter("State", CA.getStateFM());
   vtmo::VectorWriter VecWriter("Velocity", VelocityFM);
   vtmo::vtmWriter<T, 2> MainWriter("cazsAMR2d", Geo, 1);
   MainWriter.addWriterSet(CWriter, StateWriter, VecWriter);

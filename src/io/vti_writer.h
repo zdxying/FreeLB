@@ -211,7 +211,7 @@ class vtiManager {
 };
 
 template <typename ArrayType>
-class ScalerWriter : public AbstractWriter {
+class ScalarWriter : public AbstractWriter {
  private:
   std::string varname;
   // field data
@@ -221,15 +221,13 @@ class ScalerWriter : public AbstractWriter {
  public:
   using datatype = typename ArrayType::value_type;
 
-  ScalerWriter(std::string name, const ArrayType &f)
+  ScalarWriter(std::string name, const ArrayType &f)
       : varname(name), Array(f), Size(f.size()) {}
   void write(const std::string &fName) const override {
     std::ofstream f(fName, std::ios::out | std::ios::app);
     std::string type;
     // getVTKTypeString<datatype>(type);
-    f << "<DataArray type=\""
-      << "Float32"
-      << "\" Name=\"" << varname << "\" "
+    f << "<DataArray type=\"" << "Float32" << "\" Name=\"" << varname << "\" "
       << "NumberOfComponents=\"" << 1 << "\">\n";
     for (int i = 0; i < Size; ++i) {
       f << static_cast<float>(Array[i]) << " ";
@@ -242,8 +240,8 @@ class ScalerWriter : public AbstractWriter {
     std::string type;
     getVTKTypeString<datatype>(type);
     f << "<DataArray type=\"" << type << "\" Name=\"" << varname << "\" "
-      << "format=\"binary\" encoding=\"base64\" "
-      << "NumberOfComponents=\"" << 1 << "\">\n";
+      << "format=\"binary\" encoding=\"base64\" " << "NumberOfComponents=\"" << 1
+      << "\">\n";
     f.close();
 
     std::ofstream fb(fName, std::ios::out | std::ios::app | std::ios::binary);
@@ -263,24 +261,27 @@ class ScalerWriter : public AbstractWriter {
   }
 };
 
-template <typename datatype, unsigned int D>
+template <typename ArrayType>
 class VectorWriter : public AbstractWriter {
+ public:
+  using vectortype = typename ArrayType::value_type;
+  using datatype = typename vectortype::value_type;
+  static constexpr unsigned int D = vectortype::vector_dim;
+
  private:
   std::string varname;
   // field data
-  const GenericArray<Vector<datatype, D>> &Array;
+  const ArrayType &Array;
   std::size_t Size;
 
  public:
-  VectorWriter(std::string name, const GenericArray<Vector<datatype, D>> &f)
+  VectorWriter(std::string name, const ArrayType &f)
       : varname(name), Array(f), Size(f.size()) {}
   void write(const std::string &fName) const override {
     std::ofstream f(fName, std::ios::out | std::ios::app);
     std::string type;
     // getVTKTypeString<datatype>(type);
-    f << "<DataArray type=\""
-      << "Float32"
-      << "\" Name=\"" << varname << "\" "
+    f << "<DataArray type=\"" << "Float32" << "\" Name=\"" << varname << "\" "
       << "NumberOfComponents=\"" << D << "\">\n";
     for (int i = 0; i < Size; ++i) {
       if constexpr (D == 2) {
@@ -299,8 +300,8 @@ class VectorWriter : public AbstractWriter {
     std::string type;
     getVTKTypeString<datatype>(type);
     f << "<DataArray type=\"" << type << "\" Name=\"" << varname << "\" "
-      << "format=\"binary\" encoding=\"base64\" "
-      << "NumberOfComponents=\"" << D << "\">\n";
+      << "format=\"binary\" encoding=\"base64\" " << "NumberOfComponents=\"" << D
+      << "\">\n";
     f.close();
 
     std::ofstream fb(fName, std::ios::out | std::ios::app | std::ios::binary);
@@ -349,21 +350,19 @@ class VectorSOAWriter : public AbstractWriter {
  private:
   std::string varname;
   // field data
-  const GenericField<ArrayType, D> &Field;
+  const GenericArrayField<ArrayType, D> &Field;
   std::size_t Size;
 
  public:
   using datatype = typename ArrayType::value_type;
 
-  VectorSOAWriter(std::string name, const GenericField<ArrayType, D> &f)
+  VectorSOAWriter(std::string name, const GenericArrayField<ArrayType, D> &f)
       : varname(name), Field(f), Size(f.getField(0).size()) {}
   void write(const std::string &fName) const override {
     std::ofstream f(fName, std::ios::out | std::ios::app);
     std::string type;
     // getVTKTypeString<datatype>(type);
-    f << "<DataArray type=\""
-      << "Float32"
-      << "\" Name=\"" << varname << "\" "
+    f << "<DataArray type=\"" << "Float32" << "\" Name=\"" << varname << "\" "
       << "NumberOfComponents=\"" << D << "\">\n";
     for (int i = 0; i < Size; ++i) {
       for (unsigned int k = 0; k < D; ++k) {
@@ -378,8 +377,8 @@ class VectorSOAWriter : public AbstractWriter {
     std::string type;
     getVTKTypeString<datatype>(type);
     f << "<DataArray type=\"" << type << "\" Name=\"" << varname << "\" "
-      << "format=\"binary\" encoding=\"base64\" "
-      << "NumberOfComponents=\"" << D << "\">\n";
+      << "format=\"binary\" encoding=\"base64\" " << "NumberOfComponents=\"" << D
+      << "\">\n";
     f.close();
 
     std::ofstream fb(fName, std::ios::out | std::ios::app | std::ios::binary);
@@ -546,7 +545,7 @@ class vtiManager {
 };
 
 template <typename ArrayType, unsigned int Dim>
-class ScalerWriter : public AbstractWriter {
+class ScalarWriter : public AbstractWriter {
  private:
   std::string varname;
   // field data
@@ -557,7 +556,7 @@ class ScalerWriter : public AbstractWriter {
  public:
   using datatype = typename ArrayType::value_type;
 
-  ScalerWriter(std::string name, const ArrayType &f, Vector<int, Dim> mesh)
+  ScalarWriter(std::string name, const ArrayType &f, Vector<int, Dim> mesh)
       : varname(name), Array(f), Mesh(mesh) {
     static_assert(Dim == 2 || Dim == 3, "Error: Dimension is not supported!");
   }
@@ -567,8 +566,8 @@ class ScalerWriter : public AbstractWriter {
     std::string type;
     getVTKTypeString<datatype>(type);
     f << "<DataArray type=\"" << type << "\" Name=\"" << varname << "\" "
-      << "format=\"binary\" encoding=\"base64\" "
-      << "NumberOfComponents=\"" << 1 << "\">\n";
+      << "format=\"binary\" encoding=\"base64\" " << "NumberOfComponents=\"" << 1
+      << "\">\n";
     f.close();
 
     datatype *data = nullptr;
@@ -610,17 +609,21 @@ class ScalerWriter : public AbstractWriter {
   }
 };
 
-template <typename datatype, unsigned int Dim, unsigned int D>
+template <typename ArrayType, unsigned int Dim>
 class VectorWriter : public AbstractWriter {
+  public:
+  using vectortype = typename ArrayType::value_type;
+  using datatype = typename vectortype::value_type;
+  static constexpr unsigned int D = vectortype::vector_dim;
  private:
   std::string varname;
   // field data
-  const GenericArray<Vector<datatype, D>> &Array;
+  const ArrayType &Array;
   // mesh info
   Vector<int, Dim> Mesh;
 
  public:
-  VectorWriter(std::string name, const GenericArray<Vector<datatype, D>> &f,
+  VectorWriter(std::string name, const ArrayType &f,
                Vector<int, Dim> mesh)
       : varname(name), Array(f), Mesh(mesh) {
     static_assert(Dim == 2 || Dim == 3, "Error: Dimension is not supported!");
@@ -631,8 +634,8 @@ class VectorWriter : public AbstractWriter {
     std::string type;
     getVTKTypeString<datatype>(type);
     f << "<DataArray type=\"" << type << "\" Name=\"" << varname << "\" "
-      << "format=\"binary\" encoding=\"base64\" "
-      << "NumberOfComponents=\"" << D << "\">\n";
+      << "format=\"binary\" encoding=\"base64\" " << "NumberOfComponents=\"" << D
+      << "\">\n";
     f.close();
 
     Vector<datatype, D> *data = nullptr;
@@ -685,14 +688,14 @@ class VectorSOAWriter : public AbstractWriter {
  private:
   std::string varname;
   // field data
-  const GenericField<ArrayType, D> &Field;
+  const GenericArrayField<ArrayType, D> &Field;
   // mesh info
   Vector<int, Dim> Mesh;
 
  public:
   using datatype = typename ArrayType::value_type;
 
-  VectorSOAWriter(std::string name, const GenericField<ArrayType, D> &f,
+  VectorSOAWriter(std::string name, const GenericArrayField<ArrayType, D> &f,
                   Vector<int, Dim> mesh)
       : varname(name), Field(f), Mesh(mesh) {}
 
@@ -701,8 +704,8 @@ class VectorSOAWriter : public AbstractWriter {
     std::string type;
     getVTKTypeString<datatype>(type);
     f << "<DataArray type=\"" << type << "\" Name=\"" << varname << "\" "
-      << "format=\"binary\" encoding=\"base64\" "
-      << "NumberOfComponents=\"" << D << "\">\n";
+      << "format=\"binary\" encoding=\"base64\" " << "NumberOfComponents=\"" << D
+      << "\">\n";
     f.close();
 
     // get submesh size

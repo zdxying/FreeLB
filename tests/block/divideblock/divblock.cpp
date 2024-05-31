@@ -81,7 +81,7 @@ int main() {
 
   BlockFieldManager<FlagField, T, 2> FlagFM2(Geo, VoidFlag);
 
-  vtmwriter::ScalerWriter GeoFlagWriter("flag", FlagFM);
+  vtmwriter::ScalarWriter GeoFlagWriter("flag", FlagFM);
   vtmwriter::vtmWriter<T, LatSet::d> GeoWriter("GeoFlag", Geo);
   GeoWriter.addWriterSet(GeoFlagWriter);
 

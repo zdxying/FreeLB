@@ -156,7 +156,7 @@ int main() {
 
   // vti writer
   vtiwriter::VectorWriter VeloWriter("Velocity", Velocity.getField());
-  vtiwriter::ScalerWriter RhoWriter("Rho", NSLattice.getRhoField().getField());
+  vtiwriter::ScalarWriter RhoWriter("Rho", NSLattice.getRhoField().getField());
   vtiwriter::vtiManager NSWriter("NS", Geo.getVoxelSize(), Geo.getMin(),
                                  Vector<int, 2>{Ni + 1, Nj + 1});
   NSWriter.addWriter(RhoWriter, VeloWriter);

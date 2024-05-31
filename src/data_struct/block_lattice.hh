@@ -25,68 +25,64 @@
 #include "block_lattice.h"
 #include "data_struct/block_lattice.h"
 
-template <typename T, typename LatSet>
-BlockLattice<T, LatSet>::BlockLattice(Block<T, LatSet::d>& block, ScalerField<T>& rho,
-                                      VectorFieldAOS<T, LatSet::d>& velocity,
-                                      PopulationField<T, LatSet::q>& pops,
-                                      AbstractConverter<T>& conv, bool initpop)
-    : BlockGeo(block), BlockRhoLattice<T>(conv, rho), Velocity(velocity), Pops(pops),
+
+template <typename T, typename LatSet, typename TypePack>
+template <typename... FIELDPTRS>
+BlockLattice<T, LatSet, TypePack>::BlockLattice(Block<T, LatSet::d>& block,
+                                                AbstractConverter<T>& conv,
+                                                std::tuple<FIELDPTRS...> fieldptrs)
+    : BlockGeo(block), Fields(fieldptrs),
       Omega(RefineConverter<T>::getOmegaF(conv.getOMEGA(), block.getLevel())) {
-  _Omega = T(1) - Omega;
-  fOmega = T(1) - T(0.5) * Omega;
+  _Omega = T{1} - Omega;
+  fOmega = T{1} - T{0.5} * Omega;
   Delta_Index =
     make_Array<int, LatSet::q>([&](int i) { return LatSet::c[i] * getProjection(); });
-  // init populations
-  if (initpop) {
-    for (int i = 0; i < LatSet::q; ++i) {
-      Pops.getField(i).Init(this->getLatRhoInit() * LatSet::w[i]);
-    }
-  }
 }
 
-template <typename T, typename LatSet>
-void BlockLattice<T, LatSet>::PopConvFineToCoarse() {
-  const auto& VeloArr = Velocity.getField(0);
-  const auto& RhoArr = this->Rho.getField(0);
+template <typename T, typename LatSet, typename TypePack>
+void BlockLattice<T, LatSet, TypePack>::PopConvFineToCoarse() {
+  const auto& VeloArr = getField<VELOCITY<T, LatSet::d>>().getField(0);
+  const auto& RhoArr = getField<RHO<T>>().getField(0);
   // post average comm
-  for (InterpBlockLatComm<T, LatSet>& comm : AverageComm) {
+  for (InterpBlockLatComm<T, LatSet, TypePack>& comm : AverageComm) {
     const T OmegaF = comm.SendBlock->getOmega();
     for (std::size_t idrecv : comm.getRecvs()) {
       std::array<T, LatSet::q> feq{};
       Equilibrium<T, LatSet>::SecondOrder(feq, VeloArr[idrecv], RhoArr[idrecv]);
       // convert
-      RefineConverter<T>::template computePopC<LatSet::q>(Pops.getArray(idrecv), feq,
-                                                          OmegaF);
+      RefineConverter<T>::template computePopC<LatSet::q>(
+        getField<POP<T, LatSet::q>>().getArray(idrecv), feq, OmegaF);
     }
   }
 }
 
-template <typename T, typename LatSet>
-void BlockLattice<T, LatSet>::PopConvCoarseToFine() {
-  const auto& VeloArr = Velocity.getField(0);
-  const auto& RhoArr = this->Rho.getField(0);
+template <typename T, typename LatSet, typename TypePack>
+void BlockLattice<T, LatSet, TypePack>::PopConvCoarseToFine() {
+  const auto& VeloArr = getField<VELOCITY<T, LatSet::d>>().getField(0);
+  const auto& RhoArr = getField<RHO<T>>().getField(0);
   // post interp comm
-  for (InterpBlockLatComm<T, LatSet>& comm : InterpComm) {
+  for (InterpBlockLatComm<T, LatSet, TypePack>& comm : InterpComm) {
     const T OmegaC = comm.SendBlock->getOmega();
     for (std::size_t idrecv : comm.getRecvs()) {
       std::array<T, LatSet::q> feq{};
       Equilibrium<T, LatSet>::SecondOrder(feq, VeloArr[idrecv], RhoArr[idrecv]);
       // convert
-      RefineConverter<T>::template computePopF<LatSet::q>(Pops.getArray(idrecv), feq,
-                                                          OmegaC);
+      RefineConverter<T>::template computePopF<LatSet::q>(
+        getField<POP<T, LatSet::q>>().getArray(idrecv), feq, OmegaC);
     }
   }
 }
 
-template <typename T, typename LatSet>
-void BlockLattice<T, LatSet>::communicate() {
+template <typename T, typename LatSet, typename TypePack>
+void BlockLattice<T, LatSet, TypePack>::communicate() {
   // same level communication
-  for (BlockLatComm<T, LatSet>& comm : Communicators) {
-    BlockLattice<T, LatSet>* nBlockLat = comm.SendBlock;
+  for (BlockLatComm<T, LatSet, TypePack>& comm : Communicators) {
+    BlockLattice<T, LatSet, TypePack>* nBlockLat = comm.SendBlock;
     int size = comm.getRecvs().size();
     for (int k = 1; k < LatSet::q; ++k) {
-      const CyclicArray<T>& nPopsk = nBlockLat->getPopField().getField(k);
-      CyclicArray<T>& Popsk = Pops.getField(k);
+      const CyclicArray<T>& nPopsk =
+        nBlockLat->template getField<POP<T, LatSet::q>>().getField(k);
+      CyclicArray<T>& Popsk = getField<POP<T, LatSet::q>>().getField(k);
       for (int i = 0; i < size; ++i) {
         std::size_t idrecv = comm.getRecvs()[i];
         std::size_t idsend = comm.getSends()[i];
@@ -96,16 +92,17 @@ void BlockLattice<T, LatSet>::communicate() {
   }
 }
 
-template <typename T, typename LatSet>
-void BlockLattice<T, LatSet>::avercommunicate() {
+template <typename T, typename LatSet, typename TypePack>
+void BlockLattice<T, LatSet, TypePack>::avercommunicate() {
   // average communication, low level get from high level
-  for (InterpBlockLatComm<T, LatSet>& comm : AverageComm) {
-    BlockLattice<T, LatSet>* nBlockLat = comm.SendBlock;
+  for (InterpBlockLatComm<T, LatSet, TypePack>& comm : AverageComm) {
+    BlockLattice<T, LatSet, TypePack>* nBlockLat = comm.SendBlock;
     int size = comm.getRecvs().size();
     constexpr T weight = comm.Comm->getUniformWeight();
     const T OmegaF = nBlockLat->getOmega();
-    GenericArray<T>& nRhoF = nBlockLat->getRhoField().getField(0);
-    GenericArray<Vector<T, LatSet::d>>& nUF = nBlockLat->getVelocityField().getField(0);
+    GenericArray<T>& nRhoF = nBlockLat->getField<RHO<T>>().getField(0);
+    GenericArray<Vector<T, LatSet::d>>& nUF =
+      nBlockLat->getField<VELOCITY<T, LatSet::d>>().getField(0);
     for (std::size_t i = 0; i < size; ++i) {
       const InterpSource<LatSet::d>& sends = comm.getSends()[i];
       // get averaged(interpolated) rho and u
@@ -115,9 +112,11 @@ void BlockLattice<T, LatSet>::avercommunicate() {
       std::array<T, LatSet::q> feq{};
       Equilibrium<T, LatSet>::SecondOrder(feq, averU, averRho);
 
-      std::array<T*, LatSet::q> CellPop = Pops.getArray(comm.getRecvs()[i]);
+      std::array<T*, LatSet::q> CellPop =
+        getField<POP<T, LatSet::q>>().getArray(comm.getRecvs()[i]);
       for (unsigned int k = 0; k < LatSet::q; ++k) {
-        T averpop = getAverage<T, LatSet::d>(nBlockLat->getPopField().getField(k), sends);
+        T averpop = getAverage<T, LatSet::d>(
+          nBlockLat->template getField<POP<T, LatSet::q>>().getField(k), sends);
         // convert from fine to coarse
         *(CellPop[k]) = RefineConverter<T>::getPopC(averpop, feq[k], OmegaF);
       }
@@ -125,15 +124,16 @@ void BlockLattice<T, LatSet>::avercommunicate() {
   }
 }
 
-template <typename T, typename LatSet>
-void BlockLattice<T, LatSet>::interpcommunicate() {
+template <typename T, typename LatSet, typename TypePack>
+void BlockLattice<T, LatSet, TypePack>::interpcommunicate() {
   // interp communication, high level get from low level
-  for (InterpBlockLatComm<T, LatSet>& comm : InterpComm) {
-    BlockLattice<T, LatSet>* nBlockLat = comm.SendBlock;
+  for (InterpBlockLatComm<T, LatSet, TypePack>& comm : InterpComm) {
+    BlockLattice<T, LatSet, TypePack>* nBlockLat = comm.SendBlock;
     int size = comm.getRecvs().size();
     const T OmegaC = nBlockLat->getOmega();
-    GenericArray<T>& nRhoF = nBlockLat->getRhoField().getField(0);
-    GenericArray<Vector<T, LatSet::d>>& nUF = nBlockLat->getVelocityField().getField(0);
+    GenericArray<T>& nRhoF = nBlockLat->getField<RHO<T>>().getField(0);
+    GenericArray<Vector<T, LatSet::d>>& nUF =
+      nBlockLat->getField<VELOCITY<T, LatSet::d>>().getField(0);
     if constexpr (LatSet::d == 2) {
       for (std::size_t i = 0; i < size; i += 4) {
         {
@@ -145,10 +145,11 @@ void BlockLattice<T, LatSet>::interpcommunicate() {
           std::array<T, LatSet::q> feq{};
           Equilibrium<T, LatSet>::SecondOrder(feq, averU, averRho);
 
-          std::array<T*, LatSet::q> CellPop = Pops.getArray(comm.getRecvs()[i]);
+          std::array<T*, LatSet::q> CellPop =
+            getField<POP<T, LatSet::q>>().getArray(comm.getRecvs()[i]);
           for (unsigned int k = 0; k < LatSet::q; ++k) {
             T averpop = getInterpolation<0, T, LatSet::d>(
-              nBlockLat->getPopField().getField(k), sends);
+              nBlockLat->template getField<POP<T, LatSet::q>>().getField(k), sends);
             // convert from coarse to fine
             *(CellPop[k]) = RefineConverter<T>::getPopF(averpop, feq[k], OmegaC);
           }
@@ -162,10 +163,11 @@ void BlockLattice<T, LatSet>::interpcommunicate() {
           std::array<T, LatSet::q> feq{};
           Equilibrium<T, LatSet>::SecondOrder(feq, averU, averRho);
 
-          std::array<T*, LatSet::q> CellPop = Pops.getArray(comm.getRecvs()[i + 1]);
+          std::array<T*, LatSet::q> CellPop =
+            getField<POP<T, LatSet::q>>().getArray(comm.getRecvs()[i + 1]);
           for (unsigned int k = 0; k < LatSet::q; ++k) {
             T averpop = getInterpolation<1, T, LatSet::d>(
-              nBlockLat->getPopField().getField(k), sends);
+              nBlockLat->template getField<POP<T, LatSet::q>>().getField(k), sends);
             // convert from coarse to fine
             *(CellPop[k]) = RefineConverter<T>::getPopF(averpop, feq[k], OmegaC);
           }
@@ -179,10 +181,11 @@ void BlockLattice<T, LatSet>::interpcommunicate() {
           std::array<T, LatSet::q> feq{};
           Equilibrium<T, LatSet>::SecondOrder(feq, averU, averRho);
 
-          std::array<T*, LatSet::q> CellPop = Pops.getArray(comm.getRecvs()[i + 2]);
+          std::array<T*, LatSet::q> CellPop =
+            getField<POP<T, LatSet::q>>().getArray(comm.getRecvs()[i + 2]);
           for (unsigned int k = 0; k < LatSet::q; ++k) {
             T averpop = getInterpolation<2, T, LatSet::d>(
-              nBlockLat->getPopField().getField(k), sends);
+              nBlockLat->template getField<POP<T, LatSet::q>>().getField(k), sends);
             // convert from coarse to fine
             *(CellPop[k]) = RefineConverter<T>::getPopF(averpop, feq[k], OmegaC);
           }
@@ -196,10 +199,11 @@ void BlockLattice<T, LatSet>::interpcommunicate() {
           std::array<T, LatSet::q> feq{};
           Equilibrium<T, LatSet>::SecondOrder(feq, averU, averRho);
 
-          std::array<T*, LatSet::q> CellPop = Pops.getArray(comm.getRecvs()[i + 3]);
+          std::array<T*, LatSet::q> CellPop =
+            getField<POP<T, LatSet::q>>().getArray(comm.getRecvs()[i + 3]);
           for (unsigned int k = 0; k < LatSet::q; ++k) {
             T averpop = getInterpolation<3, T, LatSet::d>(
-              nBlockLat->getPopField().getField(k), sends);
+              nBlockLat->template getField<POP<T, LatSet::q>>().getField(k), sends);
             // convert from coarse to fine
             *(CellPop[k]) = RefineConverter<T>::getPopF(averpop, feq[k], OmegaC);
           }
@@ -209,131 +213,73 @@ void BlockLattice<T, LatSet>::interpcommunicate() {
   }
 }
 
-
-template <typename T, typename LatSet>
-template <typename ArrayType>
-void BlockLattice<T, LatSet>::UpdateRho(const ArrayType& flagarr, std::uint8_t flag) {
-  for (std::size_t id = 0; id < getN(); ++id) {
-    if (util::isFlag(flagarr[id], flag)) {
-      BasicCell<T, LatSet> cell(id, *this);
-      moment::Rho<T, LatSet>::apply(cell, this->Rho.get(id));
-    }
-  }
-}
-
-template <typename T, typename LatSet>
-template <typename ArrayType>
-void BlockLattice<T, LatSet>::UpdateRho_Source(const ArrayType& flagarr,
-                                               std::uint8_t flag,
-                                               const GenericArray<T>& source) {
-  for (std::size_t id = 0; id < getN(); ++id) {
-    if (util::isFlag(flagarr[id], flag)) {
-      BasicCell<T, LatSet> cell(id, *this);
-      moment::Rho<T, LatSet>::apply(cell, this->Rho.get(id), source[id]);
-    }
-  }
-}
-
-template <typename T, typename LatSet>
-template <typename ArrayType>
-void BlockLattice<T, LatSet>::UpdateU(const ArrayType& flagarr, std::uint8_t flag) {
-  for (std::size_t id = 0; id < getN(); ++id) {
-    if (util::isFlag(flagarr[id], flag)) {
-      BasicCell<T, LatSet> cell(id, *this);
-      moment::Velocity<T, LatSet>::apply(cell, Velocity.get(id));
-    }
-  }
-}
-
-template <typename T, typename LatSet>
-template <void (*GetFeq)(std::array<T, LatSet::q>&, const Vector<T, LatSet::d>&, T),
-          typename ArrayType>
-void BlockLattice<T, LatSet>::BGK(const ArrayType& flagarr, std::uint8_t flag) {
-  for (std::size_t id = 0; id < getN(); ++id) {
-    if (util::isFlag(flagarr[id], flag)) {
-      BCell<T, LatSet> cell(id, *this);
-      collision::BGK<T, LatSet>::template apply<GetFeq>(cell);
-    }
-  }
-}
-
-template <typename T, typename LatSet>
-template <void (*GetFeq)(std::array<T, LatSet::q>&, const Vector<T, LatSet::d>&, T),
-          typename ArrayType>
-void BlockLattice<T, LatSet>::BGK_Source(const ArrayType& flagarr, std::uint8_t flag,
-                                         const GenericArray<T>& source) {
-  for (std::size_t id = 0; id < getN(); ++id) {
-    if (util::isFlag(flagarr[id], flag)) {
-      BCell<T, LatSet> cell(id, *this);
-      collision::BGK<T, LatSet>::template applySource<GetFeq>(cell, source[id]);
-    }
-  }
-}
-template <typename T, typename LatSet>
-void BlockLattice<T, LatSet>::Stream() {
+template <typename T, typename LatSet, typename TypePack>
+void BlockLattice<T, LatSet, TypePack>::Stream() {
   for (int i = 1; i < LatSet::q; ++i) {
-    Pops.getField(i).rotate(Delta_Index[i]);
+    getField<POP<T, LatSet::q>>().getField(i).rotate(Delta_Index[i]);
   }
 }
 
-template <typename T, typename LatSet>
+template <typename T, typename LatSet, typename TypePack>
 template <typename CELLDYNAMICS, typename ArrayType>
-void BlockLattice<T, LatSet>::ApplyCellDynamics(const ArrayType& flagarr) {
+void BlockLattice<T, LatSet, TypePack>::ApplyCellDynamics(const ArrayType& flagarr) {
   for (std::size_t id = 0; id < getN(); ++id) {
-    BCell<T, LatSet> cell(id, *this);
+    BCell<T, LatSet, TypePack> cell(id, *this);
     CELLDYNAMICS::Execute(flagarr[id], cell);
   }
 }
 
-template <typename T, typename LatSet>
-void BlockLattice<T, LatSet>::EnableToleranceRho(T rhores) {
+template <typename T, typename LatSet, typename TypePack>
+void BlockLattice<T, LatSet, TypePack>::EnableToleranceRho(T rhores) {
   RhoRes = rhores;
   RhoOld.reserve(getN());
-  for (int i = 0; i < getN(); ++i) RhoOld.push_back(this->Rho.get(i));
+  for (int i = 0; i < getN(); ++i) RhoOld.push_back(getField<RHO<T>>().get(i));
 }
 
-template <typename T, typename LatSet>
-void BlockLattice<T, LatSet>::EnableToleranceU(T ures) {
+template <typename T, typename LatSet, typename TypePack>
+void BlockLattice<T, LatSet, TypePack>::EnableToleranceU(T ures) {
   URes = ures;
   UOld.reserve(getN());
-  for (int i = 0; i < getN(); ++i) UOld.push_back(Velocity.get(i));
+  for (int i = 0; i < getN(); ++i)
+    UOld.push_back(getField<VELOCITY<T, LatSet::d>>().get(i));
 }
 
-template <typename T, typename LatSet>
-T BlockLattice<T, LatSet>::getToleranceRho() {
+template <typename T, typename LatSet, typename TypePack>
+T BlockLattice<T, LatSet, TypePack>::getToleranceRho() {
   T res;
   T maxres = T(0);
   for (int i = 0; i < getN(); ++i) {
-    res = std::abs(this->Rho.get(i) - RhoOld[i]);
+    res = std::abs(getField<RHO<T>>().get(i) - RhoOld[i]);
     maxres = std::max(res, maxres);
-    RhoOld[i] = this->Rho.get(i);
+    RhoOld[i] = getField<RHO<T>>().get(i);
   }
   return maxres;
 }
 
-template <typename T, typename LatSet>
-T BlockLattice<T, LatSet>::getToleranceU() {
+template <typename T, typename LatSet, typename TypePack>
+T BlockLattice<T, LatSet, TypePack>::getToleranceU() {
   T res0, res1, res2, res;
   T maxres = T(0);
   for (int i = 0; i < getN(); ++i) {
-    res0 = std::abs(Velocity.get(i)[0] - UOld[i][0]);
-    res1 = std::abs(Velocity.get(i)[1] - UOld[i][1]);
+    res0 = std::abs(getField<VELOCITY<T, LatSet::d>>().get(i)[0] - UOld[i][0]);
+    res1 = std::abs(getField<VELOCITY<T, LatSet::d>>().get(i)[1] - UOld[i][1]);
     if constexpr (LatSet::d == 3) {
-      res2 = std::abs(Velocity.get(i)[2] - UOld[i][2]);
+      res2 = std::abs(getField<VELOCITY<T, LatSet::d>>().get(i)[2] - UOld[i][2]);
       res1 = std::max(res1, res2);
     }
     res = std::max(res0, res1);
     maxres = std::max(res, maxres);
     // set UOld
-    UOld[i][0] = Velocity.get(i)[0];
-    UOld[i][1] = Velocity.get(i)[1];
-    if constexpr (LatSet::d == 3) UOld[i][2] = Velocity.get(i)[2];
+    UOld[i][0] = getField<VELOCITY<T, LatSet::d>>().get(i)[0];
+    UOld[i][1] = getField<VELOCITY<T, LatSet::d>>().get(i)[1];
+    if constexpr (LatSet::d == 3)
+      UOld[i][2] = getField<VELOCITY<T, LatSet::d>>().get(i)[2];
   }
   return maxres;
 }
 
-template <typename T, typename LatSet>
-T BlockLattice<T, LatSet>::getTolRho(int shift) {
+template <typename T, typename LatSet, typename TypePack>
+T BlockLattice<T, LatSet, TypePack>::getTolRho(int shift) {
   T res;
   T maxres = T(0);
 
@@ -341,9 +287,9 @@ T BlockLattice<T, LatSet>::getTolRho(int shift) {
     for (int j = shift; j < getNy() - shift; ++j) {
       for (int i = shift; i < getNx() - shift; ++i) {
         std::size_t id = j * getNx() + i;
-        res = std::abs(this->Rho.get(id) - RhoOld[id]);
+        res = std::abs(getField<RHO<T>>().get(id) - RhoOld[id]);
         maxres = std::max(res, maxres);
-        RhoOld[id] = this->Rho.get(id);
+        RhoOld[id] = getField<RHO<T>>().get(id);
       }
     }
   } else if constexpr (LatSet::d == 3) {
@@ -352,9 +298,9 @@ T BlockLattice<T, LatSet>::getTolRho(int shift) {
       for (int j = shift; j < getNy() - shift; ++j) {
         for (int i = shift; i < getNx() - shift; ++i) {
           std::size_t id = k * NxNy + j * getNx() + i;
-          res = std::abs(this->Rho.get(id) - RhoOld[id]);
+          res = std::abs(getField<RHO<T>>().get(id) - RhoOld[id]);
           maxres = std::max(res, maxres);
-          RhoOld[id] = this->Rho.get(id);
+          RhoOld[id] = getField<RHO<T>>().get(id);
         }
       }
     }
@@ -362,21 +308,21 @@ T BlockLattice<T, LatSet>::getTolRho(int shift) {
   return maxres;
 }
 
-template <typename T, typename LatSet>
-T BlockLattice<T, LatSet>::getTolU(int shift) {
+template <typename T, typename LatSet, typename TypePack>
+T BlockLattice<T, LatSet, TypePack>::getTolU(int shift) {
   T res0, res1, res2, res;
   T maxres = T(0);
   if constexpr (LatSet::d == 2) {
     for (int j = shift; j < getNy() - shift; ++j) {
       for (int i = shift; i < getNx() - shift; ++i) {
         std::size_t id = j * getNx() + i;
-        res0 = std::abs(Velocity.get(id)[0] - UOld[id][0]);
-        res1 = std::abs(Velocity.get(id)[1] - UOld[id][1]);
+        res0 = std::abs(getField<VELOCITY<T, LatSet::d>>().get(id)[0] - UOld[id][0]);
+        res1 = std::abs(getField<VELOCITY<T, LatSet::d>>().get(id)[1] - UOld[id][1]);
         res = std::max(res0, res1);
         maxres = std::max(res, maxres);
         // set UOld
-        UOld[id][0] = Velocity.get(id)[0];
-        UOld[id][1] = Velocity.get(id)[1];
+        UOld[id][0] = getField<VELOCITY<T, LatSet::d>>().get(id)[0];
+        UOld[id][1] = getField<VELOCITY<T, LatSet::d>>().get(id)[1];
       }
     }
   } else if constexpr (LatSet::d == 3) {
@@ -385,16 +331,16 @@ T BlockLattice<T, LatSet>::getTolU(int shift) {
       for (int j = shift; j < getNy() - shift; ++j) {
         for (int i = shift; i < getNx() - shift; ++i) {
           std::size_t id = k * NxNy + j * getNx() + i;
-          res0 = std::abs(Velocity.get(id)[0] - UOld[id][0]);
-          res1 = std::abs(Velocity.get(id)[1] - UOld[id][1]);
-          res2 = std::abs(Velocity.get(id)[2] - UOld[id][2]);
+          res0 = std::abs(getField<VELOCITY<T, LatSet::d>>().get(id)[0] - UOld[id][0]);
+          res1 = std::abs(getField<VELOCITY<T, LatSet::d>>().get(id)[1] - UOld[id][1]);
+          res2 = std::abs(getField<VELOCITY<T, LatSet::d>>().get(id)[2] - UOld[id][2]);
           res1 = std::max(res1, res2);
           res = std::max(res0, res1);
           maxres = std::max(res, maxres);
           // set UOld
-          UOld[id][0] = Velocity.get(id)[0];
-          UOld[id][1] = Velocity.get(id)[1];
-          UOld[id][2] = Velocity.get(id)[2];
+          UOld[id][0] = getField<VELOCITY<T, LatSet::d>>().get(id)[0];
+          UOld[id][1] = getField<VELOCITY<T, LatSet::d>>().get(id)[1];
+          UOld[id][2] = getField<VELOCITY<T, LatSet::d>>().get(id)[2];
         }
       }
     }
@@ -404,42 +350,75 @@ T BlockLattice<T, LatSet>::getTolU(int shift) {
 
 // BlockLatticeManager
 
-template <typename T, typename LatSet>
-BlockLatticeManager<T, LatSet>::BlockLatticeManager(
+template <typename T, typename LatSet, typename TypePack>
+template <typename... FIELDPTRTYPES>
+BlockLatticeManager<T, LatSet, TypePack>::BlockLatticeManager(
   BlockGeometry<T, LatSet::d>& blockgeo, AbstractConverter<T>& conv,
-  BlockFieldManager<VectorFieldAOS<T, LatSet::d>, T, LatSet::d>& blockvelocity)
-    : BlockGeo(blockgeo), VelocityFM(blockvelocity), Conv(conv),
-      RhoFM(blockgeo, conv.getLatRhoInit()), PopsFM(blockgeo) {
+  FIELDPTRTYPES&... fieldptrs)
+    : BlockGeo(blockgeo), Conv(conv), Fields(blockgeo), FieldPtrs(fieldptrs...) {
+  // init rho and pop
+  getField<RHO<T>>().Init(Conv.getLatRhoInit());
+  getField<POP<T, LatSet::q>>().forEachField([&](auto& field) {
+    for (unsigned int i = 0; i < LatSet::q; ++i) {
+      field.getField(i).Init(Conv.getLatRhoInit() * LatSet::w[i]);
+    }
+  });
   // init block lattices
   for (int i = 0; i < BlockGeo.getBlocks().size(); ++i) {
-    BlockLats.emplace_back(BlockGeo.getBlock(i), RhoFM.getBlockField(i).getField(),
-                           VelocityFM.getBlockField(i).getField(),
-                           PopsFM.getBlockField(i).getField(), Conv);
+    BlockLats.emplace_back(
+      BlockGeo.getBlock(i), Conv,
+      ExtractFieldPtrs<T, LatSet, TypePack>::getFieldPtrTuple(i, Fields, FieldPtrs));
   }
   InitComm();
   InitAverComm();
   InitIntpComm();
 }
 
-template <typename T, typename LatSet>
-void BlockLatticeManager<T, LatSet>::Init() {
+template <typename T, typename LatSet, typename TypePack>
+template <typename INITVALUEPACK, typename... FIELDPTRTYPES>
+BlockLatticeManager<T, LatSet, TypePack>::BlockLatticeManager(
+  BlockGeometry<T, LatSet::d>& blockgeo, INITVALUEPACK& initvalues,
+  AbstractConverter<T>& conv, FIELDPTRTYPES&... fieldptrs)
+    : BlockGeo(blockgeo), Conv(conv), Fields(blockgeo, initvalues.values),
+      FieldPtrs(fieldptrs...) {
+  // init pop
+  getField<POP<T, LatSet::q>>().forEachField([&](auto& field) {
+    for (unsigned int i = 0; i < LatSet::q; ++i) {
+      field.getField(i).Init(Conv.getLatRhoInit() * LatSet::w[i]);
+    }
+  });
+  // init block lattices
+  for (int i = 0; i < BlockGeo.getBlocks().size(); ++i) {
+    BlockLats.emplace_back(
+      BlockGeo.getBlock(i), Conv,
+      ExtractFieldPtrs<T, LatSet, TypePack>::getFieldPtrTuple(i, Fields, FieldPtrs));
+  }
+  InitComm();
+  InitAverComm();
+  InitIntpComm();
+}
+
+
+template <typename T, typename LatSet, typename TypePack>
+void BlockLatticeManager<T, LatSet, TypePack>::Init() {
   BlockLats.clear();
   for (int i = 0; i < BlockGeo.getBlocks().size(); ++i) {
-    BlockLats.emplace_back(BlockGeo.getBlock(i), RhoFM.getBlockField(i).getField(),
-                           VelocityFM.getBlockField(i).getField(),
-                           PopsFM.getBlockField(i).getField(), Conv, false);
+    BlockLats.emplace_back(
+      BlockGeo.getBlock(i), Conv,
+      ExtractFieldPtrs<T, LatSet, TypePack>::getFieldPtrTuple(i, Fields, FieldPtrs));
   }
   InitComm();
   InitAverComm();
   InitIntpComm();
 }
 
-template <typename T, typename LatSet>
-void BlockLatticeManager<T, LatSet>::InitComm() {
+template <typename T, typename LatSet, typename TypePack>
+void BlockLatticeManager<T, LatSet, TypePack>::InitComm() {
   // init based on block geometry
-  for (BlockLattice<T, LatSet>& BlockLat : BlockLats) {
+  for (auto& BlockLat : BlockLats) {
     Block<T, LatSet::d>& block = BlockLat.getGeo();
-    std::vector<BlockLatComm<T, LatSet>>& latcomm = BlockLat.getCommunicators();
+    std::vector<BlockLatComm<T, LatSet, ALLFIELDS>>& latcomm =
+      BlockLat.getCommunicators();
     latcomm.clear();
     for (BlockComm<T, LatSet::d>& comm : block.getCommunicators()) {
       latcomm.emplace_back(&findBlockLat(comm.getSendId()), &comm);
@@ -447,11 +426,12 @@ void BlockLatticeManager<T, LatSet>::InitComm() {
   }
 }
 
-template <typename T, typename LatSet>
-void BlockLatticeManager<T, LatSet>::InitAverComm() {
-  for (BlockLattice<T, LatSet>& BlockLat : BlockLats) {
+template <typename T, typename LatSet, typename TypePack>
+void BlockLatticeManager<T, LatSet, TypePack>::InitAverComm() {
+  for (auto& BlockLat : BlockLats) {
     Block<T, LatSet::d>& block = BlockLat.getGeo();
-    std::vector<InterpBlockLatComm<T, LatSet>>& latcomm = BlockLat.getAverageComm();
+    std::vector<InterpBlockLatComm<T, LatSet, ALLFIELDS>>& latcomm =
+      BlockLat.getAverageComm();
     latcomm.clear();
     for (InterpBlockComm<T, LatSet::d>& comm : block.getAverageBlockComm()) {
       latcomm.emplace_back(&findBlockLat(comm.getSendId()), &comm);
@@ -459,11 +439,12 @@ void BlockLatticeManager<T, LatSet>::InitAverComm() {
   }
 }
 
-template <typename T, typename LatSet>
-void BlockLatticeManager<T, LatSet>::InitIntpComm() {
-  for (BlockLattice<T, LatSet>& BlockLat : BlockLats) {
+template <typename T, typename LatSet, typename TypePack>
+void BlockLatticeManager<T, LatSet, TypePack>::InitIntpComm() {
+  for (auto& BlockLat : BlockLats) {
     Block<T, LatSet::d>& block = BlockLat.getGeo();
-    std::vector<InterpBlockLatComm<T, LatSet>>& latcomm = BlockLat.getInterpComm();
+    std::vector<InterpBlockLatComm<T, LatSet, ALLFIELDS>>& latcomm =
+      BlockLat.getInterpComm();
     latcomm.clear();
     for (InterpBlockComm<T, LatSet::d>& comm : block.getInterpBlockComm()) {
       latcomm.emplace_back(&findBlockLat(comm.getSendId()), &comm);
@@ -471,93 +452,18 @@ void BlockLatticeManager<T, LatSet>::InitIntpComm() {
   }
 }
 
-template <typename T, typename LatSet>
-template <typename FieldType>
-void BlockLatticeManager<T, LatSet>::UpdateRho(
-  std::int64_t count, std::uint8_t flag,
-  const BlockFieldManager<FieldType, T, LatSet::d>& BFM) {
-#pragma omp parallel for num_threads(Thread_Num)
-  for (int i = 0; i < BlockLats.size(); ++i) {
-    const int deLevel = static_cast<int>(getMaxLevel() - BlockLats[i].getLevel());
-    if (count % (static_cast<int>(pow(2, deLevel))) == 0)
-      BlockLats[i].UpdateRho(BFM.getBlockField(i).getField().getField(0), flag);
-  }
-}
-
-
-template <typename T, typename LatSet>
-template <typename FieldType>
-void BlockLatticeManager<T, LatSet>::UpdateRho_Source(
-  std::int64_t count, std::uint8_t flag,
-  const BlockFieldManager<FieldType, T, LatSet::d>& BFM,
-  const BlockFieldManager<ScalerField<T>, T, LatSet::d>& source) {
-#pragma omp parallel for num_threads(Thread_Num)
-  for (int i = 0; i < BlockLats.size(); ++i) {
-    const int deLevel = static_cast<int>(getMaxLevel() - BlockLats[i].getLevel());
-    if (count % (static_cast<int>(pow(2, deLevel))) == 0)
-      BlockLats[i].UpdateRho_Source(BFM.getBlockField(i).getField().getField(0), flag,
-                                    source.getBlockField(i).getField().getField(0));
-  }
-}
-
-template <typename T, typename LatSet>
-template <typename FieldType>
-void BlockLatticeManager<T, LatSet>::UpdateU(
-  std::int64_t count, std::uint8_t flag,
-  const BlockFieldManager<FieldType, T, LatSet::d>& BFM) {
-#pragma omp parallel for num_threads(Thread_Num)
-  for (int i = 0; i < BlockLats.size(); ++i) {
-    const int deLevel = static_cast<int>(getMaxLevel() - BlockLats[i].getLevel());
-    if (count % (static_cast<int>(pow(2, deLevel))) == 0)
-      BlockLats[i].UpdateU(BFM.getBlockField(i).getField().getField(0), flag);
-  }
-}
-
-template <typename T, typename LatSet>
-template <void (*GetFeq)(std::array<T, LatSet::q>&, const Vector<T, LatSet::d>&, T),
-          typename FieldType>
-void BlockLatticeManager<T, LatSet>::BGK(
-  std::int64_t count, std::uint8_t flag,
-  const BlockFieldManager<FieldType, T, LatSet::d>& BFM) {
-#pragma omp parallel for num_threads(Thread_Num)
-  for (int i = 0; i < BlockLats.size(); ++i) {
-    const int deLevel = static_cast<int>(getMaxLevel() - BlockLats[i].getLevel());
-    if (count % (static_cast<int>(pow(2, deLevel))) == 0)
-      BlockLats[i].template BGK<GetFeq, typename FieldType::array_type>(
-        BFM.getBlockField(i).getField().getField(0), flag);
-  }
-}
-
-
-template <typename T, typename LatSet>
-template <void (*GetFeq)(std::array<T, LatSet::q>&, const Vector<T, LatSet::d>&, T),
-          typename FieldType>
-void BlockLatticeManager<T, LatSet>::BGK_Source(
-  std::int64_t count, std::uint8_t flag,
-  const BlockFieldManager<FieldType, T, LatSet::d>& BFM,
-  const BlockFieldManager<ScalerField<T>, T, LatSet::d>& source) {
-#pragma omp parallel for num_threads(Thread_Num)
-  for (int i = 0; i < BlockLats.size(); ++i) {
-    const int deLevel = static_cast<int>(getMaxLevel() - BlockLats[i].getLevel());
-    if (count % (static_cast<int>(pow(2, deLevel))) == 0)
-      BlockLats[i].template BGK_Source<GetFeq, typename FieldType::array_type>(
-        BFM.getBlockField(i).getField().getField(0), flag,
-        source.getBlockField(i).getField().getField(0));
-  }
-}
-
-template <typename T, typename LatSet>
-void BlockLatticeManager<T, LatSet>::Stream(std::int64_t count) {
+template <typename T, typename LatSet, typename TypePack>
+void BlockLatticeManager<T, LatSet, TypePack>::Stream(std::int64_t count) {
 #pragma omp parallel for num_threads(Thread_Num) schedule(static)
-  for (BlockLattice<T, LatSet>& BLat : BlockLats) {
+  for (auto& BLat : BlockLats) {
     if (count % (static_cast<int>(pow(2, int(getMaxLevel() - BLat.getLevel())))) == 0)
       BLat.Stream();
   }
 }
 
-template <typename T, typename LatSet>
+template <typename T, typename LatSet, typename TypePack>
 template <typename CELLDYNAMICS, typename FieldType>
-void BlockLatticeManager<T, LatSet>::ApplyCellDynamics(
+void BlockLatticeManager<T, LatSet, TypePack>::ApplyCellDynamics(
   std::int64_t count, const BlockFieldManager<FieldType, T, LatSet::d>& BFM) {
 #pragma omp parallel for num_threads(Thread_Num)
   for (int i = 0; i < BlockLats.size(); ++i) {
@@ -565,19 +471,19 @@ void BlockLatticeManager<T, LatSet>::ApplyCellDynamics(
     if (count % (static_cast<int>(pow(2, deLevel))) == 0) {
       BlockLats[i]
         .template ApplyCellDynamics<CELLDYNAMICS, typename FieldType::array_type>(
-          BFM.getBlockField(i).getField().getField(0));
+          BFM.getBlockField(i).getField(0));
     }
   }
 }
 
 #ifdef MPI_ENABLED
-template <typename T, typename LatSet>
-void BlockLatticeManager<T, LatSet>::MPIAverComm(std::int64_t count) {
+template <typename T, typename LatSet, typename TypePack>
+void BlockLatticeManager<T, LatSet, TypePack>::MPIAverComm(std::int64_t count) {
   mpi().barrier();
   // pop conversion before communication
   std::vector<MPI_Request> SendRequestsPop;
   int ifield = 0;
-  for (BlockLattice<T, LatSet>& BLat : BlockLats) {
+  for (auto& BLat : BlockLats) {
     // send data to lower level, deLevel+1
     const int deLevel = static_cast<int>(getMaxLevel() - BLat.getLevel()) + 1;
     if (BLat.getLevel() != std::uint8_t(0)) {
@@ -593,14 +499,21 @@ void BlockLatticeManager<T, LatSet>::MPIAverComm(std::int64_t count) {
             MPIComm.Senders[i].SendCells;
 
           std::vector<T>& rhobuffer =
-            RhoFM.getBlockField(ifield).getMPIAverBuffer().SendBuffers[i];
-          std::vector<Vector<T, LatSet::d>>& ubuffer =
-            VelocityFM.getBlockField(ifield).getMPIAverBuffer().SendBuffers[i];
-          std::vector<T>& popbuffer =
-            PopsFM.getBlockField(ifield).getMPIAverBuffer().SendBuffers[i];
+            getField<RHO<T>>().getBlockField(ifield).getMPIAverBuffer().SendBuffers[i];
+          std::vector<Vector<T, LatSet::d>>& ubuffer = getField<VELOCITY<T, LatSet::d>>()
+                                                         .getBlockField(ifield)
+                                                         .getMPIAverBuffer()
+                                                         .SendBuffers[i];
+          std::vector<T>& popbuffer = getField<POP<T, LatSet::q>>()
+                                        .getBlockField(ifield)
+                                        .getMPIAverBuffer()
+                                        .SendBuffers[i];
 
-          const auto& RhoArray = RhoFM.getBlockField(ifield).getField().getField(0);
-          const auto& UArray = VelocityFM.getBlockField(ifield).getField().getField(0);
+          const auto& RhoArray =
+            getField<RHO<T>>().getBlockField(ifield).getField(0);
+          const auto& UArray =
+            getField<VELOCITY<T, LatSet::d>>().getBlockField(ifield).getField(
+              0);
 
           std::size_t bufidx = 0;
           for (const InterpSource<LatSet::d>& sends : sendcells) {
@@ -610,7 +523,9 @@ void BlockLatticeManager<T, LatSet>::MPIAverComm(std::int64_t count) {
           }
           bufidx = 0;
           for (unsigned int iArr = 0; iArr < LatSet::q; ++iArr) {
-            const auto& PopArray = PopsFM.getBlockField(ifield).getField().getField(iArr);
+            const auto& PopArray =
+              getField<POP<T, LatSet::q>>().getBlockField(ifield).getField(
+                iArr);
             for (const InterpSource<LatSet::d>& sends : sendcells) {
               popbuffer[bufidx] = getAverage<T, LatSet::d>(PopArray, sends);
               ++bufidx;
@@ -631,8 +546,10 @@ void BlockLatticeManager<T, LatSet>::MPIAverComm(std::int64_t count) {
         // non-blocking send pop buffer
         for (int i = 0; i < MPIComm.Senders.size(); ++i) {
           MPI_Request request;
-          std::vector<T>& popbuffer =
-            PopsFM.getBlockField(ifield).getMPIAverBuffer().SendBuffers[i];
+          std::vector<T>& popbuffer = getField<POP<T, LatSet::q>>()
+                                        .getBlockField(ifield)
+                                        .getMPIAverBuffer()
+                                        .SendBuffers[i];
           mpi().iSend(popbuffer.data(), popbuffer.size(), MPIComm.Senders[i].RecvRank,
                       &request, MPIComm.Senders[i].RecvBlockid);
           SendRequestsPop.push_back(request);
@@ -643,20 +560,20 @@ void BlockLatticeManager<T, LatSet>::MPIAverComm(std::int64_t count) {
   }
   // recv pop buffer
   std::vector<MPI_Request> RecvRequestsPop;
-  PopsFM.MPIAverRecv(count, RecvRequestsPop);
+  getField<POP<T, LatSet::q>>().MPIAverRecv(count, RecvRequestsPop);
   // wait for all requests
   MPI_Waitall(SendRequestsPop.size(), SendRequestsPop.data(), MPI_STATUSES_IGNORE);
   // MPI_Waitall(RecvRequestsPop.size(), RecvRequestsPop.data(), MPI_STATUSES_IGNORE);
-  PopsFM.MPIAverSet(count, RecvRequestsPop);
+  getField<POP<T, LatSet::q>>().MPIAverSet(count, RecvRequestsPop);
 }
 
-template <typename T, typename LatSet>
-void BlockLatticeManager<T, LatSet>::MPIInterpComm(std::int64_t count) {
+template <typename T, typename LatSet, typename TypePack>
+void BlockLatticeManager<T, LatSet, TypePack>::MPIInterpComm(std::int64_t count) {
   mpi().barrier();
   // pop conversion before communication
   std::vector<MPI_Request> SendRequestsPop;
   int ifield = 0;
-  for (BlockLattice<T, LatSet>& BLat : BlockLats) {
+  for (auto& BLat : BlockLats) {
     // send data to higher level, deLevel-1
     const int deLevel = static_cast<int>(getMaxLevel() - BLat.getLevel()) - 1;
     if (deLevel != -1) {
@@ -672,14 +589,21 @@ void BlockLatticeManager<T, LatSet>::MPIInterpComm(std::int64_t count) {
             MPIComm.Senders[i].SendCells;
 
           std::vector<T>& rhobuffer =
-            RhoFM.getBlockField(ifield).getMPIInterpBuffer().SendBuffers[i];
-          std::vector<Vector<T, LatSet::d>>& ubuffer =
-            VelocityFM.getBlockField(ifield).getMPIInterpBuffer().SendBuffers[i];
-          std::vector<T>& popbuffer =
-            PopsFM.getBlockField(ifield).getMPIInterpBuffer().SendBuffers[i];
+            getField<RHO<T>>().getBlockField(ifield).getMPIInterpBuffer().SendBuffers[i];
+          std::vector<Vector<T, LatSet::d>>& ubuffer = getField<VELOCITY<T, LatSet::d>>()
+                                                         .getBlockField(ifield)
+                                                         .getMPIInterpBuffer()
+                                                         .SendBuffers[i];
+          std::vector<T>& popbuffer = getField<POP<T, LatSet::q>>()
+                                        .getBlockField(ifield)
+                                        .getMPIInterpBuffer()
+                                        .SendBuffers[i];
 
-          const auto& RhoArray = RhoFM.getBlockField(ifield).getField().getField(0);
-          const auto& UArray = VelocityFM.getBlockField(ifield).getField().getField(0);
+          const auto& RhoArray =
+            getField<RHO<T>>().getBlockField(ifield).getField(0);
+          const auto& UArray =
+            getField<VELOCITY<T, LatSet::d>>().getBlockField(ifield).getField(
+              0);
 
           const std::size_t size = sendcells.size();
           std::size_t bufidx = 0;
@@ -692,7 +616,9 @@ void BlockLatticeManager<T, LatSet>::MPIInterpComm(std::int64_t count) {
           }
           bufidx = 0;
           for (unsigned int iArr = 0; iArr < LatSet::q; ++iArr) {
-            const auto& PopArray = PopsFM.getBlockField(ifield).getField().getField(iArr);
+            const auto& PopArray =
+              getField<POP<T, LatSet::q>>().getBlockField(ifield).getField(
+                iArr);
             for (std::size_t i = 0; i < size;) {
               getInterpolation<T, LatSet::d>(PopArray, sendcells, i, popbuffer, bufidx);
             }
@@ -711,8 +637,10 @@ void BlockLatticeManager<T, LatSet>::MPIInterpComm(std::int64_t count) {
         // non-blocking send pop buffer
         for (int i = 0; i < MPIComm.Senders.size(); ++i) {
           MPI_Request request;
-          std::vector<T>& popbuffer =
-            PopsFM.getBlockField(ifield).getMPIInterpBuffer().SendBuffers[i];
+          std::vector<T>& popbuffer = getField<POP<T, LatSet::q>>()
+                                        .getBlockField(ifield)
+                                        .getMPIInterpBuffer()
+                                        .SendBuffers[i];
           mpi().iSend(popbuffer.data(), popbuffer.size(), MPIComm.Senders[i].RecvRank,
                       &request, MPIComm.Senders[i].RecvBlockid);
           SendRequestsPop.push_back(request);
@@ -723,35 +651,35 @@ void BlockLatticeManager<T, LatSet>::MPIInterpComm(std::int64_t count) {
   }
   // recv pop buffer
   std::vector<MPI_Request> RecvRequestsPop;
-  PopsFM.MPIInterpRecv(count, RecvRequestsPop);
+  getField<POP<T, LatSet::q>>().MPIInterpRecv(count, RecvRequestsPop);
   // wait for all requests
   MPI_Waitall(SendRequestsPop.size(), SendRequestsPop.data(), MPI_STATUSES_IGNORE);
   // MPI_Waitall(RecvRequestsPop.size(), RecvRequestsPop.data(), MPI_STATUSES_IGNORE);
   // set
-  PopsFM.MPIInterpSet(count, RecvRequestsPop);
+  getField<POP<T, LatSet::q>>().MPIInterpSet(count, RecvRequestsPop);
 }
 
 #endif
 
-template <typename T, typename LatSet>
-void BlockLatticeManager<T, LatSet>::Communicate(std::int64_t count) {
+template <typename T, typename LatSet, typename TypePack>
+void BlockLatticeManager<T, LatSet, TypePack>::Communicate(std::int64_t count) {
   // --- noraml communication ---
 #pragma omp parallel for num_threads(Thread_Num)
-  for (BlockLattice<T, LatSet>& BLat : BlockLats) {
+  for (auto& BLat : BlockLats) {
     if (count % (static_cast<int>(pow(2, int(getMaxLevel() - BLat.getLevel())))) == 0)
       BLat.communicate();
   }
 
 #ifdef MPI_ENABLED
-  PopsFM.MPINormalCommunicate(count);
+  getField<POP<T, LatSet::q>>().MPINormalCommunicate(count);
 #endif
 
   // --- average communication ---
   // RhoFM.AverCommunicate(count);
-  // VelocityFM.AverCommunicate(count);
+  // getField<VELOCITY<T, LatSet::d>>().AverCommunicate(count);
   // PopsFM.AverCommunicate(count);
 #pragma omp parallel for num_threads(Thread_Num)
-  for (BlockLattice<T, LatSet>& BLat : BlockLats) {
+  for (auto& BLat : BlockLats) {
     if (count % (static_cast<int>(pow(2, int(getMaxLevel() - BLat.getLevel())))) == 0)
       BLat.avercommunicate();
     // BLat.PopConvFineToCoarse();
@@ -763,10 +691,10 @@ void BlockLatticeManager<T, LatSet>::Communicate(std::int64_t count) {
 
   // --- interpolation communication ---
   // RhoFM.InterpCommunicate(count);
-  // VelocityFM.InterpCommunicate(count);
+  // getField<VELOCITY<T, LatSet::d>>().InterpCommunicate(count);
   // PopsFM.InterpCommunicate(count);
 #pragma omp parallel for num_threads(Thread_Num)
-  for (BlockLattice<T, LatSet>& BLat : BlockLats) {
+  for (auto& BLat : BlockLats) {
     if (count % (static_cast<int>(pow(2, int(getMaxLevel() - BLat.getLevel())))) == 0)
       BLat.interpcommunicate();
     // BLat.PopConvCoarseToFine();
@@ -779,20 +707,20 @@ void BlockLatticeManager<T, LatSet>::Communicate(std::int64_t count) {
   mpi().barrier();
 }
 
-template <typename T, typename LatSet>
-void BlockLatticeManager<T, LatSet>::EnableToleranceRho(T rhores) {
-  for (BlockLattice<T, LatSet>& BLat : BlockLats) BLat.EnableToleranceRho(rhores);
+template <typename T, typename LatSet, typename TypePack>
+void BlockLatticeManager<T, LatSet, TypePack>::EnableToleranceRho(T rhores) {
+  for (auto& BLat : BlockLats) BLat.EnableToleranceRho(rhores);
 }
-template <typename T, typename LatSet>
-void BlockLatticeManager<T, LatSet>::EnableToleranceU(T ures) {
-  for (BlockLattice<T, LatSet>& BLat : BlockLats) BLat.EnableToleranceU(ures);
+template <typename T, typename LatSet, typename TypePack>
+void BlockLatticeManager<T, LatSet, TypePack>::EnableToleranceU(T ures) {
+  for (auto& BLat : BlockLats) BLat.EnableToleranceU(ures);
 }
 
-template <typename T, typename LatSet>
-T BlockLatticeManager<T, LatSet>::getToleranceRho(int shift) {
+template <typename T, typename LatSet, typename TypePack>
+T BlockLatticeManager<T, LatSet, TypePack>::getToleranceRho(int shift) {
   T maxres = T(0);
 #pragma omp parallel for num_threads(Thread_Num) schedule(static) reduction(max : maxres)
-  for (BlockLattice<T, LatSet>& BLat : BlockLats) {
+  for (auto& BLat : BlockLats) {
     T temp;
     if (shift == 0) {
       temp = BLat.getToleranceRho();
@@ -811,11 +739,11 @@ T BlockLatticeManager<T, LatSet>::getToleranceRho(int shift) {
   return maxres;
 }
 
-template <typename T, typename LatSet>
-T BlockLatticeManager<T, LatSet>::getToleranceU(int shift) {
+template <typename T, typename LatSet, typename TypePack>
+T BlockLatticeManager<T, LatSet, TypePack>::getToleranceU(int shift) {
   T maxres = T(0);
 #pragma omp parallel for num_threads(Thread_Num) schedule(static) reduction(max : maxres)
-  for (BlockLattice<T, LatSet>& BLat : BlockLats) {
+  for (auto& BLat : BlockLats) {
     T temp;
     if (shift == 0) {
       temp = BLat.getToleranceU();
@@ -836,8 +764,8 @@ T BlockLatticeManager<T, LatSet>::getToleranceU(int shift) {
 
 // DynamicBlockLatticeHelper2D
 
-template <typename T, typename LatSet>
-void DynamicBlockLatticeHelper2D<T, LatSet>::ComputeGradNorm2() {
+template <typename T, typename LatSet, typename TypePack>
+void DynamicBlockLatticeHelper2D<T, LatSet, TypePack>::ComputeGradNorm2() {
 #pragma omp parallel for num_threads(Thread_Num) schedule(static)
   for (int icell = 0; icell < BlockGeoHelper.getBlockCells().size(); ++icell) {
     // rho field
@@ -850,7 +778,8 @@ void DynamicBlockLatticeHelper2D<T, LatSet>::ComputeGradNorm2() {
       const BasicBlock<T, 2>& block = BlockGeo.getBlock(iblock);
       const BasicBlock<T, 2>& baseblock = BlockGeo.getBlock(iblock).getBaseBlock();
       if (isOverlapped(cellblock, baseblock)) {
-        const ScalerField<T>& RhoF = BlockLatMan.getBlockLat(iblock).getRhoField();
+        const ScalarField<T>& RhoF =
+          BlockLatMan.getBlockLat(iblock).template getField<RHO<T>>();
         FDM2D<T> FDM(block.getNx(), block.getNy(), RhoF.getField(0));
         const AABB<T, 2> intsec = getIntersection(cellblock, baseblock);
         int Nx = static_cast<int>(std::round(intsec.getExtension()[0] / voxsize));
@@ -876,8 +805,8 @@ void DynamicBlockLatticeHelper2D<T, LatSet>::ComputeGradNorm2() {
   }
 }
 
-template <typename T, typename LatSet>
-void DynamicBlockLatticeHelper2D<T, LatSet>::UpdateMaxGradNorm2() {
+template <typename T, typename LatSet, typename TypePack>
+void DynamicBlockLatticeHelper2D<T, LatSet, TypePack>::UpdateMaxGradNorm2() {
   for (int i = 0; i < _GradNorm2s.size(); ++i) {
     GenericArray<T>& GradNorm2A = _GradNorm2s[i].getField(0);
     // get max of gradnorm2
@@ -889,8 +818,8 @@ void DynamicBlockLatticeHelper2D<T, LatSet>::UpdateMaxGradNorm2() {
   }
 }
 
-template <typename T, typename LatSet>
-bool DynamicBlockLatticeHelper2D<T, LatSet>::WillRefineOrCoarsen() {
+template <typename T, typename LatSet, typename TypePack>
+bool DynamicBlockLatticeHelper2D<T, LatSet, TypePack>::WillRefineOrCoarsen() {
   _GradNorm2s.clear();
   // init gradnorm2
   for (BasicBlock<T, 2>& block : BlockGeoHelper.getBlockCells()) {
@@ -927,9 +856,10 @@ bool DynamicBlockLatticeHelper2D<T, LatSet>::WillRefineOrCoarsen() {
   }
 }
 
-template <typename T, typename LatSet>
-void DynamicBlockLatticeHelper2D<T, LatSet>::GeoRefine(int OptProcNum, int MaxProcNum,
-                                                       bool enforce) {
+template <typename T, typename LatSet, typename TypePack>
+void DynamicBlockLatticeHelper2D<T, LatSet, TypePack>::GeoRefine(int OptProcNum,
+                                                                 int MaxProcNum,
+                                                                 bool enforce) {
   // post refine
   BlockGeoHelper.CheckRefine();
   // update BasicBlocks in GeoHelper
@@ -939,8 +869,8 @@ void DynamicBlockLatticeHelper2D<T, LatSet>::GeoRefine(int OptProcNum, int MaxPr
 }
 
 
-template <typename T, typename LatSet>
-void DynamicBlockLatticeHelper2D<T, LatSet>::PopFieldInit() {
+template <typename T, typename LatSet, typename TypePack>
+void DynamicBlockLatticeHelper2D<T, LatSet, TypePack>::PopFieldInit() {
   // rho field data transfer could be done here
   BlockLatMan.getRhoFM().InitAndComm(BlockGeoHelper,
                                      BlockLatMan.getConverter().getLatRhoInit());
@@ -954,9 +884,9 @@ void DynamicBlockLatticeHelper2D<T, LatSet>::PopFieldInit() {
        ++inewblock) {
     BlockField<PopulationField<T, LatSet::q>, T, LatSet::d>& PopsField =
       BlockLatMan.getPopsFM().getBlockField(inewblock);
-    const BlockField<ScalerField<T>, T, LatSet::d>& RhoField =
+    const BlockField<ScalarField<T>, T, LatSet::d>& RhoField =
       BlockLatMan.getRhoFM().getBlockField(inewblock);
-    const BlockField<VectorFieldAOS<T, LatSet::d>, T, LatSet::d>& VelocityField =
+    const BlockField<VectorFieldAOS<T, LatSet::d>, T, LatSet::d>& VELOCITY =
       BlockLatMan.getVelocityFM().getBlockField(inewblock);
 
     const BasicBlock<T, 2>& newblock = BlockGeo.getBlock(inewblock);
@@ -971,12 +901,12 @@ void DynamicBlockLatticeHelper2D<T, LatSet>::PopFieldInit() {
         // get omega
         T omega = BlockLatMan.getBlockLat(iblock).getOmega();
         if (Level > block.getLevel()) {
-          PopConversionCoarseToFine(RhoField.getField(), VelocityField.getField(),
-                                    PopsField.getField(), baseblock, newblock,
+          PopConversionCoarseToFine(RhoField, VELOCITY,
+                                    PopsField, baseblock, newblock,
                                     newbaseblock, omega);
         } else if (Level < block.getLevel()) {
-          PopConversionFineToCoarse(RhoField.getField(), VelocityField.getField(),
-                                    PopsField.getField(), baseblock, newblock,
+          PopConversionFineToCoarse(RhoField, VELOCITY,
+                                    PopsField, baseblock, newblock,
                                     newbaseblock, omega);
         }
       }
@@ -985,9 +915,9 @@ void DynamicBlockLatticeHelper2D<T, LatSet>::PopFieldInit() {
   BlockLatMan.getPopsFM().CommunicateAll();
 }
 
-template <typename T, typename LatSet>
-void DynamicBlockLatticeHelper2D<T, LatSet>::PopConversionFineToCoarse(
-  const ScalerField<T>& RhoF, const VectorFieldAOS<T, LatSet::d>& VelocityF,
+template <typename T, typename LatSet, typename TypePack>
+void DynamicBlockLatticeHelper2D<T, LatSet, TypePack>::PopConversionFineToCoarse(
+  const ScalarField<T>& RhoF, const VectorFieldAOS<T, LatSet::d>& VelocityF,
   PopulationField<T, LatSet::q>& PopsF, const BasicBlock<T, 2>& FBaseBlock,
   const BasicBlock<T, 2>& CBlock, const BasicBlock<T, 2>& CBaseBlock, T OmegaF) {
   // get intersection
@@ -1007,23 +937,23 @@ void DynamicBlockLatticeHelper2D<T, LatSet>::PopConversionFineToCoarse(
   for (int iy = starty; iy < starty + Ny; ++iy) {
     for (int ix = startx; ix < startx + Nx; ++ix) {
       std::size_t id = iy * CBlock.getNx() + ix;
-      std::array<T*, LatSet::q> Pops = PopsF.getArray(id);
+      std::array<T*, LatSet::q> cell = PopsF.getArray(id);
       // get feq, peparing for pop conversion
       std::array<T, LatSet::q> feq{};
       Equilibrium<T, LatSet>::SecondOrder(feq, VelocityArr[id], RhoArr[id]);
       // convert from fine to coarse
       for (unsigned int iArr = 0; iArr < LatSet::q; ++iArr) {
-        T popC = RefineConverter<T>::getPopC(*(Pops[iArr]), feq[iArr], OmegaF);
-        *(Pops[iArr]) = popC;
+        T popC = RefineConverter<T>::getPopC(*(cell[iArr]), feq[iArr], OmegaF);
+        *(cell[iArr]) = popC;
       }
     }
   }
 }
 
 
-template <typename T, typename LatSet>
-void DynamicBlockLatticeHelper2D<T, LatSet>::PopConversionCoarseToFine(
-  const ScalerField<T>& RhoF, const VectorFieldAOS<T, LatSet::d>& VelocityF,
+template <typename T, typename LatSet, typename TypePack>
+void DynamicBlockLatticeHelper2D<T, LatSet, TypePack>::PopConversionCoarseToFine(
+  const ScalarField<T>& RhoF, const VectorFieldAOS<T, LatSet::d>& VelocityF,
   PopulationField<T, LatSet::q>& PopsF, const BasicBlock<T, 2>& CBaseBlock,
   const BasicBlock<T, 2>& FBlock, const BasicBlock<T, 2>& FBaseBlock, T OmegaC) {
   // get intersection
@@ -1043,14 +973,14 @@ void DynamicBlockLatticeHelper2D<T, LatSet>::PopConversionCoarseToFine(
   for (int iy = starty; iy < starty + Ny; ++iy) {
     for (int ix = startx; ix < startx + Nx; ++ix) {
       std::size_t id = iy * FBlock.getNx() + ix;
-      std::array<T*, LatSet::q> Pops = PopsF.getArray(id);
+      std::array<T*, LatSet::q> cell = PopsF.getArray(id);
       // get feq, peparing for pop conversion
       std::array<T, LatSet::q> feq{};
       Equilibrium<T, LatSet>::SecondOrder(feq, VelocityArr[id], RhoArr[id]);
       // convert from fine to coarse
       for (unsigned int iArr = 0; iArr < LatSet::q; ++iArr) {
-        T popF = RefineConverter<T>::getPopF(*(Pops[iArr]), feq[iArr], OmegaC);
-        *(Pops[iArr]) = popF;
+        T popF = RefineConverter<T>::getPopF(*(cell[iArr]), feq[iArr], OmegaC);
+        *(cell[iArr]) = popF;
       }
     }
   }
@@ -1058,7 +988,7 @@ void DynamicBlockLatticeHelper2D<T, LatSet>::PopConversionCoarseToFine(
 
 
 // template <typename T, typename LatSet>
-// void DynamicBlockLatticeHelper2D<T, LatSet>::UpdateGradNorm2F() {
+// void DynamicBlockLatticeHelper2D<T, LatSet, TypePack>::UpdateGradNorm2F() {
 //   // min centre of the whole domain
 //   Vector<T, 2> GMinCentre = BlockGeo.getBaseBlock().getMinCenter();
 //   int GNx = BlockGeo.getBaseBlock().getNx();

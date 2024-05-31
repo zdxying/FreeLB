@@ -73,14 +73,14 @@ struct InterpBlockFieldComm {
 
 // BlockField with communication structure(in Block2D)
 template <typename FieldType, typename FloatType, unsigned int Dim>
-class BlockField {
+class BlockField : public FieldType {
  public:
   using datatype = typename FieldType::value_type;
   static constexpr unsigned int ArrayDim = FieldType::array_dim;
 
  private:
   // block field
-  FieldType _Field;
+  // FieldType _Field;
   // block(geometry) structure of the field
   Block<FloatType, Dim>& _Block;
 
@@ -99,7 +99,7 @@ class BlockField {
 
  public:
   BlockField() = default;
-  BlockField(Block<FloatType, Dim>& block) : _Block(block), _Field(block.getN()) {
+  BlockField(Block<FloatType, Dim>& block) : _Block(block), FieldType(block.getN()) {
 #ifdef MPI_ENABLED
     MPIBlockBufferInit(_Block.getMPIBlockComm(), MPIBuffer, ArrayDim);
     MPIBlockBufferInit(_Block.getMPIAverBlockComm(), MPIAverBuffer, ArrayDim);
@@ -107,7 +107,7 @@ class BlockField {
 #endif
   }
   BlockField(Block<FloatType, Dim>& block, datatype initvalue)
-      : _Block(block), _Field(block.getN(), initvalue) {
+      : _Block(block), FieldType(block.getN(), initvalue) {
 #ifdef MPI_ENABLED
     MPIBlockBufferInit(_Block.getMPIBlockComm(), MPIBuffer, ArrayDim);
     MPIBlockBufferInit(_Block.getMPIAverBlockComm(), MPIAverBuffer, ArrayDim);
@@ -115,9 +115,6 @@ class BlockField {
 #endif
   }
   ~BlockField() = default;
-
-  FieldType& getField() { return _Field; }
-  const FieldType& getField() const { return _Field; }
 
   Block<FloatType, Dim>& getBlock() { return _Block; }
   const Block<FloatType, Dim>& getBlock() const { return _Block; }
@@ -134,9 +131,9 @@ class BlockField {
     for (BlockFieldComm<FieldType, FloatType, Dim>& comm : Comms) {
       BlockField<FieldType, FloatType, Dim>* nblockF = comm.BlockF;
       std::size_t size = comm.getRecvs().size();
-      for (int iArr = 0; iArr < _Field.Size(); ++iArr) {
-        const auto& nArray = nblockF->getField().getField(iArr);
-        auto& Array = _Field.getField(iArr);
+      for (int iArr = 0; iArr < FieldType::Size(); ++iArr) {
+        const auto& nArray = nblockF->getField(iArr);
+        auto& Array = FieldType::getField(iArr);
         for (std::size_t id = 0; id < size; ++id) {
           Array.set(comm.getRecv(id), nArray[comm.getSend(id)]);
         }
@@ -147,9 +144,9 @@ class BlockField {
     for (InterpBlockFieldComm<FieldType, FloatType, Dim>& comm : AverComms) {
       BlockField<FieldType, FloatType, Dim>* nblockF = comm.BlockF;
       std::size_t size = comm.getRecvs().size();
-      for (int iArr = 0; iArr < _Field.Size(); ++iArr) {
-        const auto& nArray = nblockF->getField().getField(iArr);
-        auto& Array = _Field.getField(iArr);
+      for (int iArr = 0; iArr < FieldType::Size(); ++iArr) {
+        const auto& nArray = nblockF->getField(iArr);
+        auto& Array = FieldType::getField(iArr);
         for (std::size_t id = 0; id < size; ++id) {
           const InterpSource<Dim>& sends = comm.getSend(id);
           auto sum = nArray[sends[0]];
@@ -169,9 +166,9 @@ class BlockField {
     for (InterpBlockFieldComm<FieldType, FloatType, Dim>& comm : InterpComms) {
       BlockField<FieldType, FloatType, Dim>* nblockF = comm.BlockF;
       std::size_t size = comm.getRecvs().size();
-      for (int iArr = 0; iArr < _Field.Size(); ++iArr) {
-        const auto& nArray = nblockF->getField().getField(iArr);
-        auto& Array = _Field.getField(iArr);
+      for (int iArr = 0; iArr < FieldType::Size(); ++iArr) {
+        const auto& nArray = nblockF->getField(iArr);
+        auto& Array = FieldType::getField(iArr);
         if constexpr (Dim == 2) {
           for (std::size_t id = 0; id < size; id += 4) {
             {
@@ -224,7 +221,7 @@ class BlockField {
       const std::vector<std::size_t>& sends = MPIComm.Senders[i].SendCells;
       std::size_t bufidx = 0;
       for (unsigned int iArr = 0; iArr < ArrayDim; ++iArr) {
-        const auto& Array = _Field.getField(iArr);
+        const auto& Array = FieldType::getField(iArr);
         for (std::size_t id : sends) {
           buffer[bufidx] = Array[id];
           ++bufidx;
@@ -262,7 +259,7 @@ class BlockField {
       const std::vector<std::size_t>& recvs = MPIComm.Recvers[i].RecvCells;
       std::size_t bufidx = 0;
       for (unsigned int iArr = 0; iArr < ArrayDim; ++iArr) {
-        auto& Array = _Field.getField(iArr);
+        auto& Array = FieldType::getField(iArr);
         for (std::size_t id : recvs) {
           Array[id] = buffer[bufidx];
           ++bufidx;
@@ -282,7 +279,7 @@ class BlockField {
       constexpr FloatType weight = InterpBlockComm<FloatType, Dim>::getUniformWeight();
       std::size_t bufidx = 0;
       for (unsigned int iArr = 0; iArr < ArrayDim; ++iArr) {
-        const auto& Array = _Field.getField(iArr);
+        const auto& Array = FieldType::getField(iArr);
         for (const InterpSource<Dim>& sends : sendcells) {
           buffer[bufidx] = getAverage<FloatType, Dim>(Array, sends);
           ++bufidx;
@@ -320,7 +317,7 @@ class BlockField {
       const std::vector<std::size_t>& recvcells = MPIComm.Recvers[i].RecvCells;
       std::size_t bufidx = 0;
       for (unsigned int iArr = 0; iArr < ArrayDim; ++iArr) {
-        auto& Array = _Field.getField(iArr);
+        auto& Array = FieldType::getField(iArr);
         for (std::size_t id : recvcells) {
           Array[id] = buffer[bufidx];
           ++bufidx;
@@ -340,7 +337,7 @@ class BlockField {
       const std::size_t size = sendcells.size();
       std::size_t bufidx = 0;
       for (unsigned int iArr = 0; iArr < ArrayDim; ++iArr) {
-        const auto& Array = _Field.getField(iArr);
+        const auto& Array = FieldType::getField(iArr);
         for (std::size_t i = 0; i < size;) {
           getInterpolation<FloatType, Dim>(Array, sendcells, i, buffer, bufidx);
         }
@@ -377,7 +374,7 @@ class BlockField {
       const std::vector<std::size_t>& recvcells = MPIComm.Recvers[i].RecvCells;
       std::size_t bufidx = 0;
       for (unsigned int iArr = 0; iArr < ArrayDim; ++iArr) {
-        auto& Array = _Field.getField(iArr);
+        auto& Array = FieldType::getField(iArr);
         for (std::size_t id : recvcells) {
           Array[id] = buffer[bufidx];
           ++bufidx;
@@ -402,6 +399,10 @@ class BlockFieldManager {
 
  public:
   using datatype = typename FieldType::value_type;
+  using array_type = typename FieldType::array_type;
+  using field_type = FieldType;
+  using float_type = FloatType;
+  static constexpr unsigned int dim = Dim;
 
   BlockFieldManager(BlockGeometry<FloatType, Dim>& blockgeometry)
       : _BlockGeo(blockgeometry) {
@@ -487,8 +488,8 @@ class BlockFieldManager {
     // forEach(FlagFManager, flag, func); but this is operate on NewFields
     int iblock = 0;
     for (Block<FloatType, Dim>& blockgeo : _BlockGeo.getBlocks()) {
-      FieldType& field = NewFields[iblock].getField();
-      const auto& flagarr = FlagFManager.getBlockField(iblock).getField().getField(0);
+      auto& field = NewFields[iblock];
+      const auto& flagarr = FlagFManager.getBlockField(iblock).getField(0);
       blockgeo.forEach(flagarr, flag,
                        [&field, &func](std::size_t id) { func(field, id); });
       ++iblock;
@@ -573,16 +574,14 @@ class BlockFieldManager {
           const BasicBlock<FloatType, Dim>& block = baseblock.getExtBlock(overlap);
           if (Level == block.getLevel()) {
             // copy
-            FieldCopy2D(Field.getField(), NewField.getField(), block, baseblock, newblock,
-                        newbaseblock);
+            FieldCopy2D(Field, NewField, block, baseblock, newblock, newbaseblock);
           } else if (Level > block.getLevel()) {
             // interp
-            FieldInterpolation2D(Field.getField(), NewField.getField(), block, baseblock,
-                                 newblock, newbaseblock);
+            FieldInterpolation2D(Field, NewField, block, baseblock, newblock,
+                                 newbaseblock);
           } else if (Level < block.getLevel()) {
             // average
-            FieldAverage2D(Field.getField(), NewField.getField(), block, baseblock,
-                           newblock, newbaseblock);
+            FieldAverage2D(Field, NewField, block, baseblock, newblock, newbaseblock);
           }
         }
       }
@@ -613,8 +612,7 @@ class BlockFieldManager {
           const BasicBlock<FloatType, Dim>& block = baseblock.getExtBlock(overlap);
           if (Level == block.getLevel()) {
             // copy
-            FieldCopy2D(Field.getField(), NewField.getField(), block, baseblock, newblock,
-                        newbaseblock);
+            FieldCopy2D(Field, NewField, block, baseblock, newblock, newbaseblock);
           }
         }
       }
@@ -625,7 +623,7 @@ class BlockFieldManager {
   void SetupBoundary(const AABB<FloatType, 2>& block, datatype bdvalue) {
     int iblock = 0;
     for (Block<FloatType, Dim>& blockgeo : _BlockGeo.getBlocks()) {
-      FieldType& field = _Fields[iblock].getField();
+      auto& field = _Fields[iblock];
       blockgeo.template SetupBoundary<FieldType, LatSet>(block, field, bdvalue);
       ++iblock;
     }
@@ -635,6 +633,12 @@ class BlockFieldManager {
 #endif
   }
 
+  template <typename Func>
+  void forEachField(Func func) {
+    for (BlockField<FieldType, FloatType, Dim>& blockF : _Fields) {
+      func(blockF);
+    }
+  }
 
   template <typename Func>
   void forEach(Func func) {
@@ -651,7 +655,7 @@ class BlockFieldManager {
   void forEach(const AABB<FloatType, Dim>& AABBs, Func func) {
     int iblock = 0;
     for (Block<FloatType, Dim>& blockgeo : _BlockGeo.getBlocks()) {
-      FieldType& field = _Fields[iblock].getField();
+      auto& field = _Fields[iblock];
       blockgeo.forEach(AABBs, [&field, &func](std::size_t id) { func(field, id); });
       ++iblock;
     }
@@ -664,8 +668,8 @@ class BlockFieldManager {
                std::uint8_t flag, Func func) {
     int iblock = 0;
     for (Block<FloatType, Dim>& blockgeo : _BlockGeo.getBlocks()) {
-      FieldType& field = _Fields[iblock].getField();
-      const auto& flagarr = FlagFManager.getBlockField(iblock).getField().getField(0);
+      auto& field = _Fields[iblock];
+      const auto& flagarr = FlagFManager.getBlockField(iblock).getField(0);
       blockgeo.forEach(AABBs, flagarr, flag,
                        [&field, &func](std::size_t id) { func(field, id); });
       ++iblock;
@@ -678,8 +682,8 @@ class BlockFieldManager {
                std::uint8_t flag, Func func) {
     int iblock = 0;
     for (Block<FloatType, Dim>& blockgeo : _BlockGeo.getBlocks()) {
-      FieldType& field = _Fields[iblock].getField();
-      const auto& flagarr = FlagFManager.getBlockField(iblock).getField().getField(0);
+      auto& field = _Fields[iblock];
+      const auto& flagarr = FlagFManager.getBlockField(iblock).getField(0);
       blockgeo.forEach(flagarr, flag,
                        [&field, &func](std::size_t id) { func(field, id); });
       ++iblock;
@@ -987,4 +991,101 @@ class BlockFieldManager {
     }
   }
 #endif
+};
+
+
+template <typename T, typename LatSet, typename Pack>
+class BlockFieldManagerCollection;
+
+template <typename T, typename LatSet, typename... Fields>
+class BlockFieldManagerCollection<T, LatSet, TypePack<Fields...>> {
+ public:
+  static constexpr std::size_t FieldNum = sizeof...(Fields);
+
+  BlockFieldManagerCollection() : fields(std::make_tuple(Fields()...)) {}
+  template <typename BLOCKGEOMETRY>
+  BlockFieldManagerCollection(BLOCKGEOMETRY& blockgeo)
+      : fields(std::make_tuple(BlockFieldManager<Fields, T, LatSet::d>(blockgeo)...)) {}
+
+  template <typename BLOCKGEOMETRY, typename... InitValues>
+  BlockFieldManagerCollection(BLOCKGEOMETRY& blockgeo,
+                              const std::tuple<InitValues...>& initvalues)
+      : fields(make_fields(blockgeo, initvalues, std::make_index_sequence<FieldNum>())) {}
+
+  ~BlockFieldManagerCollection() = default;
+
+  template <typename FieldType>
+  auto& getField() {
+    return std::get<BlockFieldManager<FieldType, T, LatSet::d>>(fields);
+  }
+  template <typename FieldType>
+  const auto& getField() const {
+    return std::get<BlockFieldManager<FieldType, T, LatSet::d>>(fields);
+  }
+
+  auto& getFields() { return fields; }
+  template <std::size_t... Is>
+  auto get_ith(std::index_sequence<Is...>, int i) {
+    return std::make_tuple(&(std::get<Is>(fields).getBlockField(i))...);
+  }
+  auto get_ith(int i) { return get_ith(std::make_index_sequence<FieldNum>(), i); }
+
+ private:
+  std::tuple<BlockFieldManager<Fields, T, LatSet::d>...> fields;
+
+  template <typename BLOCKGEOMETRY, typename... InitValues, std::size_t... Is>
+  auto make_fields(BLOCKGEOMETRY& blockgeo, const std::tuple<InitValues...>& initvalues,
+                   std::index_sequence<Is...>) {
+    return std::make_tuple(
+      BlockFieldManager<Fields, T, LatSet::d>(blockgeo, std::get<Is>(initvalues))...);
+  }
+};
+
+template <typename T, typename LatSet, typename Pack>
+class BlockFieldManagerPtrCollection;
+
+template <typename T, typename LatSet, typename... Fields>
+class BlockFieldManagerPtrCollection<T, LatSet, TypePack<Fields...>> {
+ public:
+  static constexpr std::size_t FieldNum = sizeof...(Fields);
+
+  BlockFieldManagerPtrCollection() = default;
+  template <typename First, typename... Rest>
+  BlockFieldManagerPtrCollection(First& first, Rest&... rest)
+      : fields(&first, &rest...) {}
+
+  void Init(Fields&... fieldrefs) { fields = std::make_tuple(&fieldrefs...); }
+
+  template <typename FieldType>
+  auto& getField() {
+    return *(std::get<BlockFieldManager<FieldType, T, LatSet::d>*>(fields));
+  }
+  template <typename FieldType>
+  const auto& getField() const {
+    return *(std::get<BlockFieldManager<FieldType, T, LatSet::d>*>(fields));
+  }
+
+  auto& getFields() { return fields; }
+
+  template <std::size_t... Is>
+  auto get_ith(std::index_sequence<Is...>, int i) {
+    return std::make_tuple(&(std::get<Is>(fields)->getBlockField(i))...);
+  }
+  auto get_ith(int i) { return get_ith(std::make_index_sequence<FieldNum>(), i); }
+
+ private:
+  std::tuple<BlockFieldManager<Fields, T, LatSet::d>*...> fields;
+};
+
+template <typename T, typename LatSet, typename Pack>
+struct ExtractFieldPtrs {};
+
+template <typename T, typename LatSet, typename... Fields, typename... FieldPtrs>
+struct ExtractFieldPtrs<T, LatSet,
+                        TypePack<TypePack<Fields...>, TypePack<FieldPtrs...>>> {
+  static auto getFieldPtrTuple(
+    int i, BlockFieldManagerCollection<T, LatSet, TypePack<Fields...>>& BFMCol,
+    BlockFieldManagerPtrCollection<T, LatSet, TypePack<FieldPtrs...>>& BFMPtrCol) {
+    return std::tuple_cat(BFMCol.get_ith(i), BFMPtrCol.get_ith(i));
+  }
 };

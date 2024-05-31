@@ -112,7 +112,7 @@ int main() {
                  [&](FlagField& field, std::size_t id) { field.SetField(id, AABBFlag); });
   FlagFM.template SetupBoundary<LatSet>(cavity, BouncebackFlag);
 
-  vtmo::ScalerWriter FlagWriter("flag", FlagFM);
+  vtmo::ScalarWriter FlagWriter("flag", FlagFM);
   vtmo::vtmWriter<T, 2> GeoWriter("GeoFlag", Geo, 1);
   GeoWriter.addWriterSet(FlagWriter);
   GeoWriter.WriteBinary();

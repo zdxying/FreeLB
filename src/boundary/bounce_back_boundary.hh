@@ -122,143 +122,80 @@ void BBLikeMovingBoundary<T, LatSet, BBLikemethod, flagType>::UpdateU() {
 // BBLikeFixedBlockBoundary
 // --------------------------------------------------------------------------
 
-template <typename T, typename LatSet, typename flagType>
-BBLikeFixedBlockBoundary<T, LatSet, flagType>::BBLikeFixedBlockBoundary(
-  BlockLattice<T, LatSet> &lat, const GenericArray<flagType> &f, std::uint8_t cellflag,
-  std::uint8_t voidflag)
-    : BlockFixedBoundary<T, LatSet, flagType>(lat, f, cellflag, voidflag) {}
+template <typename BLOCKLATTICE, typename ArrayType>
+BBLikeFixedBlockBoundary<BLOCKLATTICE, ArrayType>::BBLikeFixedBlockBoundary(
+  BLOCKLATTICE &lat, const ArrayType &f, std::uint8_t cellflag, std::uint8_t voidflag)
+    : BlockFixedBoundary<BLOCKLATTICE, ArrayType>(lat, f, cellflag, voidflag) {}
 
-template <typename T, typename LatSet, typename flagType>
-template <void (*BBLikemethod)(BCell<T, LatSet> &, int)>
-void BBLikeFixedBlockBoundary<T, LatSet, flagType>::Apply() {
+template <typename BLOCKLATTICE, typename ArrayType>
+template <typename CELLDYNAMICS>
+void BBLikeFixedBlockBoundary<BLOCKLATTICE, ArrayType>::ApplyCellDynamics() {
   for (const auto &bdcell : this->BdCells) {
-    BCell<T, LatSet> cell(bdcell.Id, this->Lat);
-    for (int k : bdcell.outflows) {
-      BBLikemethod(cell, k);
+    CELL cell(bdcell.Id, this->Lat);
+    for (unsigned int k : bdcell.outflows) {
+      CELLDYNAMICS::apply(cell, k);
     }
   }
 }
-
-template <typename T, typename LatSet, typename flagType>
-void BBLikeFixedBlockBoundary<T, LatSet, flagType>::UpdateRho() {
-  for (const auto &bdcell : this->BdCells) {
-    BasicCell<T, LatSet> cell(bdcell.Id, this->Lat);
-    moment::Rho<T, LatSet>::apply(cell, this->Lat.getRho(bdcell.Id));
-  }
-}
-
-template <typename T, typename LatSet, typename flagType>
-void BBLikeFixedBlockBoundary<T, LatSet, flagType>::UpdateU() {
-  for (const auto &bdcell : this->BdCells) {
-    BasicCell<T, LatSet> cell(bdcell.Id, this->Lat);
-    moment::Velocity<T, LatSet>::apply(cell, this->Lat.getVelocity(bdcell.Id));
-  }
-}
-
 
 // --------------------------------------------------------------------------
 // BBLikeFixedBlockBdManager
 // --------------------------------------------------------------------------
 
-template <typename T, typename LatSet, void (*BBLikemethod)(BCell<T, LatSet> &, int),
-          typename flagType>
-BBLikeFixedBlockBdManager<T, LatSet, BBLikemethod, flagType>::BBLikeFixedBlockBdManager(
-  std::string name, BlockLatticeManager<T, LatSet> &lat,
-  BlockFieldManager<GenericField<GenericArray<flagType>, 1>, T, LatSet::d> &BlockFM,
-  std::uint8_t cellflag, std::uint8_t voidflag)
+template <typename CELLDYNAMICS, typename BLOCKLATTICEMANAGER, typename BLOCKFIELDMANAGER>
+BBLikeFixedBlockBdManager<CELLDYNAMICS, BLOCKLATTICEMANAGER, BLOCKFIELDMANAGER>::
+  BBLikeFixedBlockBdManager(std::string name, BLOCKLATTICEMANAGER &lat,
+                            BLOCKFIELDMANAGER &BlockFM, std::uint8_t cellflag,
+                            std::uint8_t voidflag)
     : _name(name), BdCellFlag(cellflag), voidFlag(voidflag), LatMan(lat),
       BlockFManager(BlockFM) {
   Init();
 }
 
-template <typename T, typename LatSet, void (*BBLikemethod)(BCell<T, LatSet> &, int),
-          typename flagType>
-void BBLikeFixedBlockBdManager<T, LatSet, BBLikemethod, flagType>::Init() {
+template <typename CELLDYNAMICS, typename BLOCKLATTICEMANAGER, typename BLOCKFIELDMANAGER>
+void BBLikeFixedBlockBdManager<CELLDYNAMICS, BLOCKLATTICEMANAGER,
+                               BLOCKFIELDMANAGER>::Init() {
   BdBlocks.clear();
   // for each blocks in blocklat
   for (int i = 0; i < LatMan.getGeo().getBlockNum(); ++i) {
     BdBlocks.emplace_back(LatMan.getBlockLat(i),
-                          BlockFManager.getBlockField(i).getField().getField(0),
+                          BlockFManager.getBlockField(i).getField(0),
                           BdCellFlag, voidFlag);
   }
 }
 
-template <typename T, typename LatSet, void (*BBLikemethod)(BCell<T, LatSet> &, int),
-          typename flagType>
-void BBLikeFixedBlockBdManager<T, LatSet, BBLikemethod, flagType>::Apply(
-  std::int64_t count) {
+template <typename CELLDYNAMICS, typename BLOCKLATTICEMANAGER, typename BLOCKFIELDMANAGER>
+void BBLikeFixedBlockBdManager<CELLDYNAMICS, BLOCKLATTICEMANAGER,
+                               BLOCKFIELDMANAGER>::Apply(std::int64_t count) {
   std::uint8_t MaxLevel = LatMan.getMaxLevel();
 #pragma omp parallel for num_threads(Thread_Num)
   for (auto &bdBlock : BdBlocks) {
     if (count % (static_cast<int>(pow(2, int(MaxLevel - bdBlock.getLat().getLevel())))) ==
         0)
-      bdBlock.template Apply<BBLikemethod>();
+      bdBlock.template ApplyCellDynamics<CELLDYNAMICS>();
   }
 }
-
-template <typename T, typename LatSet, void (*BBLikemethod)(BCell<T, LatSet> &, int),
-          typename flagType>
-void BBLikeFixedBlockBdManager<T, LatSet, BBLikemethod, flagType>::UpdateRho(
-  std::int64_t count) {
-  std::uint8_t MaxLevel = LatMan.getMaxLevel();
-#pragma omp parallel for num_threads(Thread_Num)
-  for (auto &bdBlock : BdBlocks) {
-    if (count % (static_cast<int>(pow(2, int(MaxLevel - bdBlock.getLat().getLevel())))) ==
-        0)
-      bdBlock.UpdateRho();
-  }
-}
-
-template <typename T, typename LatSet, void (*BBLikemethod)(BCell<T, LatSet> &, int),
-          typename flagType>
-void BBLikeFixedBlockBdManager<T, LatSet, BBLikemethod, flagType>::UpdateU(
-  std::int64_t count) {
-  std::uint8_t MaxLevel = LatMan.getMaxLevel();
-#pragma omp parallel for num_threads(Thread_Num)
-  for (auto &bdBlock : BdBlocks) {
-    if (count % (static_cast<int>(pow(2, int(MaxLevel - bdBlock.getLat().getLevel())))) ==
-        0)
-      bdBlock.UpdateU();
-  }
-}
-
 
 // --------------------------------------------------------------------------
 // BBLikeMovingBlockBoundary
 // --------------------------------------------------------------------------
 
-template <typename T, typename LatSet, typename flagType>
-BBLikeMovingBlockBoundary<T, LatSet, flagType>::BBLikeMovingBlockBoundary(
-  BlockLattice<T, LatSet> &lat, std::vector<std::size_t> *ids, GenericArray<flagType> &f,
-  std::uint8_t voidflag, std::uint8_t cellflag)
-    : BlockMovingBoundary<T, LatSet, flagType>(lat, *ids, f, voidflag, cellflag) {}
+template <typename BLOCKLATTICE, typename ArrayType>
+BBLikeMovingBlockBoundary<BLOCKLATTICE, ArrayType>::BBLikeMovingBlockBoundary(
+  BLOCKLATTICE &lat, std::vector<std::size_t> *ids, ArrayType &f, std::uint8_t voidflag,
+  std::uint8_t cellflag)
+    : BlockMovingBoundary<BLOCKLATTICE, ArrayType>(lat, *ids, f, voidflag, cellflag) {}
 
-template <typename T, typename LatSet, typename flagType>
-template <void (*BBLikemethod)(BCell<T, LatSet> &, int)>
-void BBLikeMovingBlockBoundary<T, LatSet, flagType>::Apply() {
+template <typename BLOCKLATTICE, typename ArrayType>
+template <typename CELLDYNAMICS>
+void BBLikeMovingBlockBoundary<BLOCKLATTICE, ArrayType>::ApplyCellDynamics() {
   for (std::size_t id : this->Ids) {
-    BCell<T, LatSet> cell(id, this->Lat);
-    for (int k = 1; k < LatSet::q; ++k) {
+    CELL cell(id, this->Lat);
+    for (unsigned int k = 1; k < LatSet::q; ++k) {
       if (util::isFlag(this->Field[this->Lat.getNbrId(id, k)], this->voidFlag)) {
-        BBLikemethod(cell, LatSet::opp[k]);
+        CELLDYNAMICS::apply(cell, LatSet::opp[k]);
       }
     }
-  }
-}
-
-template <typename T, typename LatSet, typename flagType>
-void BBLikeMovingBlockBoundary<T, LatSet, flagType>::UpdateRho() {
-  for (std::size_t id : this->Ids) {
-    BasicCell<T, LatSet> cell(id, this->Lat);
-    moment::Rho<T, LatSet>::apply(cell, this->Lat.getRho(id));
-  }
-}
-
-template <typename T, typename LatSet, typename flagType>
-void BBLikeMovingBlockBoundary<T, LatSet, flagType>::UpdateU() {
-  for (std::size_t id : this->Ids) {
-    BasicCell<T, LatSet> cell(id, this->Lat);
-    moment::Velocity<T, LatSet>::apply(cell, this->Lat.getVelocity(id));
   }
 }
 
@@ -266,64 +203,36 @@ void BBLikeMovingBlockBoundary<T, LatSet, flagType>::UpdateU() {
 // BBLikeBlockMovingBd Manager
 // --------------------------------------------------------------------------
 
-template <typename T, typename LatSet, void (*BBLikemethod)(BCell<T, LatSet> &, int),
-          typename flagType>
-BBLikeMovingBlockBdManager<T, LatSet, BBLikemethod, flagType>::BBLikeMovingBlockBdManager(
-  std::string name, BlockLatticeManager<T, LatSet> &lat,
-  std::vector<std::vector<std::size_t> *> &idss,
-  BlockFieldManager<ScalerField<flagType>, T, LatSet::d> &BlockFM, std::uint8_t voidflag,
-  std::uint8_t cellflag)
+template <typename CELLDYNAMICS, typename BLOCKLATTICEMANAGER, typename BLOCKFIELDMANAGER>
+BBLikeMovingBlockBdManager<CELLDYNAMICS, BLOCKLATTICEMANAGER, BLOCKFIELDMANAGER>::
+  BBLikeMovingBlockBdManager(std::string name, BLOCKLATTICEMANAGER &lat,
+                             std::vector<std::vector<std::size_t> *> &idss,
+                             BLOCKFIELDMANAGER &BlockFM, std::uint8_t voidflag,
+                             std::uint8_t cellflag)
     : _name(name), BdCellFlag(cellflag), voidFlag(voidflag), LatMan(lat), IDss(idss),
       BlockFManager(BlockFM) {
   Init();
 }
 
-template <typename T, typename LatSet, void (*BBLikemethod)(BCell<T, LatSet> &, int),
-          typename flagType>
-void BBLikeMovingBlockBdManager<T, LatSet, BBLikemethod, flagType>::Init() {
+template <typename CELLDYNAMICS, typename BLOCKLATTICEMANAGER, typename BLOCKFIELDMANAGER>
+void BBLikeMovingBlockBdManager<CELLDYNAMICS, BLOCKLATTICEMANAGER,
+                                BLOCKFIELDMANAGER>::Init() {
   BdBlocks.clear();
   for (int i = 0; i < LatMan.getBlockLats().size(); ++i) {
     BdBlocks.emplace_back(LatMan.getBlockLat(i), IDss[i],
-                          BlockFManager.getBlockField(i).getField().getField(0), voidFlag,
+                          BlockFManager.getBlockField(i).getField(0), voidFlag,
                           BdCellFlag);
   }
 }
 
-template <typename T, typename LatSet, void (*BBLikemethod)(BCell<T, LatSet> &, int),
-          typename flagType>
-void BBLikeMovingBlockBdManager<T, LatSet, BBLikemethod, flagType>::Apply(
-  std::int64_t count) {
+template <typename CELLDYNAMICS, typename BLOCKLATTICEMANAGER, typename BLOCKFIELDMANAGER>
+void BBLikeMovingBlockBdManager<CELLDYNAMICS, BLOCKLATTICEMANAGER,
+                                BLOCKFIELDMANAGER>::Apply(std::int64_t count) {
   std::uint8_t MaxLevel = LatMan.getMaxLevel();
 #pragma omp parallel for num_threads(Thread_Num)
   for (auto &bdBlock : BdBlocks) {
     if (count % (static_cast<int>(pow(2, int(MaxLevel - bdBlock.getLat().getLevel())))) ==
         0)
-      bdBlock.template Apply<BBLikemethod>();
-  }
-}
-
-template <typename T, typename LatSet, void (*BBLikemethod)(BCell<T, LatSet> &, int),
-          typename flagType>
-void BBLikeMovingBlockBdManager<T, LatSet, BBLikemethod, flagType>::UpdateRho(
-  std::int64_t count) {
-  std::uint8_t MaxLevel = LatMan.getMaxLevel();
-#pragma omp parallel for num_threads(Thread_Num)
-  for (auto &bdBlock : BdBlocks) {
-    if (count % (static_cast<int>(pow(2, int(MaxLevel - bdBlock.getLat().getLevel())))) ==
-        0)
-      bdBlock.UpdateRho();
-  }
-}
-
-template <typename T, typename LatSet, void (*BBLikemethod)(BCell<T, LatSet> &, int),
-          typename flagType>
-void BBLikeMovingBlockBdManager<T, LatSet, BBLikemethod, flagType>::UpdateU(
-  std::int64_t count) {
-  std::uint8_t MaxLevel = LatMan.getMaxLevel();
-#pragma omp parallel for num_threads(Thread_Num)
-  for (auto &bdBlock : BdBlocks) {
-    if (count % (static_cast<int>(pow(2, int(MaxLevel - bdBlock.getLat().getLevel())))) ==
-        0)
-      bdBlock.UpdateU();
+      bdBlock.template ApplyCellDynamics<CELLDYNAMICS>();
   }
 }

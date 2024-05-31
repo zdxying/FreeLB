@@ -53,7 +53,7 @@ void FixedBoundary<T, LatSet, flagType>::addtoBd(std::size_t id) {
   FixedBdCell& fixedbdcell = BdCells.back();
   // get neighbor
   // Attention: if voidFlag is 0, DO NOT use util::isFlag
-  for (int k = 1; k < LatSet::q; ++k) {
+  for (unsigned int k = 1; k < LatSet::q; ++k) {
     // if (Field[Lat.getNbrId(id, k)] == voidFlag &&
     //     Field[Lat.getNbrId(id, LatSet::opp[k])] != voidFlag) {
     //   fixedbdcell.outflows.push_back(LatSet::opp[k]);
@@ -107,16 +107,16 @@ void MovingBoundary<T, LatSet, flagType>::UpdateBdCells() {
 // FixedBoundary for block structure
 // --------------------------------------------------------------------------------
 
-template <typename T, typename LatSet, typename flagType>
-BlockFixedBoundary<T, LatSet, flagType>::BlockFixedBoundary(
-  BlockLattice<T, LatSet>& lat, const GenericArray<flagType>& f, std::uint8_t cellflag,
+template <typename BLOCKLATTICE, typename ArrayType>
+BlockFixedBoundary<BLOCKLATTICE, ArrayType>::BlockFixedBoundary(
+  BLOCKLATTICE& lat, const ArrayType& f, std::uint8_t cellflag,
   std::uint8_t voidflag)
     : Lat(lat), Field(f), BdCellFlag(cellflag), voidFlag(voidflag) {
   Setup();
 }
 
-template <typename T, typename LatSet, typename flagType>
-void BlockFixedBoundary<T, LatSet, flagType>::addtoBd(std::size_t id) {
+template <typename BLOCKLATTICE, typename ArrayType>
+void BlockFixedBoundary<BLOCKLATTICE, ArrayType>::addtoBd(std::size_t id) {
   BdCells.emplace_back(id, LatSet::q);
   // get reference to the last element
   FixedBdCell& fixedbdcell = BdCells.back();
@@ -133,8 +133,8 @@ void BlockFixedBoundary<T, LatSet, flagType>::addtoBd(std::size_t id) {
   }
 }
 
-template <typename T, typename LatSet, typename flagType>
-void BlockFixedBoundary<T, LatSet, flagType>::Setup() {
+template <typename BLOCKLATTICE, typename ArrayType>
+void BlockFixedBoundary<BLOCKLATTICE, ArrayType>::Setup() {
   std::size_t reserveSize;
   if constexpr (LatSet::d == 2) {
     reserveSize = (Lat.getGeo().getNx() + Lat.getGeo().getNy()) * 2;
@@ -181,14 +181,14 @@ void BlockFixedBoundary<T, LatSet, flagType>::Setup() {
 // MovingBoundary for block structure
 // --------------------------------------------------------------------------------
 
-template <typename T, typename LatSet, typename flagType>
-BlockMovingBoundary<T, LatSet, flagType>::BlockMovingBoundary(
-  BlockLattice<T, LatSet>& lat, std::vector<std::size_t>& ids, GenericArray<flagType>& f,
+template <typename BLOCKLATTICE, typename ArrayType>
+BlockMovingBoundary<BLOCKLATTICE, ArrayType>::BlockMovingBoundary(
+  BLOCKLATTICE& lat, std::vector<std::size_t>& ids, ArrayType& f,
   std::uint8_t voidflag, std::uint8_t cellflag)
     : Lat(lat), Ids(ids), Field(f), BdCellFlag(cellflag), voidFlag(voidflag) {}
 
-template <typename T, typename LatSet, typename flagType>
-void BlockMovingBoundary<T, LatSet, flagType>::UpdateBdCells() {
+template <typename BLOCKLATTICE, typename ArrayType>
+void BlockMovingBoundary<BLOCKLATTICE, ArrayType>::UpdateBdCells() {
   Ids.clear();
   for (std::size_t id = 0; id < Lat.getGeo().getN(); ++id) {
     if (util::isFlag(Field[id], BdCellFlag)) Ids.push_back(id);

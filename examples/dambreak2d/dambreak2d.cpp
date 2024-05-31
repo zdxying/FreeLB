@@ -122,7 +122,7 @@ int main() {
                  [&](FlagField& field, std::size_t id) { field.SetField(id, AABBFlag); });
   FlagFM.template SetupBoundary<LatSet>(cavity, BouncebackFlag);
 
-  vtmo::ScalerWriter Flagvtm("Flag", FlagFM);
+  vtmo::ScalarWriter Flagvtm("Flag", FlagFM);
   vtmo::vtmWriter<T, LatSet::d> FlagWriter("Flag", Geo, 1);
   FlagWriter.addWriterSet(Flagvtm);
   FlagWriter.WriteBinary();
@@ -157,11 +157,11 @@ int main() {
   BBLikeFixedBlockBdManager<T, LatSet, BounceBackLikeMethod<T, LatSet>::normal_bounceback>
     NS_BB("NS_BB", NSLattice, FlagFM, BouncebackFlag, VoidFlag);
 
-  vtmo::ScalerWriter rhovtm("rho", NSLattice.getRhoFM());
-  vtmo::ScalerWriter MassWriter("Mass", FreeSurface.getMassFM());
+  vtmo::ScalarWriter rhovtm("rho", NSLattice.getRhoFM());
+  vtmo::ScalarWriter MassWriter("Mass", FreeSurface.getMassFM());
   vtmo::VectorWriter VeloWriter("Velo", VelocityFM);
-  vtmo::ScalerWriter VOFWriter("VOF", FreeSurface.getVolumeFracFM());
-  vtmo::ScalerWriter StateWriter("State", FreeSurface.getStateFM());
+  vtmo::ScalarWriter VOFWriter("VOF", FreeSurface.getVolumeFracFM());
+  vtmo::ScalarWriter StateWriter("State", FreeSurface.getStateFM());
   vtmo::vtmWriter<T, LatSet::d> Writer("dambreak2d", Geo, 1);
   Writer.addWriterSet(rhovtm, MassWriter, VOFWriter, StateWriter, VeloWriter);
 

@@ -47,10 +47,10 @@ class FreeSurface2D {
   std::vector<std::size_t> Interface;
 
   BlockLattice<T, LatSet>& NS;
-  ScalerField<FSType>& State;
-  ScalerField<T>& Mass;
+  ScalarField<FSType>& State;
+  ScalarField<T>& Mass;
   PopulationField<T, LatSet::q>& ExcessMass;
-  ScalerField<T>& VolumeFrac;
+  ScalarField<T>& VolumeFrac;
 
   T Lonely_Threshold;
   T VOF_Trans_Threshold;
@@ -59,9 +59,9 @@ class FreeSurface2D {
   T surface_tension_parameter;  // coefficient_factor * coefficient
 
  public:
-  FreeSurface2D(BlockLattice<T, LatSet>& ns, ScalerField<FSType>& type,
-                ScalerField<T>& mass, PopulationField<T, LatSet::q>& exmass,
-                ScalerField<T>& vf, T lth, T vtth)
+  FreeSurface2D(BlockLattice<T, LatSet>& ns, ScalarField<FSType>& type,
+                ScalarField<T>& mass, PopulationField<T, LatSet::q>& exmass,
+                ScalarField<T>& vf, T lth, T vtth)
       : NS(ns), State(type), Mass(mass), ExcessMass(exmass), VolumeFrac(vf),
         Lonely_Threshold(lth), VOF_Trans_Threshold(vtth) {}
 
@@ -93,13 +93,13 @@ class FreeSurface2DManager {
  private:
   std::vector<FreeSurface2D<T, LatSet>> BlockFS;
   // free surface state
-  BlockFieldManager<ScalerField<FSType>, T, 2> StateFM;
+  BlockFieldManager<ScalarField<FSType>, T, 2> StateFM;
   // mass = rho * volumefraction
-  BlockFieldManager<ScalerField<T>, T, 2> MassFM;
+  BlockFieldManager<ScalarField<T>, T, 2> MassFM;
   // Excess mass
   BlockFieldManager<PopulationField<T, LatSet::q>, T, 2> ExcessMassFM;
   // fill level/ volume fraction in VOF
-  BlockFieldManager<ScalerField<T>, T, 2> VolumeFracFM;
+  BlockFieldManager<ScalarField<T>, T, 2> VolumeFracFM;
 
   BlockLatticeManager<T, LatSet>& LatMan;
 
@@ -117,19 +117,19 @@ class FreeSurface2DManager {
     // init FreeSurface2D
     for (int i = 0; i < LatMan.getGeo().getBlockNum(); ++i) {
       BlockFS.emplace_back(
-        lm.getBlockLat(i), StateFM.getBlockField(i).getField(),
-        MassFM.getBlockField(i).getField(), ExcessMassFM.getBlockField(i).getField(),
-        VolumeFracFM.getBlockField(i).getField(), Lonely_Threshold, VOF_Trans_Threshold);
+        lm.getBlockLat(i), StateFM.getBlockField(i),
+        MassFM.getBlockField(i), ExcessMassFM.getBlockField(i),
+        VolumeFracFM.getBlockField(i), Lonely_Threshold, VOF_Trans_Threshold);
     }
   }
 
   // get
-  BlockFieldManager<ScalerField<FSType>, T, 2>& getStateFM() { return StateFM; }
-  BlockFieldManager<ScalerField<T>, T, 2>& getMassFM() { return MassFM; }
+  BlockFieldManager<ScalarField<FSType>, T, 2>& getStateFM() { return StateFM; }
+  BlockFieldManager<ScalarField<T>, T, 2>& getMassFM() { return MassFM; }
   BlockFieldManager<PopulationField<T, LatSet::q>, T, 2>& getExcessMassFM() {
     return ExcessMassFM;
   }
-  BlockFieldManager<ScalerField<T>, T, 2>& getVolumeFracFM() { return VolumeFracFM; }
+  BlockFieldManager<ScalarField<T>, T, 2>& getVolumeFracFM() { return VolumeFracFM; }
 
   void setSrufaceTension(T value) {
     if (value > 1e-3)
@@ -143,7 +143,7 @@ class FreeSurface2DManager {
     // StateFM.template SetupBoundary<LatSet>(LatMan.getGeo().getBaseBlock(), FSType::Solid);
     // set interface cells
     StateFM.forEach([&](auto& blockfield, std::size_t id) {
-      auto& field = blockfield.getField();
+      auto& field = blockfield;
       const auto& block = blockfield.getBlock();
       if (util::isFlag(field.get(id), FSType::Fluid)) {
         for (int i = 1; i < LatSet::q; ++i) {

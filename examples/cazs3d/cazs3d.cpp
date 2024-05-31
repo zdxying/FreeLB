@@ -251,17 +251,17 @@ int main() {
 
 
   // writer
-//   vtkWriter::PhysScalerWriter RhoWriter(
+//   vtkWriter::PhysScalarWriter RhoWriter(
 //       "rho", NSLattice.getRhoField().getField(), BaseConv);
-  vtkWriter::PhysScalerWriter CWriter("C", SOLattice.getRhoField().getField(),
+  vtkWriter::PhysScalarWriter CWriter("C", SOLattice.getRhoField().getField(),
                                       ConcConv);
   vtkWriter::FlagWriter CellTypwWriter("CellType", CA.getState().getField());
 //   vtkWriter::PhysVelocityWriter_AOS<T, LatSet0::d> VelocityWriter(
 //       "velocity", NSLattice.getVelocityField().getField(), BaseConv);
   //
-  vtkWriter::ScalerWriter WMCWriter("WMC", CA.getWMC().getField());
-//   vtkWriter::ScalerWriter DFsWriter("DFs", CA.getDeltaFs().getField());
-	vtkWriter::ScalerWriter FsWriter("Fs", CA.getFs().getField());
+  vtkWriter::ScalarWriter WMCWriter("WMC", CA.getWMC().getField());
+//   vtkWriter::ScalarWriter DFsWriter("DFs", CA.getDeltaFs().getField());
+	vtkWriter::ScalarWriter FsWriter("Fs", CA.getFs().getField());
 
   vtkStruPointsWriter<T, LatSet0::d> CAZSWriter("CAZS", Geo0);
   // CAZSWriter.addtoWriteList(&RhoWriter, &CWriter, &CellTypwWriter, &WMCWriter,

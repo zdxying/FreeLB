@@ -37,7 +37,7 @@
 template <typename T>
 class RhoLattice {
  protected:
-  ScalerField<T> Rho;
+  ScalarField<T> Rho;
   // converter
   AbstractConverter<T>& Conv;
   // rho init
@@ -50,7 +50,7 @@ class RhoLattice {
       : Conv(conv), Lattice_Rho_Init(conv.getLatRhoInit()), Lattice_gbeta(conv.getLattice_gbeta()),
         Rho(size, conv.getLatRhoInit()) {}
 
-  ScalerField<T>& getRhoField() { return Rho; }
+  ScalarField<T>& getRhoField() { return Rho; }
   const T& getRho(int i) const { return Rho.get(i); }
   T& getRho(int i) { return Rho.get(i); }
   void SetRhoField(std::size_t id, T value) { Rho.SetField(id, value); }

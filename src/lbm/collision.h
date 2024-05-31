@@ -44,7 +44,7 @@ struct BGK_Feq_RhoU {
     moment::template rhou<CELL, WriteToField>::apply(cell, rho, u);
     // equilibrium distribution function
     std::array<T, LatSet::q> feq{};
-    EquilibriumScheme::apply(cell, feq, rho, u);
+    EquilibriumScheme::apply(feq, rho, u);
     // BGK collision
     const T omega = cell.getOmega();
     const T _omega = cell.get_Omega();
@@ -52,9 +52,7 @@ struct BGK_Feq_RhoU {
       cell[i] = omega * feq[i] + _omega * cell[i];
     }
   }
-  static void apply(CELL& cell, const Vector<T, LatSet::d>& force) {
-    
-  }
+  static void apply(CELL& cell, const Vector<T, LatSet::d>& force) {}
 };
 
 // a typical BGK collision process with:
@@ -69,7 +67,8 @@ struct BGK_Feq {
   static void apply(CELL& cell) {
     // equilibrium distribution function
     std::array<T, LatSet::q> feq{};
-    EquilibriumScheme::apply(cell, feq, cell.getRho(), cell.getVelocity());
+    EquilibriumScheme::apply(feq, cell.template get<RHO<T>>(),
+                             cell.template get<VELOCITY<T, LatSet::d>>());
     // BGK collision
     const T omega = cell.getOmega();
     const T _omega = cell.get_Omega();
@@ -95,6 +94,41 @@ struct bgk {
   }
 };
 
+// a typical BGK collision process with:
+// macroscopic variables updated
+// equilibrium distribution function calculated
+// force term
+template <typename EquilibriumScheme, typename ForceScheme, bool WriteToField = false,
+          unsigned int dir = 2>
+struct BGKForce_Feq_RhoU {
+  using CELL = typename EquilibriumScheme::CELLTYPE;
+  using T = typename CELL::FloatType;
+  using LatSet = typename CELL::LatticeSet;
+  using equilibriumscheme = EquilibriumScheme;
+
+  static void apply(CELL& cell) {
+    // update macroscopic variables
+    T rho{};
+    Vector<T, LatSet::d> u{};
+    moment::template forceRhou<CELL, WriteToField, dir>::apply(
+      cell, ForceScheme::getForce(cell), rho, u);
+    // compute force term
+    std::array<T, LatSet::q> fi{};
+    ForceScheme::apply(cell, fi);
+    // equilibrium distribution function
+    std::array<T, LatSet::q> feq{};
+    EquilibriumScheme::apply(feq, rho, u);
+    // BGK collision
+    const T omega = cell.getOmega();
+    const T _omega = cell.get_Omega();
+    const T fomega = cell.getfOmega();
+
+    for (unsigned int i = 0; i < LatSet::q; ++i) {
+      cell[i] = omega * feq[i] + _omega * cell[i] + fomega * fi[i];
+    }
+  }
+};
+
 template <typename T, typename LatSet>
 struct BGK {
   // BGK collision operator
@@ -110,28 +144,6 @@ struct BGK {
       cell[i] = omega * feq[i] + _omega * cell[i];
     }
   }
-  template <void (*GetFeq)(std::array<T, LatSet::q>&, const Vector<T, LatSet::d>&, T)>
-  static void apply(BCell<T, LatSet>& cell) {
-    std::array<T, LatSet::q> feq{};
-    GetFeq(feq, cell.getVelocity(), cell.getRho());
-
-    const T omega = cell.getOmega();
-    const T _omega = cell.get_Omega();
-
-    for (int i = 0; i < LatSet::q; ++i) {
-      cell[i] = omega * feq[i] + _omega * cell[i];
-    }
-  }
-
-  struct Source {
-    static void apply(BCell<T, LatSet>& cell, const std::array<T, LatSet::q>& fi) {
-      const T fomega = cell.getfOmega();
-      for (int i = 0; i < LatSet::q; ++i) {
-        cell[i] += fomega * fi[i];
-      }
-    }
-  };
-
 
   // BGK collision operator with force
   template <void (*GetFeq)(std::array<T, LatSet::q>&, const Vector<T, LatSet::d>&, T)>
@@ -140,23 +152,7 @@ struct BGK {
     GetFeq(feq, cell.getVelocity(), cell.getRho());
 
     std::array<T, LatSet::q> fi{};
-    force::Force<T, LatSet>::ComputeForcePop(fi, cell.getVelocity(), force);
-
-    const T omega = cell.getOmega();
-    const T _omega = cell.get_Omega();
-    const T fomega = cell.getfOmega();
-
-    for (int i = 0; i < LatSet::q; ++i) {
-      cell[i] = omega * feq[i] + _omega * cell[i] + fomega * fi[i];
-    }
-  }
-  template <void (*GetFeq)(std::array<T, LatSet::q>&, const Vector<T, LatSet::d>&, T)>
-  static void applyForce(BCell<T, LatSet>& cell, const Vector<T, LatSet::d>& force) {
-    std::array<T, LatSet::q> feq{};
-    GetFeq(feq, cell.getVelocity(), cell.getRho());
-
-    std::array<T, LatSet::q> fi{};
-    force::Force<T, LatSet>::ComputeForcePop(fi, cell.getVelocity(), force);
+    force::ForcePop<T, LatSet>::compute(fi, cell.getVelocity(), force);
 
     const T omega = cell.getOmega();
     const T _omega = cell.get_Omega();
@@ -169,19 +165,6 @@ struct BGK {
 
   template <void (*GetFeq)(std::array<T, LatSet::q>&, const Vector<T, LatSet::d>&, T)>
   static void applySource(Cell<T, LatSet>& cell, const std::array<T, LatSet::q>& fi) {
-    std::array<T, LatSet::q> feq{};
-    GetFeq(feq, cell.getVelocity(), cell.getRho());
-
-    const T omega = cell.getOmega();
-    const T _omega = cell.get_Omega();
-    const T fomega = cell.getfOmega();
-
-    for (int i = 0; i < LatSet::q; ++i) {
-      cell[i] = omega * feq[i] + _omega * cell[i] + fomega * fi[i];
-    }
-  }
-  template <void (*GetFeq)(std::array<T, LatSet::q>&, const Vector<T, LatSet::d>&, T)>
-  static void applySource(BCell<T, LatSet>& cell, const std::array<T, LatSet::q>& fi) {
     std::array<T, LatSet::q> feq{};
     GetFeq(feq, cell.getVelocity(), cell.getRho());
 
@@ -207,29 +190,18 @@ struct BGK {
       cell[i] = omega * feq[i] + _omega * cell[i] + fomega * S * LatSet::w[i];
     }
   }
-  template <void (*GetFeq)(std::array<T, LatSet::q>&, const Vector<T, LatSet::d>&, T)>
-  static void applySource(BCell<T, LatSet>& cell, const T S) {
-    std::array<T, LatSet::q> feq{};
-    GetFeq(feq, cell.getVelocity(), cell.getRho());
-
-    const T omega = cell.getOmega();
-    const T _omega = cell.get_Omega();
-    const T fomega = cell.getfOmega();
-
-    for (int i = 0; i < LatSet::q; ++i) {
-      cell[i] = omega * feq[i] + _omega * cell[i] + fomega * S * LatSet::w[i];
-    }
-  }
 };
 
 // full way bounce back, could be regarded as a mpdified collision process
 // swap the populations in the opposite direction
 // LatSet must have rest population(D2Q4 is not supported)
-template <typename T, typename LatSet>
+template <typename CELL>
 struct BounceBack {
+  using LatSet = typename CELL::LatticeSet;
+  using T = typename CELL::FloatType;
   static constexpr int halfq = LatSet::q / 2 + 1;
 
-  static void apply(BCell<T, LatSet>& cell) {
+  static void apply(CELL& cell) {
     for (int i = 1; i < halfq; ++i) {
       T temp = cell[i];
       cell[i] = cell[LatSet::opp[i]];

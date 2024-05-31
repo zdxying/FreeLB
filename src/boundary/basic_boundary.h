@@ -35,7 +35,7 @@
 // fixed boundary cell structure
 struct FixedBdCell {
   // outflow directions
-  std::vector<int> outflows;
+  std::vector<unsigned int> outflows;
   // cell id
   std::size_t Id;
 
@@ -122,55 +122,54 @@ class MovingBoundary : public AbstractBoundary {
 class AbstractBlockBoundary {
  public:
   virtual void Apply(std::int64_t count) = 0;
-  virtual void UpdateRho(std::int64_t count) {}
-  virtual void UpdateU(std::int64_t count) {}
 };
 
-template <typename T, typename LatSet, typename flagType>
+template <typename BLOCKLATTICE, typename ArrayType>
 class BlockFixedBoundary {
  protected:
   // boundary cell
   std::vector<FixedBdCell> BdCells;
   // reference to lattice
-  BlockLattice<T, LatSet> &Lat;
+  BLOCKLATTICE &Lat;
   // boundary cell flag
   std::uint8_t BdCellFlag;
   // boundary flag
   std::uint8_t voidFlag;
   // geometry flag
-  const GenericArray<flagType> &Field;
+  const ArrayType &Field;
 
  public:
-  BlockFixedBoundary(BlockLattice<T, LatSet> &lat, const GenericArray<flagType> &f,
+ using LatSet = typename BLOCKLATTICE::LatticeSet;
+  BlockFixedBoundary(BLOCKLATTICE &lat, const ArrayType &f,
                      std::uint8_t cellflag, std::uint8_t voidflag);
   // get boundary cell flag
   std::uint8_t getBdCellFlag() const { return BdCellFlag; }
   // get void cell flag
   std::uint8_t getVoidFlag() const { return voidFlag; }
-  BlockLattice<T, LatSet> &getLat() { return Lat; }
+  BLOCKLATTICE &getLat() { return Lat; }
   // add to boundary cells: std::vector<FixedBdCell> BdCells
   void addtoBd(std::size_t id);
   // setup boundary cells
   void Setup();
 };
 
-template <typename T, typename LatSet, typename flagType>
+template <typename BLOCKLATTICE, typename ArrayType>
 class BlockMovingBoundary {
  protected:
   // boundary cells
   std::vector<std::size_t> &Ids;
   // reference to lattice
-  BlockLattice<T, LatSet> &Lat;
+  BLOCKLATTICE &Lat;
   // boundary cell flag
   std::uint8_t BdCellFlag;
   // boundary flag
   std::uint8_t voidFlag;
   // geometry flag
-  GenericArray<flagType> &Field;
+  ArrayType &Field;
 
  public:
-  BlockMovingBoundary(BlockLattice<T, LatSet> &lat, std::vector<std::size_t> &ids,
-                      GenericArray<flagType> &f, std::uint8_t voidflag,
+  BlockMovingBoundary(BLOCKLATTICE &lat, std::vector<std::size_t> &ids,
+                      ArrayType &f, std::uint8_t voidflag,
                       std::uint8_t cellflag);
   // get boundary cell flag
   std::uint8_t getBdCellFlag() const { return BdCellFlag; }
@@ -178,7 +177,7 @@ class BlockMovingBoundary {
   std::uint8_t getVoidFlag() const { return voidFlag; }
   // get boundary cells std::vector<std::size_t> &Ids;
   std::vector<std::size_t> &getIds() { return Ids; }
-  BlockLattice<T, LatSet> &getLat() { return Lat; }
+  BLOCKLATTICE &getLat() { return Lat; }
   // update boundary cells
   void UpdateBdCells();
 };
@@ -226,11 +225,5 @@ class BlockBoundaryManager {
 
   void Apply(std::int64_t count) {
     for (AbstractBlockBoundary *boundary : _Boundaries) boundary->Apply(count);
-  }
-  void UpdateRho(std::int64_t count) {
-    for (AbstractBlockBoundary *boundary : _Boundaries) boundary->UpdateRho(count);
-  }
-  void UpdateU(std::int64_t count) {
-    for (AbstractBlockBoundary *boundary : _Boundaries) boundary->UpdateU(count);
   }
 };

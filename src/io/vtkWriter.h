@@ -82,14 +82,14 @@ class FieldFlagWriter : public AbstractFieldWriter {
 };
 
 template <template <typename> class ArrayType, typename T>
-class ScalerWriter : public AbstractFieldWriter {
+class ScalarWriter : public AbstractFieldWriter {
  private:
   std::string varname;
   const ArrayType<T> &Field;
   std::size_t Size;
 
  public:
-  ScalerWriter(std::string name, const ArrayType<T> &f)
+  ScalarWriter(std::string name, const ArrayType<T> &f)
       : varname(name), Field(f), Size(Field.size()) {}
   void write(std::ofstream &f) override {
     std::stringstream ss;
@@ -100,7 +100,7 @@ class ScalerWriter : public AbstractFieldWriter {
     } else if constexpr (std::is_same<T, int>::value) {
       ss << "SCALARS " << varname << " int" << std::endl;
     } else {
-      std::cout << "ERROR: ScalerWriter: unsupported type" << std::endl;
+      std::cout << "ERROR: ScalarWriter: unsupported type" << std::endl;
       exit(1);
     }
     ss << "LOOKUP_TABLE default" << std::endl;
@@ -112,14 +112,14 @@ class ScalerWriter : public AbstractFieldWriter {
   }
 };
 template <typename FIELDTYPE>
-class FieldScalerWriter : public AbstractFieldWriter {
+class FieldScalarWriter : public AbstractFieldWriter {
  private:
   std::string varname;
   const FIELDTYPE *Field;
   const int Size;
 
  public:
-  FieldScalerWriter(std::string name, const FIELDTYPE *f, int size)
+  FieldScalarWriter(std::string name, const FIELDTYPE *f, int size)
       : varname(name), Field(f), Size(size) {}
   void write(std::ofstream &f) override {
     std::stringstream ss;
@@ -130,7 +130,7 @@ class FieldScalerWriter : public AbstractFieldWriter {
     } else if constexpr (std::is_same<FIELDTYPE, int>::value) {
       ss << "SCALARS " << varname << " int" << std::endl;
     } else {
-      std::cout << "ERROR: FieldScalerWriter: unsupported type" << std::endl;
+      std::cout << "ERROR: FieldScalarWriter: unsupported type" << std::endl;
       exit(1);
     }
     ss << "LOOKUP_TABLE default" << std::endl;
@@ -143,7 +143,7 @@ class FieldScalerWriter : public AbstractFieldWriter {
 };
 
 template <template <typename> class ArrayType, typename T>
-class PhysScalerWriter : public AbstractFieldWriter {
+class PhysScalarWriter : public AbstractFieldWriter {
  private:
   std::string varname;
   const ArrayType<T> &Field;
@@ -151,7 +151,7 @@ class PhysScalerWriter : public AbstractFieldWriter {
   const AbstractConverter<T> &Conv;
 
  public:
-  PhysScalerWriter(std::string name, const ArrayType<T> &f,
+  PhysScalarWriter(std::string name, const ArrayType<T> &f,
                    const AbstractConverter<T> &conv)
       : varname(name), Field(f), Size(f.size()), Conv(conv) {}
   void write(std::ofstream &f) override {
@@ -163,7 +163,7 @@ class PhysScalerWriter : public AbstractFieldWriter {
     } else if constexpr (std::is_same<T, int>::value) {
       ss << "SCALARS " << varname << " int" << std::endl;
     } else {
-      std::cout << "ERROR: PhysScalerWriter: unsupported type" << std::endl;
+      std::cout << "ERROR: PhysScalarWriter: unsupported type" << std::endl;
       exit(1);
     }
     ss << "LOOKUP_TABLE default" << std::endl;
@@ -175,7 +175,7 @@ class PhysScalerWriter : public AbstractFieldWriter {
   }
 };
 template <typename FIELDTYPE>
-class PhysFieldScalerWriter : public AbstractFieldWriter {
+class PhysFieldScalarWriter : public AbstractFieldWriter {
  private:
   std::string varname;
   const FIELDTYPE *Field;
@@ -183,7 +183,7 @@ class PhysFieldScalerWriter : public AbstractFieldWriter {
   const AbstractConverter<FIELDTYPE> &Conv;
 
  public:
-  PhysFieldScalerWriter(std::string name, const FIELDTYPE *f, int size,
+  PhysFieldScalarWriter(std::string name, const FIELDTYPE *f, int size,
                         const AbstractConverter<FIELDTYPE> &conv)
       : varname(name), Field(f), Size(size), Conv(conv) {}
   void write(std::ofstream &f) override {
@@ -195,7 +195,7 @@ class PhysFieldScalerWriter : public AbstractFieldWriter {
     } else if constexpr (std::is_same<FIELDTYPE, int>::value) {
       ss << "SCALARS " << varname << " int" << std::endl;
     } else {
-      std::cout << "ERROR: PhysFieldScalerWriter: unsupported type" << std::endl;
+      std::cout << "ERROR: PhysFieldScalarWriter: unsupported type" << std::endl;
       exit(1);
     }
     ss << "LOOKUP_TABLE default" << std::endl;
@@ -379,13 +379,13 @@ class UnStruFlagWriter : public AbstractFieldWriter {
 };
 
 template <typename T>
-class UnStruScalerWriter : public AbstractFieldWriter {
+class UnStruScalarWriter : public AbstractFieldWriter {
  private:
   std::string varname;
   const std::vector<T> &Field;
 
  public:
-  UnStruScalerWriter(std::string name, std::vector<T> &f) : varname(name), Field(f) {}
+  UnStruScalarWriter(std::string name, std::vector<T> &f) : varname(name), Field(f) {}
   void write(std::ofstream &f) override {
     std::stringstream ss;
     if constexpr (std::is_same<T, double>::value) {
@@ -395,7 +395,7 @@ class UnStruScalerWriter : public AbstractFieldWriter {
     } else if constexpr (std::is_same<T, int>::value) {
       ss << "SCALARS " << varname << " int" << std::endl;
     } else {
-      std::cout << "ERROR: ScalerWriter: unsupported type" << std::endl;
+      std::cout << "ERROR: ScalarWriter: unsupported type" << std::endl;
       exit(1);
     }
     ss << "LOOKUP_TABLE default" << std::endl;
@@ -436,14 +436,14 @@ class FieldFlagWriter : public AbstractFieldWriter {
 };
 
 template <typename FIELDTYPE>
-class FieldScalerWriter : public AbstractFieldWriter {
+class FieldScalarWriter : public AbstractFieldWriter {
  private:
   std::string varname;
   const std::vector<FIELDTYPE> &field;
   const std::vector<int> &index;
 
  public:
-  FieldScalerWriter(std::string name, std::vector<FIELDTYPE> &f, std::vector<int> &idx)
+  FieldScalarWriter(std::string name, std::vector<FIELDTYPE> &f, std::vector<int> &idx)
       : varname(name), field(f), index(idx) {}
   void write(std::ofstream &f) override {
     std::stringstream ss;
@@ -454,7 +454,7 @@ class FieldScalerWriter : public AbstractFieldWriter {
     } else if constexpr (std::is_same<FIELDTYPE, int>::value) {
       ss << "SCALARS " << varname << " int" << std::endl;
     } else {
-      std::cout << "ERROR: FieldScalerWriter: unsupported type" << std::endl;
+      std::cout << "ERROR: FieldScalarWriter: unsupported type" << std::endl;
       exit(1);
     }
     ss << "LOOKUP_TABLE default" << std::endl;
@@ -875,13 +875,13 @@ class vtkWriterStruPoints {
   Vector<T, D> _Min;
   std::string _dirname = "./vtkoutput";
   std::string _filename;
-  std::vector<std::vector<int> *> _ScalerIndex;
+  std::vector<std::vector<int> *> _ScalarIndex;
   std::vector<std::vector<int> *> _VectorIndex;
   std::vector<std::vector<int> *> _FlagIndex;
-  std::vector<std::vector<T> *> _Scalers;
+  std::vector<std::vector<T> *> _Scalars;
   std::vector<std::vector<Vector<T, D>> *> _Vectors;
   std::vector<std::any> _Flags;
-  std::vector<std::string> _ScalerNames;
+  std::vector<std::string> _ScalarNames;
   std::vector<std::string> _VectorNames;
   std::vector<std::string> _FlagNames;
 
@@ -892,10 +892,10 @@ class vtkWriterStruPoints {
   void setFilename(std::string filename) { _filename = filename; }
   void setDirname(std::string dirname) { _dirname = dirname; }
 
-  void addScalertoWriteList(std::string name, std::vector<T> *v, std::vector<int> *idx) {
-    _ScalerNames.push_back(name);
-    _ScalerIndex.push_back(idx);
-    _Scalers.push_back(v);
+  void addScalartoWriteList(std::string name, std::vector<T> *v, std::vector<int> *idx) {
+    _ScalarNames.push_back(name);
+    _ScalarIndex.push_back(idx);
+    _Scalars.push_back(v);
   }
   void addVectortoWriteList(std::string name, std::vector<Vector<T, D>> *v,
                             std::vector<int> *idx) {
@@ -915,9 +915,9 @@ class vtkWriterStruPoints {
     std::string fullName = "./vtkoutput/" + _filename + std::to_string(step) + ".vtk";
     std::ofstream f(fullName.c_str());
     writeHeader(f);
-    // write scalers
-    for (int i = 0; i < _Scalers.size(); ++i) {
-      writeScaler(f, _ScalerNames[i], *_Scalers[i], *_ScalerIndex[i]);
+    // write scalars
+    for (int i = 0; i < _Scalars.size(); ++i) {
+      writeScalar(f, _ScalarNames[i], *_Scalars[i], *_ScalarIndex[i]);
     }
     // write vectors
     for (int i = 0; i < _Vectors.size(); ++i) {
@@ -936,9 +936,9 @@ class vtkWriterStruPoints {
     std::string fullName = "./vtkoutput/" + _filename + ".vtk";
     std::ofstream f(fullName.c_str());
     writeHeader(f);
-    // write scalers
-    for (int i = 0; i < _Scalers.size(); ++i) {
-      writeScaler(f, _ScalerNames[i], *_Scalers[i], *_ScalerIndex[i]);
+    // write scalars
+    for (int i = 0; i < _Scalars.size(); ++i) {
+      writeScalar(f, _ScalarNames[i], *_Scalars[i], *_ScalarIndex[i]);
     }
     // write vectors
     for (int i = 0; i < _Vectors.size(); ++i) {
@@ -972,7 +972,7 @@ class vtkWriterStruPoints {
     f << "POINT_DATA " << _Nx * _Ny * _Nz << std::endl;
   }
 
-  void writeScaler(std::ofstream &f, std::string name, const std::vector<T> &v,
+  void writeScalar(std::ofstream &f, std::string name, const std::vector<T> &v,
                    const std::vector<int> &idx) {
     std::stringstream ss;
     if constexpr (std::is_same<T, double>::value) {

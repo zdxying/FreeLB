@@ -134,7 +134,7 @@ void MPIBlockBufferInit(const MPIInterpBlockComm<FloatType,Dim>& MPIComm, MPIBlo
 }
 
 // add data to send buffer
-// scaler data
+// scalar data
 template <typename ArrayType, typename T>
 void addtoBuffer(std::vector<T>& buffer, const ArrayType& arr,
                  const std::vector<int>& index) {

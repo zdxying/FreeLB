@@ -106,10 +106,10 @@ void readParam() {
 }
 
 int main() {
-  std::uint8_t VoidFlag = std::uint8_t(1);
-  std::uint8_t AABBFlag = std::uint8_t(2);
-  std::uint8_t BouncebackFlag = std::uint8_t(4);
-  std::uint8_t BBMovingWallFlag = std::uint8_t(8);
+  constexpr std::uint8_t VoidFlag = std::uint8_t(1);
+  constexpr std::uint8_t AABBFlag = std::uint8_t(2);
+  constexpr std::uint8_t BouncebackFlag = std::uint8_t(4);
+  constexpr std::uint8_t BBMovingWallFlag = std::uint8_t(8);
 
   Printer::Print_BigBanner(std::string("Initializing..."));
 
@@ -147,43 +147,60 @@ int main() {
   BlockGeometry2D<T> Geo(GeoHelper);
 
   // ------------------ define flag field ------------------
-  BlockFieldManager<FlagField, T, 2> FlagFM(Geo, VoidFlag);
+  BlockFieldManager<FLAG, T, 2> FlagFM(Geo, VoidFlag);
   FlagFM.forEach(cavity,
-                 [&](FlagField& field, std::size_t id) { field.SetField(id, AABBFlag); });
+                 [&](auto& field, std::size_t id) { field.SetField(id, AABBFlag); });
   FlagFM.template SetupBoundary<LatSet>(cavity, BouncebackFlag);
-  FlagFM.forEach(toplid, [&](FlagField& field, std::size_t id) {
+  FlagFM.forEach(toplid, [&](auto& field, std::size_t id) {
     if (util::isFlag(field.get(id), BouncebackFlag)) field.SetField(id, BBMovingWallFlag);
   });
 
-  vtmo::ScalerWriter FlagWriter("flag", FlagFM);
+  vtmo::ScalarWriter FlagWriter("flag", FlagFM);
   vtmo::vtmWriter<T, LatSet::d> GeoWriter("GeoFlag", Geo, 1);
   GeoWriter.addWriterSet(FlagWriter);
   GeoWriter.WriteBinary();
 
   // ------------------ define lattice ------------------
-  // velocity field
-  BlockFieldManager<VectorFieldAOS<T, 2>, T, 2> VelocityFM(Geo);
-  // set initial value of field
-  Vector<T, 2> LatU_Wall = BaseConv.getLatticeU(U_Wall);
-  VelocityFM.forEach(FlagFM, BBMovingWallFlag,
-                     [&](auto& field, std::size_t id) { field.SetField(id, LatU_Wall); });
+  using FIELDS = TypePack<RHO<T>, VELOCITY<T, LatSet::d>, POP<T, LatSet::q>>;
+  using FIELDREFS = TypePack<FLAG>;
+  using FIELDSPACK = TypePack<FIELDS, FIELDREFS>;
+  using ALLFIELDS = ExtractFieldPack<FIELDSPACK>::mergedpack;
+  using CELL = BCell<T, LatSet, ALLFIELDS>;
+  ValuePack InitValues(BaseConv.getLatRhoInit(), Vector<T, 2>{}, T{});
   // lattice
-  BlockLatticeManager<T, LatSet> NSLattice(Geo, BaseConv, VelocityFM);
+  BlockLatticeManager<T, LatSet, FIELDSPACK> NSLattice(Geo, InitValues, BaseConv, FlagFM);
   NSLattice.EnableToleranceU();
   T res = 1;
+  // set initial value of field
+  Vector<T, 2> LatU_Wall = BaseConv.getLatticeU(U_Wall);
+  NSLattice.getField<VELOCITY<T, LatSet::d>>().forEach(FlagFM, BBMovingWallFlag,
+                     [&](auto& field, std::size_t id) { field.SetField(id, LatU_Wall); });
 
   // bcs
-  BBLikeFixedBlockBdManager<T, LatSet, BounceBackLikeMethod<T, LatSet>::normal_bounceback>
+  BBLikeFixedBlockBdManager<bounceback::normal<CELL>, BlockLatticeManager<T, LatSet, FIELDSPACK>, BlockFieldManager<FLAG, T, 2>>
     NS_BB("NS_BB", NSLattice, FlagFM, BouncebackFlag, VoidFlag);
-  BBLikeFixedBlockBdManager<T, LatSet,
-                            BounceBackLikeMethod<T, LatSet>::movingwall_bounceback>
+  BBLikeFixedBlockBdManager<bounceback::movingwall<CELL>, BlockLatticeManager<T, LatSet, FIELDSPACK>, BlockFieldManager<FLAG, T, 2>>
     NS_BBMW("NS_BBMW", NSLattice, FlagFM, BBMovingWallFlag, VoidFlag);
   BlockBoundaryManager BM(&NS_BB, &NS_BBMW);
 
+  // define task/ dynamics:
+  // bulk task
+  using BulkTask = tmp::Key_TypePair<AABBFlag, collision::BGK_Feq_RhoU<equilibrium::SecondOrder<CELL>, true>>;
+  // wall task
+  using WallTask = tmp::Key_TypePair<BouncebackFlag | BBMovingWallFlag, collision::BGK_Feq<equilibrium::SecondOrder<CELL>, true>>;
+  // task collection
+  using TaskCollection = tmp::TupleWrapper<BulkTask, WallTask>;
+  // task executor
+  using TaskSelector = tmp::TaskSelector<TaskCollection, std::uint8_t, CELL>;
+  // task: update rho and u
+  using RhoUTask = tmp::Key_TypePair<AABBFlag, moment::rhou<CELL>>;
+  using TaskCollectionRhoU = tmp::TupleWrapper<RhoUTask>;
+  using TaskSelectorRhoU = tmp::TaskSelector<TaskCollectionRhoU, std::uint8_t, CELL>;
+
   // writers
-  vtmo::ScalerWriter RhoWriter("Rho", NSLattice.getRhoFM());
-  vtmo::VectorWriter VecWriter("Velocity", VelocityFM);
-  vtmo::vtmWriter<T, LatSet::d> NSWriter("cavref2d", Geo, 1);
+  vtmwriter::ScalarWriter RhoWriter("Rho", NSLattice.getField<RHO<T>>());
+  vtmwriter::VectorWriter VecWriter("Velocity", NSLattice.getField<VELOCITY<T, 2>>());
+  vtmwriter::vtmWriter<T, LatSet::d> NSWriter("cavityblock2d", Geo);
   NSWriter.addWriterSet(RhoWriter, VecWriter);
 
   // count and timer
@@ -194,13 +211,7 @@ int main() {
   Printer::Print_BigBanner(std::string("Start Calculation..."));
 
   while (MainLoopTimer() < MaxStep && res > tol) {
-    // update macroscopic variables
-    NSLattice.UpdateRho(MainLoopTimer(), AABBFlag, FlagFM);
-    NSLattice.UpdateU(MainLoopTimer(), AABBFlag, FlagFM);
-    // BGK collision
-    NSLattice.template BGK<Equilibrium<T, LatSet>::SecondOrder>(
-      MainLoopTimer(), std::uint8_t(AABBFlag | BouncebackFlag | BBMovingWallFlag),
-      FlagFM);
+    NSLattice.ApplyCellDynamics<TaskSelector>(MainLoopTimer(), FlagFM);
     // streaming
     NSLattice.Stream(MainLoopTimer());
     // boundary conditions

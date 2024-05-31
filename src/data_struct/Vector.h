@@ -212,7 +212,7 @@ constexpr decltype(T{} * U{}) operator*(const Vector<T, D> &a, const Vector<U, D
   }
   return result;
 }
-// *: Vector multiplies a scaler, return type will be deduced by
+// *: Vector multiplies a scalar, return type will be deduced by
 // decltype(c++11)
 template <typename T, typename U, unsigned int D>
 constexpr Vector<decltype(T{} * U{}), D> operator*(const Vector<T, D> &a, U b) {
@@ -222,7 +222,7 @@ constexpr Vector<decltype(T{} * U{}), D> operator*(const Vector<T, D> &a, U b) {
   }
   return result;
 }
-// scaler multiplies a vector
+// scalar multiplies a vector
 template <typename T, typename U, unsigned int D>
 constexpr Vector<decltype(T{} * U{}), D> operator*(T a, const Vector<U, D> &b) {
   Vector<decltype(T{} * U{}), D> result;
@@ -231,7 +231,7 @@ constexpr Vector<decltype(T{} * U{}), D> operator*(T a, const Vector<U, D> &b) {
   }
   return result;
 }
-// /: Vector divides a scaler, return type will be deduced by decltype(c++11)
+// /: Vector divides a scalar, return type will be deduced by decltype(c++11)
 template <typename T, typename U, unsigned int D>
 constexpr Vector<decltype(T{} / U{}), D> operator/(const Vector<T, D> &a, U b) {
   Vector<decltype(T{} / U{}), D> result;
@@ -240,7 +240,7 @@ constexpr Vector<decltype(T{} / U{}), D> operator/(const Vector<T, D> &a, U b) {
   }
   return result;
 }
-// /=: Vector divides a scaler, return type will be deduced by decltype(c++11)
+// /=: Vector divides a scalar, return type will be deduced by decltype(c++11)
 template <typename T, typename U, unsigned int D>
 constexpr Vector<decltype(T{} / U{}), D> &operator/=(Vector<T, D> &a, U b) {
   for (unsigned int i = 0; i < D; ++i) {

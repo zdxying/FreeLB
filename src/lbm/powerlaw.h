@@ -24,6 +24,16 @@
 
 #include "lbm/moment.h"
 
+// m
+struct ConsistencyIndexBase : public FieldBase<1> {};
+// n-1
+struct BehaviorIndexMinus1Base : public FieldBase<1> {};
+
+template <typename T>
+using ConsistencyIndex = Array<T, ConsistencyIndexBase>;
+template <typename T>
+using BehaviorIndexMinus1 = Array<T, BehaviorIndexMinus1Base>;
+
 // power-law dynamics for non-Newtonian fluid
 
 // in power-law dynamics: compute omega from magnitude of shear rate

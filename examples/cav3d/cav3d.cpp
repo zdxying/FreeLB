@@ -164,7 +164,7 @@ int main() {
 
   // writers
 
-  // vtkWriter::FieldScalerWriter<T> RhoWriter("rho",
+  // vtkWriter::FieldScalarWriter<T> RhoWriter("rho",
   //                                           NSLattice.getRhoField().getField().getdata(),
   //                                           NSLattice.getRhoField().getField().size());
   // vtkWriter::FieldVectorWriter_AOS<T, LatSet::d> VelocityWriter(
@@ -175,7 +175,7 @@ int main() {
 
   // vti writer
   vtiwriter::VectorWriter Velovti("Velocity", Velocity.getField());
-  vtiwriter::ScalerWriter Rhovti("Rho", NSLattice.getRhoField().getField());
+  vtiwriter::ScalarWriter Rhovti("Rho", NSLattice.getRhoField().getField());
   vtiwriter::vtiManager NSvtim("NSvti", Geo.getVoxelSize(), Geo.getMin(),
                                  Vector<int, 3>{Ni + 1, Nj + 1, Nk + 1});
   NSvtim.addWriter(Rhovti, Velovti);

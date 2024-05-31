@@ -25,13 +25,7 @@
 
 #include "data_struct/Vector.h"
 
-template <typename T, typename LatSet>
-class BasicCell;
-
-template <typename T, typename LatSet>
-class Cell;
-
-template <typename T, typename LatSet>
+template <typename T, typename LatSet, typename TypePack>
 class BCell;
 
 // calc equilibrium distribution function
@@ -39,7 +33,7 @@ class BCell;
 template <typename T, typename LatSet>
 struct Equilibrium {
   static inline T Order1(int k, const Vector<T, LatSet::d> &u, T rho) {
-    return LatSet::w[k] * rho * (T(1) + LatSet::InvCs2 * (u * LatSet::c[k]));
+    return LatSet::w[k] * rho * (T{1} + LatSet::InvCs2 * (u * LatSet::c[k]));
   }
 
   static inline T Order1_Incompresible(int k, const Vector<T, LatSet::d> &u, T rho) {
@@ -61,12 +55,7 @@ struct Equilibrium {
   //                          LatSet::InvCs2 * u2 * T(0.5));
   // }
 
-  static void FirstOrder(std::array<T, LatSet::q> &feq, const Vector<T, LatSet::d> &u,
-                         T rho) {
-    for (int k = 0; k < LatSet::q; ++k) {
-      feq[k] = Order1(k, u, rho);
-    }
-  }
+
   static void FirstOrder_Incompresible(std::array<T, LatSet::q> &feq,
                                        const Vector<T, LatSet::d> &u, T rho) {
     for (int k = 0; k < LatSet::q; ++k) {
@@ -82,22 +71,14 @@ struct Equilibrium {
   }
 
   // ------------- get feq from cell -------------
-  // calc equilibrium using interface BCell
-  static void FirstOrder(const BCell<T, LatSet> &cell, std::array<T, LatSet::q> &feq) {
-    const T rho = cell.getRho();
-    const Vector<T, LatSet::d> &u = cell.getVelocity();
-    for (int k = 0; k < LatSet::q; ++k) {
-      feq[k] = Order1(k, u, rho);
-    }
-  }
-  static void SecondOrder(const BCell<T, LatSet> &cell, std::array<T, LatSet::q> &feq) {
-    const T rho = cell.getRho();
-    const Vector<T, LatSet::d> &u = cell.getVelocity();
-    const T u2 = u.getnorm2();
-    for (int k = 0; k < LatSet::q; ++k) {
-      feq[k] = Order2(k, u, rho, u2);
-    }
-  }
+  // static void SecondOrder(const BCell<T, LatSet> &cell, std::array<T, LatSet::q> &feq) {
+  //   const T rho = cell.getRho();
+  //   const Vector<T, LatSet::d> &u = cell.template get<VELOCITY<T, LatSet::d>>();
+  //   const T u2 = u.getnorm2();
+  //   for (int k = 0; k < LatSet::q; ++k) {
+  //     feq[k] = Order2(k, u, rho, u2);
+  //   }
+  // }
 };
 
 namespace equilibrium {
@@ -107,11 +88,54 @@ struct SecondOrder {
   using T = typename CELL::FloatType;
   using LatSet = typename CELL::LatticeSet;
   using CELLTYPE = CELL;
-  static inline void apply(const CELL &cell, std::array<T, LatSet::q> &feq, T rho,
+
+  static inline T get(int k, const Vector<T, LatSet::d> &u, T rho, T u2) {
+    const T uc = u * LatSet::c[k];
+    return LatSet::w[k] * rho *
+           (T{1} + LatSet::InvCs2 * uc + uc * uc * T{0.5} * LatSet::InvCs4 -
+            LatSet::InvCs2 * u2 * T{0.5});
+  }
+
+  static inline void apply(std::array<T, LatSet::q> &feq, T rho,
                            const Vector<T, LatSet::d> &u) {
     const T u2 = u.getnorm2();
     for (unsigned int k = 0; k < LatSet::q; ++k) {
-      feq[k] = Equilibrium<T, LatSet>::Order2(k, u, rho, u2);
+      feq[k] = get(k, u, rho, u2);
+    }
+  }
+
+  static inline void apply(const CELL &cell, std::array<T, LatSet::q> &feq) {
+    const T rho = cell.template get<RHO<T>>();
+    const Vector<T, LatSet::d> &u = cell.template get<VELOCITY<T, LatSet::d>>();
+    const T u2 = u.getnorm2();
+    for (unsigned int k = 0; k < LatSet::q; ++k) {
+      feq[k] = get(k, u, rho, u2);
+    }
+  }
+};
+
+template <typename CELL>
+struct FirstOrder {
+  using T = typename CELL::FloatType;
+  using LatSet = typename CELL::LatticeSet;
+  using CELLTYPE = CELL;
+
+  static inline T get(int k, const Vector<T, LatSet::d> &u, T rho) {
+    return LatSet::w[k] * rho * (T{1} + LatSet::InvCs2 * (u * LatSet::c[k]));
+  }
+
+  static inline void apply(std::array<T, LatSet::q> &feq, T rho,
+                           const Vector<T, LatSet::d> &u) {
+    for (unsigned int k = 0; k < LatSet::q; ++k) {
+      feq[k] = get(k, u, rho);
+    }
+  }
+
+  static inline void apply(const CELL &cell, std::array<T, LatSet::q> &feq) {
+    const T rho = cell.template get<RHO<T>>();
+    const Vector<T, LatSet::d> &u = cell.template get<VELOCITY<T, LatSet::d>>();
+    for (unsigned int k = 0; k < LatSet::q; ++k) {
+      feq[k] = get(k, u, rho);
     }
   }
 };

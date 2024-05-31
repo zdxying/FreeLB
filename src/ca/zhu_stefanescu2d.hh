@@ -289,9 +289,9 @@ bool ZhuStefanescu2D<T, LatSet>::hasNeighborFlag(int id, std::uint8_t flag) cons
 template <typename T, typename LatSet>
 BlockZhuStefanescu2D<T, LatSet>::BlockZhuStefanescu2D(
   Block2D<T> &geo, BlockField<VectorFieldAOS<T, 2>, T, 2> &veloFM, ZSConverter<T> &convca,
-  BlockRhoLattice<T> &latso, BlockRhoLattice<T> &latth, ScalerField<CAType> &state,
-  ScalerField<T> &fs, ScalerField<T> &delta_fs, ScalerField<T> &curvature,
-  ScalerField<T> &csolids, ScalerField<T> &preexcessc, ScalerField<T> &excessc, T delta,
+  BlockRhoLattice<T> &latso, BlockRhoLattice<T> &latth, ScalarField<CAType> &state,
+  ScalarField<T> &fs, ScalarField<T> &delta_fs, ScalarField<T> &curvature,
+  ScalarField<T> &csolids, ScalarField<T> &preexcessc, ScalarField<T> &excessc, T delta,
   T theta)
     : Geo(geo), ConvCA(convca), Conc(latso.getRhoField()), Temp(latth.getRhoField()),
       delta(delta), Theta(theta),
@@ -299,7 +299,7 @@ BlockZhuStefanescu2D<T, LatSet>::BlockZhuStefanescu2D(
       Tl(latth.getLatRhoInit()), Tl_eq(convca.get_LatTliq(latso.getLatRhoInit())),
       m_l(convca.Lattice_m_Liq), Part_Coef(convca.Part_Coef),
       _Part_Coef(T(1) - convca.Part_Coef), SolidCount(std::size_t(0)),
-      Velocity(veloFM.getField()), State(state), Fs(fs), Delta_Fs(delta_fs),
+      Velocity(veloFM), State(state), Fs(fs), Delta_Fs(delta_fs),
       Curvature(curvature), C_Solids(csolids), PreExcessC(preexcessc), ExcessC(excessc) {
   Delta_Index =
     make_Array<int, LatSet::q>([&](int i) { return LatSet::c[i] * Geo.getProjection(); });
