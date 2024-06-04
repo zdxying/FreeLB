@@ -30,6 +30,7 @@
 
 #include "data_struct/block_lattice.h"
 #include "lbm/equilibrium.h"
+#include "lbm/moment.h"
 #include "utils/alias.h"
 
 // fixed boundary cell structure

@@ -640,6 +640,12 @@ class BlockFieldManager {
     }
   }
 
+  void InitValue(datatype initvalue) {
+    for (BlockField<FieldType, FloatType, Dim>& blockF : _Fields) {
+      blockF.Init(initvalue);
+    }
+  }
+
   template <typename Func>
   void forEach(Func func) {
     int iblock = 0;
@@ -1049,12 +1055,24 @@ class BlockFieldManagerPtrCollection<T, LatSet, TypePack<Fields...>> {
  public:
   static constexpr std::size_t FieldNum = sizeof...(Fields);
 
-  BlockFieldManagerPtrCollection() = default;
+  BlockFieldManagerPtrCollection() : fields() {}
   template <typename First, typename... Rest>
-  BlockFieldManagerPtrCollection(First& first, Rest&... rest)
-      : fields(&first, &rest...) {}
+  BlockFieldManagerPtrCollection(First* first, Rest*... rest)
+      : fields(first, rest...) {}
+  ~BlockFieldManagerPtrCollection() = default;
 
   void Init(Fields&... fieldrefs) { fields = std::make_tuple(&fieldrefs...); }
+
+  template <typename FieldType>
+  static constexpr unsigned int is_at_index() {
+    return is_same_at_index<FieldType, Fields...>::value;
+  }
+  // not real 'add', just assign the valid field pointer to an existing null pointer
+  template <typename FieldType>
+  void addField(BlockFieldManager<FieldType, T, LatSet::d>& field) {
+    // std::get<is_same_at_index<FieldType, Fields...>::value>(fields) = &field;
+    std::get<BlockFieldManager<FieldType, T, LatSet::d>*>(fields) = &field;
+  }
 
   template <typename FieldType>
   auto& getField() {
@@ -1069,7 +1087,9 @@ class BlockFieldManagerPtrCollection<T, LatSet, TypePack<Fields...>> {
 
   template <std::size_t... Is>
   auto get_ith(std::index_sequence<Is...>, int i) {
-    return std::make_tuple(&(std::get<Is>(fields)->getBlockField(i))...);
+    // return std::make_tuple(&(std::get<Is>(fields)->getBlockField(i))...);
+    return std::make_tuple(
+      (std::get<Is>(fields) ? &(std::get<Is>(fields)->getBlockField(i)) : nullptr)...);
   }
   auto get_ith(int i) { return get_ith(std::make_index_sequence<FieldNum>(), i); }
 
@@ -1087,5 +1107,18 @@ struct ExtractFieldPtrs<T, LatSet,
     int i, BlockFieldManagerCollection<T, LatSet, TypePack<Fields...>>& BFMCol,
     BlockFieldManagerPtrCollection<T, LatSet, TypePack<FieldPtrs...>>& BFMPtrCol) {
     return std::tuple_cat(BFMCol.get_ith(i), BFMPtrCol.get_ith(i));
+  }
+};
+
+template <typename T, typename LatSet, typename... Fields>
+struct ExtractFieldPtrs<T, LatSet, TypePack<Fields...>> {
+  static auto getFieldPtrTuple(
+    int i, BlockFieldManagerCollection<T, LatSet, TypePack<Fields...>>& BFMCol) {
+    return BFMCol.get_ith(i);
+  }
+  static auto getFieldPtrTuple(
+    int i, BlockFieldManagerCollection<T, LatSet, TypePack<Fields...>>& BFMCol,
+    BlockFieldManagerPtrCollection<T, LatSet, TypePack<>>& BFMPtrCol) {
+    return BFMCol.get_ith(i);
   }
 };

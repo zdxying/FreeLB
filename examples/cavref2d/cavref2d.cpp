@@ -184,6 +184,7 @@ int main() {
   BlockBoundaryManager BM(&NS_BB, &NS_BBMW);
 
   // define task/ dynamics:
+  // to use refined/multi-level block structure, macroscopic fields should be updated each time step for pop conversion
   // bulk task
   using BulkTask = tmp::Key_TypePair<AABBFlag, collision::BGK_Feq_RhoU<equilibrium::SecondOrder<CELL>, true>>;
   // wall task
@@ -198,9 +199,9 @@ int main() {
   using TaskSelectorRhoU = tmp::TaskSelector<TaskCollectionRhoU, std::uint8_t, CELL>;
 
   // writers
-  vtmwriter::ScalarWriter RhoWriter("Rho", NSLattice.getField<RHO<T>>());
-  vtmwriter::VectorWriter VecWriter("Velocity", NSLattice.getField<VELOCITY<T, 2>>());
-  vtmwriter::vtmWriter<T, LatSet::d> NSWriter("cavityblock2d", Geo);
+  vtmo::ScalarWriter RhoWriter("Rho", NSLattice.getField<RHO<T>>());
+  vtmo::VectorWriter VecWriter("Velocity", NSLattice.getField<VELOCITY<T, 2>>());
+  vtmo::vtmWriter<T, LatSet::d> NSWriter("cavref2d", Geo, 1);
   NSWriter.addWriterSet(RhoWriter, VecWriter);
 
   // count and timer

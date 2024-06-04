@@ -129,6 +129,8 @@ using PopulationField = GenericArrayField<CyclicArray<T>, q>;
 
 // specific field name for access by Cell interface, not alias
 struct RHOBase : public FieldBase<1> {};
+struct TEMPBase : public FieldBase<1> {};
+struct CONCBase : public FieldBase<1> {};
 struct VELOCITYBase : public FieldBase<1> {};
 struct FLAGBase : public FieldBase<1> {};
 struct FORCEBase : public FieldBase<1> {};
@@ -137,6 +139,8 @@ struct CONSTFORCEBase : public FieldBase<1> {};
 struct SCALARCONSTFORCEBase : public FieldBase<1> {};
 
 struct RHOINITBase : public FieldBase<1> {};
+struct TEMPINITBase : public FieldBase<1> {};
+struct CONCINITBase : public FieldBase<1> {};
 struct GBETABase : public FieldBase<1> {};
 template <unsigned int q>
 struct POPBase : public FieldBase<q> {};
@@ -144,6 +148,10 @@ struct POPBase : public FieldBase<q> {};
 
 template <typename T>
 using RHO = GenericField<GenericArray<T>, RHOBase>;
+template <typename T>
+using TEMP = GenericField<GenericArray<T>, TEMPBase>;
+template <typename T>
+using CONC = GenericField<GenericArray<T>, CONCBase>;
 
 template <typename T, unsigned int D>
 using VELOCITY = GenericField<GenericArray<Vector<T, D>>, VELOCITYBase>;
@@ -167,6 +175,10 @@ using POP = GenericField<CyclicArray<T>, POPBase<q>>;
 
 template <typename T>
 using RHOINIT = Array<T, RHOINITBase>;
+template <typename T>
+using TEMPINIT = Array<T, TEMPINITBase>;
+template <typename T>
+using CONCINIT = Array<T, CONCINITBase>;
 
 template <typename T>
 using GBETA = Array<T, GBETABase>;
@@ -177,15 +189,6 @@ class BlockField;
 
 template <typename FieldType, typename FloatType, unsigned int Dim>
 class BlockFieldManager;
-
-template <typename T, typename LatSet>
-using RhoBlockFieldManager = BlockFieldManager<RHO<T>, T, LatSet::d>;
-
-template <typename T, typename LatSet>
-using VelocityBlockFieldManager = BlockFieldManager<VELOCITY<T, LatSet::d>, T, LatSet::d>;
-
-template <typename T, typename LatSet>
-using PopBlockFieldManager = BlockFieldManager<POP<T, LatSet::q>, T, LatSet::d>;
 
 
 namespace CA {

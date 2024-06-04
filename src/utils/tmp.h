@@ -60,11 +60,9 @@ auto make_int_sequence(Func &&f) {
 // key-value pair
 template <auto KeyValue, typename Type>
 struct Key_TypePair {
-  using CELL = typename Type::CELL;
   // key is typically an int value (uint8_t, uint16_t, etc.)
   static constexpr auto key = KeyValue;
   // type is the type of the struct
-  static auto apply(CELL &cell) { return Type::apply(cell); }
   using key_type = decltype(KeyValue);
   using type = Type;
 };
@@ -100,7 +98,7 @@ template <typename TUPLE, typename FlagType, typename CELL, typename KeySequence
 struct SelectTask {
   static void execute(FlagType flag, CELL &cell) {
     if (util::isFlag(flag, KeySequence::first)) {
-      TUPLE::template get<KeySequence::first>::apply(cell);
+      TUPLE::template get<KeySequence::first>::type::apply(cell);
     } else if constexpr (KeySequence::rest_size > 0) {
       SelectTask<TUPLE, FlagType, CELL, typename KeySequence::rest>::execute(flag, cell);
     }
@@ -115,25 +113,97 @@ struct TaskSelector {
   }
 };
 
-// a simple task executor
-template <typename Type>
-struct TaskExecutor {
-  using CELL = typename Type::CELL;
-  static void Execute(CELL &cell) { Type::apply(cell); }
+// helper struct to achieve if-else structure for coupled tasks
+template <typename TUPLE, typename FlagType, typename CELL0, typename CELL1,
+          typename KeySequence>
+struct SelectCoupledTask {
+  static void execute(FlagType flag, CELL0 &cell0, CELL1 &cell1) {
+    if (util::isFlag(flag, KeySequence::first)) {
+      TUPLE::template get<KeySequence::first>::type::apply(cell0, cell1);
+    } else if constexpr (KeySequence::rest_size > 0) {
+      SelectCoupledTask<TUPLE, FlagType, CELL0, CELL1,
+                        typename KeySequence::rest>::execute(flag, cell0, cell1);
+    }
+  }
+};
+
+template <typename TUPLE, typename FlagType, typename CELL0, typename CELL1>
+struct CoupledTaskSelector {
+  static void Execute(FlagType flag, CELL0 &cell0, CELL1 &cell1) {
+    SelectCoupledTask<TUPLE, FlagType, CELL0, CELL1,
+                      typename TUPLE::make_key_sequence>::execute(flag, cell0, cell1);
+  }
 };
 
 
 }  // namespace tmp
 
+// TASK SELECTOR
+template <typename FlagType, typename CELL, typename FirstTask, typename... RestTasks>
+struct SelectTask {
+  static void execute(FlagType flag, CELL &cell) {
+    if (util::isFlag(flag, FirstTask::key)) {
+      FirstTask::type::apply(cell);
+    } else if constexpr (sizeof...(RestTasks) > 0) {
+      SelectTask<FlagType, CELL, RestTasks...>::execute(flag, cell);
+    }
+  }
+};
+
+template <typename FlagType, typename CELL, typename FirstTask>
+struct SelectTask<FlagType, CELL, FirstTask>{
+  static void execute(FlagType flag, CELL &cell) {
+    if (util::isFlag(flag, FirstTask::key)) {
+      FirstTask::type::apply(cell);
+    }
+  }
+};
+
+template <typename FlagType, typename CELL, typename... Tasks>
+struct TaskSelector {
+  static void Execute(FlagType flag, CELL &cell) {
+    SelectTask<FlagType, CELL, Tasks...>::execute(flag, cell);
+  }
+};
+
+// COUPLED TASK SELECTOR
+template <typename FlagType, typename CELL0, typename CELL1, typename FirstTask, typename... RestTasks>
+struct SelectCoupledTask {
+  static void execute(FlagType flag, CELL0 &cell0, CELL1 &cell1) {
+    if (util::isFlag(flag, FirstTask::key)) {
+      FirstTask::type::apply(cell0, cell1);
+    } else if constexpr (sizeof...(RestTasks) > 0) {
+      SelectCoupledTask<FlagType, CELL0, CELL1, RestTasks...>::execute(flag, cell0, cell1);
+    }
+  }
+};
+
+template <typename FlagType, typename CELL0, typename CELL1, typename FirstTask>
+struct SelectCoupledTask<FlagType, CELL0, CELL1, FirstTask>{
+  static void execute(FlagType flag, CELL0 &cell0, CELL1 &cell1) {
+    if (util::isFlag(flag, FirstTask::key)) {
+      FirstTask::type::apply(cell0, cell1);
+    }
+  }
+};
+
+template <typename FlagType, typename CELL0, typename CELL1, typename... Tasks>
+struct CoupledTaskSelector {
+  static void Execute(FlagType flag, CELL0 &cell0, CELL1 &cell1) {
+    SelectCoupledTask<FlagType, CELL0, CELL1, Tasks...>::execute(flag, cell0, cell1);
+  }
+};
 
 template <typename... Parameter>
 struct TypePack {
   using types = std::tuple<Parameter...>;
+  static constexpr std::size_t size = sizeof...(Parameter);
 };
 
 template <typename... Params1, typename... Params2>
 struct TypePack<TypePack<Params1...>, TypePack<Params2...>> {
   using types = std::tuple<Params1..., Params2...>;
+  static constexpr std::size_t size = sizeof...(Params1) + sizeof...(Params2);
 };
 
 
@@ -148,6 +218,22 @@ struct isTypeInTuple<Type, TypePack<Parameter...>> {
   static constexpr bool value = (std::is_same_v<Type, Parameter> || ...);
 };
 
+template <typename Type, typename... Types>
+struct isOneOf {
+  static constexpr bool value = (std::is_same_v<Type, Types> || ...);
+};
+
+template <typename Type, typename First, typename... Rest>
+struct is_same_at_index {
+  static constexpr unsigned int value =
+    std::is_same_v<Type, First> ? 0 : 1 + is_same_at_index<Type, Rest...>::value;
+};
+
+template <typename Type, typename First>
+struct is_same_at_index<Type, First>{
+  static constexpr unsigned int value = 0;
+};
+
 
 template <typename Pack>
 struct ExtractFieldPack;
@@ -159,9 +245,42 @@ struct ExtractFieldPack<TypePack<TypePack<Params1...>, TypePack<Params2...>>> {
   using mergedpack = TypePack<Params1..., Params2...>;
 };
 
+template <typename... Params1>
+struct ExtractFieldPack<TypePack<Params1...>> {
+  using pack1 = TypePack<Params1...>;
+  using pack2 = TypePack<>;
+  using mergedpack = TypePack<Params1...>;
+};
+
 template <typename... Parameter>
 struct ValuePack {
   std::tuple<Parameter...> values;
 
   ValuePack(Parameter... value) : values(value...) {}
+};
+
+
+template <typename T, typename Pack>
+struct GetGenericRhoType {
+  using type = std::conditional_t<
+    isTypeInTuple<RHO<T>, Pack>::value, RHO<T>,
+    std::conditional_t<
+      isTypeInTuple<TEMP<T>, Pack>::value, TEMP<T>,
+      std::conditional_t<isTypeInTuple<CONC<T>, Pack>::value, CONC<T>, void>>>;
+};
+
+template <typename T, typename Pack>
+struct FindGenericRhoType;
+
+template <typename T, typename First, typename... Rest>
+struct FindGenericRhoType<T, TypePack<First, Rest...>> {
+  using type =
+    std::conditional_t<isOneOf<First, RHO<T>, TEMP<T>, CONC<T>>::value, First,
+                       typename FindGenericRhoType<T, TypePack<Rest...>>::type>;
+};
+
+template <typename T, typename First>
+struct FindGenericRhoType<T, TypePack<First>> {
+  using type =
+    std::conditional_t<isOneOf<First, RHO<T>, TEMP<T>, CONC<T>>::value, First, void>;
 };

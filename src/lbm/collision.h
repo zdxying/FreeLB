@@ -36,15 +36,18 @@ struct BGK_Feq_RhoU {
   using T = typename CELL::FloatType;
   using LatSet = typename CELL::LatticeSet;
   using equilibriumscheme = EquilibriumScheme;
+  using GenericRho = typename CELL::GenericRho;
 
   static void apply(CELL& cell) {
     // update macroscopic variables
     T rho{};
     Vector<T, LatSet::d> u{};
     moment::template rhou<CELL, WriteToField>::apply(cell, rho, u);
+    // moment::template rhou<CELL, WriteToField>::apply(cell);
     // equilibrium distribution function
     std::array<T, LatSet::q> feq{};
     EquilibriumScheme::apply(feq, rho, u);
+    // EquilibriumScheme::apply(feq, cell);
     // BGK collision
     const T omega = cell.getOmega();
     const T _omega = cell.get_Omega();
@@ -52,7 +55,6 @@ struct BGK_Feq_RhoU {
       cell[i] = omega * feq[i] + _omega * cell[i];
     }
   }
-  static void apply(CELL& cell, const Vector<T, LatSet::d>& force) {}
 };
 
 // a typical BGK collision process with:
@@ -63,28 +65,12 @@ struct BGK_Feq {
   using T = typename CELL::FloatType;
   using LatSet = typename CELL::LatticeSet;
   using equilibriumscheme = EquilibriumScheme;
+  using GenericRho = typename CELL::GenericRho;
 
   static void apply(CELL& cell) {
     // equilibrium distribution function
     std::array<T, LatSet::q> feq{};
-    EquilibriumScheme::apply(feq, cell.template get<RHO<T>>(),
-                             cell.template get<VELOCITY<T, LatSet::d>>());
-    // BGK collision
-    const T omega = cell.getOmega();
-    const T _omega = cell.get_Omega();
-    for (unsigned int i = 0; i < LatSet::q; ++i) {
-      cell[i] = omega * feq[i] + _omega * cell[i];
-    }
-  }
-};
-
-// a typical BGK collision process
-template <typename CELL, bool WriteToField = false>
-struct bgk {
-  using T = typename CELL::FloatType;
-  using LatSet = typename CELL::LatticeSet;
-
-  static void apply(CELL& cell, const std::array<T, LatSet::q>& feq) {
+    EquilibriumScheme::apply(feq, cell);
     // BGK collision
     const T omega = cell.getOmega();
     const T _omega = cell.get_Omega();
@@ -105,6 +91,7 @@ struct BGKForce_Feq_RhoU {
   using T = typename CELL::FloatType;
   using LatSet = typename CELL::LatticeSet;
   using equilibriumscheme = EquilibriumScheme;
+  using GenericRho = typename CELL::GenericRho;
 
   static void apply(CELL& cell) {
     // update macroscopic variables
@@ -114,7 +101,7 @@ struct BGKForce_Feq_RhoU {
       cell, ForceScheme::getForce(cell), rho, u);
     // compute force term
     std::array<T, LatSet::q> fi{};
-    ForceScheme::apply(cell, fi);
+    ForceScheme::apply(u, ForceScheme::getForce(cell), fi);
     // equilibrium distribution function
     std::array<T, LatSet::q> feq{};
     EquilibriumScheme::apply(feq, rho, u);
@@ -128,6 +115,70 @@ struct BGKForce_Feq_RhoU {
     }
   }
 };
+
+// a typical BGK collision process with:
+// equilibrium distribution function calculated
+// force term
+template <typename EquilibriumScheme, typename ForceScheme>
+struct BGKForce_Feq {
+  using CELL = typename EquilibriumScheme::CELLTYPE;
+  using T = typename CELL::FloatType;
+  using LatSet = typename CELL::LatticeSet;
+  using equilibriumscheme = EquilibriumScheme;
+  using GenericRho = typename CELL::GenericRho;
+
+  static void apply(CELL& cell) {
+    // compute force term
+    std::array<T, LatSet::q> fi{};
+    ForceScheme::apply(cell, fi);
+    // equilibrium distribution function
+    std::array<T, LatSet::q> feq{};
+    EquilibriumScheme::apply(feq, cell);
+    // BGK collision
+    const T omega = cell.getOmega();
+    const T _omega = cell.get_Omega();
+    const T fomega = cell.getfOmega();
+
+    for (unsigned int i = 0; i < LatSet::q; ++i) {
+      cell[i] = omega * feq[i] + _omega * cell[i] + fomega * fi[i];
+    }
+  }
+};
+
+// a typical BGK collision process with:
+// macroscopic variables updated
+// equilibrium distribution function calculated
+// force term
+template <typename EquilibriumScheme, typename SOURCE, bool WriteToField = false>
+struct BGKSource_Feq_Rho {
+  using CELL = typename EquilibriumScheme::CELLTYPE;
+  using T = typename CELL::FloatType;
+  using LatSet = typename CELL::LatticeSet;
+  using equilibriumscheme = EquilibriumScheme;
+  using GenericRho = typename CELL::GenericRho;
+
+  static void apply(CELL& cell) {
+    // update macroscopic variables
+    T rho{};
+    const Vector<T, LatSet::d>& u = cell.template get<VELOCITY<T, LatSet::d>>();
+    const auto source = cell.template get<SOURCE>();
+    moment::template sourceRho<CELL, WriteToField>::apply(cell, rho, source);
+    // equilibrium distribution function
+    std::array<T, LatSet::q> feq{};
+    EquilibriumScheme::apply(feq, rho, u);
+    // BGK collision
+    const T omega = cell.getOmega();
+    const T _omega = cell.get_Omega();
+    const T fomega = cell.getfOmega();
+
+    for (unsigned int i = 0; i < LatSet::q; ++i) {
+      cell[i] = omega * feq[i] + _omega * cell[i] + fomega * source * LatSet::w[i];
+    }
+  }
+};
+
+
+// old version of BGK collision
 
 template <typename T, typename LatSet>
 struct BGK {

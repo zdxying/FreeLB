@@ -36,6 +36,9 @@ class BasicLattice;
 template <typename T, typename LatSet, typename TypePack>
 class BlockLattice;
 
+template <typename T, typename LatSet, typename TypePack>
+class BlockLatticeBase;
+
 template <typename T, typename LatSet>
 class BasicCell {
  protected:
@@ -109,25 +112,42 @@ class BCell final : public BasicCell<T, LatSet> {
   using FloatType = T;
   using LatticeSet = LatSet;
   using BLOCKLATTICE = BlockLattice<T, LatSet, TypePack>;
+  using GenericRho = typename BLOCKLATTICE::GenericRho;
 
   BCell(std::size_t id, BlockLattice<T, LatSet, TypePack>& lat)
       : Id(id), Lat(lat), BasicCell<T, LatSet>(id, lat) {}
 
   template <typename FieldType, unsigned int i = 0>
   auto& get() {
-    return Lat.template getField<FieldType>().template get<i>(Id);
+    if constexpr (FieldType::isField) {
+      return Lat.template getField<FieldType>().template get<i>(Id);
+    } else {
+      return Lat.template getField<FieldType>().template get<i>();
+    }
   }
   template <typename FieldType, unsigned int i = 0>
   const auto& get() const {
-    return Lat.template getField<FieldType>().template get<i>(Id);
+    if constexpr (FieldType::isField) {
+      return Lat.template getField<FieldType>().template get<i>(Id);
+    } else {
+      return Lat.template getField<FieldType>().template get<i>();
+    }
   }
   template <typename FieldType>
   auto& get(unsigned int i) {
-    return Lat.template getField<FieldType>().get(Id, i);
+    if constexpr (FieldType::isField) {
+      return Lat.template getField<FieldType>().get(Id, i);
+    } else {
+      return Lat.template getField<FieldType>().get(i);
+    }
   }
   template <typename FieldType>
   const auto& get(unsigned int i) const {
-    return Lat.template getField<FieldType>().get(Id, i);
+    if constexpr (FieldType::isField) {
+      return Lat.template getField<FieldType>().get(Id, i);
+    } else {
+      return Lat.template getField<FieldType>().get(i);
+    }
   }
 
   BCell<T, LatSet, TypePack> getNeighbor(int i) const {
@@ -151,11 +171,70 @@ class BCell final : public BasicCell<T, LatSet> {
   inline T get_Omega() const { return Lat.get_Omega(); }
   // Lat.getfOmega()
   inline T getfOmega() const { return Lat.getfOmega(); }
+};
 
-  const Vector<T, LatSet::d>& getVelocity() const {
-    return Lat.template getField<VELOCITY<T, LatSet::d>>().get(Id);
+// a generic cell interface for block lattice structure, can't access pops through []
+// operator
+template <typename T, typename LatSet, typename TypePack>
+class GenericCell {
+ protected:
+  // global cell index to access field data and distribution functions
+  std::size_t Id;
+  // reference to lattice
+  BlockLatticeBase<T, LatSet, TypePack>& Lat;
+
+ public:
+  using FloatType = T;
+  using LatticeSet = LatSet;
+  using BLOCKLATTICE = BlockLatticeBase<T, LatSet, TypePack>;
+
+  using GenericRho = typename BLOCKLATTICE::GenericRho;
+
+  GenericCell(std::size_t id, BlockLatticeBase<T, LatSet, TypePack>& lat)
+      : Id(id), Lat(lat) {}
+
+  template <typename FieldType, unsigned int i = 0>
+  auto& get() {
+    if constexpr (FieldType::isField) {
+      return Lat.template getField<FieldType>().template get<i>(Id);
+    } else {
+      return Lat.template getField<FieldType>().template get<i>();
+    }
   }
-  Vector<T, LatSet::d>& getVelocity() {
-    return Lat.template getField<VELOCITY<T, LatSet::d>>().get(Id);
+  template <typename FieldType, unsigned int i = 0>
+  const auto& get() const {
+    if constexpr (FieldType::isField) {
+      return Lat.template getField<FieldType>().template get<i>(Id);
+    } else {
+      return Lat.template getField<FieldType>().template get<i>();
+    }
   }
+  template <typename FieldType>
+  auto& get(unsigned int i) {
+    if constexpr (FieldType::isField) {
+      return Lat.template getField<FieldType>().get(Id, i);
+    } else {
+      return Lat.template getField<FieldType>().get(i);
+    }
+  }
+  template <typename FieldType>
+  const auto& get(unsigned int i) const {
+    if constexpr (FieldType::isField) {
+      return Lat.template getField<FieldType>().get(Id, i);
+    } else {
+      return Lat.template getField<FieldType>().get(i);
+    }
+  }
+
+  GenericCell<T, LatSet, TypePack> getNeighbor(int i) const {
+    return GenericCell<T, LatSet, TypePack>(Id + Lat.getDelta_Index()[i], Lat);
+  }
+  GenericCell<T, LatSet, TypePack> getNeighbor(
+    const Vector<int, LatSet::d>& direction) const {
+    return GenericCell<T, LatSet, TypePack>(Id + direction * Lat.getProjection());
+  }
+
+  // get cell index
+  std::size_t getId() const { return Id; }
+  std::size_t getNeighborId(int i) const { return Id + Lat.getDelta_Index()[i]; }
 };

@@ -114,21 +114,23 @@ template <typename CELL>
 struct anti_simple {
   using T = typename CELL::FloatType;
   using LatSet = typename CELL::LatticeSet;
+  using GenericRho = typename CELL::GenericRho;
 
   static inline void apply(CELL &cell, unsigned int k) {
     cell[k] =
-      2 * cell.template get<RHO<T>>() * LatSet::w[k] - cell.getPrevious(LatSet::opp[k]);
+      2 * cell.template get<GenericRho>() * LatSet::w[k] - cell.getPrevious(LatSet::opp[k]);
   }
 };
 template <typename CELL>
 struct anti_O1 {
   using T = typename CELL::FloatType;
   using LatSet = typename CELL::LatticeSet;
+  using GenericRho = typename CELL::GenericRho;
 
   static inline void apply(CELL &cell, unsigned int k) {
     cell[k] =
       2 * equilibrium::FirstOrder<CELL>::get(
-            k, cell.template get<VELOCITY<T, LatSet::d>>(), cell.template get<RHO<T>>()) -
+            k, cell.template get<VELOCITY<T, LatSet::d>>(), cell.template get<GenericRho>()) -
       cell.getPrevious(LatSet::opp[k]);
   }
 };
@@ -136,11 +138,12 @@ template <typename CELL>
 struct anti_O2 {
   using T = typename CELL::FloatType;
   using LatSet = typename CELL::LatticeSet;
+  using GenericRho = typename CELL::GenericRho;
 
   static inline void apply(CELL &cell, unsigned int k) {
     cell[k] =
       2 * equilibrium::SecondOrder<CELL>::get(
-            k, cell.template get<VELOCITY<T, LatSet::d>>(), cell.template get<RHO<T>>(),
+            k, cell.template get<VELOCITY<T, LatSet::d>>(), cell.template get<GenericRho>(),
             cell.template get<VELOCITY<T, LatSet::d>>().getnorm2()) -
       cell.getPrevious(LatSet::opp[k]);
   }
@@ -149,6 +152,7 @@ template <typename CELL>
 struct anti_pressure {
   using T = typename CELL::FloatType;
   using LatSet = typename CELL::LatticeSet;
+  using GenericRho = typename CELL::GenericRho;
 
   static inline void apply(CELL &cell, unsigned int k) {
     // get the interpolated velocity
@@ -156,7 +160,7 @@ struct anti_pressure {
       cell.template get<VELOCITY<T, LatSet::d>>() +
       T{0.5} * (cell.template get<VELOCITY<T, LatSet::d>>() -
                 cell.getNeighbor(LatSet::opp[k]).template get<VELOCITY<T, LatSet::d>>());
-    cell[k] = 2 * cell.template get<RHO<T>>() * LatSet::w[k] *
+    cell[k] = 2 * cell.template get<GenericRho>() * LatSet::w[k] *
                 (T{1} + std::pow((uwall * LatSet::c[k]), 2) * T{0.5} * LatSet::InvCs4 -
                  uwall.getnorm2() * T(0.5) * LatSet::InvCs2) -
               cell.getPrevious(LatSet::opp[k]);
@@ -167,16 +171,17 @@ template <typename CELL>
 struct movingwall {
   using T = typename CELL::FloatType;
   using LatSet = typename CELL::LatticeSet;
+  using GenericRho = typename CELL::GenericRho;
 
   static inline void apply(CELL &cell, unsigned int k) {
     cell[k] = cell.getPrevious(LatSet::opp[k]) +
-              2 * LatSet::InvCs2 * LatSet::w[k] * cell.template get<RHO<T>>() *
+              2 * LatSet::InvCs2 * LatSet::w[k] * cell.template get<GenericRho>() *
                 (cell.template get<VELOCITY<T, LatSet::d>>() * LatSet::c[k]);
   }
   static inline void apply(CELL &cell, unsigned int k,
                            const Vector<T, LatSet::d> &wall_velocity) {
     cell[k] = cell.getPrevious(LatSet::opp[k]) - 2 * LatSet::InvCs2 * LatSet::w[k] *
-                                                   cell.template get<RHO<T>>() *
+                                                   cell.template get<GenericRho>() *
                                                    (wall_velocity * LatSet::c[k]);
   }
 };

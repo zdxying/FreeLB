@@ -89,6 +89,8 @@ struct SecondOrder {
   using LatSet = typename CELL::LatticeSet;
   using CELLTYPE = CELL;
 
+  using GenericRho = typename CELL::GenericRho;
+
   static inline T get(int k, const Vector<T, LatSet::d> &u, T rho, T u2) {
     const T uc = u * LatSet::c[k];
     return LatSet::w[k] * rho *
@@ -104,8 +106,8 @@ struct SecondOrder {
     }
   }
 
-  static inline void apply(const CELL &cell, std::array<T, LatSet::q> &feq) {
-    const T rho = cell.template get<RHO<T>>();
+  static inline void apply(std::array<T, LatSet::q> &feq, const CELL &cell) {
+    const T rho = cell.template get<GenericRho>();
     const Vector<T, LatSet::d> &u = cell.template get<VELOCITY<T, LatSet::d>>();
     const T u2 = u.getnorm2();
     for (unsigned int k = 0; k < LatSet::q; ++k) {
@@ -120,6 +122,8 @@ struct FirstOrder {
   using LatSet = typename CELL::LatticeSet;
   using CELLTYPE = CELL;
 
+  using GenericRho = typename CELL::GenericRho;
+
   static inline T get(int k, const Vector<T, LatSet::d> &u, T rho) {
     return LatSet::w[k] * rho * (T{1} + LatSet::InvCs2 * (u * LatSet::c[k]));
   }
@@ -131,8 +135,8 @@ struct FirstOrder {
     }
   }
 
-  static inline void apply(const CELL &cell, std::array<T, LatSet::q> &feq) {
-    const T rho = cell.template get<RHO<T>>();
+  static inline void apply(std::array<T, LatSet::q> &feq, const CELL &cell) {
+    const T rho = cell.template get<GenericRho>();
     const Vector<T, LatSet::d> &u = cell.template get<VELOCITY<T, LatSet::d>>();
     for (unsigned int k = 0; k < LatSet::q; ++k) {
       feq[k] = get(k, u, rho);

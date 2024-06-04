@@ -21,7 +21,6 @@
 #pragma once
 
 #include "ca/zhu_stefanescu2d.h"
-#include "zhu_stefanescu2d.h"
 
 namespace CA {
 template <typename T, typename LatSet>
@@ -132,8 +131,7 @@ void ZhuStefanescu2D<T, LatSet>::UpdateDeltaFs() {
     if (deltaf > 1) {
       const Vector<T, 2> &vox = Geo.getVoxel(id);
       std::cout << "error: at (" << vox[0] << ", " << vox[1] << "), id = " << id
-                << " ,deltaf = " << deltaf << ",\t"
-                << "Ceq = " << C_eq << ",\t"
+                << " ,deltaf = " << deltaf << ",\t" << "Ceq = " << C_eq << ",\t"
                 << "Cl = " << lbmSO.getRho(id) << std::endl;
       exit(-1);
     }
@@ -148,9 +146,8 @@ T ZhuStefanescu2D<T, LatSet>::getC_eq(int id) {
   if (Ceq > 1 || Ceq < 0) {
     const Vector<T, 2> &vox = Geo.getVoxel(id);
     std::cout << "error: at (" << vox[0] << ", " << vox[1] << "), id = " << id
-              << " ,Ceq = " << Ceq << ",\t"
-              << "Tl_eq - Tl = " << Tl_eq - lbmTH.getRho(id) << ",\t"
-              << "K = " << Curvature.get(id) << ",\t"
+              << " ,Ceq = " << Ceq << ",\t" << "Tl_eq - Tl = " << Tl_eq - lbmTH.getRho(id)
+              << ",\t" << "K = " << Curvature.get(id) << ",\t"
               << "anisotropy = " << getanisotropy(id) << ",\t"
               << "GT * Curvature.get(id) * getanisotropy(id) = "
               << GT * Curvature.get(id) * getanisotropy(id) << std::endl;
@@ -282,28 +279,25 @@ bool ZhuStefanescu2D<T, LatSet>::hasNeighborFlag(int id, std::uint8_t flag) cons
   return false;
 }
 
+
 // ------------------------------------------------------------------
 // ------------------Block Zhu-Stefanescu 2D-------------------------
 // ------------------------------------------------------------------
 
+
 template <typename T, typename LatSet>
-BlockZhuStefanescu2D<T, LatSet>::BlockZhuStefanescu2D(
-  Block2D<T> &geo, BlockField<VectorFieldAOS<T, 2>, T, 2> &veloFM, ZSConverter<T> &convca,
-  BlockRhoLattice<T> &latso, BlockRhoLattice<T> &latth, ScalarField<CAType> &state,
-  ScalarField<T> &fs, ScalarField<T> &delta_fs, ScalarField<T> &curvature,
-  ScalarField<T> &csolids, ScalarField<T> &preexcessc, ScalarField<T> &excessc, T delta,
-  T theta)
-    : Geo(geo), ConvCA(convca), Conc(latso.getRhoField()), Temp(latth.getRhoField()),
+template <typename... FIELDPTRS>
+BlockZhuStefanescu2D<T, LatSet>::BlockZhuStefanescu2D(Block2D<T> &geo,
+                                                      ZSConverter<T> &convca,
+                                                      std::tuple<FIELDPTRS...> fieldptrs,
+                                                      T delta, T theta)
+    : BlockLatticeBase<T, LatSet, ALLFIELDS<T>>(geo, fieldptrs), ConvCA(convca),
       delta(delta), Theta(theta),
-      GT(convca.Lattice_GT_Coef * pow(2, int(geo.getLevel()))), C0(latso.getLatRhoInit()),
-      Tl(latth.getLatRhoInit()), Tl_eq(convca.get_LatTliq(latso.getLatRhoInit())),
-      m_l(convca.Lattice_m_Liq), Part_Coef(convca.Part_Coef),
-      _Part_Coef(T(1) - convca.Part_Coef), SolidCount(std::size_t(0)),
-      Velocity(veloFM), State(state), Fs(fs), Delta_Fs(delta_fs),
-      Curvature(curvature), C_Solids(csolids), PreExcessC(preexcessc), ExcessC(excessc) {
-  Delta_Index =
-    make_Array<int, LatSet::q>([&](int i) { return LatSet::c[i] * Geo.getProjection(); });
-  Interface.reserve(4 * (Geo.getNx() + Geo.getNy()));
+      GT(convca.Lattice_GT_Coef * pow(2, int(geo.getLevel()))), m_l(convca.Lattice_m_Liq),
+      Part_Coef(convca.Part_Coef), _Part_Coef(T(1) - convca.Part_Coef),
+      SolidCount(std::size_t(0)) {
+  Tl_eq = ConvCA.get_LatTliq(this->template getField<CONCINIT<T>>().get());
+  Interface.reserve(4 * (this->getNx() + this->getNy()));
 }
 
 template <typename T, typename LatSet>
@@ -311,24 +305,17 @@ void BlockZhuStefanescu2D<T, LatSet>::Setup(std::size_t id, int num) {
   if (num == 0) {
     return;
   }
-
-  std::cout << "[Zhu-Stefanescu 2D CA]" << std::endl;
-  // get preferred growth angle to x-axis
-  std::cout << "preferred growth angle: " << Theta / M_PI << " Pi" << std::endl;
-  // get initial undercooling
-  T deltaT = Tl_eq - Tl;
-  std::cout << "Initial undercooling: " << deltaT << " | "
-            << ConvCA.TempConv.getPhysDTemp(deltaT) << std::endl;
-  Vector<int, 2> vox = Geo.getLoc(id);
+  Vector<int, 2> vox = this->BlockGeo.getLoc(id);
   // set to solid phase
-  if (util::isFlag(State.get(id), CAType::Boundary)) {
+  if (util::isFlag(this->template getField<STATE>().get(id), CAType::Boundary)) {
     std::cout << "Warning: Setup at (" << vox[0] << ", " << vox[1]
               << "), CAType = Boundary" << std::endl;
   } else {
-    State.SetField(id, CAType::Solid);
-    Fs.SetField(id, T(1));
-    Velocity.SetField(id, Vector<T, 2>{});
-    Conc.SetField(id, Conc.get(id) * Part_Coef);
+    this->template getField<STATE>().SetField(id, CAType::Solid);
+    this->template getField<FS<T>>().SetField(id, T(1));
+    this->template getField<VELOCITY<T, 2>>().SetField(id, Vector<T, 2>{});
+    this->template getField<CONC<T>>().SetField(
+      id, this->template getField<CONC<T>>().get(id) * Part_Coef);
     std::cout << "Setup at (" << vox[0] << ", " << vox[1] << "), id = " << id
               << " succeeded" << std::endl;
   }
@@ -336,12 +323,12 @@ void BlockZhuStefanescu2D<T, LatSet>::Setup(std::size_t id, int num) {
   // num neighbors
   int count = 0;
   for (int i = 0; i < num; i++) {
-    std::size_t idn = id + Delta_Index[i];
-    Vector<T, 2> loc_t = Geo.getLoc_t(idn);
-    if (Geo.isInside(loc_t)) {
-      if (util::isFlag(State.get(idn), CAType::Fluid)) {
-        State.SetField(idn, CAType::Interface);
-        Velocity.SetField(idn, Vector<T, 2>{});
+    std::size_t idn = id + this->Delta_Index[i];
+    Vector<T, 2> loc_t = this->BlockGeo.getLoc_t(idn);
+    if (this->BlockGeo.isInside(loc_t)) {
+      if (util::isFlag(this->template getField<STATE>().get(idn), CAType::Fluid)) {
+        this->template getField<STATE>().SetField(idn, CAType::Interface);
+        this->template getField<VELOCITY<T, 2>>().SetField(idn, Vector<T, 2>{});
         Interface.push_back(idn);
         count++;
       }
@@ -357,19 +344,21 @@ template <typename T, typename LatSet>
 void BlockZhuStefanescu2D<T, LatSet>::UpdateInterface() {
   Interface.clear();
   // only update inner cells
-  for (int j = Geo.getOverlap(); j < Geo.getNy() - Geo.getOverlap(); ++j) {
-    for (int i = Geo.getOverlap(); i < Geo.getNx() - Geo.getOverlap(); ++i) {
-      std::size_t id = i + j * Geo.getNx();
-      if (util::isFlag(State.get(id), CAType::Interface)) Interface.push_back(id);
+  for (int j = this->getOverlap(); j < this->getNy() - this->getOverlap(); ++j) {
+    for (int i = this->getOverlap(); i < this->getNx() - this->getOverlap(); ++i) {
+      std::size_t id = i + j * this->getNx();
+      if (util::isFlag(this->template getField<STATE>().get(id), CAType::Interface))
+        Interface.push_back(id);
     }
   }
   // clear excessC
-  ExcessC.Init(T(0));
+  this->template getField<EXCESSC<T>>().Init(T(0));
 }
 
 template <typename T, typename LatSet>
 void BlockZhuStefanescu2D<T, LatSet>::UpdateCurvature(T limit) {
-  FDM2D<T> FDM(Geo.getNx(), Geo.getNy(), Fs.getField(0));
+  FDM2D<T> FDM(this->getNx(), this->getNy(),
+               this->template getField<FS<T>>().getField(0));
   for (std::size_t id : Interface) {
     T px = FDM.p_x(id);
     T py = FDM.p_y(id);
@@ -380,7 +369,7 @@ void BlockZhuStefanescu2D<T, LatSet>::UpdateCurvature(T limit) {
     if (K_ > T(limit)) K_ = T(limit);
     if (K_ < T(-limit)) K_ = T(-limit);
     // set K
-    Curvature.SetField(id, K_);
+    this->template getField<CURVATURE<T>>().SetField(id, K_);
   }
 }
 
@@ -388,15 +377,16 @@ template <typename T, typename LatSet>
 void BlockZhuStefanescu2D<T, LatSet>::UpdateDeltaFs() {
   for (std::size_t id : Interface) {
     T C_eq = getC_eq(id);
-    T deltaf = (C_eq - Conc.get(id)) / (C_eq * _Part_Coef);
+    T deltaf = (C_eq - this->template getField<CONC<T>>().get(id)) / (C_eq * _Part_Coef);
     //
     if (deltaf > 1) {
-      Vector<int, 2> vox = Geo.getLoc(id);
-      Vector<T, 2> global_loc = Geo.getVoxel(vox);
+      Vector<int, 2> vox = this->BlockGeo.getLoc(id);
+      Vector<T, 2> global_loc = this->BlockGeo.getVoxel(vox);
       std::cerr << "[BlockCA2d] Error: at (" << global_loc[0] << ", " << global_loc[1]
                 << "), Index: (" << vox[0] << ", " << vox[1] << "), id: " << id
-                << ", blockid: " << Geo.getBlockId() << "\n deltaf: " << deltaf
-                << ", Ceq: " << C_eq << ", Cl: " << Conc.get(id) << std::endl;
+                << ", blockid: " << this->BlockGeo.getBlockId() << "\n deltaf: " << deltaf
+                << ", Ceq: " << C_eq
+                << ", Cl: " << this->template getField<CONC<T>>().get(id) << std::endl;
 #ifndef _OPENMP
       throw std::runtime_error("DeltaF Error");
 #else
@@ -404,23 +394,27 @@ void BlockZhuStefanescu2D<T, LatSet>::UpdateDeltaFs() {
 #endif
     }
     deltaf = deltaf < 0 ? 0 : deltaf;
-    Delta_Fs.SetField(id, deltaf);
+    this->template getField<DELTAFS<T>>().SetField(id, deltaf);
   }
 }
 
 template <typename T, typename LatSet>
 T BlockZhuStefanescu2D<T, LatSet>::getC_eq(std::size_t id) {
-  T Ceq =
-    C0 + ((Tl_eq - Temp.get(id)) - GT * Curvature.get(id) * getanisotropy(id)) / m_l;
+  T Ceq = this->template getField<RHOINIT<T>>().get() +
+          ((Tl_eq - this->template getField<TEMP<T>>().get(id)) -
+           GT * this->template getField<CURVATURE<T>>().get(id) * getanisotropy(id)) /
+            m_l;
   if (Ceq > 1 || Ceq < 0) {
-    Vector<int, 2> vox = Geo.getLoc(id);
-    Vector<T, 2> global_loc = Geo.getVoxel(vox);
+    Vector<int, 2> vox = this->BlockGeo.getLoc(id);
+    Vector<T, 2> global_loc = this->BlockGeo.getVoxel(vox);
     std::cerr << "[BlockCA2d] Error: at (" << global_loc[0] << ", " << global_loc[1]
               << "), Index: (" << vox[0] << ", " << vox[1] << "), id: " << id
-              << ", blockid: " << Geo.getBlockId() << "\n Ceq: " << Ceq
-              << ", Tl_eq - Tl: " << Tl_eq - Temp.get(id) << ", K: " << Curvature.get(id)
+              << ", blockid: " << this->BlockGeo.getBlockId() << "\n Ceq: " << Ceq
+              << ", Tl_eq - Tl: " << Tl_eq - this->template getField<TEMP<T>>().get(id)
+              << ", K: " << this->template getField<CURVATURE<T>>().get(id)
               << ", anisotropy: " << getanisotropy(id) << ", GT * Curv * anisotropy: "
-              << GT * Curvature.get(id) * getanisotropy(id) << std::endl;
+              << GT * this->template getField<CURVATURE<T>>().get(id) * getanisotropy(id)
+              << std::endl;
 #ifndef _OPENMP
     throw std::runtime_error("Ceq Error");
 #else
@@ -441,30 +435,36 @@ T BlockZhuStefanescu2D<T, LatSet>::getanisotropy(std::size_t id) {
 template <typename T, typename LatSet>
 T BlockZhuStefanescu2D<T, LatSet>::getPhi(std::size_t id) {
   // TODO: efficiency may be improved?
-  FDM2D<T> FDM(Geo.getNx(), Geo.getNy(), Fs.getField(0));
+  FDM2D<T> FDM(this->getNx(), this->getNy(),
+               this->template getField<FS<T>>().getField(0));
   return atan2(FDM.p_y(id), FDM.p_x(id));
 }
 
 template <typename T, typename LatSet>
 void BlockZhuStefanescu2D<T, LatSet>::Grow() {
   for (std::size_t id : Interface) {
-    T delta_Fs = Delta_Fs.get(id);
-    T Fs_temp = Fs.get(id) + delta_Fs;
+    T delta_Fs = this->template getField<DELTAFS<T>>().get(id);
+    T Fs_temp = this->template getField<FS<T>>().get(id) + delta_Fs;
     if (Fs_temp >= T(1) || !hasNeighborType(id, static_cast<std::uint8_t>(
                                                   CAType::Fluid | CAType::Interface))) {
       // get modified delta_Fs
-      delta_Fs = T(1) - Fs.get(id);
-      Fs.SetField(id, T(1));
-      C_Solids.get(id) += Part_Coef * delta_Fs * Conc.get(id);
+      delta_Fs = T(1) - this->template getField<FS<T>>().get(id);
+      this->template getField<FS<T>>().SetField(id, T(1));
+      this->template getField<CSOLIDS<T>>().get(id) +=
+        Part_Coef * delta_Fs * this->template getField<CONC<T>>().get(id);
       // pre streamed excess solute to neighbors
-      PreExcessC.SetField(id, _Part_Coef * delta_Fs * Conc.get(id));
-      Conc.get(id) = C_Solids.get(id);
-      State.SetField(id, CAType::Solid);
+      this->template getField<PREEXCESSC<T>>().SetField(
+        id, _Part_Coef * delta_Fs * this->template getField<CONC<T>>().get(id));
+      this->template getField<CONC<T>>().get(id) =
+        this->template getField<CSOLIDS<T>>().get(id);
+      this->template getField<STATE>().SetField(id, CAType::Solid);
       ++SolidCount;
     } else {
-      Fs.SetField(id, Fs_temp);
-      C_Solids.get(id) += Part_Coef * delta_Fs * Conc.get(id);
-      ExcessC.SetField(id, _Part_Coef * delta_Fs * Conc.get(id));
+      this->template getField<FS<T>>().SetField(id, Fs_temp);
+      this->template getField<CSOLIDS<T>>().get(id) +=
+        Part_Coef * delta_Fs * this->template getField<CONC<T>>().get(id);
+      this->template getField<EXCESSC<T>>().SetField(
+        id, _Part_Coef * delta_Fs * this->template getField<CONC<T>>().get(id));
     }
   }
 }
@@ -472,17 +472,17 @@ void BlockZhuStefanescu2D<T, LatSet>::Grow() {
 template <typename T, typename LatSet>
 void BlockZhuStefanescu2D<T, LatSet>::DistributeExcessC() {
   // only collect inner cells
-  for (int j = Geo.getOverlap(); j < Geo.getNy() - Geo.getOverlap(); ++j) {
-    for (int i = Geo.getOverlap(); i < Geo.getNx() - Geo.getOverlap(); ++i) {
-      std::size_t id = i + j * Geo.getNx();
-      if (PreExcessC.get(id) > T(0)) {
+  for (int j = this->getOverlap(); j < this->getNy() - this->getOverlap(); ++j) {
+    for (int i = this->getOverlap(); i < this->getNx() - this->getOverlap(); ++i) {
+      std::size_t id = i + j * this->getNx();
+      if (this->template getField<PREEXCESSC<T>>().get(id) > T(0)) {
         // stream excess solute to neighbors
         std::vector<int> dirs;
         dirs.reserve(LatSet::q);
         T sum = T(0);
         for (int i = 0; i < LatSet::q; ++i) {
-          std::size_t idn = id + Delta_Index[i];
-          if (util::isFlag(State.get(idn), CAType::Fluid)) {
+          std::size_t idn = id + this->Delta_Index[i];
+          if (util::isFlag(this->template getField<STATE>().get(idn), CAType::Fluid)) {
             dirs.push_back(i);
             sum += LatSet::w[i];
           }
@@ -491,12 +491,13 @@ void BlockZhuStefanescu2D<T, LatSet>::DistributeExcessC() {
         if (dirs.size() == 0) continue;
         // distribute
         for (int dir : dirs) {
-          std::size_t idn = id + Delta_Index[dir];
-          ExcessC.get(idn) += PreExcessC.get(id) * LatSet::w[dir] * inv_sum;
+          std::size_t idn = id + this->Delta_Index[dir];
+          this->template getField<EXCESSC<T>>().get(idn) +=
+            this->template getField<PREEXCESSC<T>>().get(id) * LatSet::w[dir] * inv_sum;
         }
       }
       // reset preExcessC
-      PreExcessC.SetField(id, T(0));
+      this->template getField<PREEXCESSC<T>>().SetField(id, T(0));
     }
   }
 }
@@ -504,13 +505,13 @@ void BlockZhuStefanescu2D<T, LatSet>::DistributeExcessC() {
 template <typename T, typename LatSet>
 void BlockZhuStefanescu2D<T, LatSet>::SimpleCapture() {
   // only capture inner cells
-  for (int j = Geo.getOverlap(); j < Geo.getNy() - Geo.getOverlap(); ++j) {
-    for (int i = Geo.getOverlap(); i < Geo.getNx() - Geo.getOverlap(); ++i) {
-      std::size_t id = i + j * Geo.getNx();
-      if (util::isFlag(State.get(id), CAType::Fluid)) {
+  for (int j = this->getOverlap(); j < this->getNy() - this->getOverlap(); ++j) {
+    for (int i = this->getOverlap(); i < this->getNx() - this->getOverlap(); ++i) {
+      std::size_t id = i + j * this->getNx();
+      if (util::isFlag(this->template getField<STATE>().get(id), CAType::Fluid)) {
         if (hasNeighborType(id, CAType::Solid)) {
-          State.SetField(id, CAType::Interface);
-          Velocity.SetField(id, Vector<T, 2>{});
+          this->template getField<STATE>().SetField(id, CAType::Interface);
+          this->template getField<VELOCITY<T, 2>>().SetField(id, Vector<T, 2>{});
         }
       }
     }
@@ -521,7 +522,9 @@ template <typename T, typename LatSet>
 bool BlockZhuStefanescu2D<T, LatSet>::hasNeighborType(std::size_t id,
                                                       std::uint8_t type) const {
   for (int i = 0; i < LatSet::q; ++i) {
-    if (util::isFlag(State.get(id + Delta_Index[i]), type)) return true;
+    if (util::isFlag(this->template getField<STATE>().get(id + this->Delta_Index[i]),
+                     type))
+      return true;
   }
   return false;
 }

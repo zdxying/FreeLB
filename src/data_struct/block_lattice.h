@@ -22,8 +22,7 @@
 
 #pragma once
 
-#include "data_struct/lattice.h"
-#include "utils/fdm_solver.h"
+#include "data_struct/block_lattice_base.h"
 
 template <typename T, typename LatSet, typename TypePack>
 struct BlockLatComm {
@@ -52,49 +51,17 @@ struct InterpBlockLatComm {
   // std::vector<InterpWeight<T, LatSet::d>>& getWeights() { return Comm->InterpWeights; }
 };
 
-
-// // a base lattice for BlockLattice
-// template <typename T>
-// class BlockRhoLattice {
-//  protected:
-//   ScalarField<T>& Rho;
-//   // converter
-//   AbstractConverter<T>& Conv;
-
-//  public:
-//   BlockRhoLattice(AbstractConverter<T>& conv, ScalarField<T>& rho)
-//       : Conv(conv), Rho(rho) {}
-
-//   ScalarField<T>& getRhoField() { return Rho; }
-//   const ScalarField<T>& getRhoField() const { return Rho; }
-
-//   const T& getRho(int i) const { return Rho.get(i); }
-//   T& getRho(int i) { return Rho.get(i); }
-
-//   void SetRhoField(std::size_t id, T value) { Rho.SetField(id, value); }
-
-//   T getLatRhoInit() const { return Conv.getLatRhoInit(); }
-//   T getLatgBeta(std::uint8_t level) const {
-//     return RefineConverter<T>::getLattice_gbetaF(Conv.getLattice_gbeta(), level);
-//   }
-// };
-
 // block structure for refined lattice
 template <typename T, typename LatSet, typename TypePack>
-class BlockLattice {
+class BlockLattice : public BlockLatticeBase<T, LatSet, TypePack> {
  public:
   using CellType = BCell<T, LatSet, TypePack>;
   using LatticeSet = LatSet;
+  using FloatType = T;
+
+  using GenericRho = typename FindGenericRhoType<T, TypePack>::type;
 
  protected:
-  // nbr index
-  std::array<int, LatSet::q> Delta_Index;
-  // geometry
-  Block<T, LatSet::d>& BlockGeo;
-
-  // field
-  FieldPtrCollection<TypePack> Fields;
-
   // --- lattice communication structure ---
   // conmmunicate with same level block
   std::vector<BlockLatComm<T, LatSet, TypePack>> Communicators;
@@ -117,42 +84,17 @@ class BlockLattice {
   std::vector<Vector<T, LatSet::d>> UOld;
 
  public:
-  // BlockLattice(Block<T, LatSet::d>& block, ScalarField<T>& rho,
-  //              VectorFieldAOS<T, LatSet::d>& velocity,
-  //              PopulationField<T, LatSet::q>& pops, AbstractConverter<T>& conv,
-  //              bool initpop = true);
   template <typename... FIELDPTRS>
   BlockLattice(Block<T, LatSet::d>& block, AbstractConverter<T>& conv,
                std::tuple<FIELDPTRS...> fieldptrs);
 
-  template <typename FieldType>
-  auto& getField() {
-    return Fields.template getField<FieldType>();
-  }
-  template <typename FieldType>
-  const auto& getField() const {
-    return Fields.template getField<FieldType>();
-  }
-
   std::array<T*, LatSet::q> getPop(std::size_t id) {
-    return getField<POP<T, LatSet::q>>().getArray(id);
+    return this->template getField<POP<T, LatSet::q>>().getArray(id);
   }
 
-  std::size_t getNbrId(std::size_t id, int dir) const { return id + Delta_Index[dir]; }
-
-  Block<T, LatSet::d>& getGeo() { return BlockGeo; }
-  const Block<T, LatSet::d>& getGeo() const { return BlockGeo; }
-  int getNx() const { return BlockGeo.getNx(); }
-  int getNy() const { return BlockGeo.getNy(); }
-  int getNz() const { return BlockGeo.getNz(); }
-  std::size_t getN() const { return BlockGeo.getN(); }
-  int getOverlap() const { return BlockGeo.getOverlap(); }
   inline T getOmega() const { return Omega; }
   inline T get_Omega() const { return _Omega; }
   inline T getfOmega() const { return fOmega; }
-  std::uint8_t getLevel() const { return BlockGeo.getLevel(); }
-  const Vector<int, LatSet::d>& getProjection() const { return BlockGeo.getProjection(); }
-  const std::array<int, LatSet::q>& getDelta_Index() const { return Delta_Index; }
 
   std::vector<BlockLatComm<T, LatSet, TypePack>>& getCommunicators() {
     return Communicators;
@@ -164,10 +106,6 @@ class BlockLattice {
     return InterpComm;
   }
 
-  // convert from fine to coarse, call after all average communication(including pops)
-  void PopConvFineToCoarse();
-  // convert from coarse to fine, call after all interp communication(including pops)
-  void PopConvCoarseToFine();
   // normal communication, which can be done using normalcommunicate() in blockFM
   void communicate();
   // average communication
@@ -179,6 +117,9 @@ class BlockLattice {
 
   template <typename CELLDYNAMICS, typename ArrayType>
   void ApplyCellDynamics(const ArrayType& flagarr);
+
+  template <typename CELLDYNAMICS>
+  void ApplyCellDynamics();
 
   // tolerance
   void EnableToleranceRho(T rhores = T(1e-5));
@@ -192,48 +133,44 @@ class BlockLattice {
 
 // block lattice manager
 template <typename T, typename LatSet, typename TypePack>
-class BlockLatticeManager {
+class BlockLatticeManager : public BlockLatticeManagerBase<T, LatSet, TypePack> {
  public:
   using FIELDS = typename ExtractFieldPack<TypePack>::pack1;
   using FIELDPTRS = typename ExtractFieldPack<TypePack>::pack2;
   using ALLFIELDS = typename ExtractFieldPack<TypePack>::mergedpack;
+
   using BLOCKLATTICE = BlockLattice<T, LatSet, ALLFIELDS>;
+  using CellType = BCell<T, LatSet, ALLFIELDS>;
+  using FloatType = T;
+
+  using GenericRho = typename GetGenericRhoType<T, FIELDS>::type;
 
  private:
   std::vector<BlockLattice<T, LatSet, ALLFIELDS>> BlockLats;
-  BlockGeometry<T, LatSet::d>& BlockGeo;
   AbstractConverter<T>& Conv;
-
-  // field
-  BlockFieldManagerCollection<T, LatSet, FIELDS> Fields;
-  BlockFieldManagerPtrCollection<T, LatSet, FIELDPTRS> FieldPtrs;
 
  public:
   template <typename... FIELDPTRTYPES>
   BlockLatticeManager(BlockGeometry<T, LatSet::d>& blockgeo, AbstractConverter<T>& conv,
-                      FIELDPTRTYPES&... fieldptrs);
+                      FIELDPTRTYPES*... fieldptrs);
   template <typename INITVALUEPACK, typename... FIELDPTRTYPES>
   BlockLatticeManager(BlockGeometry<T, LatSet::d>& blockgeo, INITVALUEPACK& initvalues,
-                      AbstractConverter<T>& conv, FIELDPTRTYPES&... fieldptrs);
-
-  template <typename FieldType>
-  auto& getField() {
-    if constexpr (isTypeInTuple<FieldType, FIELDS>::value) {
-      return Fields.template getField<FieldType>();
-    } else if constexpr (isTypeInTuple<FieldType, FIELDPTRS>::value) {
-      return FieldPtrs.template getField<FieldType>();
-    }
-  }
-  template <typename FieldType>
-  const auto& getField() const {
-    if constexpr (isTypeInTuple<FieldType, FIELDS>::value) {
-      return Fields.template getField<FieldType>();
-    } else if constexpr (isTypeInTuple<FieldType, FIELDPTRS>::value) {
-      return FieldPtrs.template getField<FieldType>();
-    }
-  }
+                      AbstractConverter<T>& conv, FIELDPTRTYPES*... fieldptrs);
 
   void Init();
+
+  template <typename FieldType>
+  void addField(BlockFieldManager<FieldType, T, LatSet::d>& field) {
+    this->FieldPtrs.template addField<FieldType>(field);
+    // constexpr std::size_t ith = this->FieldPtrs.is_at_index<FieldType>() +
+    // FIELDS::size;
+    int i = 0;
+    for (auto& blocklat : BlockLats) {
+      // blocklat.template addField<FieldType, ith>(field);
+      blocklat.template addField<FieldType>(field.getBlockField(i));
+      ++i;
+    }
+  }
 
   AbstractConverter<T>& getConverter() { return Conv; }
 
@@ -251,26 +188,28 @@ class BlockLatticeManager {
     exit(1);
   }
 
-  inline std::uint8_t getMaxLevel() const { return BlockGeo.getMaxLevel(); }
+  inline std::uint8_t getMaxLevel() const { return this->BlockGeo.getMaxLevel(); }
 
   BlockLattice<T, LatSet, ALLFIELDS>& getBlockLat(int i) { return BlockLats[i]; }
   const BlockLattice<T, LatSet, ALLFIELDS>& getBlockLat(int i) const {
     return BlockLats[i];
   }
-
   std::vector<BlockLattice<T, LatSet, ALLFIELDS>>& getBlockLats() { return BlockLats; }
   const std::vector<BlockLattice<T, LatSet, ALLFIELDS>>& getBlockLats() const {
     return BlockLats;
   }
-
-  BlockGeometry<T, LatSet::d>& getGeo() { return BlockGeo; }
-  const BlockGeometry<T, LatSet::d>& getGeo() const { return BlockGeo; }
 
   void Stream(std::int64_t count);
 
   template <typename CELLDYNAMICS, typename FieldType>
   void ApplyCellDynamics(std::int64_t count,
                          const BlockFieldManager<FieldType, T, LatSet::d>& BFM);
+
+  template <typename CELLDYNAMICS>
+  void ApplyCellDynamics(std::int64_t count);
+
+  template <typename CELLDYNAMICS>
+  void ApplyCellDynamics();
 
 #ifdef MPI_ENABLED
   void MPIAverComm(std::int64_t count);
@@ -286,9 +225,52 @@ class BlockLatticeManager {
   T getToleranceU(int shift = 0);
 };
 
+// coupling block lattice manager
+template <typename BlockLatManager0, typename BlockLatManager1>
+class BlockLatManagerCoupling {
+ public:
+  using T = typename BlockLatManager0::FloatType;
+  using CELL0 = typename BlockLatManager0::CellType;
+  using CELL1 = typename BlockLatManager1::CellType;
+
+  BlockLatManagerCoupling(BlockLatManager0& blocklatman0, BlockLatManager1& blocklatman1)
+      : BlockLatMan0(blocklatman0), BlockLatMan1(blocklatman1) {}
+
+  template <typename CELLDYNAMICS, typename BLOCKFIELDMANAGER>
+  void ApplyCellDynamics(std::int64_t count, const BLOCKFIELDMANAGER& BFM) {
+#pragma omp parallel for num_threads(Thread_Num)
+    for (int i = 0; i < BlockLatMan0.getBlockLats().size(); ++i) {
+      auto& blocklat0 = BlockLatMan0.getBlockLat(i);
+      auto& blocklat1 = BlockLatMan1.getBlockLat(i);
+      const int deLevel =
+        static_cast<int>(BlockLatMan0.getMaxLevel() - blocklat0.getLevel());
+      if (count % (static_cast<int>(pow(2, deLevel))) == 0) {
+        const auto& flagArray = BFM.getBlockField(i).getField(0);
+        for (std::size_t id = 0; id < blocklat0.getN(); ++id) {
+          CELL0 cell0(id, blocklat0);
+          CELL1 cell1(id, blocklat1);
+          CELLDYNAMICS::Execute(flagArray[id], cell0, cell1);
+        }
+      }
+    }
+  }
+
+ private:
+  BlockLatManager0& BlockLatMan0;
+  BlockLatManager1& BlockLatMan1;
+};
+
+
 // dynamic block lattice, refine and coarsen based on gradient of rho
 template <typename T, typename LatSet, typename TypePack>
 class DynamicBlockLatticeHelper2D {
+ public:
+  using FIELDS = typename ExtractFieldPack<TypePack>::pack1;
+  using GenericRho = typename GetGenericRhoType<T, FIELDS>::type;
+
+  using FIELDPTRS = typename ExtractFieldPack<TypePack>::pack2;
+  using ALLFIELDS = typename ExtractFieldPack<TypePack>::mergedpack;
+
  private:
   BlockLatticeManager<T, LatSet, TypePack>& BlockLatMan;
   BlockGeometry2D<T>& BlockGeo;

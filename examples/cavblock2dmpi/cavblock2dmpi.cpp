@@ -166,13 +166,10 @@ int main(int argc, char* argv[]) {
 
   // ------------------ define lattice ------------------
   using FIELDS = TypePack<RHO<T>, VELOCITY<T, LatSet::d>, POP<T, LatSet::q>>;
-  using FIELDREFS = TypePack<FLAG>;
-  using FIELDSPACK = TypePack<FIELDS, FIELDREFS>;
-  using ALLFIELDS = ExtractFieldPack<FIELDSPACK>::mergedpack;
-  using CELL = BCell<T, LatSet, ALLFIELDS>;
+  using CELL = BCell<T, LatSet, FIELDS>;
   ValuePack InitValues(BaseConv.getLatRhoInit(), Vector<T, 2>{}, T{});
   // lattice
-  BlockLatticeManager<T, LatSet, FIELDSPACK> NSLattice(Geo, InitValues, BaseConv, FlagFM);
+  BlockLatticeManager<T, LatSet, FIELDS> NSLattice(Geo, InitValues, BaseConv);
   NSLattice.EnableToleranceU();
   T res = 1;
   // set initial value of field
@@ -183,11 +180,11 @@ int main(int argc, char* argv[]) {
 
   // bcs
   BBLikeFixedBlockBdManager<bounceback::normal<CELL>,
-                            BlockLatticeManager<T, LatSet, FIELDSPACK>,
+                            BlockLatticeManager<T, LatSet, FIELDS>,
                             BlockFieldManager<FLAG, T, 2>>
     NS_BB("NS_BB", NSLattice, FlagFM, BouncebackFlag, VoidFlag);
   BBLikeFixedBlockBdManager<bounceback::movingwall<CELL>,
-                            BlockLatticeManager<T, LatSet, FIELDSPACK>,
+                            BlockLatticeManager<T, LatSet, FIELDS>,
                             BlockFieldManager<FLAG, T, 2>>
     NS_BBMW("NS_BBMW", NSLattice, FlagFM, BBMovingWallFlag, VoidFlag);
   BlockBoundaryManager BM(&NS_BB, &NS_BBMW);
@@ -211,7 +208,7 @@ int main(int argc, char* argv[]) {
   // writers
   vtmo::ScalarWriter RhoWriter("Rho", NSLattice.getField<RHO<T>>());
   vtmo::VectorWriter VecWriter("Velocity", NSLattice.getField<VELOCITY<T, 2>>());
-  vtmo::vtmWriter<T, LatSet::d> NSWriter("cavref2dmpi", Geo, 1);
+  vtmo::vtmWriter<T, LatSet::d> NSWriter("cavblock2dmpi", Geo, 1);
   NSWriter.addWriterSet(RhoWriter, VecWriter);
 
   // count and timer

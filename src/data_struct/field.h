@@ -74,6 +74,16 @@ class FieldPtrCollection<TypePack<Fields...>> {
     return *(std::get<FieldType*>(fields));
   }
 
+  // assign a field pointer to the ith position
+  // template <typename FieldType, unsigned int i>
+  // void addField(FieldType& field) {
+  //   std::get<i>(fields) = &field;
+  // }
+  template <typename FieldType>
+  void addField(FieldType& field) {
+    std::get<FieldType*>(fields) = &field;
+  }
+
  private:
   std::tuple<Fields*...> fields;
 };
@@ -86,6 +96,7 @@ class Array {
   using value_type = T;
   static constexpr unsigned int array_dim = Base::array_dim;
   using array_type = Array<T, Base>;
+  static constexpr bool isField = false;
 
  private:
   std::array<T, array_dim> _Data;
@@ -139,6 +150,7 @@ class GenericArrayField {
   using array_type = ArrayType;
   using value_type = typename ArrayType::value_type;
   static constexpr unsigned int array_dim = D;
+  static constexpr bool isField = true;
 
   GenericArrayField() : _Data{} {}
   GenericArrayField(std::size_t size)
@@ -299,22 +311,6 @@ class GenericArray {
 
   const T& operator[](std::size_t i) const { return data[i]; }
   T& operator[](std::size_t i) { return data[i]; }
-
-  // Specialization for enums based on std::uint8_t
-  // template <typename U = T>
-  // typename std::enable_if<std::is_enum<U>::value &&
-  //                           std::is_same<std::underlying_type_t<U>, uint8_t>::value,
-  //                         uint8_t&>::type
-  // getUint8(std::size_t index) {
-  //   return reinterpret_cast<uint8_t&>(data[index]);
-  // }
-  // template <typename U = T>
-  // typename std::enable_if<std::is_enum<U>::value &&
-  //                           std::is_same<std::underlying_type_t<U>, uint8_t>::value,
-  //                         const uint8_t&>::type
-  // getUint8(std::size_t index) const {
-  //   return reinterpret_cast<uint8_t&>(data[index]);
-  // }
 
   // get underlying value from enum
   template <typename U = T>

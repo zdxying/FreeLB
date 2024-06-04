@@ -167,11 +167,11 @@ void readParam() {
 }
 
 int main() {
-  std::uint8_t VoidFlag = std::uint8_t(1);
-  std::uint8_t AABBFlag = std::uint8_t(2);
-  std::uint8_t BouncebackFlag = std::uint8_t(4);
-  std::uint8_t FI_Flag =
-    static_cast<std::uint8_t>(CA::CAType::Fluid | CA::CAType::Interface);
+  constexpr std::uint8_t VoidFlag = std::uint8_t(1);
+  constexpr std::uint8_t AABBFlag = std::uint8_t(2);
+  constexpr std::uint8_t BouncebackFlag = std::uint8_t(4);
+  constexpr std::uint8_t FI_Flag =
+    CA::CAType::Fluid | CA::CAType::Interface;
 
   Printer::Print_BigBanner(std::string("Initializing..."));
 
@@ -204,9 +204,9 @@ int main() {
   BlockGeometry2D<T> Geo(Ni, Nj, Thread_Num, cavity, Cell_Len);
 
   // ------------------ define flag field ------------------
-  BlockFieldManager<FlagField, T, 2> FlagFM(Geo, VoidFlag);
+  BlockFieldManager<FLAG, T, 2> FlagFM(Geo, VoidFlag);
   FlagFM.forEach(cavity,
-                 [&](FlagField& field, std::size_t id) { field.SetField(id, AABBFlag); });
+                 [&](auto& field, std::size_t id) { field.SetField(id, AABBFlag); });
   FlagFM.template SetupBoundary<LatSet0>(cavity, BouncebackFlag);
 
   vtmo::ScalarWriter FlagWriter("flag", FlagFM);
@@ -215,58 +215,99 @@ int main() {
   GeoWriter.WriteBinary();
 
   // ------------------ define lattice ------------------
-  // velocity field
-  BlockFieldManager<VectorFieldAOS<T, 2>, T, 2> VelocityFM(Geo);
-  // lbm
-  BlockLatticeManager<T, LatSet0> NSLattice(Geo, BaseConv, VelocityFM);
+  using NSFIELDS = TypePack<RHO<T>, VELOCITY<T, 2>, POP<T, LatSet0::q>, SCALARFORCE<T>>;
+  ValuePack NSInitValues(BaseConv.getLatRhoInit(), Vector<T, 2>{}, T{}, T{});
+  using NSCELL = BCell<T, LatSet0, NSFIELDS>;
+  BlockLatticeManager<T, LatSet0, NSFIELDS> NSLattice(Geo, NSInitValues, BaseConv);
 
-  BlockLatticeManager<T, LatSet1> SOLattice(Geo, ConcConv, VelocityFM);
+  using CONCFIELDS = TypePack<CONC<T>, POP<T, LatSet1::q>, RHOINIT<T>, GBETA<T>>;
+  using CONCFIELDREFS = TypePack<VELOCITY<T, 2>, CA::EXCESSC<T>>;
+  BlockFieldManager<CA::EXCESSC<T>, T, 2>* tempExcessC = nullptr;
+  using CONCFIELDPACK = TypePack<CONCFIELDS, CONCFIELDREFS>;
+  ValuePack CONCInitValues(ConcConv.getLatRhoInit(), T{}, 
+  ConcConv.getLatRhoInit(), ConcConv.getLattice_gbeta());
+  using CONCCELL = BCell<T, LatSet1, ExtractFieldPack<CONCFIELDPACK>::mergedpack>;
+  BlockLatticeManager<T, LatSet1, CONCFIELDPACK> SOLattice(Geo, CONCInitValues, ConcConv, &NSLattice.getField<VELOCITY<T, 2>>(), tempExcessC);
 
-  BlockLatticeManager<T, LatSet1> THLattice(Geo, TempConv, VelocityFM);
+  using TEMPFIELDS = TypePack<TEMP<T>, POP<T, LatSet1::q>, RHOINIT<T>, GBETA<T>>;
+  using TEMPFIELDREFS = TypePack<VELOCITY<T, 2>>;
+  using TEMPFIELDPACK = TypePack<TEMPFIELDS, TEMPFIELDREFS>;
+  ValuePack TEMPInitValues(TempConv.getLatRhoInit(), T{}
+  ,TempConv.getLatRhoInit(), TempConv.getLattice_gbeta());
+  using TEMPCELL = BCell<T, LatSet1, ExtractFieldPack<TEMPFIELDPACK>::mergedpack>;
+  BlockLatticeManager<T, LatSet1, TEMPFIELDPACK> THLattice(Geo, TEMPInitValues, TempConv, &NSLattice.getField<VELOCITY<T, 2>>());
 
   // --------------------- CA ---------------------
-  CA::BlockZhuStefanescu2DManager<T, LatSetCA> CA(VelocityFM, CAConv, SOLattice,
-                                                  THLattice, Delta, pref_Orine);
+  ValuePack CAInitValues(CA::CAType::Solid, T{},T{},T{},T{},T{},T{},T{},T{});
+  CA::BlockZhuStefanescu2DManager<T, LatSetCA> CA(Geo, CAConv, Delta, pref_Orine, CAInitValues, 
+  &NSLattice.getField<VELOCITY<T, 2>>(), &SOLattice.getField<CONC<T>>(), &THLattice.getField<TEMP<T>>());
+  
+  SOLattice.template addField<CA::EXCESSC<T>>(CA.template getField<CA::EXCESSC<T>>());
   // set CA State field
-  CA.getStateFM().forEach(FlagFM, AABBFlag, [&](auto& field, std::size_t id) {
+  CA.getField<CA::STATE>().forEach(FlagFM, AABBFlag, [&](auto& field, std::size_t id) {
     field.SetField(id, CA::CAType::Fluid);
   });
   CA.Setup(Geo.getIndex(Vector<int, 2>{Ni / 2, Nj / 2}));
+
   // --------------------- BCs ---------------------
   // NS
-  BBLikeFixedBlockBdManager<T, LatSet0,
-                            BounceBackLikeMethod<T, LatSet0>::normal_bounceback>
+  BBLikeFixedBlockBdManager<bounceback::normal<NSCELL>,
+                            BlockLatticeManager<T, LatSet0, NSFIELDS>, 
+                            BlockFieldManager<FLAG, T, 2> >
     NS_BB("NS_BB", NSLattice, FlagFM, BouncebackFlag, VoidFlag);
 
-  BBLikeMovingBlockBdManager<T, LatSet0,
-                             BounceBackLikeMethod<T, LatSet0>::normal_bounceback>
+  BBLikeMovingBlockBdManager<bounceback::normal<NSCELL>,
+                            BlockLatticeManager<T, LatSet0, NSFIELDS>, 
+                            BlockFieldManager<FLAG, T, 2>>
     NS_MBB("NS_MBB", NSLattice, CA.getInterfaces(), FlagFM, CA::CAType::Solid);
 
   // Conc
-  BBLikeFixedBlockBdManager<T, LatSet1,
-                            BounceBackLikeMethod<T, LatSet1>::normal_bounceback>
+  BBLikeFixedBlockBdManager<bounceback::normal<CONCCELL>,
+                            BlockLatticeManager<T, LatSet1, CONCFIELDPACK>, 
+                            BlockFieldManager<FLAG, T, 2>>
     SO_BB("SO_BB", SOLattice, FlagFM, BouncebackFlag, VoidFlag);
 
-  BBLikeMovingBlockBdManager<T, LatSet1,
-                             BounceBackLikeMethod<T, LatSet1>::normal_bounceback>
+  BBLikeMovingBlockBdManager<bounceback::normal<CONCCELL>,
+                            BlockLatticeManager<T, LatSet1, CONCFIELDPACK>, 
+                            BlockFieldManager<FLAG, T, 2>>
     SO_MBB("SO_MBB", SOLattice, CA.getInterfaces(), FlagFM, CA::CAType::Solid);
 
+  // define task/ dynamics:
+  // NS task
+  // bulk task
+  using NSBulkTask = tmp::Key_TypePair<CA::CAType::Fluid, 
+  collision::BGKForce_Feq_RhoU<equilibrium::SecondOrder<NSCELL>, 
+  force::ScalarForce<NSCELL>, true>>;
+  // wall task
+  using NSWallTask = tmp::Key_TypePair<CA::CAType::Interface, 
+  collision::BGKForce_Feq<equilibrium::SecondOrder<NSCELL>,
+  force::ScalarForce<NSCELL>>>;
 
-  BlockBuoyancyManager<T, LatSet0> Force(NSLattice, VelocityFM);
-  Force.AddSource(SOLattice);
-  Force.AddSource(THLattice);
+  using NSTaskSelector = TaskSelector<std::uint8_t, NSCELL, NSBulkTask, NSWallTask>;
+
+  // SO task
+  using SOTask = tmp::Key_TypePair<FI_Flag, 
+  collision::BGKSource_Feq_Rho<equilibrium::SecondOrder<CONCCELL>, 
+  CA::EXCESSC<T>, true>>;
+
+  using SOTaskSelector = TaskSelector<std::uint8_t, CONCCELL, SOTask>;
+
+  // buoyancy
+  using SObuoyancyTask = tmp::Key_TypePair<FI_Flag, force::Buoyancy<NSCELL, CONCCELL>>;
+  using SObuoyancyTaskSelector = CoupledTaskSelector<std::uint8_t, NSCELL, CONCCELL, SObuoyancyTask>;
+  BlockLatManagerCoupling SObuoyancy(NSLattice, SOLattice);
+  using THbuoyancyTask = tmp::Key_TypePair<FI_Flag, force::Buoyancy<NSCELL, TEMPCELL>>;
+  using THbuoyancyTaskSelector = CoupledTaskSelector<std::uint8_t, NSCELL, TEMPCELL, THbuoyancyTask>;
+  BlockLatManagerCoupling THbuoyancy(NSLattice, THLattice);
+
 
   // writer
-  vtmo::ScalarWriter CWriter("Conc", SOLattice.getRhoFM());
+  vtmo::ScalarWriter CWriter("Conc", SOLattice.getField<CONC<T>>());
   // vtmo::ScalarWriter FsWriter("Fs", CA.getFsFM());
-  // vtmo::ScalarWriter EXCWriter("ExC", CA.getExcessCFM());
-  vtmo::ScalarWriter StateWriter("State", CA.getStateFM());
-  vtmo::VectorWriter VecWriter("Velocity", VelocityFM);
+  vtmo::ScalarWriter StateWriter("State", CA.getField<CA::STATE>());
+  vtmo::VectorWriter VecWriter("Velocity", NSLattice.getField<VELOCITY<T, 2>>());
   vtmo::vtmWriter<T, 2> MainWriter("cazsblock2d", Geo, 1);
   MainWriter.addWriterSet(CWriter, StateWriter, VecWriter);
-
-  vtmo::ScalarWriter RhoWriter("Rho", NSLattice.getRhoFM());
-  MainWriter.addWriterSet(RhoWriter);
 
   // count and timer
   Timer MainLoopTimer;
@@ -276,21 +317,31 @@ int main() {
   MainWriter.WriteBinary(MainLoopTimer());
 
   while (MainLoopTimer() < MaxStep) {
-    NSLattice.UpdateRho(MainLoopTimer(), FI_Flag, CA.getStateFM());
-    SOLattice.UpdateRho_Source(MainLoopTimer(), FI_Flag, CA.getStateFM(),
-                               CA.getExcessCFM());
+    // clear force
+    NSLattice.getField<SCALARFORCE<T>>().InitValue(T{});
+    // get buoyancy
+    SObuoyancy.ApplyCellDynamics<SObuoyancyTaskSelector>(MainLoopTimer(), CA.getField<CA::STATE>());
+    THbuoyancy.ApplyCellDynamics<THbuoyancyTaskSelector>(MainLoopTimer(), CA.getField<CA::STATE>());
+    // NS task
+    NSLattice.ApplyCellDynamics<NSTaskSelector>(MainLoopTimer(), CA.getField<CA::STATE>());
+    // SO task
+    SOLattice.ApplyCellDynamics<SOTaskSelector>(MainLoopTimer(), CA.getField<CA::STATE>());
+
+    // NSLattice.UpdateRho(MainLoopTimer(), FI_Flag, CA.getStateFM());
+    // SOLattice.UpdateRho_Source(MainLoopTimer(), FI_Flag, CA.getStateFM(),
+    //                            CA.getExcessCFM());
 
     CA.Apply_SimpleCapture();
 
-    Force.GetBuoyancy(MainLoopTimer(), FI_Flag, CA.getStateFM());
+    // Force.GetBuoyancy(MainLoopTimer(), FI_Flag, CA.getStateFM());
 
-    Force.BGK_U<Equilibrium<T, LatSet0>::SecondOrder>(MainLoopTimer(), CA::CAType::Fluid,
-                                                      CA.getStateFM());
-    Force.BGK<Equilibrium<T, LatSet0>::SecondOrder>(
-      MainLoopTimer(), CA::CAType::Interface, CA.getStateFM());
+    // Force.BGK_U<Equilibrium<T, LatSet0>::SecondOrder>(MainLoopTimer(), CA::CAType::Fluid,
+    //                                                   CA.getStateFM());
+    // Force.BGK<Equilibrium<T, LatSet0>::SecondOrder>(
+    //   MainLoopTimer(), CA::CAType::Interface, CA.getStateFM());
 
-    SOLattice.BGK_Source<Equilibrium<T, LatSet1>::SecondOrder>(
-      MainLoopTimer(), FI_Flag, CA.getStateFM(), CA.getExcessCFM());
+    // SOLattice.BGK_Source<Equilibrium<T, LatSet1>::SecondOrder>(
+    //   MainLoopTimer(), FI_Flag, CA.getStateFM(), CA.getExcessCFM());
 
     NSLattice.Stream(MainLoopTimer());
     SOLattice.Stream(MainLoopTimer());
@@ -309,9 +360,8 @@ int main() {
     ++OutputTimer;
 
     if (MainLoopTimer() % OutputStep == 0) {
-      VelocityFM.CommunicateAll();
-      SOLattice.getRhoFM().CommunicateAll();
-      NSLattice.getRhoFM().CommunicateAll();
+      NSLattice.template getField<VELOCITY<T,2>>().CommunicateAll();
+      SOLattice.template getField<CONC<T>>().CommunicateAll();
 
       OutputTimer.Print_InnerLoopPerformance(Geo.getTotalCellNum(), OutputStep);
       Printer::Print<std::size_t>("Interface", CA.getInterfaceNum());

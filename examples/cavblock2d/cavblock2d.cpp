@@ -143,13 +143,13 @@ int main() {
 
   // ------------------ define lattice ------------------
   using FIELDS = TypePack<RHO<T>, VELOCITY<T, LatSet::d>, POP<T, LatSet::q>>;
-  using FIELDREFS = TypePack<FLAG>;
-  using FIELDSPACK = TypePack<FIELDS, FIELDREFS>;
-  using ALLFIELDS = ExtractFieldPack<FIELDSPACK>::mergedpack;
-  using CELL = BCell<T, LatSet, ALLFIELDS>;
+  // using FIELDREFS = TypePack<FLAG>;
+  // using FIELDSPACK = TypePack<FIELDS, FIELDREFS>;
+  // using CELL = BCell<T, LatSet, ExtractFieldPack<FIELDSPACK>::mergedpack>;
+  using CELL = BCell<T, LatSet, FIELDS>;
   ValuePack InitValues(BaseConv.getLatRhoInit(), Vector<T, 2>{}, T{});
   // lattice
-  BlockLatticeManager<T, LatSet, FIELDSPACK> NSLattice(Geo, InitValues, BaseConv, FlagFM);
+  BlockLatticeManager<T, LatSet, FIELDS> NSLattice(Geo, InitValues, BaseConv);
   NSLattice.EnableToleranceU();
   T res = 1;
   // set initial value of field
@@ -159,9 +159,9 @@ int main() {
     [&](auto& field, std::size_t id) { field.SetField(id, LatU_Wall); });
 
   // bcs
-  BBLikeFixedBlockBdManager<bounceback::normal<CELL>, BlockLatticeManager<T, LatSet, FIELDSPACK>, BlockFieldManager<FLAG, T, 2>>
+  BBLikeFixedBlockBdManager<bounceback::normal<CELL>, BlockLatticeManager<T, LatSet, FIELDS>, BlockFieldManager<FLAG, T, 2>>
     NS_BB("NS_BB", NSLattice, FlagFM, BouncebackFlag, VoidFlag);
-  BBLikeFixedBlockBdManager<bounceback::movingwall<CELL>, BlockLatticeManager<T, LatSet, FIELDSPACK>, BlockFieldManager<FLAG, T, 2>>
+  BBLikeFixedBlockBdManager<bounceback::movingwall<CELL>, BlockLatticeManager<T, LatSet, FIELDS>, BlockFieldManager<FLAG, T, 2>>
     NS_BBMW("NS_BBMW", NSLattice, FlagFM, BBMovingWallFlag, VoidFlag);
   BlockBoundaryManager BM(&NS_BB, &NS_BBMW);
 
@@ -182,7 +182,7 @@ int main() {
   // writers
   vtmwriter::ScalarWriter RhoWriter("Rho", NSLattice.getField<RHO<T>>());
   vtmwriter::VectorWriter VecWriter("Velocity", NSLattice.getField<VELOCITY<T, 2>>());
-  vtmwriter::vtmWriter<T, LatSet::d> NSWriter("cavityblock2d", Geo);
+  vtmwriter::vtmWriter<T, LatSet::d> NSWriter("cavblock2d", Geo);
   NSWriter.addWriterSet(RhoWriter, VecWriter);
 
   // count and timer
@@ -205,7 +205,7 @@ int main() {
     if (MainLoopTimer() % OutputStep == 0) {
       NSLattice.ApplyCellDynamics<TaskSelectorRhoU>(MainLoopTimer(), FlagFM);
       
-      res = NSLattice.getToleranceU(1);
+      res = NSLattice.getToleranceU(-1);
       OutputTimer.Print_InnerLoopPerformance(Geo.getTotalCellNum(), OutputStep);
       Printer::Print_Res<T>(res);
       Printer::Endl();

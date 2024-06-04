@@ -29,6 +29,7 @@
 
 #include "ca/cazs.h"
 #include "data_struct/block_lattice.h"
+#include "data_struct/lattice.h"
 #include "lbm/lattice_set.h"
 #include "utils/fdm_solver.h"
 #include "utils/util.h"
@@ -231,9 +232,42 @@ class ZhuStefanescu2D {
 // -------------------------BlockZhuStefanescu2D-----------------------
 // --------------------------------------------------------------------
 
+// define unique CA Field
+struct STATEBase : public FieldBase<1> {};
+struct FSBase : public FieldBase<1> {};
+struct DELTAFSBase : public FieldBase<1> {};
+struct CURVATUREBase : public FieldBase<1> {};
+struct CSOLIDSBase : public FieldBase<1> {};
+struct PREEXCESSCBase : public FieldBase<1> {};
+struct EXCESSCBase : public FieldBase<1> {};
+
+
+using STATE = GenericField<GenericArray<CAType>, STATEBase>;
+template <typename T>
+using FS = GenericField<GenericArray<T>, FSBase>;
+template <typename T>
+using DELTAFS = GenericField<GenericArray<T>, DELTAFSBase>;
+template <typename T>
+using CURVATURE = GenericField<GenericArray<T>, CURVATUREBase>;
+template <typename T>
+using CSOLIDS = GenericField<GenericArray<T>, CSOLIDSBase>;
+template <typename T>
+using PREEXCESSC = GenericField<GenericArray<T>, PREEXCESSCBase>;
+template <typename T>
+using EXCESSC = GenericField<GenericArray<T>, EXCESSCBase>;
+
+template <typename T>
+using CAFIELDS = TypePack<STATE, FS<T>, DELTAFS<T>, CURVATURE<T>, CSOLIDS<T>,
+                          PREEXCESSC<T>, EXCESSC<T>, TEMPINIT<T>, CONCINIT<T>>;
+template <typename T>
+using REFFIELDS = TypePack<VELOCITY<T, 2>, CONC<T>, TEMP<T>>;
+template <typename T>
+using FIELDPACK = TypePack<CAFIELDS<T>, REFFIELDS<T>>;
+template <typename T>
+using ALLFIELDS = typename ExtractFieldPack<FIELDPACK<T>>::mergedpack;
 
 template <typename T, typename LatSet>
-class BlockZhuStefanescu2D {
+class BlockZhuStefanescu2D : public BlockLatticeBase<T, LatSet, ALLFIELDS<T>> {
  private:
   // preferred growth angle to x-axis, manually chosen
   T Theta;
@@ -242,9 +276,7 @@ class BlockZhuStefanescu2D {
   // Gibbs-Thomson coefficient
   T GT;
   // initial composition C0
-  T C0;
   // low limit of temperature
-  T Tl;
   // equilibrium liquidus temperature at the initial composition C0
   T Tl_eq;
   // slope of liquidus line
@@ -256,62 +288,22 @@ class BlockZhuStefanescu2D {
 
   // interface cells
   std::vector<std::size_t> Interface;
-
-  Block2D<T>& Geo;
-  ZSConverter<T>& ConvCA;
-
-  ScalarField<T>& Conc;
-  ScalarField<T>& Temp;
-
-  VectorFieldAOS<T, 2>& Velocity;
-
-  // state field std::uint8_t
-  ScalarField<CAType>& State;
-  // solid fraction
-  ScalarField<T>& Fs;
-  // delta solid fraction
-  ScalarField<T>& Delta_Fs;
-  // curvature of Solid-Liquid interface
-  ScalarField<T>& Curvature;
-  // Solid phase composition
-  ScalarField<T>& C_Solids;
-  // excess rho
-  // cyclic array is used to prevent race condition
-  // PopulationField<T, LatSet::q> ExcessC;
-  // pre streamed excess C field
-  ScalarField<T>& PreExcessC;
-  // colleted excess rho
-  ScalarField<T>& ExcessC;
   // solid count
   std::size_t SolidCount;
 
-  // nbr index
-  std::array<int, LatSet::q> Delta_Index;
+  ZSConverter<T>& ConvCA;
 
  public:
-  BlockZhuStefanescu2D(Block2D<T>& geo, BlockField<VectorFieldAOS<T, 2>, T, 2>& veloFM,
-                       ZSConverter<T>& convca, BlockRhoLattice<T>& latso,
-                       BlockRhoLattice<T>& latth, ScalarField<CAType>& state,
-                       ScalarField<T>& fs, ScalarField<T>& delta_fs,
-                       ScalarField<T>& curvature, ScalarField<T>& csolids,
-                       ScalarField<T>& preexcessc, ScalarField<T>& excessc, T delta,
-                       T theta);
+  template <typename... FIELDPTRS>
+  BlockZhuStefanescu2D(Block2D<T>& geo, ZSConverter<T>& convca,
+                       std::tuple<FIELDPTRS...> fieldptrs, T delta, T theta);
   ~BlockZhuStefanescu2D() {}
 
-  Block2D<T>& getGeo() { return Geo; }
-
-  std::uint8_t getLevel() const { return Geo.getLevel(); }
+  std::uint8_t getLevel() const { return this->BlockGeo.getLevel(); }
   std::size_t getSolidCount() const { return SolidCount; }
 
   // get field data
   std::vector<std::size_t>& getInterface() { return Interface; }
-  ScalarField<CAType>& getState() { return State; }
-  ScalarField<T>& getFs() { return Fs; }
-  ScalarField<T>& getDeltaFs() { return Delta_Fs; }
-  ScalarField<T>& getCurvature() { return Curvature; }
-  ScalarField<T>& getCSolids() { return C_Solids; }
-  ScalarField<T>& getPreExcessC() { return PreExcessC; }
-  ScalarField<T>& getExcessC() { return ExcessC; }
   // setup
   void Setup(std::size_t id, int num);
   void UpdateInterface();
@@ -343,15 +335,14 @@ class BlockZhuStefanescu2D {
 };
 
 template <typename T, typename CALatSet>
-class BlockZhuStefanescu2DManager {
+class BlockZhuStefanescu2DManager
+    : public BlockLatticeManagerBase<T, CALatSet, FIELDPACK<T>> {
+      public:
+      
  private:
   std::vector<BlockZhuStefanescu2D<T, CALatSet>> BlockZS;
 
   std::vector<std::vector<std::size_t>*> Interfaces;
-
-  BlockGeometry2D<T>& BlockGeo;
-
-  BlockFieldManager<VectorFieldAOS<T, 2>, T, 2>& VelocityFM;
 
   ZSConverter<T>& ConvCA;
 
@@ -362,55 +353,28 @@ class BlockZhuStefanescu2DManager {
 
   // --- CA Field ---
   // communication needed:
-  // state field
-  BlockFieldManager<ScalarField<CAType>, T, 2> StateFM;
-  // solid fraction field
-  BlockFieldManager<ScalarField<T>, T, 2> FsFM;
-  // collected excess C field
-  BlockFieldManager<ScalarField<T>, T, 2> ExcessCFM;
+  // state field, solid fraction field, collected excess C field
 
   // block-local field:
-  // delta solid fraction field
-  BlockFieldManager<ScalarField<T>, T, 2> DeltaFsFM;
-  // curvature of Solid-Liquid interface
-  BlockFieldManager<ScalarField<T>, T, 2> CurvFM;
-  // Solid phase composition
-  BlockFieldManager<ScalarField<T>, T, 2> CSolidsFM;
-  // pre streamed excess C field
-  BlockFieldManager<ScalarField<T>, T, 2> PreExcessCFM;
+  // delta solid fraction field, curvature of Solid-Liquid interface, Solid phase
+  // composition, pre streamed excess C field
 
   // total solid count
   std::size_t SolidCount;
 
  public:
-  BlockFieldManager<ScalarField<CAType>, T, 2>& getStateFM() { return StateFM; }
-  BlockFieldManager<ScalarField<T>, T, 2>& getFsFM() { return FsFM; }
-  BlockFieldManager<ScalarField<T>, T, 2>& getDeltaFsFM() { return DeltaFsFM; }
-  BlockFieldManager<ScalarField<T>, T, 2>& getCurvFM() { return CurvFM; }
-  BlockFieldManager<ScalarField<T>, T, 2>& getCSolidsFM() { return CSolidsFM; }
-  BlockFieldManager<ScalarField<T>, T, 2>& getPreExcessCFM() { return PreExcessCFM; }
-  BlockFieldManager<ScalarField<T>, T, 2>& getExcessCFM() { return ExcessCFM; }
-
-  template <typename LatSet0, typename LatSet1>
-  BlockZhuStefanescu2DManager(BlockFieldManager<VectorFieldAOS<T, 2>, T, 2>& veloFM,
-                              ZSConverter<T>& convca,
-                              BlockLatticeManager<T, LatSet0>& LatSos,
-                              BlockLatticeManager<T, LatSet1>& LatThs, T delta_, T theta)
-      : VelocityFM(veloFM), ConvCA(convca), BlockGeo(veloFM.getGeo()), Theta(theta),
-        delta(delta_), StateFM(veloFM.getGeo(), CAType::Boundary),
-        FsFM(veloFM.getGeo(), T(0)), DeltaFsFM(veloFM.getGeo(), T(0)),
-        CurvFM(veloFM.getGeo(), T(0)), CSolidsFM(veloFM.getGeo(), T(0)),
-        PreExcessCFM(veloFM.getGeo(), T(0)), ExcessCFM(veloFM.getGeo(), T(0)),
-        SolidCount(std::size_t(0)) {
+  template <typename INITVALUEPACK, typename... FIELDPTRTYPES>
+  BlockZhuStefanescu2DManager(BlockGeometry2D<T>& blockgeo, ZSConverter<T>& convca, T delta_,
+                              T theta, INITVALUEPACK& initvalues,
+                              FIELDPTRTYPES*... fieldptrs)
+      : BlockLatticeManagerBase<T, CALatSet, FIELDPACK<T>>(blockgeo, initvalues, fieldptrs...),
+        ConvCA(convca), Theta(theta), delta(delta_), SolidCount(std::size_t{}) {
     // create BlockZhuStefanescu2D
-    for (std::size_t i = 0; i < BlockGeo.getBlockNum(); ++i) {
-      BlockZS.emplace_back(
-        BlockGeo.getBlock(i), VelocityFM.getBlockField(i), ConvCA, LatSos.getBlockLat(i),
-        LatThs.getBlockLat(i), StateFM.getBlockField(i),
-        FsFM.getBlockField(i), DeltaFsFM.getBlockField(i),
-        CurvFM.getBlockField(i), CSolidsFM.getBlockField(i),
-        PreExcessCFM.getBlockField(i), ExcessCFM.getBlockField(i),
-        delta, Theta);
+    for (std::size_t i = 0; i < this->BlockGeo.getBlockNum(); ++i) {
+      BlockZS.emplace_back(this->BlockGeo.getBlock(i), ConvCA,
+                           ExtractFieldPtrs<T, CALatSet, FIELDPACK<T>>::getFieldPtrTuple(
+                             i, this->Fields, this->FieldPtrs),
+                           delta, Theta);
     }
     // init Interfaces
     for (auto& zs : BlockZS) {
@@ -421,28 +385,23 @@ class BlockZhuStefanescu2DManager {
   void CAFieldDataInit(BlockGeometryHelper2D<T>& GeoHelper) {
     // data transfer
     // StateFM.InitCopy(GeoHelper, CAType::Boundary);
-    FsFM.InitAndComm(GeoHelper);
-    CSolidsFM.InitAndComm(GeoHelper);
-    ExcessCFM.InitAndComm(GeoHelper);
+    this->template getField<FS<T>>().InitAndComm(GeoHelper);
+    this->template getField<CSOLIDS<T>>().InitAndComm(GeoHelper);
+    this->template getField<EXCESSC<T>>().InitAndComm(GeoHelper);
 
     // field init without data transfer
-    DeltaFsFM.Init(T(0));
-    CurvFM.Init(T(0));
-    PreExcessCFM.Init(T(0));
+    this->template getField<DELTAFS<T>>().Init(T(0));
+    this->template getField<CURVATURE<T>>().Init(T(0));
+    this->template getField<PREEXCESSC<T>>().Init(T(0));
   }
 
-  template <typename LatSet0, typename LatSet1>
-  void Init(BlockLatticeManager<T, LatSet0>& LatSos,
-            BlockLatticeManager<T, LatSet1>& LatThs) {
+  void Init() {
     BlockZS.clear();
-    for (std::size_t i = 0; i < BlockGeo.getBlockNum(); ++i) {
-      BlockZS.emplace_back(
-        BlockGeo.getBlock(i), VelocityFM.getBlockField(i), ConvCA, LatSos.getBlockLat(i),
-        LatThs.getBlockLat(i), StateFM.getBlockField(i),
-        FsFM.getBlockField(i), DeltaFsFM.getBlockField(i),
-        CurvFM.getBlockField(i), CSolidsFM.getBlockField(i),
-        PreExcessCFM.getBlockField(i), ExcessCFM.getBlockField(i),
-        delta, Theta);
+    for (std::size_t i = 0; i < this->BlockGeo.getBlockNum(); ++i) {
+      BlockZS.emplace_back(this->BlockGeo.getBlock(i), ConvCA,
+                           ExtractFieldPtrs<T, CALatSet, FIELDPACK<T>>::getFieldPtrTuple(
+                             i, this->Fields, this->FieldPtrs),
+                           delta, Theta);
     }
     // init Interfaces
     Interfaces.clear();
@@ -455,18 +414,28 @@ class BlockZhuStefanescu2DManager {
     // find block to setup
     std::size_t blockid;
     std::vector<int> nums;
-    nums.resize(BlockGeo.getBlockNum(), 0);
+    nums.resize(this->BlockGeo.getBlockNum(), 0);
 
-    Vector<T, 2> loc_t = BlockGeo.getLoc_t(SiteId);
-    for (int i = 0; i < BlockGeo.getBlockNum(); ++i) {
-      if (BlockGeo.getBlock(i).getBaseBlock().isInside(loc_t)) {
-        blockid = BlockGeo.getBlock(i).getIndex_t(loc_t);
+    Vector<T, 2> loc_t = this->BlockGeo.getLoc_t(SiteId);
+    for (int i = 0; i < this->BlockGeo.getBlockNum(); ++i) {
+      if (this->BlockGeo.getBlock(i).getBaseBlock().isInside(loc_t)) {
+        blockid = this->BlockGeo.getBlock(i).getIndex_t(loc_t);
         nums[i] = num;
         break;
       }
     }
 
-    for (int i = 0; i < BlockGeo.getBlockNum(); ++i) {
+    std::cout << "[Zhu-Stefanescu 2D CA]" << std::endl;
+    // get preferred growth angle to x-axis
+    std::cout << "preferred growth angle: " << Theta / M_PI << " Pi" << std::endl;
+    // get initial undercooling
+    // Tl(latth.getLatRhoInit()), Tl_eq(convca.get_LatTliq(latso.getLatRhoInit()))
+    T Tl_eq = ConvCA.get_LatTliq(this->template getField<CONCINIT<T>>().getBlockField(0).get());
+    T deltaT = Tl_eq - this->template getField<TEMPINIT<T>>().getBlockField(0).get();
+    std::cout << "Initial undercooling: " << deltaT << " | "
+              << ConvCA.TempConv.getPhysDTemp(deltaT) << std::endl;
+
+    for (int i = 0; i < this->BlockGeo.getBlockNum(); ++i) {
       BlockZS[i].Setup(blockid, nums[i]);
     }
 
@@ -494,11 +463,11 @@ class BlockZhuStefanescu2DManager {
 
   void Communicate() {
     // State field
-    StateFM.NormalCommunicate();
+    this->template getField<STATE>().NormalCommunicate();
     // Fs field
-    FsFM.NormalCommunicate();
+    this->template getField<FS<T>>().NormalCommunicate();
     // ExcessC field
-    ExcessCFM.NormalCommunicate();
+    this->template getField<EXCESSC<T>>().NormalCommunicate();
     // ExcessC field post communication
 
     // Reversed Communicate should only apply to newly solidified cells's neighbors
@@ -547,13 +516,14 @@ class BlockZhuStefanescu2DManager {
       if (cellblock.getLevel() <= LevelLimit) {
         T voxsize = cellblock.getVoxelSize();
         // find corresponding block
-        for (int iblock = 0; iblock < BlockGeo.getBlockNum(); ++iblock) {
-          const BasicBlock<T, 2>& block = BlockGeo.getBlock(iblock);
-          const BasicBlock<T, 2>& baseblock = BlockGeo.getBlock(iblock).getBaseBlock();
+        for (int iblock = 0; iblock < this->BlockGeo.getBlockNum(); ++iblock) {
+          const BasicBlock<T, 2>& block = this->BlockGeo.getBlock(iblock);
+          const BasicBlock<T, 2>& baseblock =
+            this->BlockGeo.getBlock(iblock).getBaseBlock();
           if (isOverlapped(cellblock, baseblock)) {
             // get CA State field
             const GenericArray<CAType>& StateF =
-              StateFM.getBlockField(iblock).getField(0);
+              this->template getField<STATE>().getBlockField(iblock).getField(0);
             const AABB<T, 2> intsec = getIntersection(cellblock, baseblock);
             int Nx = static_cast<int>(std::round(intsec.getExtension()[0] / voxsize));
             int Ny = static_cast<int>(std::round(intsec.getExtension()[1] / voxsize));

@@ -32,20 +32,22 @@ struct rho {
   using T = typename CELL::FloatType;
   using LatSet = typename CELL::LatticeSet;
 
+  using GenericRho = typename CELL::GenericRho;
+
   static inline T get(CELL& cell) {
     T rho_value{};
     for (unsigned int i = 0; i < LatSet::q; ++i) rho_value += cell[i];
-    if constexpr (WriteToField) cell.template get<RHO<T>>() = rho_value;
+    if constexpr (WriteToField) cell.template get<GenericRho>() = rho_value;
     return rho_value;
   }
   static inline void apply(CELL& cell, T& rho_value) {
     rho_value = T{};
     for (unsigned int i = 0; i < LatSet::q; ++i) rho_value += cell[i];
-    if constexpr (WriteToField) cell.template get<RHO<T>>() = rho_value;
+    if constexpr (WriteToField) cell.template get<GenericRho>() = rho_value;
   }
   // always write to field
   static inline void apply(CELL& cell) {
-    T& rho_value = cell.template get<RHO<T>>();
+    T& rho_value = cell.template get<GenericRho>();
     rho_value = T{};
     for (unsigned int i = 0; i < LatSet::q; ++i) rho_value += cell[i];
   }
@@ -59,23 +61,25 @@ struct sourceRho {
   using T = typename CELL::FloatType;
   using LatSet = typename CELL::LatticeSet;
 
+  using GenericRho = typename CELL::GenericRho;
+
   static inline T get(CELL& cell, T source) {
     T rho_value{};
     for (unsigned int i = 0; i < LatSet::q; ++i) rho_value += cell[i];
     // fOmega: avoid lattice artifact
     rho_value += source * T(0.5) * cell.getfOmega();
-    if constexpr (WriteToField) cell.template get<RHO<T>>() = rho_value;
+    if constexpr (WriteToField) cell.template get<GenericRho>() = rho_value;
     return rho_value;
   }
   static inline void apply(CELL& cell, T& rho_value, T source) {
     rho_value = T{};
     for (unsigned int i = 0; i < LatSet::q; ++i) rho_value += cell[i];
     rho_value += source * T(0.5) * cell.getfOmega();
-    if constexpr (WriteToField) cell.template get<RHO<T>>() = rho_value;
+    if constexpr (WriteToField) cell.template get<GenericRho>() = rho_value;
   }
   // always write to field
   static inline void apply(CELL& cell, T source) {
-    T& rho_value = cell.template get<RHO<T>>();
+    T& rho_value = cell.template get<GenericRho>();
     rho_value = T{};
     for (unsigned int i = 0; i < LatSet::q; ++i) rho_value += cell[i];
     rho_value += source * T(0.5) * cell.getfOmega();
@@ -205,6 +209,8 @@ struct rhou {
   using T = typename CELL::FloatType;
   using LatSet = typename CELL::LatticeSet;
 
+  using GenericRho = typename CELL::GenericRho;
+
   static inline void apply(CELL& cell, T& rho_value, Vector<T, LatSet::d>& u_value) {
     rho_value = T{};
     u_value.clear();
@@ -214,13 +220,13 @@ struct rhou {
     }
     u_value /= rho_value;
     if constexpr (WriteToField) {
-      cell.template get<RHO<T>>() = rho_value;
+      cell.template get<GenericRho>() = rho_value;
       cell.template get<VELOCITY<T, LatSet::d>>() = u_value;
     }
   }
   // will write to field regardless of WriteToField value
   static inline void apply(CELL& cell) {
-    T& rho_value = cell.template get<RHO<T>>();
+    T& rho_value = cell.template get<GenericRho>();
     Vector<T, LatSet::d>& u_value = cell.template get<VELOCITY<T, LatSet::d>>();
     rho_value = T{};
     u_value.clear();
@@ -237,6 +243,9 @@ struct forceRhou {
   using CELL = CELLTYPE;
   using T = typename CELL::FloatType;
   using LatSet = typename CELL::LatticeSet;
+
+  using GenericRho = typename CELL::GenericRho;
+
   static constexpr unsigned int scalardir = dir >= 2 ? LatSet::d - 1 : dir;
 
   static inline void apply(CELL& cell, const Vector<T, LatSet::d>& f_alpha, T& rho_value,
@@ -250,7 +259,7 @@ struct forceRhou {
     u_value += f_alpha * T{0.5};
     u_value /= rho_value;
     if constexpr (WriteToField) {
-      cell.template get<RHO<T>>() = rho_value;
+      cell.template get<GenericRho>() = rho_value;
       cell.template get<VELOCITY<T, LatSet::d>>() = u_value;
     }
   }
@@ -265,13 +274,13 @@ struct forceRhou {
     u_value[scalardir] += f * T{0.5};
     u_value /= rho_value;
     if constexpr (WriteToField) {
-      cell.template get<RHO<T>>() = rho_value;
+      cell.template get<GenericRho>() = rho_value;
       cell.template get<VELOCITY<T, LatSet::d>>() = u_value;
     }
   }
   // always write to field
   static inline void apply(CELL& cell, const Vector<T, LatSet::d>& f_alpha) {
-    T& rho_value = cell.template get<RHO<T>>();
+    T& rho_value = cell.template get<GenericRho>();
     Vector<T, LatSet::d>& u_value = cell.template get<VELOCITY<T, LatSet::d>>();
     rho_value = T{};
     u_value.clear();
@@ -283,7 +292,7 @@ struct forceRhou {
     u_value /= rho_value;
   }
   static inline void apply(CELL& cell, T f) {
-    T& rho_value = cell.template get<RHO<T>>();
+    T& rho_value = cell.template get<GenericRho>();
     Vector<T, LatSet::d>& u_value = cell.template get<VELOCITY<T, LatSet::d>>();
     rho_value = T{};
     u_value.clear();
