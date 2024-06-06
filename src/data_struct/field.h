@@ -137,7 +137,7 @@ class Array {
   }
   void SetField(int i, T value) { _Data[i] = value; }
 
-  constexpr unsigned int Size() const { return array_dim; }
+  static constexpr unsigned int Size() { return array_dim; }
 };
 
 template <typename ArrayType, unsigned int D>
@@ -230,7 +230,7 @@ class GenericArrayField {
     for (unsigned int i = 0; i < D; ++i) _Data[i].Init(value);
   }
 
-  constexpr unsigned int Size() const { return D; }
+  static constexpr unsigned int Size() { return D; }
 };
 
 template <typename ArrayType, typename Base>

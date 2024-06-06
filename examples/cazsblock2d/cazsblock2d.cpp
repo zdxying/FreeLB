@@ -238,13 +238,13 @@ int main() {
   BlockLatticeManager<T, LatSet1, TEMPFIELDPACK> THLattice(Geo, TEMPInitValues, TempConv, &NSLattice.getField<VELOCITY<T, 2>>());
 
   // --------------------- CA ---------------------
-  ValuePack CAInitValues(CA::CAType::Solid, T{},T{},T{},T{},T{},T{},T{},T{});
+  ValuePack CAInitValues(CA::CAType::Boundary, T{},T{},T{},T{},T{},T{},TempConv.getLatRhoInit(),ConcConv.getLatRhoInit());
   CA::BlockZhuStefanescu2DManager<T, LatSetCA> CA(Geo, CAConv, Delta, pref_Orine, CAInitValues, 
   &NSLattice.getField<VELOCITY<T, 2>>(), &SOLattice.getField<CONC<T>>(), &THLattice.getField<TEMP<T>>());
   
   SOLattice.template addField<CA::EXCESSC<T>>(CA.template getField<CA::EXCESSC<T>>());
   // set CA State field
-  CA.getField<CA::STATE>().forEach(FlagFM, AABBFlag, [&](auto& field, std::size_t id) {
+  CA.getField<CA::STATE>().forEach(FlagFM, AABBFlag|BouncebackFlag, [&](auto& field, std::size_t id) {
     field.SetField(id, CA::CAType::Fluid);
   });
   CA.Setup(Geo.getIndex(Vector<int, 2>{Ni / 2, Nj / 2}));
@@ -300,14 +300,14 @@ int main() {
   using THbuoyancyTaskSelector = CoupledTaskSelector<std::uint8_t, NSCELL, TEMPCELL, THbuoyancyTask>;
   BlockLatManagerCoupling THbuoyancy(NSLattice, THLattice);
 
-
   // writer
   vtmo::ScalarWriter CWriter("Conc", SOLattice.getField<CONC<T>>());
+  vtmo::ScalarWriter TWriter("Temp", THLattice.getField<TEMP<T>>());
   // vtmo::ScalarWriter FsWriter("Fs", CA.getFsFM());
   vtmo::ScalarWriter StateWriter("State", CA.getField<CA::STATE>());
   vtmo::VectorWriter VecWriter("Velocity", NSLattice.getField<VELOCITY<T, 2>>());
   vtmo::vtmWriter<T, 2> MainWriter("cazsblock2d", Geo, 1);
-  MainWriter.addWriterSet(CWriter, StateWriter, VecWriter);
+  MainWriter.addWriterSet(CWriter, TWriter, StateWriter, VecWriter);
 
   // count and timer
   Timer MainLoopTimer;
@@ -326,10 +326,6 @@ int main() {
     NSLattice.ApplyCellDynamics<NSTaskSelector>(MainLoopTimer(), CA.getField<CA::STATE>());
     // SO task
     SOLattice.ApplyCellDynamics<SOTaskSelector>(MainLoopTimer(), CA.getField<CA::STATE>());
-
-    // NSLattice.UpdateRho(MainLoopTimer(), FI_Flag, CA.getStateFM());
-    // SOLattice.UpdateRho_Source(MainLoopTimer(), FI_Flag, CA.getStateFM(),
-    //                            CA.getExcessCFM());
 
     CA.Apply_SimpleCapture();
 

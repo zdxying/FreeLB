@@ -337,7 +337,7 @@ class BlockZhuStefanescu2D : public BlockLatticeBase<T, LatSet, ALLFIELDS<T>> {
 template <typename T, typename CALatSet>
 class BlockZhuStefanescu2DManager
     : public BlockLatticeManagerBase<T, CALatSet, FIELDPACK<T>> {
-      public:
+ public:
       
  private:
   std::vector<BlockZhuStefanescu2D<T, CALatSet>> BlockZS;

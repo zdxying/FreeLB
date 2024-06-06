@@ -116,7 +116,7 @@ struct ScalarForce {
     }
   }
   static auto getForce(const CELL &cell) {
-    return cell.template get<SCALARCONSTFORCE<T>>();
+    return cell.template get<SCALARFORCE<T>>();
   }
 };
 template <typename CELL, unsigned int dir = 2>

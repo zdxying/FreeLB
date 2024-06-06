@@ -79,8 +79,6 @@ class BlockField : public FieldType {
   static constexpr unsigned int ArrayDim = FieldType::array_dim;
 
  private:
-  // block field
-  // FieldType _Field;
   // block(geometry) structure of the field
   Block<FloatType, Dim>& _Block;
 
@@ -100,21 +98,50 @@ class BlockField : public FieldType {
  public:
   BlockField() = default;
   BlockField(Block<FloatType, Dim>& block) : _Block(block), FieldType(block.getN()) {
-#ifdef MPI_ENABLED
-    MPIBlockBufferInit(_Block.getMPIBlockComm(), MPIBuffer, ArrayDim);
-    MPIBlockBufferInit(_Block.getMPIAverBlockComm(), MPIAverBuffer, ArrayDim);
-    MPIBlockBufferInit(_Block.getMPIInterpBlockComm(), MPIInterpBuffer, ArrayDim);
-#endif
+    MPIBufferInit();
   }
   BlockField(Block<FloatType, Dim>& block, datatype initvalue)
       : _Block(block), FieldType(block.getN(), initvalue) {
+    MPIBufferInit();
+  }
+  // copy constructor
+  BlockField(const BlockField& blockF) : _Block(blockF._Block), FieldType(blockF) {
+    MPIBufferInit();
+  }
+  // move constructor
+  BlockField(BlockField&& blockF) noexcept
+      : _Block(blockF._Block), FieldType(std::move(blockF)) {
+    MPIBufferInit();
+  }
+  // copy assignment operator
+  BlockField& operator=(const BlockField& blockF) {
+    if (this != &blockF) {
+      _Block = blockF._Block;
+      FieldType::operator=(blockF);
+      MPIBufferInit();
+    }
+    return *this;
+  }
+  // move assignment operator
+  BlockField& operator=(BlockField&& blockF) noexcept {
+    if (this != &blockF) {
+      _Block = blockF._Block;
+      FieldType::operator=(std::move(blockF));
+      MPIBufferInit();
+    }
+    return *this;
+  }
+
+
+  ~BlockField() = default;
+
+  void MPIBufferInit() {
 #ifdef MPI_ENABLED
     MPIBlockBufferInit(_Block.getMPIBlockComm(), MPIBuffer, ArrayDim);
     MPIBlockBufferInit(_Block.getMPIAverBlockComm(), MPIAverBuffer, ArrayDim);
     MPIBlockBufferInit(_Block.getMPIInterpBlockComm(), MPIInterpBuffer, ArrayDim);
 #endif
   }
-  ~BlockField() = default;
 
   Block<FloatType, Dim>& getBlock() { return _Block; }
   const Block<FloatType, Dim>& getBlock() const { return _Block; }
@@ -131,9 +158,9 @@ class BlockField : public FieldType {
     for (BlockFieldComm<FieldType, FloatType, Dim>& comm : Comms) {
       BlockField<FieldType, FloatType, Dim>* nblockF = comm.BlockF;
       std::size_t size = comm.getRecvs().size();
-      for (int iArr = 0; iArr < FieldType::Size(); ++iArr) {
+      for (int iArr = 0; iArr < nblockF->Size(); ++iArr) {
         const auto& nArray = nblockF->getField(iArr);
-        auto& Array = FieldType::getField(iArr);
+        auto& Array = this->getField(iArr);
         for (std::size_t id = 0; id < size; ++id) {
           Array.set(comm.getRecv(id), nArray[comm.getSend(id)]);
         }
@@ -418,6 +445,32 @@ class BlockFieldManager {
     }
     InitComm();
   }
+
+  // copy constructor
+  BlockFieldManager(const BlockFieldManager& blockFManager)
+      : _Fields(blockFManager._Fields), _BlockGeo(blockFManager._BlockGeo) {}
+  // move constructor
+  BlockFieldManager(BlockFieldManager&& blockFManager) noexcept
+      : _Fields(std::move(blockFManager._Fields)), _BlockGeo(blockFManager._BlockGeo) {}
+
+  // copy assignment operator
+  BlockFieldManager& operator=(const BlockFieldManager& blockFManager) {
+    if (this != &blockFManager) {
+      _Fields = blockFManager._Fields;
+      _BlockGeo = blockFManager._BlockGeo;
+    }
+    return *this;
+  }
+  // move assignment operator
+  BlockFieldManager& operator=(BlockFieldManager&& blockFManager) noexcept {
+    if (this != &blockFManager) {
+      _Fields = std::move(blockFManager._Fields);
+      _BlockGeo = blockFManager._BlockGeo;
+    }
+    return *this;
+  }
+
+
   ~BlockFieldManager() = default;
 
 
@@ -514,9 +567,9 @@ class BlockFieldManager {
   }
 
   // get block field with block id
-  BlockField<FieldType, FloatType, Dim>& findBlockField(int blockid) {
+  BlockField<FieldType, FloatType, Dim>* findBlockField(int blockid) {
     for (BlockField<FieldType, FloatType, Dim>& blockF : _Fields) {
-      if (blockF.getBlock().getBlockId() == blockid) return blockF;
+      if (blockF.getBlock().getBlockId() == blockid) return &blockF;
     }
     std::cerr << "[BlockFieldManager]: can't find blockF with blockid " << blockid
               << std::endl;
@@ -524,29 +577,27 @@ class BlockFieldManager {
   }
 
   void InitComm() {
-    int blockid = 0;
     for (BlockField<FieldType, FloatType, Dim>& blockF : _Fields) {
-      Block<FloatType, Dim>& block = _BlockGeo.getBlock(blockid);
-      ++blockid;
+      Block<FloatType, Dim>& block = blockF.getBlock();
       // normal communication
       std::vector<BlockFieldComm<FieldType, FloatType, Dim>>& Fcomms = blockF.getComms();
       Fcomms.clear();
       for (BlockComm<FloatType, Dim>& comm : block.getCommunicators()) {
-        Fcomms.emplace_back(&findBlockField(comm.getSendId()), &comm);
+        Fcomms.emplace_back(findBlockField(comm.getSendId()), &comm);
       }
       // average communication
       std::vector<InterpBlockFieldComm<FieldType, FloatType, Dim>>& Avercomms =
         blockF.getAverComms();
       Avercomms.clear();
       for (InterpBlockComm<FloatType, Dim>& comm : block.getAverageBlockComm()) {
-        Avercomms.emplace_back(&findBlockField(comm.getSendId()), &comm);
+        Avercomms.emplace_back(findBlockField(comm.getSendId()), &comm);
       }
       // interp communication
       std::vector<InterpBlockFieldComm<FieldType, FloatType, Dim>>& Interpcomms =
         blockF.getInterpComms();
       Interpcomms.clear();
       for (InterpBlockComm<FloatType, Dim>& comm : block.getInterpBlockComm()) {
-        Interpcomms.emplace_back(&findBlockField(comm.getSendId()), &comm);
+        Interpcomms.emplace_back(findBlockField(comm.getSendId()), &comm);
       }
     }
   }
@@ -1057,8 +1108,7 @@ class BlockFieldManagerPtrCollection<T, LatSet, TypePack<Fields...>> {
 
   BlockFieldManagerPtrCollection() : fields() {}
   template <typename First, typename... Rest>
-  BlockFieldManagerPtrCollection(First* first, Rest*... rest)
-      : fields(first, rest...) {}
+  BlockFieldManagerPtrCollection(First* first, Rest*... rest) : fields(first, rest...) {}
   ~BlockFieldManagerPtrCollection() = default;
 
   void Init(Fields&... fieldrefs) { fields = std::make_tuple(&fieldrefs...); }

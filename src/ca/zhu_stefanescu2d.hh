@@ -400,7 +400,7 @@ void BlockZhuStefanescu2D<T, LatSet>::UpdateDeltaFs() {
 
 template <typename T, typename LatSet>
 T BlockZhuStefanescu2D<T, LatSet>::getC_eq(std::size_t id) {
-  T Ceq = this->template getField<RHOINIT<T>>().get() +
+  T Ceq = this->template getField<CONCINIT<T>>().get() +
           ((Tl_eq - this->template getField<TEMP<T>>().get(id)) -
            GT * this->template getField<CURVATURE<T>>().get(id) * getanisotropy(id)) /
             m_l;
