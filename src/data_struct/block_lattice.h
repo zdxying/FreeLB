@@ -287,17 +287,14 @@ class DynamicBlockLatticeHelper2D {
   std::vector<T> _MaxGradNorm2s;
   // ScalarField<T> _GradNorm2F;
 
-  BlockFieldManager<VectorFieldAOS<T, 2>, T, 2>& VelocityFM;
-
 
  public:
   DynamicBlockLatticeHelper2D(BlockLatticeManager<T, LatSet, TypePack>& blocklatman,
                               BlockGeometryHelper2D<T>& geohelper,
-                              BlockFieldManager<VectorFieldAOS<T, 2>, T, 2>& velocityfm,
                               const std::vector<T>& refineth,
                               const std::vector<T>& coarsenth, int MaxRefineLevel = 2)
       : BlockLatMan(blocklatman), BlockGeo(blocklatman.getGeo()),
-        BlockGeoHelper(geohelper), VelocityFM(velocityfm), _RefineTholds(refineth),
+        BlockGeoHelper(geohelper), _RefineTholds(refineth),
         _CoarsenTholds(coarsenth), _MaxRefineLevel(MaxRefineLevel)
   // ,_GradNorm2F(BlockGeo.getBaseBlock().getN(), T(0)) {
   {

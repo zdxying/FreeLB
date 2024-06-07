@@ -837,22 +837,22 @@ void DynamicBlockLatticeHelper2D<T, LatSet, TypePack>::GeoRefine(int OptProcNum,
 template <typename T, typename LatSet, typename TypePack>
 void DynamicBlockLatticeHelper2D<T, LatSet, TypePack>::PopFieldInit() {
   // rho field data transfer could be done here
-  BlockLatMan.getRhoFM().InitAndComm(BlockGeoHelper,
+  BlockLatMan.template getField<GenericRho>().InitAndComm(BlockGeoHelper,
                                      BlockLatMan.getConverter().getLatRhoInit());
   // pop field data, this assumes that other fields like rho and velocity have been
   // transfered
-  BlockLatMan.getPopsFM().Init(BlockGeoHelper);
+  BlockLatMan.template getField<POP<T,LatSet::q>>().Init(BlockGeoHelper);
   // now pops field data is transferred, but conversion of distribution function
   // between blocks of different refinement levels is not done yet
 #pragma omp parallel for num_threads(Thread_Num)
-  for (int inewblock = 0; inewblock < BlockLatMan.getPopsFM().getBlockFields().size();
+  for (int inewblock = 0; inewblock < BlockLatMan.template getField<POP<T,LatSet::q>>().getBlockFields().size();
        ++inewblock) {
-    BlockField<PopulationField<T, LatSet::q>, T, LatSet::d>& PopsField =
-      BlockLatMan.getPopsFM().getBlockField(inewblock);
-    const BlockField<ScalarField<T>, T, LatSet::d>& RhoField =
-      BlockLatMan.getRhoFM().getBlockField(inewblock);
-    const BlockField<VectorFieldAOS<T, LatSet::d>, T, LatSet::d>& VELOCITY =
-      BlockLatMan.getVelocityFM().getBlockField(inewblock);
+    auto& PopsField =
+      BlockLatMan.template getField<POP<T,LatSet::q>>().getBlockField(inewblock);
+    const auto& RhoField =
+      BlockLatMan.template getField<GenericRho>().getBlockField(inewblock);
+    const auto& VELOCITYF =
+      BlockLatMan.template getField<VELOCITY<T,LatSet::d>>().getBlockField(inewblock);
 
     const BasicBlock<T, 2>& newblock = BlockGeo.getBlock(inewblock);
     const BasicBlock<T, 2>& newbaseblock = BlockGeo.getBlock(inewblock).getBaseBlock();
@@ -866,16 +866,16 @@ void DynamicBlockLatticeHelper2D<T, LatSet, TypePack>::PopFieldInit() {
         // get omega
         T omega = BlockLatMan.getBlockLat(iblock).getOmega();
         if (Level > block.getLevel()) {
-          PopConversionCoarseToFine(RhoField, VELOCITY, PopsField, baseblock, newblock,
+          PopConversionCoarseToFine(RhoField, VELOCITYF, PopsField, baseblock, newblock,
                                     newbaseblock, omega);
         } else if (Level < block.getLevel()) {
-          PopConversionFineToCoarse(RhoField, VELOCITY, PopsField, baseblock, newblock,
+          PopConversionFineToCoarse(RhoField, VELOCITYF, PopsField, baseblock, newblock,
                                     newbaseblock, omega);
         }
       }
     }
   }
-  BlockLatMan.getPopsFM().CommunicateAll();
+  BlockLatMan.template getField<POP<T,LatSet::q>>().CommunicateAll();
 }
 
 template <typename T, typename LatSet, typename TypePack>

@@ -381,12 +381,13 @@ void BlockZhuStefanescu2D<T, LatSet>::UpdateDeltaFs() {
     //
     if (deltaf > 1) {
       Vector<int, 2> vox = this->BlockGeo.getLoc(id);
-      Vector<T, 2> global_loc = this->BlockGeo.getVoxel(vox);
-      std::cerr << "[BlockCA2d] Error: at (" << global_loc[0] << ", " << global_loc[1]
-                << "), Index: (" << vox[0] << ", " << vox[1] << "), id: " << id
+      std::cerr << "[BlockCA2d] Error: at Index: (" << vox[0] << ", " << vox[1] << "), id: " << id
                 << ", blockid: " << this->BlockGeo.getBlockId() << "\n deltaf: " << deltaf
                 << ", Ceq: " << C_eq
-                << ", Cl: " << this->template getField<CONC<T>>().get(id) << std::endl;
+                << ", Cl: " << this->template getField<CONC<T>>().get(id) 
+                << ", Curv: " << this->template getField<CURVATURE<T>>().get(id)
+                << ", aniso: " << getanisotropy(id) <<
+                std::endl;
 #ifndef _OPENMP
       throw std::runtime_error("DeltaF Error");
 #else

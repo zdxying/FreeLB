@@ -106,7 +106,7 @@ BlockGeometry2D<T>::BlockGeometry2D(BlockGeometryHelper2D<T> &GeoHelper)
 
 template <typename T>
 void BlockGeometry2D<T>::PrintInfo() const {
-  std::cout << "[BlockGeometry2D]: \n"
+  std::cout << "[BlockGeometry2D]: "
             << "Total Cell Num: " << getTotalCellNum() << std::endl;
 }
 
