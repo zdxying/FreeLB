@@ -316,10 +316,9 @@ class BlockZhuStefanescu2D : public BlockLatticeBase<T, LatSet, ALLFIELDS<T>> {
   T getPhi(std::size_t id);
 
   void UpdateDeltaFs();
-  // grow, omp parallel is enabled, no erase operation
-  // if cells are large, use Grow_erase_s may improve performance
+
   void Grow();
-  // this function should be called after communication
+
   void DistributeExcessC();
   void SimpleCapture();
 
@@ -497,11 +496,10 @@ class BlockZhuStefanescu2DManager
     return num;
   }
   std::size_t getSolidCount() {
-    std::size_t count = 0;
+    SolidCount = 0;
     for (auto& zs : BlockZS) {
-      count += zs.getSolidCount();
+      SolidCount += zs.getSolidCount();
     }
-    SolidCount += count;
     return SolidCount;
   }
 

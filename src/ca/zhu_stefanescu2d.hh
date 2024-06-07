@@ -445,8 +445,7 @@ void BlockZhuStefanescu2D<T, LatSet>::Grow() {
   for (std::size_t id : Interface) {
     T delta_Fs = this->template getField<DELTAFS<T>>().get(id);
     T Fs_temp = this->template getField<FS<T>>().get(id) + delta_Fs;
-    if (Fs_temp >= T(1) || !hasNeighborType(id, static_cast<std::uint8_t>(
-                                                  CAType::Fluid | CAType::Interface))) {
+    if (Fs_temp >= T(1) || !hasNeighborType(id, (CAType::Fluid | CAType::Interface))) {
       // get modified delta_Fs
       delta_Fs = T(1) - this->template getField<FS<T>>().get(id);
       this->template getField<FS<T>>().SetField(id, T(1));
@@ -497,7 +496,7 @@ void BlockZhuStefanescu2D<T, LatSet>::DistributeExcessC() {
         }
       }
       // reset preExcessC
-      this->template getField<PREEXCESSC<T>>().SetField(id, T(0));
+      this->template getField<PREEXCESSC<T>>().SetField(id, T{});
     }
   }
 }

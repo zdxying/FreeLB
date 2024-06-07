@@ -302,12 +302,10 @@ int main() {
 
   // writer
   vtmo::ScalarWriter CWriter("Conc", SOLattice.getField<CONC<T>>());
-  vtmo::ScalarWriter TWriter("Temp", THLattice.getField<TEMP<T>>());
-  // vtmo::ScalarWriter FsWriter("Fs", CA.getFsFM());
   vtmo::ScalarWriter StateWriter("State", CA.getField<CA::STATE>());
   vtmo::VectorWriter VecWriter("Velocity", NSLattice.getField<VELOCITY<T, 2>>());
   vtmo::vtmWriter<T, 2> MainWriter("cazsblock2d", Geo, 1);
-  MainWriter.addWriterSet(CWriter, TWriter, StateWriter, VecWriter);
+  MainWriter.addWriterSet(CWriter, StateWriter, VecWriter);
 
   // count and timer
   Timer MainLoopTimer;
@@ -322,35 +320,22 @@ int main() {
     // get buoyancy
     SObuoyancy.ApplyCellDynamics<SObuoyancyTaskSelector>(MainLoopTimer(), CA.getField<CA::STATE>());
     THbuoyancy.ApplyCellDynamics<THbuoyancyTaskSelector>(MainLoopTimer(), CA.getField<CA::STATE>());
+
     // NS task
     NSLattice.ApplyCellDynamics<NSTaskSelector>(MainLoopTimer(), CA.getField<CA::STATE>());
-    // SO task
-    SOLattice.ApplyCellDynamics<SOTaskSelector>(MainLoopTimer(), CA.getField<CA::STATE>());
-
-    CA.Apply_SimpleCapture();
-
-    // Force.GetBuoyancy(MainLoopTimer(), FI_Flag, CA.getStateFM());
-
-    // Force.BGK_U<Equilibrium<T, LatSet0>::SecondOrder>(MainLoopTimer(), CA::CAType::Fluid,
-    //                                                   CA.getStateFM());
-    // Force.BGK<Equilibrium<T, LatSet0>::SecondOrder>(
-    //   MainLoopTimer(), CA::CAType::Interface, CA.getStateFM());
-
-    // SOLattice.BGK_Source<Equilibrium<T, LatSet1>::SecondOrder>(
-    //   MainLoopTimer(), FI_Flag, CA.getStateFM(), CA.getExcessCFM());
-
     NSLattice.Stream(MainLoopTimer());
-    SOLattice.Stream(MainLoopTimer());
-
     NS_BB.Apply(MainLoopTimer());
     NS_MBB.Apply(MainLoopTimer());
+    NSLattice.Communicate(MainLoopTimer());
+
+    // SO task
+    SOLattice.ApplyCellDynamics<SOTaskSelector>(MainLoopTimer(), CA.getField<CA::STATE>());
+    SOLattice.Stream(MainLoopTimer());
     SO_BB.Apply(MainLoopTimer());
     SO_MBB.Apply(MainLoopTimer());
-
-    NSLattice.Communicate(MainLoopTimer());
     SOLattice.Communicate(MainLoopTimer());
 
-    // SOLattice.getRhoFM().CommunicateAll(MainLoopTimer());
+    CA.Apply_SimpleCapture();
 
     ++MainLoopTimer;
     ++OutputTimer;
@@ -358,6 +343,7 @@ int main() {
     if (MainLoopTimer() % OutputStep == 0) {
       NSLattice.template getField<VELOCITY<T,2>>().CommunicateAll();
       SOLattice.template getField<CONC<T>>().CommunicateAll();
+      CA.Communicate();
 
       OutputTimer.Print_InnerLoopPerformance(Geo.getTotalCellNum(), OutputStep);
       Printer::Print<std::size_t>("Interface", CA.getInterfaceNum());

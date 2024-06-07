@@ -67,14 +67,14 @@ struct sourceRho {
     T rho_value{};
     for (unsigned int i = 0; i < LatSet::q; ++i) rho_value += cell[i];
     // fOmega: avoid lattice artifact
-    rho_value += source * T(0.5) * cell.getfOmega();
+    rho_value += source * T{0.5};
     if constexpr (WriteToField) cell.template get<GenericRho>() = rho_value;
     return rho_value;
   }
   static inline void apply(CELL& cell, T& rho_value, T source) {
     rho_value = T{};
     for (unsigned int i = 0; i < LatSet::q; ++i) rho_value += cell[i];
-    rho_value += source * T(0.5) * cell.getfOmega();
+    rho_value += source * T{0.5};
     if constexpr (WriteToField) cell.template get<GenericRho>() = rho_value;
   }
   // always write to field
@@ -82,7 +82,7 @@ struct sourceRho {
     T& rho_value = cell.template get<GenericRho>();
     rho_value = T{};
     for (unsigned int i = 0; i < LatSet::q; ++i) rho_value += cell[i];
-    rho_value += source * T(0.5) * cell.getfOmega();
+    rho_value += source * T{0.5};
   }
 };
 
@@ -366,7 +366,7 @@ struct Rho {
   static T get(const BasicCell<T, LatSet>& cell, const T source) {
     T rho = T(0);
     for (int i = 0; i < LatSet::q; ++i) rho += cell[i];
-    rho += source * T(0.5);
+    rho += source * T{0.5};
     return rho;
   }
 
@@ -380,7 +380,7 @@ struct Rho {
   static void apply(const BasicCell<T, LatSet>& cell, T& rho, const T source) {
     rho = T(0);
     for (int i = 0; i < LatSet::q; ++i) rho += cell[i];
-    rho += source * T(0.5);
+    rho += source * T{0.5};
   }
 };
 
@@ -404,7 +404,7 @@ struct Velocity {
     T rho = T(0);
     for (int i = 0; i < LatSet::q; ++i) {
       rho += cell[i];
-      u = u + (LatSet::c[i] * (cell[i] + T(0.5) * fi[i]));
+      u = u + (LatSet::c[i] * (cell[i] + T{0.5} * fi[i]));
     }
     return u / rho;
   }
@@ -427,7 +427,7 @@ struct Velocity {
     T rho = T(0);
     for (int i = 0; i < LatSet::q; ++i) {
       rho += cell[i];
-      u = u + (LatSet::c[i] * (cell[i] + T(0.5) * fi[i]));
+      u = u + (LatSet::c[i] * (cell[i] + T{0.5} * fi[i]));
     }
     u = u / rho;
   }

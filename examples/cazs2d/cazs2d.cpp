@@ -79,13 +79,12 @@ int OutputStep;
 std::string work_dir;
 
 void readParam() {
-  
   iniReader param_reader("ZS2Dparam.ini");
   // mesh
   work_dir = param_reader.getValue<std::string>("workdir", "workdir_");
   // parallel
   Thread_Num = param_reader.getValue<int>("parallel", "thread_num");
-  
+
   Ni = param_reader.getValue<int>("Mesh", "Ni");
   Nj = param_reader.getValue<int>("Mesh", "Nj");
   Cell_Len = param_reader.getValue<T>("Mesh", "Cell_Len");
@@ -100,10 +99,8 @@ void readParam() {
   m_Solidus = param_reader.getValue<T>("Phase_Diagram", "m_Solidus");
   // physical properties
   rho_ref = param_reader.getValue<T>("Phys_Prop", "rho_ref");
-  Solutal_Expan_Coeff =
-      param_reader.getValue<T>("Phys_Prop", "Solutal_Expan_Coeff");
-  Thermal_Expan_Coeff =
-      param_reader.getValue<T>("Phys_Prop", "Thermal_Expan_Coeff");
+  Solutal_Expan_Coeff = param_reader.getValue<T>("Phys_Prop", "Solutal_Expan_Coeff");
+  Thermal_Expan_Coeff = param_reader.getValue<T>("Phys_Prop", "Thermal_Expan_Coeff");
   SHeatCap_Liq = param_reader.getValue<T>("Phys_Prop", "SHeatCap_Liq");
   SHeatCap_Soli = param_reader.getValue<T>("Phys_Prop", "SHeatCap_Soli");
   LatHeat = param_reader.getValue<T>("Phys_Prop", "LatHeat");
@@ -140,10 +137,9 @@ void readParam() {
   Cl = 0;
   Ch = (T_Melt - T_Eute) / m_Liquidus;
 
-  
+
   std::cout << "------------Simulation Parameters:-------------\n" << std::endl;
-  std::cout << "[Simulation_Settings]:"
-            << "TotalStep:         " << MaxStep << "\n"
+  std::cout << "[Simulation_Settings]:" << "TotalStep:         " << MaxStep << "\n"
             << "OutputStep:        " << OutputStep << "\n"
 #ifdef _OPENMP
             << "Running on " << Thread_Num << " threads\n"
@@ -156,22 +152,21 @@ int main() {
   std::uint8_t AABBflag = std::uint8_t(2);
   std::uint8_t BouncebackFlag = std::uint8_t(4);
   std::uint8_t FI_Flag =
-      static_cast<std::uint8_t>(CA::CAType::Fluid | CA::CAType::Interface);
+    static_cast<std::uint8_t>(CA::CAType::Fluid | CA::CAType::Interface);
 
   Printer::Print_BigBanner(std::string("Initializing..."));
 
   readParam();
 
   BaseConverter<T> BaseConv(LatSet0::cs2);
-  BaseConv.ConvertFromRT(Cell_Len, RT, rho_ref, Ni * Cell_Len, U_Max,
-                         Kine_Visc);
+  BaseConv.ConvertFromRT(Cell_Len, RT, rho_ref, Ni * Cell_Len, U_Max, Kine_Visc);
 
   TempConverter<T> TempConv(LatSet1::cs2, BaseConv, Temp_Ini);
   // Conv.ConvertTempFromTDiff_with_Ra(Tl, Th, TDiff, Ra);
   // Conv.ConvertTempFromSHeatCap_and_TCond_with_Ra(Tl, Th, T_Cond_Liq,
   // SHeatCap_Liq, Ra);
-  TempConv.ConvertTempFromSHeatCap_and_TCond_with_Texpan(
-      Tl, Th, T_Cond_Liq, SHeatCap_Liq, Thermal_Expan_Coeff);
+  TempConv.ConvertTempFromSHeatCap_and_TCond_with_Texpan(Tl, Th, T_Cond_Liq, SHeatCap_Liq,
+                                                         Thermal_Expan_Coeff);
 
   ConcConverter<T> ConcConv(LatSet1::cs2, BaseConv, Conc_Ini);
   ConcConv.ConvertConc_withCExpan(Cl, Ch, Diff_Liq, Solutal_Expan_Coeff);
@@ -191,46 +186,39 @@ int main() {
   AABB<T, 2> cavity(Vector<T, 2>(T(0), T(0)),
                     Vector<T, 2>(T(Ni * Cell_Len), T(Nj * Cell_Len)));
   // NS geometry
-  Geometry2D<T> Geo0(Ni, Nj, cavity, Cell_Len, Vector<T, 2>{}, AABBflag,
-                     voidflag);
+  Geometry2D<T> Geo0(Ni, Nj, cavity, Cell_Len, Vector<T, 2>{}, AABBflag, voidflag);
   Geo0.SetupBoundary<LatSet0>(AABBflag, BouncebackFlag);
   // thermal geometry
-  Geometry2D<T> Geo1(Ni, Nj, cavity, Cell_Len, Vector<T, 2>{}, AABBflag,
-                     voidflag);
+  Geometry2D<T> Geo1(Ni, Nj, cavity, Cell_Len, Vector<T, 2>{}, AABBflag, voidflag);
   Geo1.SetupBoundary<LatSet1>(AABBflag, BouncebackFlag);
 
   // ------------------ define lattice ------------------
   // velocity field
   VectorFieldAOS<T, LatSet0::d> Velocity(Geo0.getVoxelsNum());
-	// lbm
+  // lbm
   BasicLattice<T, LatSet0> NSLattice(Geo0, BaseConv, Velocity);
 
   BasicLattice<T, LatSet1> SOLattice(Geo1, ConcConv, Velocity);
 
   BasicLattice<T, LatSet1> THLattice(Geo1, TempConv, Velocity);
 
-	  // --------------------- CA ---------------------
+  // --------------------- CA ---------------------
   CA::ZhuStefanescu2D<T, LatSet0> CA(
-      CAConv, SOLattice, THLattice, NSLattice, Delta, pref_Orine,
-      Geo0.findCellId(
-          Vector<T, 2>{T(Ni * Cell_Len / 2), T(Nj * Cell_Len / 2)}));
+    CAConv, SOLattice, THLattice, NSLattice, Delta, pref_Orine,
+    Geo0.findCellId(Vector<T, 2>{T(Ni * Cell_Len / 2), T(Nj * Cell_Len / 2)}));
 
   // --------------------- BCs ---------------------
   // NS
-  BBLikeFixedBoundary<
-      T, LatSet0, BounceBackLikeMethod<T, LatSet0>::normal_bounceback>
-      NS_BB("NS_BB", NSLattice, BouncebackFlag);
-  BBLikeMovingBoundary<
-      T, LatSet0, BounceBackLikeMethod<T, LatSet0>::normal_bounceback>
-      NS_MBB("NS_MBB", NSLattice, CA.getInterface(), CA::CAType::Solid);
+  BBLikeFixedBoundary<T, LatSet0, BounceBackLikeMethod<T, LatSet0>::normal_bounceback>
+    NS_BB("NS_BB", NSLattice, BouncebackFlag);
+  BBLikeMovingBoundary<T, LatSet0, BounceBackLikeMethod<T, LatSet0>::normal_bounceback>
+    NS_MBB("NS_MBB", NSLattice, CA.getInterface(), CA::CAType::Solid);
 
   // Conc
-  BBLikeFixedBoundary<
-      T, LatSet1, BounceBackLikeMethod<T, LatSet1>::normal_bounceback>
-      SO_BB("SO_BB", SOLattice, BouncebackFlag);
-  BBLikeMovingBoundary<
-      T, LatSet1, BounceBackLikeMethod<T, LatSet1>::normal_bounceback>
-      SO_MBB("SO_MBB", SOLattice, CA.getInterface(), CA::CAType::Solid);
+  BBLikeFixedBoundary<T, LatSet1, BounceBackLikeMethod<T, LatSet1>::normal_bounceback>
+    SO_BB("SO_BB", SOLattice, BouncebackFlag);
+  BBLikeMovingBoundary<T, LatSet1, BounceBackLikeMethod<T, LatSet1>::normal_bounceback>
+    SO_MBB("SO_MBB", SOLattice, CA.getInterface(), CA::CAType::Solid);
 
 
   Buoyancy<T, LatSet0> Force(NSLattice, Velocity);
@@ -238,26 +226,13 @@ int main() {
   Force.AddSource(&THLattice);
 
 
-
   // writer
-
-//   vtkWriter::PhysScalarWriter RhoWriter(
-//       "rho", NSLattice.getRhoField().getField(), BaseConv);
-  vtkWriter::PhysScalarWriter CWriter(
-      "C", SOLattice.getRhoField().getField(), ConcConv);
-//   vtkWriter::FlagWriter CellTypwWriter(
-//       "CellType", CA.getState().getField());
-//   vtkWriter::PhysVelocityWriter_AOS<T, LatSet0::d> VelocityWriter(
-//       "velocity", NSLattice.getVelocityField().getField(), BaseConv);
-  //
-//   vtkWriter::ScalarWriter CurvWriter(
-//       "Curv", CA.getCurvature().getField());
-//   vtkWriter::ScalarWriter DFsWriter(
-//       "DFs", CA.getDeltaFs().getField());
-    //   vtkWriter::ScalarWriter FsWriter(
-    //   "Fs", CA.getFs().getField());
+  vtkWriter::PhysScalarWriter CWriter("C", SOLattice.getRhoField().getField(), ConcConv);
+  vtkWriter::FlagWriter CellTypwWriter("CellType", CA.getState().getField());
+  vtkWriter::PhysVelocityWriter_AOS<T, LatSet0::d> VelocityWriter(
+    "velocity", NSLattice.getVelocityField().getField(), BaseConv);
   vtkStruPointsWriter<T, LatSet0::d> NCWriter("CAZS2D", Geo0);
-  NCWriter.addtoWriteList(&CWriter);
+  NCWriter.addtoWriteList(&CWriter, &CellTypwWriter, &VelocityWriter);
 
   // count and timer
   Timer MainLoopTimer;
@@ -270,19 +245,17 @@ int main() {
     ++OutputTimer;
 
     NSLattice.UpdateRho(CA.getState().getField(), FI_Flag);
-    SOLattice.UpdateRho_Source(CA.getState().getField(), FI_Flag, CA.getExcessC_().getField());
-
-    CA.apply_SimpleCapture();
+    SOLattice.UpdateRho_Source(CA.getState().getField(), FI_Flag,
+                               CA.getExcessC_().getField());
 
     Force.GetBuoyancy(CA.getState().getField(), FI_Flag);
-
-    Force.BGK_U<Equilibrium<T, LatSet0>::SecondOrder>(
-        CA.getState().getField(), CA::CAType::Fluid);
-    Force.BGK<Equilibrium<T, LatSet0>::SecondOrder>(
-        CA.getState().getField(), CA::CAType::Interface);
+    Force.BGK_U<Equilibrium<T, LatSet0>::SecondOrder>(CA.getState().getField(),
+                                                      CA::CAType::Fluid);
+    Force.BGK<Equilibrium<T, LatSet0>::SecondOrder>(CA.getState().getField(),
+                                                    CA::CAType::Interface);
 
     SOLattice.BGK_Source<Equilibrium<T, LatSet1>::SecondOrder>(
-        CA.getState().getField(), FI_Flag, CA.getExcessC_().getField());
+      CA.getState().getField(), FI_Flag, CA.getExcessC_().getField());
 
     NSLattice.Stream();
     SOLattice.Stream();
@@ -292,24 +265,21 @@ int main() {
     SO_BB.Apply();
     SO_MBB.Apply();
 
+    CA.apply_SimpleCapture();
+
     if (MainLoopTimer() % OutputStep == 0) {
       OutputTimer.Print_InnerLoopPerformance(NSLattice.getN(), OutputStep);
       // Printer::Print_SolidFraction<T>(CellComm.getSolidFraction<T>());
       Printer::Print<int>("Interface", CA.getInterface().size());
-      Printer::Print<T>("Solid%", CA.getSolidCountFracton()*100);
+      Printer::Print<T>("Solid%", CA.getSolidCountFracton() * 100);
       Printer::Endl();
       NCWriter.Write(MainLoopTimer());
     }
   }
   NCWriter.Write(MainLoopTimer());
   Printer::Print_BigBanner(std::string("Calculation Complete!"));
-  MainLoopTimer.Print_MainLoopPerformance(Ni*Nj);
+  MainLoopTimer.Print_MainLoopPerformance(Ni * Nj);
   Printer::Print("Total PhysTime", BaseConv.getPhysTime(MainLoopTimer()));
   Printer::Endl();
   return 0;
 }
-
-// attention! DO NOT call std::srand(std::time(0)) in a while loop
-// If the while loop doesn't take more than a second to complete,
-// then time(0) will return the same value every time we call srand(time(0)),
-// which means we are setting the same seed for rand() repeatedly.
