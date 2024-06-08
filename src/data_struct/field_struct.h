@@ -508,6 +508,12 @@ class BlockFieldManager {
     }
     InitComm();
   }
+  void NonFieldInit(datatype initvalue) {
+    _Fields.clear();
+    for (Block<FloatType, Dim>& block : _BlockGeo.getBlocks()) {
+      _Fields.emplace_back(block, initvalue);
+    }
+  }
   // this assumes that the BlockGeo is already initialized
   void Init(BlockGeometryHelper<FloatType, Dim>& GeoHelper) {
     std::vector<BlockField<FieldType, FloatType, Dim>> NewFields;
@@ -529,14 +535,6 @@ class BlockFieldManager {
     FieldDataTransfer(GeoHelper, NewFields);
     _Fields.swap(NewFields);
     InitComm();
-  }
-  void NonFieldInit(BlockGeometryHelper<FloatType, Dim>& GeoHelper, datatype initvalue) {
-    std::vector<BlockField<FieldType, FloatType, Dim>> NewFields;
-    for (Block<FloatType, Dim>& block : _BlockGeo.getBlocks()) {
-      NewFields.emplace_back(block, initvalue);
-    }
-    // data transfer
-    _Fields.swap(NewFields);
   }
   // init with initvalue and data transfer
   template <typename FlagFieldType, typename Func>
@@ -587,7 +585,7 @@ class BlockFieldManager {
   }
 
   void InitComm() {
-    if constexpr(!FieldType::isField) {
+    if constexpr (!FieldType::isField) {
       return;
     }
     for (BlockField<FieldType, FloatType, Dim>& blockF : _Fields) {
@@ -618,7 +616,7 @@ class BlockFieldManager {
   // construct new field with Geohelper and copy data from old field, then swap
   void FieldDataTransfer(BlockGeometryHelper<FloatType, Dim>& GeoHelper,
                          std::vector<BlockField<FieldType, FloatType, Dim>>& NewFields) {
-    if constexpr(!FieldType::isField) {
+    if constexpr (!FieldType::isField) {
       return;
     }
     // copy from old field to new field

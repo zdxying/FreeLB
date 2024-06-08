@@ -392,6 +392,12 @@ class BlockZhuStefanescu2DManager
     this->template getField<DELTAFS<T>>().Init(T(0));
     this->template getField<CURVATURE<T>>().Init(T(0));
     this->template getField<PREEXCESSC<T>>().Init(T(0));
+
+    // init non-field data:  TEMPINIT<T>, CONCINIT<T>
+    auto tempinit = this->template getField<TEMPINIT<T>>().getBlockField(0).get();
+    this->template getField<DELTAFS<T>>().NonFieldInit(tempinit);
+    auto concinit = this->template getField<CONCINIT<T>>().getBlockField(0).get();
+    this->template getField<CURVATURE<T>>().NonFieldInit(concinit);
   }
 
   void Init() {

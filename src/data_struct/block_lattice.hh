@@ -406,7 +406,7 @@ void BlockLatticeManager<T, LatSet, TypePack>::Init(
     if constexpr (field.isField) {
       field.InitAndComm(GeoHelper, std::get<index>(initvalues));
     } else {
-      field.NonFieldInit(GeoHelper, std::get<index>(initvalues));
+      field.NonFieldInit(std::get<index>(initvalues));
     }
   });
   BlockLats.clear();
