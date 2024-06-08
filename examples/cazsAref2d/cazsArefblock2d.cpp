@@ -419,14 +419,11 @@ int main() {
           [&](auto& field, std::size_t id) { field.SetField(id, CA::CAType::Fluid); });
         CA.getField<CA::STATE>().NormalCommunicate();
 
-        THLattice.getField<TEMP<T>>().Init(TempConv.getLatRhoInit());
-        THLattice.getField<POP<T,LatSet1::q>>().Init();
-
         CA.CAFieldDataInit(GeoHelper);
 
         NSLattice.Init(GeoHelper, NSInitValues.values);
         SOLattice.Init(GeoHelper, CONCInitValues.values);
-        THLattice.Init();
+        THLattice.Init(GeoHelper, TEMPInitValues.values);
 
         NSDynLatHelper.PopFieldInit();
         SODynLatHelper.PopFieldInit();
