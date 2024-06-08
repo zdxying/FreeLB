@@ -532,10 +532,8 @@ template <typename T, unsigned int D>
 class BasicBlock;
 
 // field data communication: interpolate from coarse to fine
-template <template <typename> class ArrayType, typename datatype, typename FloatType,
-          unsigned int D>
-void FieldInterpolation2D(const GenericArrayField<ArrayType<datatype>, D>& CField,
-                          GenericArrayField<ArrayType<datatype>, D>& FField,
+template <typename FIELD, typename FloatType>
+void FieldInterpolation2D(const FIELD& CField, FIELD& FField,
                           const BasicBlock<FloatType, 2>& CBlock,
                           const BasicBlock<FloatType, 2>& CBaseBlock,
                           const BasicBlock<FloatType, 2>& FBlock,
@@ -561,9 +559,9 @@ void FieldInterpolation2D(const GenericArrayField<ArrayType<datatype>, D>& CFiel
   int startFx_ = startFx + 1;
   int startFy_ = startFy + 1;
 
-  for (unsigned int iArr = 0; iArr < D; ++iArr) {
-    const ArrayType<datatype>& CArray = CField.getField(iArr);
-    ArrayType<datatype>& FArray = FField.getField(iArr);
+  for (unsigned int iArr = 0; iArr < FIELD::array_dim; ++iArr) {
+    const auto& CArray = CField.getField(iArr);
+    auto& FArray = FField.getField(iArr);
     // interpolation
     // 0
     for (int iy = 0; iy < CNy; ++iy) {
@@ -621,10 +619,8 @@ void FieldInterpolation2D(const GenericArrayField<ArrayType<datatype>, D>& CFiel
 }
 
 // field data communication: average from fine to coarse
-template <template <typename> class ArrayType, typename datatype, typename FloatType,
-          unsigned int D>
-void FieldAverage2D(const GenericArrayField<ArrayType<datatype>, D>& FField,
-                    GenericArrayField<ArrayType<datatype>, D>& CField,
+template <typename FIELD, typename FloatType>
+void FieldAverage2D(const FIELD& FField, FIELD& CField,
                     const BasicBlock<FloatType, 2>& FBlock,
                     const BasicBlock<FloatType, 2>& FBaseBlock,
                     const BasicBlock<FloatType, 2>& CBlock,
@@ -644,9 +640,9 @@ void FieldAverage2D(const GenericArrayField<ArrayType<datatype>, D>& FField,
   int startFx = static_cast<int>(std::round(startF[0] / Fvoxsize));
   int startFy = static_cast<int>(std::round(startF[1] / Fvoxsize));
 
-  for (unsigned int iArr = 0; iArr < D; ++iArr) {
-    ArrayType<datatype>& CArray = CField.getField(iArr);
-    const ArrayType<datatype>& FArray = FField.getField(iArr);
+  for (unsigned int iArr = 0; iArr < FIELD::array_dim; ++iArr) {
+    auto& CArray = CField.getField(iArr);
+    const auto& FArray = FField.getField(iArr);
 
     for (int iy = 0; iy < CNy; ++iy) {
       for (int ix = 0; ix < CNx; ++ix) {
@@ -663,10 +659,8 @@ void FieldAverage2D(const GenericArrayField<ArrayType<datatype>, D>& FField,
 }
 
 // field data communication: simple copy
-template <template <typename> class ArrayType, typename datatype, typename FloatType,
-          unsigned int D>
-void FieldCopy2D(const GenericArrayField<ArrayType<datatype>, D>& FromField,
-                 GenericArrayField<ArrayType<datatype>, D>& ToField,
+template <typename FIELD, typename FloatType>
+void FieldCopy2D(const FIELD& FromField, FIELD& ToField,
                  const BasicBlock<FloatType, 2>& FromBlock,
                  const BasicBlock<FloatType, 2>& FromBaseBlock,
                  const BasicBlock<FloatType, 2>& ToBlock,
@@ -685,9 +679,9 @@ void FieldCopy2D(const GenericArrayField<ArrayType<datatype>, D>& FromField,
   int startTox = static_cast<int>(std::round(startTo[0] / voxsize));
   int startToy = static_cast<int>(std::round(startTo[1] / voxsize));
 
-  for (unsigned int iArr = 0; iArr < D; ++iArr) {
-    ArrayType<datatype>& ToArray = ToField.getField(iArr);
-    const ArrayType<datatype>& FromArray = FromField.getField(iArr);
+  for (unsigned int iArr = 0; iArr < FIELD::array_dim; ++iArr) {
+    auto& ToArray = ToField.getField(iArr);
+    const auto& FromArray = FromField.getField(iArr);
 
     for (int iy = 0; iy < Ny; ++iy) {
       for (int ix = 0; ix < Nx; ++ix) {

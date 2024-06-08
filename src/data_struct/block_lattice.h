@@ -158,6 +158,13 @@ class BlockLatticeManager : public BlockLatticeManagerBase<T, LatSet, TypePack> 
                       AbstractConverter<T>& conv, FIELDPTRTYPES*... fieldptrs);
 
   void Init();
+  template <typename... InitValues>
+  void Init(BlockGeometryHelper<T, LatSet::d>& GeoHelper, const std::tuple<InitValues...>& initvalues);
+
+  template <typename Func>
+  void ForEachField(Func&& func) {
+    this->Fields.ForEachField(std::forward<Func>(func));
+  }
 
   template <typename FieldType>
   void addField(BlockFieldManager<FieldType, T, LatSet::d>& field) {

@@ -422,21 +422,16 @@ int main() {
         THLattice.getField<TEMP<T>>().Init(TempConv.getLatRhoInit());
         THLattice.getField<POP<T,LatSet1::q>>().Init();
 
-        // field data transfer
-        NSLattice.getField<VELOCITY<T, 2>>().InitAndComm(GeoHelper);
-        NSLattice.getField<SCALARFORCE<T>>().InitAndComm(GeoHelper);
+        CA.CAFieldDataInit(GeoHelper);
+
+        NSLattice.Init(GeoHelper, NSInitValues.values);
+        SOLattice.Init(GeoHelper, CONCInitValues.values);
+        THLattice.Init();
 
         NSDynLatHelper.PopFieldInit();
         SODynLatHelper.PopFieldInit();
 
-        CA.CAFieldDataInit(GeoHelper);
-
-        NSLattice.Init();
-        SOLattice.Init();
-        THLattice.Init();
         CA.Init();
-
-
 
         // Bcs init
         NS_BB.Init();

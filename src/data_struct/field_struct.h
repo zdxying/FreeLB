@@ -76,7 +76,8 @@ template <typename FieldType, typename FloatType, unsigned int Dim>
 class BlockField : public FieldType {
  public:
   using datatype = typename FieldType::value_type;
-  static constexpr unsigned int ArrayDim = FieldType::array_dim;
+  static constexpr unsigned int array_dim = FieldType::array_dim;
+  static constexpr bool isField = FieldType::isField;
 
  private:
   // block(geometry) structure of the field
@@ -137,9 +138,9 @@ class BlockField : public FieldType {
 
   void MPIBufferInit() {
 #ifdef MPI_ENABLED
-    MPIBlockBufferInit(_Block.getMPIBlockComm(), MPIBuffer, ArrayDim);
-    MPIBlockBufferInit(_Block.getMPIAverBlockComm(), MPIAverBuffer, ArrayDim);
-    MPIBlockBufferInit(_Block.getMPIInterpBlockComm(), MPIInterpBuffer, ArrayDim);
+    MPIBlockBufferInit(_Block.getMPIBlockComm(), MPIBuffer, array_dim);
+    MPIBlockBufferInit(_Block.getMPIAverBlockComm(), MPIAverBuffer, array_dim);
+    MPIBlockBufferInit(_Block.getMPIInterpBlockComm(), MPIInterpBuffer, array_dim);
 #endif
   }
 
@@ -247,7 +248,7 @@ class BlockField : public FieldType {
       std::vector<datatype>& buffer = MPIBuffer.SendBuffers[i];
       const std::vector<std::size_t>& sends = MPIComm.Senders[i].SendCells;
       std::size_t bufidx = 0;
-      for (unsigned int iArr = 0; iArr < ArrayDim; ++iArr) {
+      for (unsigned int iArr = 0; iArr < array_dim; ++iArr) {
         const auto& Array = FieldType::getField(iArr);
         for (std::size_t id : sends) {
           buffer[bufidx] = Array[id];
@@ -285,7 +286,7 @@ class BlockField : public FieldType {
       const std::vector<datatype>& buffer = MPIBuffer.RecvBuffers[i];
       const std::vector<std::size_t>& recvs = MPIComm.Recvers[i].RecvCells;
       std::size_t bufidx = 0;
-      for (unsigned int iArr = 0; iArr < ArrayDim; ++iArr) {
+      for (unsigned int iArr = 0; iArr < array_dim; ++iArr) {
         auto& Array = FieldType::getField(iArr);
         for (std::size_t id : recvs) {
           Array[id] = buffer[bufidx];
@@ -305,7 +306,7 @@ class BlockField : public FieldType {
       const std::vector<InterpSource<Dim>>& sendcells = MPIComm.Senders[i].SendCells;
       constexpr FloatType weight = InterpBlockComm<FloatType, Dim>::getUniformWeight();
       std::size_t bufidx = 0;
-      for (unsigned int iArr = 0; iArr < ArrayDim; ++iArr) {
+      for (unsigned int iArr = 0; iArr < array_dim; ++iArr) {
         const auto& Array = FieldType::getField(iArr);
         for (const InterpSource<Dim>& sends : sendcells) {
           buffer[bufidx] = getAverage<FloatType, Dim>(Array, sends);
@@ -343,7 +344,7 @@ class BlockField : public FieldType {
       const std::vector<datatype>& buffer = MPIAverBuffer.RecvBuffers[i];
       const std::vector<std::size_t>& recvcells = MPIComm.Recvers[i].RecvCells;
       std::size_t bufidx = 0;
-      for (unsigned int iArr = 0; iArr < ArrayDim; ++iArr) {
+      for (unsigned int iArr = 0; iArr < array_dim; ++iArr) {
         auto& Array = FieldType::getField(iArr);
         for (std::size_t id : recvcells) {
           Array[id] = buffer[bufidx];
@@ -363,7 +364,7 @@ class BlockField : public FieldType {
       const std::vector<InterpSource<Dim>>& sendcells = MPIComm.Senders[i].SendCells;
       const std::size_t size = sendcells.size();
       std::size_t bufidx = 0;
-      for (unsigned int iArr = 0; iArr < ArrayDim; ++iArr) {
+      for (unsigned int iArr = 0; iArr < array_dim; ++iArr) {
         const auto& Array = FieldType::getField(iArr);
         for (std::size_t i = 0; i < size;) {
           getInterpolation<FloatType, Dim>(Array, sendcells, i, buffer, bufidx);
@@ -400,7 +401,7 @@ class BlockField : public FieldType {
       const std::vector<datatype>& buffer = MPIInterpBuffer.RecvBuffers[i];
       const std::vector<std::size_t>& recvcells = MPIComm.Recvers[i].RecvCells;
       std::size_t bufidx = 0;
-      for (unsigned int iArr = 0; iArr < ArrayDim; ++iArr) {
+      for (unsigned int iArr = 0; iArr < array_dim; ++iArr) {
         auto& Array = FieldType::getField(iArr);
         for (std::size_t id : recvcells) {
           Array[id] = buffer[bufidx];
@@ -430,6 +431,7 @@ class BlockFieldManager {
   using field_type = FieldType;
   using float_type = FloatType;
   static constexpr unsigned int dim = Dim;
+  static constexpr bool isField = FieldType::isField;
 
   BlockFieldManager(BlockGeometry<FloatType, Dim>& blockgeometry)
       : _BlockGeo(blockgeometry) {
@@ -506,7 +508,7 @@ class BlockFieldManager {
     }
     InitComm();
   }
-  // init with initvalue, this assumes that the BlockGeo is already initialized
+  // this assumes that the BlockGeo is already initialized
   void Init(BlockGeometryHelper<FloatType, Dim>& GeoHelper) {
     std::vector<BlockField<FieldType, FloatType, Dim>> NewFields;
     for (Block<FloatType, Dim>& block : _BlockGeo.getBlocks()) {
@@ -527,6 +529,14 @@ class BlockFieldManager {
     FieldDataTransfer(GeoHelper, NewFields);
     _Fields.swap(NewFields);
     InitComm();
+  }
+  void NonFieldInit(BlockGeometryHelper<FloatType, Dim>& GeoHelper, datatype initvalue) {
+    std::vector<BlockField<FieldType, FloatType, Dim>> NewFields;
+    for (Block<FloatType, Dim>& block : _BlockGeo.getBlocks()) {
+      NewFields.emplace_back(block, initvalue);
+    }
+    // data transfer
+    _Fields.swap(NewFields);
   }
   // init with initvalue and data transfer
   template <typename FlagFieldType, typename Func>
@@ -577,6 +587,9 @@ class BlockFieldManager {
   }
 
   void InitComm() {
+    if constexpr(!FieldType::isField) {
+      return;
+    }
     for (BlockField<FieldType, FloatType, Dim>& blockF : _Fields) {
       Block<FloatType, Dim>& block = blockF.getBlock();
       // normal communication
@@ -605,6 +618,9 @@ class BlockFieldManager {
   // construct new field with Geohelper and copy data from old field, then swap
   void FieldDataTransfer(BlockGeometryHelper<FloatType, Dim>& GeoHelper,
                          std::vector<BlockField<FieldType, FloatType, Dim>>& NewFields) {
+    if constexpr(!FieldType::isField) {
+      return;
+    }
     // copy from old field to new field
 #pragma omp parallel for num_threads(Thread_Num)
     for (int inewblock = 0; inewblock < NewFields.size(); ++inewblock) {
@@ -1086,6 +1102,16 @@ class BlockFieldManagerCollection<T, LatSet, TypePack<Fields...>> {
     return std::make_tuple(&(std::get<Is>(fields).getBlockField(i))...);
   }
   auto get_ith(int i) { return get_ith(std::make_index_sequence<FieldNum>(), i); }
+
+  // for each field, call func
+  template <typename Func>
+  void forEachField(Func&& func) {
+    forEachFieldImpl(std::forward<Func>(func), std::make_index_sequence<FieldNum>());
+  }
+  template <typename Func, std::size_t... Is>
+  void forEachFieldImpl(Func&& func, std::index_sequence<Is...>) {
+    (func(std::get<Is>(fields), std::integral_constant<std::size_t, Is>{}), ...);
+  }
 
  private:
   std::tuple<BlockFieldManager<Fields, T, LatSet::d>...> fields;
