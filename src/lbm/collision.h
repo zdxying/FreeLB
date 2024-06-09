@@ -177,6 +177,26 @@ struct BGKSource_Feq_Rho {
   }
 };
 
+// full way bounce back, could be regarded as a mpdified collision process
+// swap the populations in the opposite direction
+// LatSet must have rest population(D2Q4 is not supported)
+template <typename CELLTYPE>
+struct BounceBack {
+  using CELL = CELLTYPE;
+  using LatSet = typename CELL::LatticeSet;
+  using T = typename CELL::FloatType;
+  using GenericRho = typename CELL::GenericRho;
+  static constexpr int halfq = LatSet::q / 2 + 1;
+
+  static void apply(CELL& cell) {
+    for (int i = 1; i < halfq; ++i) {
+      T temp = cell[i];
+      cell[i] = cell[LatSet::opp[i]];
+      cell[LatSet::opp[i]] = temp;
+    }
+  };
+};
+
 
 // old version of BGK collision
 
@@ -241,24 +261,6 @@ struct BGK {
       cell[i] = omega * feq[i] + _omega * cell[i] + fomega * S * LatSet::w[i];
     }
   }
-};
-
-// full way bounce back, could be regarded as a mpdified collision process
-// swap the populations in the opposite direction
-// LatSet must have rest population(D2Q4 is not supported)
-template <typename CELL>
-struct BounceBack {
-  using LatSet = typename CELL::LatticeSet;
-  using T = typename CELL::FloatType;
-  static constexpr int halfq = LatSet::q / 2 + 1;
-
-  static void apply(CELL& cell) {
-    for (int i = 1; i < halfq; ++i) {
-      T temp = cell[i];
-      cell[i] = cell[LatSet::opp[i]];
-      cell[LatSet::opp[i]] = temp;
-    }
-  };
 };
 
 }  // namespace collision

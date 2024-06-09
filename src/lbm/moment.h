@@ -264,7 +264,7 @@ struct forceRhou {
     }
   }
   // for scalar force
-  static inline void apply(CELL& cell, T f, T& rho_value, T u_value) {
+  static inline void apply(CELL& cell, T f, T& rho_value, Vector<T, LatSet::d>& u_value) {
     rho_value = T{};
     u_value.clear();
     for (unsigned int i = 0; i < LatSet::q; ++i) {

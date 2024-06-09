@@ -168,7 +168,7 @@ int main() {
   using CELL = BCell<T, LatSet, ALLFIELDS>;
   ValuePack InitValues(BaseConv.getLatRhoInit(), Vector<T, 2>{}, T{});
   // lattice
-  BlockLatticeManager<T, LatSet, FIELDSPACK> NSLattice(Geo, InitValues, BaseConv, FlagFM);
+  BlockLatticeManager<T, LatSet, FIELDSPACK> NSLattice(Geo, InitValues, BaseConv, &FlagFM);
   NSLattice.EnableToleranceU();
   T res = 1;
   // set initial value of field

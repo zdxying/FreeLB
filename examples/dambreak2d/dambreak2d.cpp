@@ -95,9 +95,9 @@ void readParam() {
 }
 
 int main() {
-  std::uint8_t VoidFlag = std::uint8_t(1);
-  std::uint8_t AABBFlag = std::uint8_t(2);
-  std::uint8_t BouncebackFlag = std::uint8_t(4);
+  constexpr std::uint8_t VoidFlag = std::uint8_t(1);
+  constexpr std::uint8_t AABBFlag = std::uint8_t(2);
+  constexpr std::uint8_t BouncebackFlag = std::uint8_t(4);
 
   Printer::Print_BigBanner(std::string("Initializing..."));
 
@@ -117,9 +117,9 @@ int main() {
   BlockGeometry2D<T> Geo(Ni, Nj, 1, cavity, Cell_Len);
 
   // ------------------ define flag field ------------------
-  BlockFieldManager<FlagField, T, 2> FlagFM(Geo, VoidFlag);
+  BlockFieldManager<FLAG, T, 2> FlagFM(Geo, VoidFlag);
   FlagFM.forEach(cavity,
-                 [&](FlagField& field, std::size_t id) { field.SetField(id, AABBFlag); });
+                 [&](auto& field, std::size_t id) { field.SetField(id, AABBFlag); });
   FlagFM.template SetupBoundary<LatSet>(cavity, BouncebackFlag);
 
   vtmo::ScalarWriter Flagvtm("Flag", FlagFM);
@@ -128,13 +128,10 @@ int main() {
   FlagWriter.WriteBinary();
 
   // ------------------ define lattice ------------------
-  // velocity field
-  BlockFieldManager<VectorFieldAOS<T, 2>, T, 2> VelocityFM(Geo);
-  // lattice
-  BlockLatticeManager<T, LatSet> NSLattice(Geo, BaseConv, VelocityFM);
-  // force
-  ConstForceManager<T, LatSet> Gravity(NSLattice, VelocityFM,
-                                       Vector<T, 2>{T(0), -BaseConv.Lattice_g});
+  using NSFIELDS = TypePack<RHO<T>, VELOCITY<T, 2>, POP<T, LatSet::q>, SCALARCONSTFORCE<T>>;
+  ValuePack NSInitValues(BaseConv.getLatRhoInit(), Vector<T, 2>{}, T{}, -BaseConv.Lattice_g);
+  using NSCELL = BCell<T, LatSet, NSFIELDS>;
+  BlockLatticeManager<T, LatSet, NSFIELDS> NSLattice(Geo, NSInitValues, BaseConv);
 
   //// free surface
   // a conversion factor of unit s^2 / g
@@ -143,25 +140,39 @@ int main() {
   T surface_tension_coefficient_factor =
     BaseConv.Conv_Time * BaseConv.Conv_Time / (rho_ref * std::pow(BaseConv.Conv_L, 3));
 
-  FS::FreeSurface2DManager<T, LatSet> FreeSurface(NSLattice);
+  ValuePack FSInitValues(FS::FSType::Solid, T{}, T{}, T{});
+
+  FS::FreeSurface2DManager<T, LatSet, NSFIELDS> FreeSurface(NSLattice, FSInitValues);
   // set cell state
-  FreeSurface.getStateFM().forEach(
+  FreeSurface.getField<FS::STATE>().forEach(
     cavity, [&](auto& field, std::size_t id) { field.SetField(id, FS::FSType::Gas); });
   // set fluid
-  FreeSurface.getStateFM().forEach(
+  FreeSurface.getField<FS::STATE>().forEach(
     fluid, [&](auto& field, std::size_t id) { field.SetField(id, FS::FSType::Fluid); });
   // set interface
   FreeSurface.Init();
   //// end free surface
+
+  // define task/ dynamics:
+  // NS task
+  using NSBulkTask =
+    tmp::Key_TypePair<FS::FSType::Fluid | FS::FSType::Interface,
+                      collision::BGKForce_Feq_RhoU<equilibrium::SecondOrder<NSCELL>,
+                                                   force::ScalarConstForce<NSCELL>, true>>;
+  
+  using NSTaskSelector = TaskSelector<std::uint8_t, NSCELL, NSBulkTask>;
+
   // bcs
-  BBLikeFixedBlockBdManager<T, LatSet, BounceBackLikeMethod<T, LatSet>::normal_bounceback>
+    BBLikeFixedBlockBdManager<bounceback::normal<NSCELL>,
+                            BlockLatticeManager<T, LatSet, NSFIELDS>,
+                            BlockFieldManager<FLAG, T, 2>>
     NS_BB("NS_BB", NSLattice, FlagFM, BouncebackFlag, VoidFlag);
 
-  vtmo::ScalarWriter rhovtm("rho", NSLattice.getRhoFM());
-  vtmo::ScalarWriter MassWriter("Mass", FreeSurface.getMassFM());
-  vtmo::VectorWriter VeloWriter("Velo", VelocityFM);
-  vtmo::ScalarWriter VOFWriter("VOF", FreeSurface.getVolumeFracFM());
-  vtmo::ScalarWriter StateWriter("State", FreeSurface.getStateFM());
+  vtmo::ScalarWriter rhovtm("rho", NSLattice.getField<RHO<T>>());
+  vtmo::ScalarWriter MassWriter("Mass", FreeSurface.getField<FS::MASS<T>>());
+  vtmo::VectorWriter VeloWriter("Velo", NSLattice.getField<VELOCITY<T, 2>>());
+  vtmo::ScalarWriter VOFWriter("VOF", FreeSurface.getField<FS::VOLUMEFRAC<T>>());
+  vtmo::ScalarWriter StateWriter("State", FreeSurface.getField<FS::STATE>());
   vtmo::vtmWriter<T, LatSet::d> Writer("dambreak2d", Geo, 1);
   Writer.addWriterSet(rhovtm, MassWriter, VOFWriter, StateWriter, VeloWriter);
 
@@ -176,12 +187,8 @@ int main() {
     ++MainLoopTimer;
     ++OutputTimer;
 
-    NSLattice.UpdateRho(MainLoopTimer(), (FS::FSType::Fluid | FS::FSType::Interface),
-                        FreeSurface.getStateFM());
-    // Gravity.BGK_U<Equilibrium<T, LatSet>::SecondOrder>(
-      Gravity.BGK_U(
-      MainLoopTimer(), (FS::FSType::Fluid | FS::FSType::Interface),
-      FreeSurface.getStateFM());
+    NSLattice.ApplyCellDynamics<NSTaskSelector>(MainLoopTimer(), FreeSurface.getField<FS::STATE>());
+
     NSLattice.Stream(MainLoopTimer());
     NS_BB.Apply(MainLoopTimer());
 
@@ -193,6 +200,7 @@ int main() {
       Writer.WriteBinary(MainLoopTimer());
     }
   }
+
   Printer::Print_BigBanner(std::string("Calculation Complete!"));
   MainLoopTimer.Print_MainLoopPerformance(Geo.getTotalCellNum());
 

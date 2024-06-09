@@ -37,20 +37,45 @@ enum FSType : std::uint8_t {
   To_Interface = 64
 };
 
-template <typename T, typename LatSet>
-T ComputeCurvature(BCell<T, LatSet>& cell);
+template <typename CELL>
+typename CELL::FloatType ComputeCurvature(CELL& cell){
+  using T = typename CELL::FloatType;
+  return T{};
+}
+
+// define unique FS Field
+struct STATEBase : public FieldBase<1> {};
+struct MASSBase : public FieldBase<1> {};
+struct VOLUMEFRACBase : public FieldBase<1> {};
+template <unsigned int q>
+struct EXCESSMASSBase : public FieldBase<q> {};
+
+// free surface state, init with Solid
+using STATE = GenericField<GenericArray<FSType>, STATEBase>;
+// mass = rho * volumefraction
+template <typename T>
+using MASS = GenericField<GenericArray<T>, MASSBase>;
+// fill level/ volume fraction in VOF
+template <typename T>
+using VOLUMEFRAC = GenericField<GenericArray<T>, VOLUMEFRACBase>;
+// Excess mass
+template <typename T, unsigned int q>
+using EXCESSMASS = GenericField<CyclicArray<T>, EXCESSMASSBase<q>>;
+
 
 template <typename T, typename LatSet>
-class FreeSurface2D {
+using FSFIELDS = TypePack<STATE, MASS<T>, VOLUMEFRAC<T>, EXCESSMASS<T, LatSet::q>>;
+
+// incorporate free surface fields into BlockLattice is possible
+// (considered as a post-process of NS Lattice)
+// which may be done in the future
+template <typename T, typename LatSet, typename TypePack>
+class FreeSurface2D : public BlockLatticeBase<T, LatSet, FSFIELDS<T, LatSet>>{
  private:
   // interface cells
   std::vector<std::size_t> Interface;
 
-  BlockLattice<T, LatSet>& NS;
-  ScalarField<FSType>& State;
-  ScalarField<T>& Mass;
-  PopulationField<T, LatSet::q>& ExcessMass;
-  ScalarField<T>& VolumeFrac;
+  BlockLattice<T, LatSet, TypePack>& NS;
 
   T Lonely_Threshold;
   T VOF_Trans_Threshold;
@@ -59,17 +84,21 @@ class FreeSurface2D {
   T surface_tension_parameter;  // coefficient_factor * coefficient
 
  public:
-  FreeSurface2D(BlockLattice<T, LatSet>& ns, ScalarField<FSType>& type,
-                ScalarField<T>& mass, PopulationField<T, LatSet::q>& exmass,
-                ScalarField<T>& vf, T lth, T vtth)
-      : NS(ns), State(type), Mass(mass), ExcessMass(exmass), VolumeFrac(vf),
-        Lonely_Threshold(lth), VOF_Trans_Threshold(vtth) {}
+ template <typename... FIELDPTRS>
+  FreeSurface2D(BlockLattice<T, LatSet, TypePack>& ns, std::tuple<FIELDPTRS...> fieldptrs, 
+  T lth, T vtth)
+  : BlockLatticeBase<T, LatSet, FSFIELDS<T, LatSet>>(ns.getGeo(), fieldptrs),
+  NS(ns), Lonely_Threshold(lth), VOF_Trans_Threshold(vtth) {}
 
-
-  inline bool hasNeighborType(std::size_t id, FSType fstype) const;
+  inline bool hasNeighborType(std::size_t id, FSType fstype) const{
+  for (int i = 1; i < LatSet::q; ++i) {
+    if (util::isFlag(this->template getField<STATE>().get(id + this->Delta_Index[i]), fstype)) return true;
+  }
+  return false;
+  }
 
   inline T getClampedVOF(std::size_t id) const {
-    return std::clamp(VolumeFrac.get(id), T(0), T(1));
+    return std::clamp(this->template getField<VOLUMEFRAC<T>>().get(id), T(0), T{1});
   }
 
   // mass transfer/ advection
@@ -88,20 +117,12 @@ class FreeSurface2D {
   void CollectExcessMass();
 };
 
-template <typename T, typename LatSet>
-class FreeSurface2DManager {
+template <typename T, typename LatSet, typename TypePack>
+class FreeSurface2DManager : public BlockLatticeManagerBase<T, LatSet, FSFIELDS<T, LatSet>>{
  private:
-  std::vector<FreeSurface2D<T, LatSet>> BlockFS;
-  // free surface state
-  BlockFieldManager<ScalarField<FSType>, T, 2> StateFM;
-  // mass = rho * volumefraction
-  BlockFieldManager<ScalarField<T>, T, 2> MassFM;
-  // Excess mass
-  BlockFieldManager<PopulationField<T, LatSet::q>, T, 2> ExcessMassFM;
-  // fill level/ volume fraction in VOF
-  BlockFieldManager<ScalarField<T>, T, 2> VolumeFracFM;
+  std::vector<FreeSurface2D<T, LatSet, TypePack>> BlockFS;
 
-  BlockLatticeManager<T, LatSet>& LatMan;
+  BlockLatticeManager<T, LatSet, TypePack>& NSLatMan;
 
   T Lonely_Threshold = 0.1;
   // vof transition threshold
@@ -111,25 +132,19 @@ class FreeSurface2DManager {
   T surface_tension_parameter;  // coefficient_factor * coefficient
 
  public:
-  FreeSurface2DManager(BlockLatticeManager<T, LatSet>& lm)
-      : LatMan(lm), StateFM(lm.getGeo(), FSType::Solid), MassFM(lm.getGeo(), T{}),
-        ExcessMassFM(lm.getGeo(), T{}), VolumeFracFM(lm.getGeo(), T{}) {
+  //  FSType::Solid, T{}, T{}, T{}
+  template <typename INITVALUEPACK>
+  FreeSurface2DManager(BlockLatticeManager<T, LatSet, TypePack>& lm, INITVALUEPACK& initvalues)
+      : BlockLatticeManagerBase<T, LatSet, FSFIELDS<T, LatSet>>(lm.getGeo(), initvalues),
+      NSLatMan(lm){
     // init FreeSurface2D
-    for (int i = 0; i < LatMan.getGeo().getBlockNum(); ++i) {
+    for (int i = 0; i < this->BlockGeo.getBlockNum(); ++i){
       BlockFS.emplace_back(
-        lm.getBlockLat(i), StateFM.getBlockField(i),
-        MassFM.getBlockField(i), ExcessMassFM.getBlockField(i),
-        VolumeFracFM.getBlockField(i), Lonely_Threshold, VOF_Trans_Threshold);
+        NSLatMan.getBlockLat(i), 
+        ExtractFieldPtrs<T, LatSet, FSFIELDS<T, LatSet>>::getFieldPtrTuple(i, this->Fields), 
+        Lonely_Threshold, VOF_Trans_Threshold);
     }
   }
-
-  // get
-  BlockFieldManager<ScalarField<FSType>, T, 2>& getStateFM() { return StateFM; }
-  BlockFieldManager<ScalarField<T>, T, 2>& getMassFM() { return MassFM; }
-  BlockFieldManager<PopulationField<T, LatSet::q>, T, 2>& getExcessMassFM() {
-    return ExcessMassFM;
-  }
-  BlockFieldManager<ScalarField<T>, T, 2>& getVolumeFracFM() { return VolumeFracFM; }
 
   void setSrufaceTension(T value) {
     if (value > 1e-3)
@@ -139,35 +154,35 @@ class FreeSurface2DManager {
   }
 
   void Init() {
-    // set solid cells
-    // StateFM.template SetupBoundary<LatSet>(LatMan.getGeo().getBaseBlock(), FSType::Solid);
     // set interface cells
-    StateFM.forEach([&](auto& blockfield, std::size_t id) {
+    this->template getField<STATE>().forEach([&](auto& blockfield, std::size_t id) {
       auto& field = blockfield;
       const auto& block = blockfield.getBlock();
       if (util::isFlag(field.get(id), FSType::Fluid)) {
         for (int i = 1; i < LatSet::q; ++i) {
           std::size_t idn = id + LatSet::c[i] * block.getProjection();
           if (util::isFlag(field.get(idn), FSType::Gas)) {
-            util::removeFlag(FSType::Gas, field.getField(0).getUnderlying(idn));
-            util::addFlag(FSType::Interface, field.getField(0).getUnderlying(idn));
+            util::removeFlag(FSType::Gas, util::underlyingRef(field.get(idn)));
+            util::addFlag(FSType::Interface, util::underlyingRef(field.get(idn)));
           }
         }
       }
     });
     // set mass and volume fraction
-    MassFM.forEach(StateFM, FSType::Fluid,
-                   [&](auto& field, std::size_t id) { field.SetField(id, T(1)); });
-    MassFM.forEach(StateFM, FSType::Interface,
-                   [&](auto& field, std::size_t id) { field.SetField(id, T(0.5)); });
-    VolumeFracFM.forEach(StateFM, FSType::Fluid,
-                         [&](auto& field, std::size_t id) { field.SetField(id, T(1)); });
-    VolumeFracFM.forEach(StateFM, FSType::Interface, [&](auto& field, std::size_t id) {
-      field.SetField(id, T(0.5));
+    this->template getField<MASS<T>>().forEach(this->template getField<STATE>(), FSType::Fluid,
+                   [&](auto& field, std::size_t id) { field.SetField(id, T{1}); });
+    this->template getField<MASS<T>>().forEach(this->template getField<STATE>(), FSType::Interface,
+                   [&](auto& field, std::size_t id) { field.SetField(id, T{0.5}); });
+    
+    this->template getField<VOLUMEFRAC<T>>().forEach(this->template getField<STATE>(), FSType::Fluid,
+                         [&](auto& field, std::size_t id) { field.SetField(id, T{1}); });
+    this->template getField<VOLUMEFRAC<T>>().forEach(this->template getField<STATE>(), FSType::Interface, [&](auto& field, std::size_t id) {
+      field.SetField(id, T{0.5});
     });
   }
+
   void Apply() {
-    for (FreeSurface2D<T, LatSet>& fs : BlockFS) {
+    for (auto& fs : BlockFS) {
       fs.MassTransfer();
       // for cells with to_fluid flag, check neighbors and set transition flag
       fs.ToFluidNbrConversion();

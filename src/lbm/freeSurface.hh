@@ -25,54 +25,40 @@
 // namespace FreeSurface
 namespace FS {
 
-template <typename T, typename LatSet>
-inline bool FreeSurface2D<T, LatSet>::hasNeighborType(std::size_t id,
-                                                      FSType fstype) const {
-  for (int i = 1; i < LatSet::q; ++i) {
-    if (util::isFlag(State.get(id + NS.getDelta_Index()[i]), fstype)) return true;
-  }
-  return false;
-}
-
-template <typename T, typename LatSet>
-T ComputeCurvature(BCell<T, LatSet>& cell) {
-  return T{};
-}
-
-template <typename T, typename LatSet>
-void FreeSurface2D<T, LatSet>::MassTransfer() {
+template <typename T, typename LatSet, typename TypePack>
+void FreeSurface2D<T, LatSet, TypePack>::MassTransfer() {
   for (int j = NS.getOverlap(); j < NS.getNy() - NS.getOverlap(); ++j) {
     for (int i = NS.getOverlap(); i < NS.getNx() - NS.getOverlap(); ++i) {
       std::size_t id = i + j * NS.getNx();
       // for interface cells
-      if (util::isFlag(State.get(id), FSType::Interface)) {
-        T deltamass = T{};
-        BCell<T, LatSet> cell(id, NS);
+      if (util::isFlag(this->template getField<STATE>().get(id), FSType::Interface)) {
+        T deltamass{};
+        BCell<T, LatSet, TypePack> cell(id, NS);
         // find neighbor cells
         for (int k = 1; k < LatSet::q; ++k) {
-          std::size_t idn = id + NS.getDelta_Index()[k];
-          const BCell<T, LatSet> celln(idn, NS);
-          if (util::isFlag(State.get(idn), FSType::Fluid)) {
+          std::size_t idn = id + this->Delta_Index[k];
+          BCell<T, LatSet, TypePack> celln(idn, NS);
+          if (util::isFlag(this->template getField<STATE>().get(idn), FSType::Fluid)) {
             deltamass += cell[LatSet::opp[k]] - celln[k];
-          } else if (util::isFlag(State.get(idn), FSType::Interface)) {
+          } else if (util::isFlag(this->template getField<STATE>().get(idn), FSType::Interface)) {
             deltamass += (cell[LatSet::opp[k]] - celln[k]) * T(0.5) *
                          (getClampedVOF(id) + getClampedVOF(idn));
           }
         }
-        Mass.get(id) += deltamass;
+        this->template getField<MASS<T>>().get(id) += deltamass;
 
         // reconstruct pop streamed in from a gas cell
-        T curvature = T{};
+        T curvature{};
         if (Surface_Tension_Enabled) {
           if (hasNeighborType(id, FSType::Gas)) curvature = ComputeCurvature(cell);
         }
         T rho_gas = T(1) - T(6) * surface_tension_parameter * curvature;
-        const Vector<T, LatSet::d>& u = cell.getVelocity();
+        const Vector<T, LatSet::d>& u = cell.template get<VELOCITY<T,LatSet::d>>();
         T u2 = u.getnorm2();
         for (int k = 1; k < LatSet::q; ++k) {
-          std::size_t idn = id + NS.getDelta_Index()[k];
-          if (util::isFlag(State.get(idn), FSType::Gas)) {
-            const BCell<T, LatSet> celln(idn, NS);
+          std::size_t idn = id + this->Delta_Index[k];
+          if (util::isFlag(this->template getField<STATE>().get(idn), FSType::Gas)) {
+            BCell<T, LatSet, TypePack> celln(idn, NS);
             // fiopp = feqiopp(rho_gas) + feqi(rho_gas) - fi(x+ei)
             cell[LatSet::opp[k]] =
               Equilibrium<T, LatSet>::Order2(k, u, rho_gas, u2) +
@@ -81,34 +67,34 @@ void FreeSurface2D<T, LatSet>::MassTransfer() {
         }
 
         // transition flag for interface cell
-        T rho = moment::Rho<T, LatSet>::get(cell);
+        T rho = moment::rho<BCell<T, LatSet, TypePack>>::get(cell);
 
         // transition by mass criterion
-        if (Mass.get(id) > (T(1) + VOF_Trans_Threshold) * rho) {
-          util::addFlag(FSType::To_Fluid, State.getField(0).getUnderlying(id));
+        if (this->template getField<MASS<T>>().get(id) > (T(1) + VOF_Trans_Threshold) * rho) {
+          util::addFlag(FSType::To_Fluid, util::underlyingRef(this->template getField<STATE>().get(id)));
           continue;
-        } else if (Mass.get(id) < -VOF_Trans_Threshold * rho) {
-          util::addFlag(FSType::To_Gas, State.getField(0).getUnderlying(id));
+        } else if (this->template getField<MASS<T>>().get(id) < -VOF_Trans_Threshold * rho) {
+          util::addFlag(FSType::To_Gas, util::underlyingRef(this->template getField<STATE>().get(id)));
           continue;
         }
         // transition by lonely criterion
-        if (Mass.get(id) > (T(1) - Lonely_Threshold) * rho) {
+        if (this->template getField<MASS<T>>().get(id) > (T(1) - Lonely_Threshold) * rho) {
           if (!hasNeighborType(id, FSType::Gas)) {
-            util::addFlag(FSType::To_Fluid, State.getField(0).getUnderlying(id));
+            util::addFlag(FSType::To_Fluid, util::underlyingRef(this->template getField<STATE>().get(id)));
             continue;
           }
-        } else if (Mass.get(id) < Lonely_Threshold * rho) {
+        } else if (this->template getField<MASS<T>>().get(id) < Lonely_Threshold * rho) {
           if (!hasNeighborType(id, FSType::Fluid)) {
-            util::addFlag(FSType::To_Gas, State.getField(0).getUnderlying(id));
+            util::addFlag(FSType::To_Gas, util::underlyingRef(this->template getField<STATE>().get(id)));
             continue;
           }
         }
         // deal with isolated interface cells
         if (!hasNeighborType(id, FSType::Interface)) {
           if (!hasNeighborType(id, FSType::Fluid)) {
-            util::addFlag(FSType::To_Gas, State.getField(0).getUnderlying(id));
+            util::addFlag(FSType::To_Gas, util::underlyingRef(this->template getField<STATE>().get(id)));
           } else if (!hasNeighborType(id, FSType::Gas)) {
-            util::addFlag(FSType::To_Fluid, State.getField(0).getUnderlying(id));
+            util::addFlag(FSType::To_Fluid, util::underlyingRef(this->template getField<STATE>().get(id)));
           }
         }
       }
@@ -116,21 +102,21 @@ void FreeSurface2D<T, LatSet>::MassTransfer() {
   }
 }
 
-template <typename T, typename LatSet>
-void FreeSurface2D<T, LatSet>::ToFluidNbrConversion() {
+template <typename T, typename LatSet, typename TypePack>
+void FreeSurface2D<T, LatSet, TypePack>::ToFluidNbrConversion() {
   for (int j = NS.getOverlap(); j < NS.getNy() - NS.getOverlap(); ++j) {
     for (int i = NS.getOverlap(); i < NS.getNx() - NS.getOverlap(); ++i) {
       const std::size_t id = i + j * NS.getNx();
-      if (util::isFlag(State.get(id), FSType::To_Fluid)) {
+      if (util::isFlag(this->template getField<STATE>().get(id), FSType::To_Fluid)) {
         // check neighbors
         for (int k = 1; k < LatSet::q; ++k) {
-          const std::size_t idn = id + NS.getDelta_Index()[k];
-          if (util::isFlag(State.get(idn), FSType::To_Gas)) {
+          const std::size_t idn = id + this->Delta_Index[k];
+          if (util::isFlag(this->template getField<STATE>().get(idn), FSType::To_Gas)) {
             // remove to_gas flag
-            util::removeFlag(FSType::To_Gas, State.getField(0).getUnderlying(idn));
-          } else if (util::isFlag(State.get(idn), FSType::Gas)) {
+            util::removeFlag(FSType::To_Gas, util::underlyingRef(this->template getField<STATE>().get(idn)));
+          } else if (util::isFlag(this->template getField<STATE>().get(idn), FSType::Gas)) {
             // set to_interface for gas neighbor cells
-            util::addFlag(FSType::To_Interface, State.getField(0).getUnderlying(idn));
+            util::addFlag(FSType::To_Interface, util::underlyingRef(this->template getField<STATE>().get(idn)));
           }
         }
       }
@@ -138,23 +124,23 @@ void FreeSurface2D<T, LatSet>::ToFluidNbrConversion() {
   }
 }
 
-template <typename T, typename LatSet>
-void FreeSurface2D<T, LatSet>::GasToInterfacePopInit() {
+template <typename T, typename LatSet, typename TypePack>
+void FreeSurface2D<T, LatSet, TypePack>::GasToInterfacePopInit() {
   for (int j = NS.getOverlap(); j < NS.getNy() - NS.getOverlap(); ++j) {
     for (int i = NS.getOverlap(); i < NS.getNx() - NS.getOverlap(); ++i) {
       const std::size_t id = i + j * NS.getNx();
-      if (util::isFlag(State.get(id), FSType::To_Interface)) {
-        BCell<T, LatSet> cell(id, NS);
+      if (util::isFlag(this->template getField<STATE>().get(id), FSType::To_Interface)) {
+        BCell<T, LatSet, TypePack> cell(id, NS);
         // init fi using [fluid|interface] neighbor cells
         T averho = T{};
         Vector<T, LatSet::d> aveu = Vector<T, LatSet::d>{};
         int count = 0;
         for (int k = 1; k < LatSet::q; ++k) {
-          const std::size_t idn = id + NS.getDelta_Index()[k];
-          const BCell<T, LatSet> celln(idn, NS);
-          if (util::isFlag(State.get(idn), (FSType::Fluid | FSType::Interface))) {
-            averho += moment::Rho<T, LatSet>::get(celln);
-            aveu += moment::Velocity<T, LatSet>::get(celln);
+          const std::size_t idn = id + this->Delta_Index[k];
+          BCell<T, LatSet, TypePack> celln(idn, NS);
+          if (util::isFlag(this->template getField<STATE>().get(idn), (FSType::Fluid | FSType::Interface))) {
+            averho += moment::rho<BCell<T, LatSet, TypePack>>::get(celln);
+            aveu += moment::u<BCell<T, LatSet, TypePack>>::get(celln);
             ++count;
           }
         }
@@ -163,25 +149,25 @@ void FreeSurface2D<T, LatSet>::GasToInterfacePopInit() {
         // set fi
         T aveu2 = aveu.getnorm2();
         for (int k = 0; k < LatSet::q; ++k) {
-          cell[k] = Equilibrium<T, LatSet>::Order2(k, aveu, averho, aveu2);
+          cell[k] = equilibrium::SecondOrder<BCell<T, LatSet, TypePack>>::get(k, aveu, averho, aveu2);
         }
       }
     }
   }
 }
 
-template <typename T, typename LatSet>
-void FreeSurface2D<T, LatSet>::ToGasNbrConversion() {
+template <typename T, typename LatSet, typename TypePack>
+void FreeSurface2D<T, LatSet, TypePack>::ToGasNbrConversion() {
   for (int j = NS.getOverlap(); j < NS.getNy() - NS.getOverlap(); ++j) {
     for (int i = NS.getOverlap(); i < NS.getNx() - NS.getOverlap(); ++i) {
       const std::size_t id = i + j * NS.getNx();
-      if (util::isFlag(State.get(id), FSType::To_Gas)) {
+      if (util::isFlag(this->template getField<STATE>().get(id), FSType::To_Gas)) {
         // check neighbors
         for (int k = 1; k < LatSet::q; ++k) {
-          const std::size_t idn = id + NS.getDelta_Index()[k];
-          if (util::isFlag(State.get(idn), FSType::Fluid)) {
+          const std::size_t idn = id + this->Delta_Index[k];
+          if (util::isFlag(this->template getField<STATE>().get(idn), FSType::Fluid)) {
             // to interface
-            util::addFlag(FSType::To_Interface, State.getField(0).getUnderlying(idn));
+            util::addFlag(FSType::To_Interface, util::underlyingRef(this->template getField<STATE>().get(idn)));
           }
         }
       }
@@ -189,10 +175,10 @@ void FreeSurface2D<T, LatSet>::ToGasNbrConversion() {
   }
 }
 
-template <typename T, typename LatSet>
-void FreeSurface2D<T, LatSet>::InterfaceExcessMass() {
+template <typename T, typename LatSet, typename TypePack>
+void FreeSurface2D<T, LatSet, TypePack>::InterfaceExcessMass() {
   util::Parker_YoungsNormal2D<T, LatSet> PYNormal(NS.getNx(), NS.getNy(),
-                                                  VolumeFrac.getField(0));
+                                                  this->template getField<VOLUMEFRAC<T>>().getField(0));
   for (int j = NS.getOverlap(); j < NS.getNy() - NS.getOverlap(); ++j) {
     for (int i = NS.getOverlap(); i < NS.getNx() - NS.getOverlap(); ++i) {
       const std::size_t id = i + j * NS.getNx();
@@ -200,14 +186,14 @@ void FreeSurface2D<T, LatSet>::InterfaceExcessMass() {
       // for interface cells to be converted to fluid or gas
       // excess mass is distributed to interface neighbors
       T excessmass{};
-      if (util::isFlag(State.get(id), FSType::To_Fluid)) {
-        BCell<T, LatSet> cell(id, NS);
-        T rho = moment::Rho<T, LatSet>::get(cell);
-        excessmass = Mass.get(id) - rho;
-        Mass.get(id) = rho;
-      } else if (util::isFlag(State.get(id), FSType::To_Gas)) {
-        excessmass = Mass.get(id);
-        Mass.get(id) = T{};
+      if (util::isFlag(this->template getField<STATE>().get(id), FSType::To_Fluid)) {
+        BCell<T, LatSet, TypePack> cell(id, NS);
+        T rho = moment::rho<BCell<T, LatSet, TypePack>>::get(cell);
+        excessmass = this->template getField<MASS<T>>().get(id) - rho;
+        this->template getField<MASS<T>>().get(id) = rho;
+      } else if (util::isFlag(this->template getField<STATE>().get(id), FSType::To_Gas)) {
+        excessmass = this->template getField<MASS<T>>().get(id);
+        this->template getField<MASS<T>>().get(id) = T{};
       } else {
         continue;
       }
@@ -215,21 +201,21 @@ void FreeSurface2D<T, LatSet>::InterfaceExcessMass() {
       // find neighbors
       int count{};
       for (int k = 1; k < LatSet::q; ++k) {
-        const std::size_t idn = id + NS.getDelta_Index()[k];
-        if (util::isFlag(State.get(idn), FSType::Interface) &&
-            !util::isFlag(State.get(idn), FSType::To_Gas | FSType::To_Fluid)) {
+        const std::size_t idn = id + this->Delta_Index[k];
+        if (util::isFlag(this->template getField<STATE>().get(idn), FSType::Interface) &&
+            !util::isFlag(this->template getField<STATE>().get(idn), FSType::To_Gas | FSType::To_Fluid)) {
           ++count;
         }
       }
 
-      std::array<T*, LatSet::q> exmasscell = ExcessMass.getArray(id);
+      std::array<T*, LatSet::q> exmasscell = this->template getField<EXCESSMASS<T,LatSet::q>>().getArray(id);
       *(exmasscell[0]) = T{};
       if (count > 0) {
         T excessmassk = excessmass / count;
         for (int k = 1; k < LatSet::q; ++k) {
-          const std::size_t idn = id + NS.getDelta_Index()[k];
-          if (util::isFlag(State.get(idn), FSType::Interface) &&
-              !util::isFlag(State.get(idn), FSType::To_Gas | FSType::To_Fluid)) {
+          const std::size_t idn = id + this->Delta_Index[k];
+          if (util::isFlag(this->template getField<STATE>().get(idn), FSType::Interface) &&
+              !util::isFlag(this->template getField<STATE>().get(idn), FSType::To_Gas | FSType::To_Fluid)) {
             *(exmasscell[k]) = excessmassk;
           }
         }
@@ -241,56 +227,56 @@ void FreeSurface2D<T, LatSet>::InterfaceExcessMass() {
 }
 
 
-template <typename T, typename LatSet>
-void FreeSurface2D<T, LatSet>::FinalizeConversion() {
+template <typename T, typename LatSet, typename TypePack>
+void FreeSurface2D<T, LatSet, TypePack>::FinalizeConversion() {
   // update state
   for (int j = NS.getOverlap(); j < NS.getNy() - NS.getOverlap(); ++j) {
     for (int i = NS.getOverlap(); i < NS.getNx() - NS.getOverlap(); ++i) {
       const std::size_t id = i + j * NS.getNx();
-      BCell<T, LatSet> cell(id, NS);
-      if (util::isFlag(State.get(id), FSType::To_Fluid)) {
-        State.SetField(id, FSType::Fluid);
-        VolumeFrac.SetField(id, T(1));
-        Mass.get(id) += ExcessMass.template get<0>(id);
-      } else if (util::isFlag(State.get(id), FSType::To_Gas)) {
-        State.SetField(id, FSType::Gas);
-        VolumeFrac.SetField(id, T{});
-        Mass.get(id) += ExcessMass.template get<0>(id);
-        cell.getVelocity().clear();
-      } else if (util::isFlag(State.get(id), FSType::To_Interface)) {
-        State.SetField(id, FSType::Interface);
+      BCell<T, LatSet, TypePack> cell(id, NS);
+      if (util::isFlag(this->template getField<STATE>().get(id), FSType::To_Fluid)) {
+        this->template getField<STATE>().SetField(id, FSType::Fluid);
+        this->template getField<VOLUMEFRAC<T>>().SetField(id, T(1));
+        this->template getField<MASS<T>>().get(id) += this->template getField<EXCESSMASS<T,LatSet::q>>().template get<0>(id);
+      } else if (util::isFlag(this->template getField<STATE>().get(id), FSType::To_Gas)) {
+        this->template getField<STATE>().SetField(id, FSType::Gas);
+        this->template getField<VOLUMEFRAC<T>>().SetField(id, T{});
+        this->template getField<MASS<T>>().get(id) += this->template getField<EXCESSMASS<T,LatSet::q>>().template get<0>(id);
+        cell.template get<VELOCITY<T,LatSet::d>>().clear();
+      } else if (util::isFlag(this->template getField<STATE>().get(id), FSType::To_Interface)) {
+        this->template getField<STATE>().SetField(id, FSType::Interface);
       }
     }
   }
 }
 
-template <typename T, typename LatSet>
-void FreeSurface2D<T, LatSet>::CollectExcessMass() {
+template <typename T, typename LatSet, typename TypePack>
+void FreeSurface2D<T, LatSet, TypePack>::CollectExcessMass() {
   // stream
   for (int i = 1; i < LatSet::q; ++i) {
-    ExcessMass.getField(i).rotate(NS.getDelta_Index()[i]);
+    this->template getField<EXCESSMASS<T,LatSet::q>>().getField(i).rotate(this->Delta_Index[i]);
   }
   // collect
   for (int j = NS.getOverlap(); j < NS.getNy() - NS.getOverlap(); ++j) {
     for (int i = NS.getOverlap(); i < NS.getNx() - NS.getOverlap(); ++i) {
       const std::size_t id = i + j * NS.getNx();
-      if (util::isFlag(State.get(id), FSType::Interface | FSType::Fluid)) {
-                T exmass_sum = ExcessMass.template get<0>(id);
+      if (util::isFlag(this->template getField<STATE>().get(id), FSType::Interface | FSType::Fluid)) {
+          T exmass_sum = this->template getField<EXCESSMASS<T,LatSet::q>>().template get<0>(id);
         for (int k = 1; k < LatSet::q; ++k) {
-          exmass_sum += ExcessMass.get(id, k);
+          exmass_sum += this->template getField<EXCESSMASS<T,LatSet::q>>().get(id, k);
         }
-        Mass.get(id) += exmass_sum;
+        this->template getField<MASS<T>>().get(id) += exmass_sum;
 
-        if (util::isFlag(State.get(id), FSType::Interface)) {
-          BCell<T, LatSet> cell(id, NS);
-          T rho = moment::Rho<T, LatSet>::get(cell);
-          VolumeFrac.SetField(id, Mass.get(id) / rho);
+        if (util::isFlag(this->template getField<STATE>().get(id), FSType::Interface)) {
+          BCell<T, LatSet, TypePack> cell(id, NS);
+          T rho = moment::rho<BCell<T, LatSet, TypePack>>::get(cell);
+          this->template getField<VOLUMEFRAC<T>>().SetField(id, this->template getField<MASS<T>>().get(id) / rho);
         }
       }
     }
   }
   // clear
-  ExcessMass.Init();
+  this->template getField<EXCESSMASS<T,LatSet::q>>().Init();
 }
 
 }  // namespace FS

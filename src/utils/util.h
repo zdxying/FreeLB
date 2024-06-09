@@ -341,6 +341,21 @@ inline bool nearZero(T a, T epsilon) {
   }
 }
 
+// get underlying value of enum 
+template <typename T>
+constexpr auto underlyingVal(T e) noexcept {
+  return static_cast<std::underlying_type_t<T>>(e);
+}
+// get underlying reference of enum
+template <typename T>
+constexpr auto& underlyingRef(T& e) noexcept {
+  return reinterpret_cast<std::underlying_type_t<T>&>(e);
+}
+template <typename T>
+constexpr const auto& underlyingRef(const T& e) noexcept {
+  return reinterpret_cast<const std::underlying_type_t<T>&>(e);
+}
+
 // compare 2 uint8_t flags by bitwise AND operation
 // return static_cast<bool>(uint8_t flag1 & uint8_t flag2);
 inline bool isFlag(std::uint8_t flag1, std::uint8_t flag2) {
