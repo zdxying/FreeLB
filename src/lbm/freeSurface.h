@@ -29,12 +29,13 @@ namespace FS {
 
 enum FSType : std::uint8_t {
   Solid = 1,
-  Gas = 2,
-  Interface = 4,
-  Fluid = 8,
-  To_Fluid = 16,
-  To_Gas = 32,
-  To_Interface = 64
+  Wall = 2,
+  Gas = 4,
+  Interface = 8,
+  Fluid = 16,
+  To_Fluid = 32,
+  To_Gas = 64,
+  To_Interface = 128
 };
 
 template <typename CELL>
@@ -203,6 +204,9 @@ class FreeSurface2DManager : public BlockLatticeManagerBase<T, LatSet, FSFIELDS<
 
   void Apply() {
     for (auto& fs : BlockFS) {
+      // int deLevel = static_cast<int>(this->getMaxLevel() - fs.getLevel());
+      // if (count % (static_cast<int>(pow(2, deLevel))) == 0)
+      
       fs.MassTransfer();
       // for cells with to_fluid flag, check neighbors and set transition flag
       fs.ToFluidNbrConversion();

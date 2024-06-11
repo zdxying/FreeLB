@@ -186,15 +186,47 @@ struct BounceBack {
   using LatSet = typename CELL::LatticeSet;
   using T = typename CELL::FloatType;
   using GenericRho = typename CELL::GenericRho;
-  static constexpr int halfq = LatSet::q / 2 + 1;
+  static constexpr int startdir = LatSet::q % 2 == 0 ? 0 : 1;
 
   static void apply(CELL& cell) {
-    for (int i = 1; i < halfq; ++i) {
+    for (int i = startdir; i < LatSet::q; i += 2) {
       T temp = cell[i];
-      cell[i] = cell[LatSet::opp[i]];
-      cell[LatSet::opp[i]] = temp;
+      int iopp = i + 1;
+      cell[i] = cell[iopp];
+      cell[iopp] = temp;
     }
-  };
+  }
+  
+};
+
+  // static inline void apply(CELL &cell, unsigned int k) {
+  //   cell[k] = cell.getPrevious(LatSet::opp[k]) +
+  //             2 * LatSet::InvCs2 * LatSet::w[k] * cell.template get<GenericRho>() *
+  //               (cell.template get<VELOCITY<T, LatSet::d>>() * LatSet::c[k]);
+  // }
+
+// full way bounce back with moving wall, could be regarded as a mpdified collision process
+// swap the populations in the opposite direction
+// LatSet must have rest population(D2Q4 is not supported)
+template <typename CELLTYPE>
+struct BounceBackMovingWall {
+  using CELL = CELLTYPE;
+  using LatSet = typename CELL::LatticeSet;
+  using T = typename CELL::FloatType;
+  using GenericRho = typename CELL::GenericRho;
+  static constexpr int startdir = LatSet::q % 2 == 0 ? 0 : 1;
+
+  static void apply(CELL& cell) {
+    T rhox = 2 * LatSet::InvCs2 * cell.template get<GenericRho>();
+    for (int i = startdir; i < LatSet::q; i += 2) {
+      T temp = cell[i];
+      int iopp = i + 1;
+      T uc = cell.template get<VELOCITY<T, LatSet::d>>() * LatSet::c[i] * LatSet::w[i] * rhox;
+      cell[i] = cell[iopp] + uc;
+      cell[iopp] = temp - uc;
+    }
+  }
+  
 };
 
 

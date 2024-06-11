@@ -169,11 +169,16 @@ int main() {
   // bulk task
   using BulkTask = tmp::Key_TypePair<AABBFlag, collision::BGK_Feq_RhoU<equilibrium::SecondOrder<CELL>>>;
   // wall task
-  using WallTask = tmp::Key_TypePair<BouncebackFlag | BBMovingWallFlag, collision::BGK_Feq<equilibrium::SecondOrder<CELL>>>;
+  // using WallTask = tmp::Key_TypePair<BouncebackFlag | BBMovingWallFlag, collision::BGK_Feq<equilibrium::SecondOrder<CELL>>>;
+  // BCs task as a collision process, if used, bcs will be handled in the collision process
+  using BBTask = tmp::Key_TypePair<BouncebackFlag, collision::BounceBack<CELL>>;
+  using BBMVTask = tmp::Key_TypePair<BBMovingWallFlag, collision::BounceBackMovingWall<CELL>>;
   // task collection
-  using TaskCollection = tmp::TupleWrapper<BulkTask, WallTask>;
+  // using TaskCollection = tmp::TupleWrapper<BulkTask>;
+  using TaskCollection = tmp::TupleWrapper<BulkTask, BBTask, BBMVTask>;
   // task executor
-  using TaskSelector = tmp::TaskSelector<TaskCollection, std::uint8_t, CELL>;
+  using NSTask = tmp::TaskSelector<TaskCollection, std::uint8_t, CELL>;
+
   // task: update rho and u
   using RhoUTask = tmp::Key_TypePair<AABBFlag, moment::rhou<CELL>>;
   using TaskCollectionRhoU = tmp::TupleWrapper<RhoUTask>;
@@ -193,10 +198,13 @@ int main() {
   Printer::Print_BigBanner(std::string("Start Calculation..."));
 
   while (MainLoopTimer() < MaxStep && res > tol) {
-    NSLattice.ApplyCellDynamics<TaskSelector>(MainLoopTimer(), FlagFM);
 
+    NSLattice.ApplyCellDynamics<NSTask>(MainLoopTimer(), FlagFM);
+    
     NSLattice.Stream(MainLoopTimer());
-    BM.Apply(MainLoopTimer());
+
+    // BM.Apply(MainLoopTimer());
+
     NSLattice.Communicate(MainLoopTimer());
 
     ++MainLoopTimer;

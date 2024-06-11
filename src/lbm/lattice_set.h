@@ -52,39 +52,39 @@ struct D1Q3 : public Basic_Lattice_Set<1, 3> {
 // D2Q4
 template <typename T>
 struct D2Q4 : public Basic_Lattice_Set<2, 4> {
-  static constexpr Vector<int, 2> c[q] = {{1, 0}, {0, 1}, {-1, 0}, {0, -1}};
+  static constexpr Vector<int, 2> c[q] = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}};
   static constexpr T w[q] = {T(1) / T(4), T(1) / T(4), T(1) / T(4),
                              T(1) / T(4)};
   static constexpr T cs2 = T(1) / T(3);
   static constexpr T InvCs2 = T(3);
   static constexpr T InvCs4 = T(9);
-  static constexpr int opp[q] = {2, 3, 0, 1};
+  static constexpr int opp[q] = {1, 0, 3, 2};
 };
 
 // D2Q5
 template <typename T>
 struct D2Q5 : public Basic_Lattice_Set<2, 5> {
-  static constexpr Vector<int, 2> c[q] = {{0, 0}, {1, 0}, {0, 1}, {-1, 0}, {0, -1}};
+  static constexpr Vector<int, 2> c[q] = {{0, 0}, {1, 0}, {-1, 0}, {0, 1}, {0, -1}};
   static constexpr T w[q] = {T(1) / T(3), T(1) / T(6), T(1) / T(6), T(1) / T(6),
                              T(1) / T(6)};
   static constexpr T cs2 = T(1) / T(3);
   static constexpr T InvCs2 = T(3);
   static constexpr T InvCs4 = T(9);
-  static constexpr int opp[q] = {0, 3, 4, 1, 2};
+  static constexpr int opp[q] = {0, 2, 1, 4, 3};
 };
 
 // D2Q9
 template <typename T>
 struct D2Q9 : public Basic_Lattice_Set<2, 9> {
-  static constexpr Vector<int, 2> c[q] = {{0, 0}, {1, 0},  {0, 1},   {-1, 0}, {0, -1},
-                                  {1, 1}, {-1, 1}, {-1, -1}, {1, -1}};
+  static constexpr Vector<int, 2> c[q] = {{0, 0}, {1, 0}, {-1, 0}, {0, 1}, {0, -1},
+                                  {1, 1}, {-1, -1}, {1, -1}, {-1, 1}};
   static constexpr T w[q] = {T(4) / T(9),  T(1) / T(9),  T(1) / T(9),
                              T(1) / T(9),  T(1) / T(9),  T(1) / T(36),
                              T(1) / T(36), T(1) / T(36), T(1) / T(36)};
   static constexpr T cs2 = T(1) / T(3);
   static constexpr T InvCs2 = T(3);
   static constexpr T InvCs4 = T(9);
-  static constexpr int opp[q] = {0, 3, 4, 1, 2, 7, 8, 5, 6};
+  static constexpr int opp[q] = {0, 2, 1, 4, 3, 6, 5, 8, 7};
 };
 
 // D3Q7

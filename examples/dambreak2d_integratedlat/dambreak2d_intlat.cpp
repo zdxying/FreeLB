@@ -122,10 +122,10 @@ int main() {
                  [&](auto& field, std::size_t id) { field.SetField(id, AABBFlag); });
   FlagFM.template SetupBoundary<LatSet>(cavity, BouncebackFlag);
 
-  vtmo::ScalarWriter Flagvtm("Flag", FlagFM);
-  vtmo::vtmWriter<T, LatSet::d> FlagWriter("Flag", Geo, 1);
-  FlagWriter.addWriterSet(Flagvtm);
-  FlagWriter.WriteBinary();
+  // vtmo::ScalarWriter Flagvtm("Flag", FlagFM);
+  // vtmo::vtmWriter<T, LatSet::d> FlagWriter("Flag", Geo, 1);
+  // FlagWriter.addWriterSet(Flagvtm);
+  // FlagWriter.WriteBinary();
 
   // ------------------ define lattice ------------------
   using NSFIELDS = TypePack<RHO<T>, VELOCITY<T, 2>, POP<T, LatSet::q>, SCALARCONSTFORCE<T>>;
@@ -134,7 +134,7 @@ int main() {
 
   ValuePack NSInitValues(BaseConv.getLatRhoInit(), Vector<T, 2>{}, T{}, -BaseConv.Lattice_g);
   ValuePack FSInitValues(FS::FSType::Solid, T{}, T{}, T{});
-  ValuePack FSParamsInitValues(T{0.1}, T{0.003}, false, T{});
+  ValuePack FSParamsInitValues(T{0.3}, T{0.01}, false, T{});
 
   auto ALLValues = mergeValuePack(NSInitValues, FSInitValues, FSParamsInitValues);
 
@@ -158,6 +158,8 @@ int main() {
   NSLattice.getField<FS::STATE>().forEach(
     fluid, [&](auto& field, std::size_t id) { field.SetField(id, FS::FSType::Fluid); });
 
+  NSLattice.getField<FS::STATE>().template SetupBoundary<LatSet>(cavity, FS::FSType::Wall);
+
   FS::FreeSurfaceHelper<NSLAT>::Init(NSLattice);
 
   //// end free surface
@@ -168,8 +170,9 @@ int main() {
     tmp::Key_TypePair<FS::FSType::Fluid | FS::FSType::Interface,
                       collision::BGKForce_Feq_RhoU<equilibrium::SecondOrder<NSCELL>,
                                                    force::ScalarConstForce<NSCELL>, true>>;
+  using NSWallTask = tmp::Key_TypePair<FS::FSType::Wall, collision::BounceBack<NSCELL>>;
 
-  using NSTaskSelector = TaskSelector<std::uint8_t, NSCELL, NSBulkTask>;
+  using NSTaskSelector = TaskSelector<std::uint8_t, NSCELL, NSBulkTask, NSWallTask>;
 
   // bcs
   BBLikeFixedBlockBdManager<bounceback::normal<NSCELL>,
@@ -199,7 +202,7 @@ int main() {
     NSLattice.ApplyCellDynamics<NSTaskSelector>(MainLoopTimer(), NSLattice.getField<FS::STATE>());
 
     NSLattice.Stream(MainLoopTimer());
-    NS_BB.Apply(MainLoopTimer());
+    // NS_BB.Apply(MainLoopTimer());
 
     // FreeSurface.Apply();
     NSLattice.ApplyInnerCellDynamics<FS::MassTransfer<NSCELL>>(MainLoopTimer());
