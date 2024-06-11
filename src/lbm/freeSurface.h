@@ -62,9 +62,30 @@ using VOLUMEFRAC = GenericField<GenericArray<T>, VOLUMEFRACBase>;
 template <typename T, unsigned int q>
 using EXCESSMASS = GenericField<CyclicArray<T>, EXCESSMASSBase<q>>;
 
+// define FS parameters as single data stored in Array
+struct Lonely_ThBase : public FieldBase<1> {};
+struct VOF_Trans_ThBase : public FieldBase<1> {};
+struct Surface_Tension_EnabledBase : public FieldBase<1> {};
+struct Surface_Tension_ParameterBase : public FieldBase<1> {};
+
+// lonely threshold in mass transfer
+template <typename T>
+using Lonely_Th = Array<T, Lonely_ThBase>;
+// vof transition threshold
+template <typename T>
+using VOF_Trans_Th = Array<T, VOF_Trans_ThBase>;
+// surface tension enabled
+using Surface_Tension_Enabled = Array<bool, Surface_Tension_EnabledBase>;
+// surface tension parameter
+template <typename T>
+using Surface_Tension_Parameter = Array<T, Surface_Tension_ParameterBase>;
+
 
 template <typename T, typename LatSet>
 using FSFIELDS = TypePack<STATE, MASS<T>, VOLUMEFRAC<T>, EXCESSMASS<T, LatSet::q>>;
+
+template <typename T>
+using FSPARAMS = TypePack<Lonely_Th<T>, VOF_Trans_Th<T>, Surface_Tension_Enabled, Surface_Tension_Parameter<T>>;
 
 // incorporate free surface fields into BlockLattice is possible
 // (considered as a post-process of NS Lattice)
@@ -155,9 +176,8 @@ class FreeSurface2DManager : public BlockLatticeManagerBase<T, LatSet, FSFIELDS<
 
   void Init() {
     // set interface cells
-    this->template getField<STATE>().forEach([&](auto& blockfield, std::size_t id) {
-      auto& field = blockfield;
-      const auto& block = blockfield.getBlock();
+    this->template getField<STATE>().forEach([&](auto& field, std::size_t id) {
+      const auto& block = field.getBlock();
       if (util::isFlag(field.get(id), FSType::Fluid)) {
         for (int i = 1; i < LatSet::q; ++i) {
           std::size_t idn = id + LatSet::c[i] * block.getProjection();
@@ -195,6 +215,41 @@ class FreeSurface2DManager : public BlockLatticeManagerBase<T, LatSet, FSFIELDS<
       fs.FinalizeConversion();
       fs.CollectExcessMass();
     }
+  }
+};
+
+
+template <typename LATTICEMANTYPE>
+struct FreeSurfaceHelper{
+  using LATTICEMAN = LATTICEMANTYPE;
+  using T = typename LATTICEMAN::FloatType;
+  using LatSet = typename LATTICEMAN::LatticeSet;
+
+  static void Init(LATTICEMAN& latman){
+  // set interface cells
+  latman.template getField<STATE>().forEach([&](auto& field, std::size_t id) {
+    const auto& block = field.getBlock();
+    if (util::isFlag(field.get(id), FSType::Fluid)) {
+      for (int i = 1; i < LatSet::q; ++i) {
+        std::size_t idn = id + LatSet::c[i] * block.getProjection();
+        if (util::isFlag(field.get(idn), FSType::Gas)) {
+          util::removeFlag(FSType::Gas, util::underlyingRef(field.get(idn)));
+          util::addFlag(FSType::Interface, util::underlyingRef(field.get(idn)));
+        }
+      }
+    }
+  });
+  // set mass and volume fraction
+  latman.template getField<MASS<T>>().forEach(latman.template getField<STATE>(), FSType::Fluid,
+                  [&](auto& field, std::size_t id) { field.SetField(id, T{1}); });
+  latman.template getField<MASS<T>>().forEach(latman.template getField<STATE>(), FSType::Interface,
+                  [&](auto& field, std::size_t id) { field.SetField(id, T{0.5}); });
+  
+  latman.template getField<VOLUMEFRAC<T>>().forEach(latman.template getField<STATE>(), FSType::Fluid,
+                        [&](auto& field, std::size_t id) { field.SetField(id, T{1}); });
+  latman.template getField<VOLUMEFRAC<T>>().forEach(latman.template getField<STATE>(), FSType::Interface, [&](auto& field, std::size_t id) {
+    field.SetField(id, T{0.5});
+  });
   }
 };
 

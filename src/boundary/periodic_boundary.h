@@ -109,8 +109,8 @@
 //     int size = VCells.size();
 // #pragma omp parallel for num_threads(Thread_Num) schedule(static)
 //     for (int i = 0; i < size; ++i) {
-//       BasicCell<T, LatSet> vcell(VCells[i], Lat);
-//       BasicCell<T, LatSet> rcell(RCells[i], Lat);
+//       BasicPopCell<T, LatSet> vcell(VCells[i], Lat);
+//       BasicPopCell<T, LatSet> rcell(RCells[i], Lat);
 //       for (int k = 1; k < LatSet::q; ++k) vcell[k] = rcell[k];
 //     }
 //   }
@@ -121,14 +121,14 @@
 //   void UpdateRho() override {
 // #pragma omp parallel for num_threads(Thread_Num) schedule(static)
 //     for (std::size_t id : BdCells) {
-// BasicCell<T, LatSet> cell(id, Lat);
+// BasicPopCell<T, LatSet> cell(id, Lat);
 // moment::Rho<T, LatSet>::apply(cell, Lat.getRho(id));
 //     }
 //   }
 //   void UpdateU() override {
 // #pragma omp parallel for num_threads(Thread_Num) schedule(static)
 //     for (std::size_t id : BdCells) {
-// BasicCell<T, LatSet> cell(id, Lat);
+// BasicPopCell<T, LatSet> cell(id, Lat);
       // moment::Velocity<T, LatSet>::apply(cell, Lat.getVelocity(id));
 //     }
 //   }
@@ -144,7 +144,7 @@ class FixedPeriodicBoundary final : public AbstractBoundary {
   // boundary cells for macroscopic update
   std::vector<std::size_t> BdCells;
   // lattice
-  BasicLattice<T, LatSet> &Lat;
+  PopLattice<T, LatSet> &Lat;
   // geometry
   Geometry<T, LatSet::d> &Geo;
   // geometry flag
@@ -160,7 +160,7 @@ class FixedPeriodicBoundary final : public AbstractBoundary {
   std::string _name = "FixedPeriodic";
 
  public:
-  FixedPeriodicBoundary(BasicLattice<T, LatSet> &lat, AABB<T, LatSet::d> &box,
+  FixedPeriodicBoundary(PopLattice<T, LatSet> &lat, AABB<T, LatSet::d> &box,
                         AABB<T, LatSet::d> &frombox, std::uint8_t cellflag,
                         std::uint8_t voidflag = std::uint8_t(1))
       : Lat(lat), Geo(lat.getGeo()), Field(lat.getGeo().getGeoFlagField().getField()),
@@ -206,8 +206,8 @@ class FixedPeriodicBoundary final : public AbstractBoundary {
     int size = VCells.size();
 #pragma omp parallel for num_threads(Thread_Num) schedule(static)
     for (int i = 0; i < size; ++i) {
-      BasicCell<T, LatSet> vcell(VCells[i], Lat);
-      BasicCell<T, LatSet> rcell(RCells[i], Lat);
+      BasicPopCell<T, LatSet> vcell(VCells[i], Lat);
+      BasicPopCell<T, LatSet> rcell(RCells[i], Lat);
       for (int k = 1; k < LatSet::q; ++k) vcell[k] = rcell[k];
     }
   }
@@ -218,14 +218,14 @@ class FixedPeriodicBoundary final : public AbstractBoundary {
   void UpdateRho() override {
 #pragma omp parallel for num_threads(Thread_Num) schedule(static)
     for (std::size_t id : BdCells) {
-      BasicCell<T, LatSet> cell(id, Lat);
+      BasicPopCell<T, LatSet> cell(id, Lat);
       moment::Rho<T, LatSet>::apply(cell, Lat.getRho(id));
     }
   }
   void UpdateU() override {
 #pragma omp parallel for num_threads(Thread_Num) schedule(static)
     for (std::size_t id : BdCells) {
-      BasicCell<T, LatSet> cell(id, Lat);
+      BasicPopCell<T, LatSet> cell(id, Lat);
       moment::Velocity<T, LatSet>::apply(cell, Lat.getVelocity(id));
     }
   }

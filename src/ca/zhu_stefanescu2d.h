@@ -150,7 +150,7 @@ class ZhuStefanescu2D {
 
  public:
   ZhuStefanescu2D(ZSConverter<T>& convca, RhoLattice<T>& lbmso, RhoLattice<T>& lbmth,
-                  BasicLattice<T, LatSet>& lbmns, T delta_, T theta, int siteid,
+                  PopLattice<T, LatSet>& lbmns, T delta_, T theta, int siteid,
                   int num = LatSet::q);
   ~ZhuStefanescu2D() {}
 

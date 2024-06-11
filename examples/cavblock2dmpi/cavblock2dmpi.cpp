@@ -166,7 +166,7 @@ int main(int argc, char* argv[]) {
 
   // ------------------ define lattice ------------------
   using FIELDS = TypePack<RHO<T>, VELOCITY<T, LatSet::d>, POP<T, LatSet::q>>;
-  using CELL = BCell<T, LatSet, FIELDS>;
+  using CELL = Cell<T, LatSet, FIELDS>;
   ValuePack InitValues(BaseConv.getLatRhoInit(), Vector<T, 2>{}, T{});
   // lattice
   BlockLatticeManager<T, LatSet, FIELDS> NSLattice(Geo, InitValues, BaseConv);

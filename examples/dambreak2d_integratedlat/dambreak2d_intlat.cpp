@@ -52,7 +52,7 @@ int OutputStep;
 std::string work_dir;
 
 void readParam() {
-  iniReader param_reader("dambreak2d.ini");
+  iniReader param_reader("dambreak2d_intlat.ini");
   // Thread_Num = param_reader.getValue<int>("OMP", "Thread_Num");
   // mesh
   work_dir = param_reader.getValue<std::string>("workdir", "workdir_");
@@ -129,28 +129,37 @@ int main() {
 
   // ------------------ define lattice ------------------
   using NSFIELDS = TypePack<RHO<T>, VELOCITY<T, 2>, POP<T, LatSet::q>, SCALARCONSTFORCE<T>>;
+
+  using ALLFIELDS = MergeFieldPack<NSFIELDS, FS::FSFIELDS<T, LatSet>, FS::FSPARAMS<T>>::mergedpack;
+
   ValuePack NSInitValues(BaseConv.getLatRhoInit(), Vector<T, 2>{}, T{}, -BaseConv.Lattice_g);
-  using NSCELL = Cell<T, LatSet, NSFIELDS>;
-  BlockLatticeManager<T, LatSet, NSFIELDS> NSLattice(Geo, NSInitValues, BaseConv);
+  ValuePack FSInitValues(FS::FSType::Solid, T{}, T{}, T{});
+  ValuePack FSParamsInitValues(T{0.1}, T{0.003}, false, T{});
+
+  auto ALLValues = mergeValuePack(NSInitValues, FSInitValues, FSParamsInitValues);
+
+  using NSCELL = Cell<T, LatSet, ALLFIELDS>;
+  using NSLAT = BlockLatticeManager<T, LatSet, ALLFIELDS>;
+  using NSBlockLat = BlockLattice<T, LatSet, ALLFIELDS>;
+  BlockLatticeManager<T, LatSet, ALLFIELDS> NSLattice(Geo, ALLValues, BaseConv);
 
   //// free surface
   // a conversion factor of unit s^2 / g
   // [surface_tension_coefficient_factor * surface_tension_coefficient] = [1]
   // (LatRT_ - T(0.5)) * cs2 * deltaX_ * deltaX_ / VisKine_
-  T surface_tension_coefficient_factor =
-    BaseConv.Conv_Time * BaseConv.Conv_Time / (rho_ref * std::pow(BaseConv.Conv_L, 3));
 
-  ValuePack FSInitValues(FS::FSType::Solid, T{}, T{}, T{});
+  // T surface_tension_coefficient_factor =
+  //   BaseConv.Conv_Time * BaseConv.Conv_Time / (rho_ref * std::pow(BaseConv.Conv_L, 3));
 
-  FS::FreeSurface2DManager<T, LatSet, NSFIELDS> FreeSurface(NSLattice, FSInitValues);
   // set cell state
-  FreeSurface.getField<FS::STATE>().forEach(
+  NSLattice.getField<FS::STATE>().forEach(
     cavity, [&](auto& field, std::size_t id) { field.SetField(id, FS::FSType::Gas); });
   // set fluid
-  FreeSurface.getField<FS::STATE>().forEach(
+  NSLattice.getField<FS::STATE>().forEach(
     fluid, [&](auto& field, std::size_t id) { field.SetField(id, FS::FSType::Fluid); });
-  // set interface
-  FreeSurface.Init();
+
+  FS::FreeSurfaceHelper<NSLAT>::Init(NSLattice);
+
   //// end free surface
 
   // define task/ dynamics:
@@ -159,20 +168,20 @@ int main() {
     tmp::Key_TypePair<FS::FSType::Fluid | FS::FSType::Interface,
                       collision::BGKForce_Feq_RhoU<equilibrium::SecondOrder<NSCELL>,
                                                    force::ScalarConstForce<NSCELL>, true>>;
-  
+
   using NSTaskSelector = TaskSelector<std::uint8_t, NSCELL, NSBulkTask>;
 
   // bcs
-    BBLikeFixedBlockBdManager<bounceback::normal<NSCELL>,
-                            BlockLatticeManager<T, LatSet, NSFIELDS>,
-                            BlockFieldManager<FLAG, T, 2>>
-    NS_BB("NS_BB", NSLattice, FlagFM, BouncebackFlag, VoidFlag);
+  BBLikeFixedBlockBdManager<bounceback::normal<NSCELL>,
+                          BlockLatticeManager<T, LatSet, ALLFIELDS>,
+                          BlockFieldManager<FLAG, T, 2>>
+  NS_BB("NS_BB", NSLattice, FlagFM, BouncebackFlag, VoidFlag);
 
   vtmo::ScalarWriter rhovtm("rho", NSLattice.getField<RHO<T>>());
-  vtmo::ScalarWriter MassWriter("Mass", FreeSurface.getField<FS::MASS<T>>());
+  vtmo::ScalarWriter MassWriter("Mass", NSLattice.getField<FS::MASS<T>>());
   vtmo::VectorWriter VeloWriter("Velo", NSLattice.getField<VELOCITY<T, 2>>());
-  vtmo::ScalarWriter VOFWriter("VOF", FreeSurface.getField<FS::VOLUMEFRAC<T>>());
-  vtmo::ScalarWriter StateWriter("State", FreeSurface.getField<FS::STATE>());
+  vtmo::ScalarWriter VOFWriter("VOF", NSLattice.getField<FS::VOLUMEFRAC<T>>());
+  vtmo::ScalarWriter StateWriter("State", NSLattice.getField<FS::STATE>());
   vtmo::vtmWriter<T, LatSet::d> Writer("dambreak2d", Geo, 1);
   Writer.addWriterSet(rhovtm, MassWriter, VOFWriter, StateWriter, VeloWriter);
 
@@ -187,12 +196,23 @@ int main() {
     ++MainLoopTimer;
     ++OutputTimer;
 
-    NSLattice.ApplyCellDynamics<NSTaskSelector>(MainLoopTimer(), FreeSurface.getField<FS::STATE>());
+    NSLattice.ApplyCellDynamics<NSTaskSelector>(MainLoopTimer(), NSLattice.getField<FS::STATE>());
 
     NSLattice.Stream(MainLoopTimer());
     NS_BB.Apply(MainLoopTimer());
 
-    FreeSurface.Apply();
+    // FreeSurface.Apply();
+    NSLattice.ApplyInnerCellDynamics<FS::MassTransfer<NSCELL>>(MainLoopTimer());
+    NSLattice.ApplyInnerCellDynamics<FS::ToFluidNbrConversion<NSCELL>>(MainLoopTimer());
+    NSLattice.ApplyInnerCellDynamics<FS::GasToInterfacePopInit<NSCELL>>(MainLoopTimer());
+    NSLattice.ApplyInnerCellDynamics<FS::ToGasNbrConversion<NSCELL>>(MainLoopTimer());
+    NSLattice.ApplyInnerCellDynamics<FS::InterfaceExcessMass<NSCELL>>(MainLoopTimer());
+    NSLattice.ApplyInnerCellDynamics<FS::FinalizeConversion<NSCELL>>(MainLoopTimer());
+
+    NSLattice.ForEachBlockLattice([&](auto& blocklat){FS::StreamExcessMass<NSBlockLat>::apply(blocklat);});
+    NSLattice.ApplyInnerCellDynamics<FS::CollectExcessMass<NSCELL>>(MainLoopTimer());
+    NSLattice.ForEachBlockLattice([&](auto& blocklat){FS::ClearExcessMass<NSBlockLat>::apply(blocklat);});
+
 
     if (MainLoopTimer() % OutputStep == 0) {
       OutputTimer.Print_InnerLoopPerformance(Geo.getTotalCellNum(), OutputStep);

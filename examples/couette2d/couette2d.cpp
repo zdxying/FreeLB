@@ -151,7 +151,7 @@ int main() {
   Geo.forEachVoxel(toplid, BBMovingWallFlag,
                    [&Velocity](int id) { Velocity.SetField(id, U_Wall); });
   // lattice
-  BasicLattice<T, LatSet> NSLattice(Geo, BaseConv, Velocity);
+  PopLattice<T, LatSet> NSLattice(Geo, BaseConv, Velocity);
   NSLattice.EnableToleranceU();
   // bcs
   BBLikeFixedBoundary<T, LatSet, BounceBackLikeMethod<T, LatSet>::normal_bounceback>

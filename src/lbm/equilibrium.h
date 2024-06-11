@@ -26,7 +26,7 @@
 #include "data_struct/Vector.h"
 
 template <typename T, typename LatSet, typename TypePack>
-class BCell;
+class Cell;
 
 // calc equilibrium distribution function
 // sum(feq_i) = rho, for both first and second order
@@ -69,16 +69,6 @@ struct Equilibrium {
       feq[k] = Order2(k, u, rho, u2);
     }
   }
-
-  // ------------- get feq from cell -------------
-  // static void SecondOrder(const BCell<T, LatSet> &cell, std::array<T, LatSet::q> &feq) {
-  //   const T rho = cell.getRho();
-  //   const Vector<T, LatSet::d> &u = cell.template get<VELOCITY<T, LatSet::d>>();
-  //   const T u2 = u.getnorm2();
-  //   for (int k = 0; k < LatSet::q; ++k) {
-  //     feq[k] = Order2(k, u, rho, u2);
-  //   }
-  // }
 };
 
 namespace equilibrium {

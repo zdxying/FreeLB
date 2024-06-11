@@ -145,8 +145,8 @@ int main() {
   using FIELDS = TypePack<RHO<T>, VELOCITY<T, LatSet::d>, POP<T, LatSet::q>>;
   // using FIELDREFS = TypePack<FLAG>;
   // using FIELDSPACK = TypePack<FIELDS, FIELDREFS>;
-  // using CELL = BCell<T, LatSet, ExtractFieldPack<FIELDSPACK>::mergedpack>;
-  using CELL = BCell<T, LatSet, FIELDS>;
+  // using CELL = Cell<T, LatSet, ExtractFieldPack<FIELDSPACK>::mergedpack>;
+  using CELL = Cell<T, LatSet, FIELDS>;
   ValuePack InitValues(BaseConv.getLatRhoInit(), Vector<T, 2>{}, T{});
   // lattice
   BlockLatticeManager<T, LatSet, FIELDS> NSLattice(Geo, InitValues, BaseConv);

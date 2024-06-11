@@ -29,40 +29,40 @@
 // Fixed BounceBackLike Boundary
 // --------------------------------------------------------------------------
 
-template <typename T, typename LatSet, void (*BBLikemethod)(Cell<T, LatSet> &, int),
+template <typename T, typename LatSet, void (*BBLikemethod)(PopCell<T, LatSet> &, int),
           typename flagType>
 void BBLikeFixedBoundary<T, LatSet, BBLikemethod, flagType>::Apply() {
 #pragma omp parallel for num_threads(Thread_Num)
   for (const auto &bdcell : this->BdCells) {
-    Cell<T, LatSet> cell(bdcell.Id, this->Lat);
+    PopCell<T, LatSet> cell(bdcell.Id, this->Lat);
     for (int k : bdcell.outflows) {
       BBLikemethod(cell, k);
     }
   }
 }
-template <typename T, typename LatSet, void (*BBLikemethod)(Cell<T, LatSet> &, int),
+template <typename T, typename LatSet, void (*BBLikemethod)(PopCell<T, LatSet> &, int),
           typename flagType>
 void BBLikeFixedBoundary<T, LatSet, BBLikemethod, flagType>::getinfo() {
   std::cout << std::setw(18) << std::left << _name << std::setw(10) << std::left
             << this->BdCells.size() << std::endl;
 }
 
-template <typename T, typename LatSet, void (*BBLikemethod)(Cell<T, LatSet> &, int),
+template <typename T, typename LatSet, void (*BBLikemethod)(PopCell<T, LatSet> &, int),
           typename flagType>
 void BBLikeFixedBoundary<T, LatSet, BBLikemethod, flagType>::UpdateRho() {
 #pragma omp parallel for num_threads(Thread_Num) schedule(static)
   for (const auto &bdcell : this->BdCells) {
-    BasicCell<T, LatSet> cell(bdcell.Id, this->Lat);
+    BasicPopCell<T, LatSet> cell(bdcell.Id, this->Lat);
     moment::Rho<T, LatSet>::apply(cell, this->Lat.getRho(bdcell.Id));
   }
 }
 
-template <typename T, typename LatSet, void (*BBLikemethod)(Cell<T, LatSet> &, int),
+template <typename T, typename LatSet, void (*BBLikemethod)(PopCell<T, LatSet> &, int),
           typename flagType>
 void BBLikeFixedBoundary<T, LatSet, BBLikemethod, flagType>::UpdateU() {
 #pragma omp parallel for num_threads(Thread_Num) schedule(static)
   for (const auto &bdcell : this->BdCells) {
-    BasicCell<T, LatSet> cell(bdcell.Id, this->Lat);
+    BasicPopCell<T, LatSet> cell(bdcell.Id, this->Lat);
     moment::Velocity<T, LatSet>::apply(cell, this->Lat.getVelocity(bdcell.Id));
   }
 }
@@ -72,18 +72,18 @@ void BBLikeFixedBoundary<T, LatSet, BBLikemethod, flagType>::UpdateU() {
 // BBLikeMovingBoundary
 // --------------------------------------------------------------------------
 
-template <typename T, typename LatSet, void (*BBLikemethod)(Cell<T, LatSet> &, int),
+template <typename T, typename LatSet, void (*BBLikemethod)(PopCell<T, LatSet> &, int),
           typename flagType>
 BBLikeMovingBoundary<T, LatSet, BBLikemethod, flagType>::BBLikeMovingBoundary(
-  std::string name, BasicLattice<T, LatSet> &lat, std::vector<std::size_t> &ids,
+  std::string name, PopLattice<T, LatSet> &lat, std::vector<std::size_t> &ids,
   std::uint8_t voidflag, std::uint8_t cellflag)
     : MovingBoundary<T, LatSet, flagType>(lat, ids, voidflag, cellflag), _name(name) {}
 
-template <typename T, typename LatSet, void (*BBLikemethod)(Cell<T, LatSet> &, int),
+template <typename T, typename LatSet, void (*BBLikemethod)(PopCell<T, LatSet> &, int),
           typename flagType>
 void BBLikeMovingBoundary<T, LatSet, BBLikemethod, flagType>::Apply() {
   for (std::size_t id : this->Ids) {
-    Cell<T, LatSet> cell(id, this->Lat);
+    PopCell<T, LatSet> cell(id, this->Lat);
     for (int k = 1; k < LatSet::q; ++k) {
       if (util::isFlag(this->Field[this->Lat.getNbrId(id, k)], this->voidFlag)) {
         BBLikemethod(cell, LatSet::opp[k]);
@@ -92,27 +92,27 @@ void BBLikeMovingBoundary<T, LatSet, BBLikemethod, flagType>::Apply() {
   }
 }
 
-template <typename T, typename LatSet, void (*BBLikemethod)(Cell<T, LatSet> &, int),
+template <typename T, typename LatSet, void (*BBLikemethod)(PopCell<T, LatSet> &, int),
           typename flagType>
 void BBLikeMovingBoundary<T, LatSet, BBLikemethod, flagType>::getinfo() {
   std::cout << std::setw(18) << std::left << _name << std::setw(10) << std::left
             << this->Ids.size() << std::endl;
 }
 
-template <typename T, typename LatSet, void (*BBLikemethod)(Cell<T, LatSet> &, int),
+template <typename T, typename LatSet, void (*BBLikemethod)(PopCell<T, LatSet> &, int),
           typename flagType>
 void BBLikeMovingBoundary<T, LatSet, BBLikemethod, flagType>::UpdateRho() {
   for (std::size_t id : this->Ids) {
-    BasicCell<T, LatSet> cell(id, this->Lat);
+    BasicPopCell<T, LatSet> cell(id, this->Lat);
     moment::Rho<T, LatSet>::apply(cell, this->Lat.getRho(id));
   }
 }
 
-template <typename T, typename LatSet, void (*BBLikemethod)(Cell<T, LatSet> &, int),
+template <typename T, typename LatSet, void (*BBLikemethod)(PopCell<T, LatSet> &, int),
           typename flagType>
 void BBLikeMovingBoundary<T, LatSet, BBLikemethod, flagType>::UpdateU() {
   for (std::size_t id : this->Ids) {
-    BasicCell<T, LatSet> cell(id, this->Lat);
+    BasicPopCell<T, LatSet> cell(id, this->Lat);
     moment::Velocity<T, LatSet>::apply(cell, this->Lat.getVelocity(id));
   }
 }

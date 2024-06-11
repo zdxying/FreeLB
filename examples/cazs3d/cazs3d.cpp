@@ -216,11 +216,11 @@ int main() {
   // velocity field
   VectorFieldAOS<T, LatSet0::d> Velocity(Geo0.getVoxelsNum());
   // --------------------- lbm ---------------------
-  BasicLattice<T, LatSet0> NSLattice(Geo0, BaseConv, Velocity);
+  PopLattice<T, LatSet0> NSLattice(Geo0, BaseConv, Velocity);
 
-  BasicLattice<T, LatSet1> SOLattice(Geo1, ConcConv, Velocity);
+  PopLattice<T, LatSet1> SOLattice(Geo1, ConcConv, Velocity);
 
-  BasicLattice<T, LatSet1> THLattice(Geo1, TempConv, Velocity);
+  PopLattice<T, LatSet1> THLattice(Geo1, TempConv, Velocity);
   // --------------------- CA ---------------------
   CA::ZhuStefanescu3D<T, LatSet0, RhoLat> CA(
       CAConv, SOLattice, THLattice, NSLattice, Psi, Theta, Phi, Epsilon,

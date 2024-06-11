@@ -59,7 +59,7 @@ class FixedBoundary : public AbstractBoundary {
   // boundary cell
   std::vector<FixedBdCell> BdCells;
   // reference to lattice
-  BasicLattice<T, LatSet> &Lat;
+  PopLattice<T, LatSet> &Lat;
   // reference to geometry
   Geometry<T, LatSet::d> &Geo;
   // boundary cell flag
@@ -70,9 +70,9 @@ class FixedBoundary : public AbstractBoundary {
   GenericArray<flagType> &Field;
 
  public:
-  FixedBoundary(BasicLattice<T, LatSet> &lat, std::uint8_t cellflag,
+  FixedBoundary(PopLattice<T, LatSet> &lat, std::uint8_t cellflag,
                 std::uint8_t voidflag);
-  FixedBoundary(BasicLattice<T, LatSet> &lat, GenericArray<flagType> &f,
+  FixedBoundary(PopLattice<T, LatSet> &lat, GenericArray<flagType> &f,
                 std::uint8_t cellflag, std::uint8_t voidflag);
   // get boundary cell flag
   std::uint8_t getBdCellFlag() const { return BdCellFlag; }
@@ -90,7 +90,7 @@ class MovingBoundary : public AbstractBoundary {
   // boundary cells
   std::vector<std::size_t> &Ids;
   // reference to lattice
-  BasicLattice<T, LatSet> &Lat;
+  PopLattice<T, LatSet> &Lat;
   // reference to geometry
   Geometry<T, LatSet::d> &Geo;
   // boundary cell flag
@@ -101,9 +101,9 @@ class MovingBoundary : public AbstractBoundary {
   GenericArray<flagType> &Field;
 
  public:
-  MovingBoundary(BasicLattice<T, LatSet> &lat, std::vector<std::size_t> &ids,
+  MovingBoundary(PopLattice<T, LatSet> &lat, std::vector<std::size_t> &ids,
                  std::uint8_t voidflag, std::uint8_t cellflag);
-  MovingBoundary(BasicLattice<T, LatSet> &lat, std::vector<std::size_t> &ids,
+  MovingBoundary(PopLattice<T, LatSet> &lat, std::vector<std::size_t> &ids,
                  GenericArray<flagType> &f, std::uint8_t voidflag, std::uint8_t cellflag);
 
   // get boundary cell flag

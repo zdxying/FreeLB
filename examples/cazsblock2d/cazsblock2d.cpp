@@ -214,7 +214,7 @@ int main() {
   // ------------------ define lattice ------------------
   using NSFIELDS = TypePack<RHO<T>, VELOCITY<T, 2>, POP<T, LatSet0::q>, SCALARFORCE<T>>;
   ValuePack NSInitValues(BaseConv.getLatRhoInit(), Vector<T, 2>{}, T{}, T{});
-  using NSCELL = BCell<T, LatSet0, NSFIELDS>;
+  using NSCELL = Cell<T, LatSet0, NSFIELDS>;
   BlockLatticeManager<T, LatSet0, NSFIELDS> NSLattice(Geo, NSInitValues, BaseConv);
 
   using CONCFIELDS = TypePack<CONC<T>, POP<T, LatSet1::q>, RHOINIT<T>, GBETA<T>>;
@@ -223,7 +223,7 @@ int main() {
   using CONCFIELDPACK = TypePack<CONCFIELDS, CONCFIELDREFS>;
   ValuePack CONCInitValues(ConcConv.getLatRhoInit(), T{}, ConcConv.getLatRhoInit(),
                            ConcConv.getLattice_gbeta());
-  using CONCCELL = BCell<T, LatSet1, ExtractFieldPack<CONCFIELDPACK>::mergedpack>;
+  using CONCCELL = Cell<T, LatSet1, ExtractFieldPack<CONCFIELDPACK>::mergedpack>;
   BlockLatticeManager<T, LatSet1, CONCFIELDPACK> SOLattice(
     Geo, CONCInitValues, ConcConv, &NSLattice.getField<VELOCITY<T, 2>>(), tempExcessC);
 
@@ -232,7 +232,7 @@ int main() {
   using TEMPFIELDPACK = TypePack<TEMPFIELDS, TEMPFIELDREFS>;
   ValuePack TEMPInitValues(TempConv.getLatRhoInit(), T{}, TempConv.getLatRhoInit(),
                            TempConv.getLattice_gbeta());
-  using TEMPCELL = BCell<T, LatSet1, ExtractFieldPack<TEMPFIELDPACK>::mergedpack>;
+  using TEMPCELL = Cell<T, LatSet1, ExtractFieldPack<TEMPFIELDPACK>::mergedpack>;
   BlockLatticeManager<T, LatSet1, TEMPFIELDPACK> THLattice(
     Geo, TEMPInitValues, TempConv, &NSLattice.getField<VELOCITY<T, 2>>());
 

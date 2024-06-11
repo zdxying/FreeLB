@@ -186,7 +186,7 @@ template <typename T, typename LatSet, typename TypePack>
 template <typename CELLDYNAMICS, typename ArrayType>
 void BlockLattice<T, LatSet, TypePack>::ApplyCellDynamics(const ArrayType& flagarr) {
   for (std::size_t id = 0; id < this->getN(); ++id) {
-    BCell<T, LatSet, TypePack> cell(id, *this);
+    Cell<T, LatSet, TypePack> cell(id, *this);
     CELLDYNAMICS::Execute(flagarr[id], cell);
   }
 }
@@ -195,8 +195,60 @@ template <typename T, typename LatSet, typename TypePack>
 template <typename CELLDYNAMICS>
 void BlockLattice<T, LatSet, TypePack>::ApplyCellDynamics() {
   for (std::size_t id = 0; id < this->getN(); ++id) {
-    BCell<T, LatSet, TypePack> cell(id, *this);
-    CELLDYNAMICS::Execute(cell);
+    Cell<T, LatSet, TypePack> cell(id, *this);
+    CELLDYNAMICS::apply(cell);
+  }
+}
+
+template <typename T, typename LatSet, typename TypePack>
+template <typename CELLDYNAMICS, typename ArrayType>
+void BlockLattice<T, LatSet, TypePack>::ApplyInnerCellDynamics(const ArrayType& flagarr) {
+  if constexpr(LatSet::d == 2){
+  for (int j = this->getOverlap(); j < this->getNy() - this->getOverlap(); ++j) {
+    std::size_t id = j * this->getNx() + this->getOverlap();
+    for (int i = this->getOverlap(); i < this->getNx() - this->getOverlap(); ++i) {
+      Cell<T, LatSet, TypePack> cell(id, *this);
+      CELLDYNAMICS::Execute(flagarr[id], cell);
+      ++id;
+    }
+  }
+  } else if constexpr(LatSet::d == 3){
+    for (int k = this->getOverlap(); k < this->getNz() - this->getOverlap(); ++k) {
+      for (int j = this->getOverlap(); j < this->getNy() - this->getOverlap(); ++j) {
+        std::size_t id = k * this->getProjection()[2] + j * this->getProjection()[1] + this->getOverlap();
+        for (int i = this->getOverlap(); i < this->getNx() - this->getOverlap(); ++i) {
+          Cell<T, LatSet, TypePack> cell(id, *this);
+          CELLDYNAMICS::Execute(flagarr[id], cell);
+          ++id;
+        }
+      }
+    }
+  }
+}
+
+template <typename T, typename LatSet, typename TypePack>
+template <typename CELLDYNAMICS>
+void BlockLattice<T, LatSet, TypePack>::ApplyInnerCellDynamics() {
+  if constexpr(LatSet::d == 2){
+  for (int j = this->getOverlap(); j < this->getNy() - this->getOverlap(); ++j) {
+    std::size_t id = j * this->getNx() + this->getOverlap();
+    for (int i = this->getOverlap(); i < this->getNx() - this->getOverlap(); ++i) {
+      Cell<T, LatSet, TypePack> cell(id, *this);
+      CELLDYNAMICS::apply(cell);
+      ++id;
+    }
+  }
+  } else if constexpr(LatSet::d == 3){
+    for (int k = this->getOverlap(); k < this->getNz() - this->getOverlap(); ++k) {
+      for (int j = this->getOverlap(); j < this->getNy() - this->getOverlap(); ++j) {
+        std::size_t id = k * this->getProjection()[2] + j * this->getProjection()[1] + this->getOverlap();
+        for (int i = this->getOverlap(); i < this->getNx() - this->getOverlap(); ++i) {
+          Cell<T, LatSet, TypePack> cell(id, *this);
+          CELLDYNAMICS::apply(cell);
+          ++id;
+        }
+      }
+    }
   }
 }
 
@@ -480,6 +532,45 @@ void BlockLatticeManager<T, LatSet, TypePack>::ApplyCellDynamics(
       BlockLats[i]
         .template ApplyCellDynamics<CELLDYNAMICS, typename FieldType::array_type>(
           BFM.getBlockField(i).getField(0));
+    }
+  }
+}
+
+template <typename T, typename LatSet, typename TypePack>
+template <typename CELLDYNAMICS>
+void BlockLatticeManager<T, LatSet, TypePack>::ApplyCellDynamics(std::int64_t count) {
+#pragma omp parallel for num_threads(Thread_Num)
+  for (int i = 0; i < BlockLats.size(); ++i) {
+    const int deLevel = static_cast<int>(getMaxLevel() - BlockLats[i].getLevel());
+    if (count % (static_cast<int>(pow(2, deLevel))) == 0) {
+      BlockLats[i].template ApplyCellDynamics<CELLDYNAMICS>();
+    }
+  }
+}
+
+template <typename T, typename LatSet, typename TypePack>
+template <typename CELLDYNAMICS, typename FieldType>
+void BlockLatticeManager<T, LatSet, TypePack>::ApplyInnerCellDynamics(
+  std::int64_t count, const BlockFieldManager<FieldType, T, LatSet::d>& BFM) {
+#pragma omp parallel for num_threads(Thread_Num)
+  for (int i = 0; i < BlockLats.size(); ++i) {
+    const int deLevel = static_cast<int>(getMaxLevel() - BlockLats[i].getLevel());
+    if (count % (static_cast<int>(pow(2, deLevel))) == 0) {
+      BlockLats[i]
+        .template ApplyInnerCellDynamics<CELLDYNAMICS, typename FieldType::array_type>(
+          BFM.getBlockField(i).getField(0));
+    }
+  }
+}
+
+template <typename T, typename LatSet, typename TypePack>
+template <typename CELLDYNAMICS>
+void BlockLatticeManager<T, LatSet, TypePack>::ApplyInnerCellDynamics(std::int64_t count) {
+#pragma omp parallel for num_threads(Thread_Num)
+  for (int i = 0; i < BlockLats.size(); ++i) {
+    const int deLevel = static_cast<int>(getMaxLevel() - BlockLats[i].getLevel());
+    if (count % (static_cast<int>(pow(2, deLevel))) == 0) {
+      BlockLats[i].template ApplyInnerCellDynamics<CELLDYNAMICS>();
     }
   }
 }

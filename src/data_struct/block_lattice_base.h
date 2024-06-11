@@ -101,9 +101,60 @@ class BlockLatticeBase {
   void ApplyCellDynamics() {
     for (std::size_t id = 0; id < getN(); ++id) {
       CellType cell(id, *this);
-      CELLDYNAMICS::Execute(cell);
+      CELLDYNAMICS::apply(cell);
     }
   }
+
+  template <typename CELLDYNAMICS, typename ArrayType>
+  void ApplyInnerCellDynamics(const ArrayType& flagarr) {
+    if constexpr(LatSet::d == 2){
+    for (int j = getOverlap(); j < getNy() - getOverlap(); ++j) {
+      std::size_t id = j * getNx() + getOverlap();
+      for (int i = getOverlap(); i < getNx() - getOverlap(); ++i) {
+        CellType cell(id, *this);
+        CELLDYNAMICS::Execute(flagarr[id], cell);
+        ++id;
+      }
+    }
+    } else if constexpr(LatSet::d == 3){
+      for (int k = getOverlap(); k < getNz() - getOverlap(); ++k) {
+        for (int j = getOverlap(); j < getNy() - getOverlap(); ++j) {
+          std::size_t id = k * getNx() * getNy() + j * getNx() + getOverlap();
+          for (int i = getOverlap(); i < getNx() - getOverlap(); ++i) {
+            CellType cell(id, *this);
+            CELLDYNAMICS::Execute(flagarr[id], cell);
+            ++id;
+          }
+        }
+      }
+    }
+  }
+
+  template <typename CELLDYNAMICS>
+  void ApplyInnerCellDynamics() {
+    if constexpr(LatSet::d == 2){
+    for (int j = getOverlap(); j < getNy() - getOverlap(); ++j) {
+      std::size_t id = j * getNx() + getOverlap();
+      for (int i = getOverlap(); i < getNx() - getOverlap(); ++i) {
+        CellType cell(id, *this);
+        CELLDYNAMICS::apply(cell);
+        ++id;
+      }
+    }
+    } else if constexpr(LatSet::d == 3){
+      for (int k = getOverlap(); k < getNz() - getOverlap(); ++k) {
+        for (int j = getOverlap(); j < getNy() - getOverlap(); ++j) {
+          std::size_t id = k * getNx() * getNy() + j * getNx() + getOverlap();
+          for (int i = getOverlap(); i < getNx() - getOverlap(); ++i) {
+            CellType cell(id, *this);
+            CELLDYNAMICS::apply(cell);
+            ++id;
+          }
+        }
+      }
+    }
+  }
+
 };
 
 // block lattice manager base

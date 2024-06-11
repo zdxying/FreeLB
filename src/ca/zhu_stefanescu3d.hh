@@ -27,7 +27,7 @@ namespace CA {
 template <typename T, typename LatSet, typename RhoLatSet>
 ZhuStefanescu3D<T, LatSet, RhoLatSet>::ZhuStefanescu3D(
     ZSConverter<T>& convca, RhoLattice<T>& lbmso, RhoLattice<T>& lbmth,
-    BasicLattice<T, LatSet>& lbmns, T psi, T theta, T phi, T epsilon,
+    PopLattice<T, LatSet>& lbmns, T psi, T theta, T phi, T epsilon,
     int siteid, int num)
     : Geo(lbmns.getGeo()),
       ConvCA(convca),

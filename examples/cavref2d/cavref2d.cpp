@@ -165,7 +165,7 @@ int main() {
   using FIELDREFS = TypePack<FLAG>;
   using FIELDSPACK = TypePack<FIELDS, FIELDREFS>;
   using ALLFIELDS = ExtractFieldPack<FIELDSPACK>::mergedpack;
-  using CELL = BCell<T, LatSet, ALLFIELDS>;
+  using CELL = Cell<T, LatSet, ALLFIELDS>;
   ValuePack InitValues(BaseConv.getLatRhoInit(), Vector<T, 2>{}, T{});
   // lattice
   BlockLatticeManager<T, LatSet, FIELDSPACK> NSLattice(Geo, InitValues, BaseConv, &FlagFM);

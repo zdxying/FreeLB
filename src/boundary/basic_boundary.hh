@@ -29,7 +29,7 @@
 // --------------------------------------------------------------------------------
 
 template <typename T, typename LatSet, typename flagType>
-FixedBoundary<T, LatSet, flagType>::FixedBoundary(BasicLattice<T, LatSet>& lat,
+FixedBoundary<T, LatSet, flagType>::FixedBoundary(PopLattice<T, LatSet>& lat,
                                                   std::uint8_t cellflag,
                                                   std::uint8_t voidflag)
     : Lat(lat), Geo(lat.getGeo()), Field(lat.getGeo().getGeoFlagField().getField()),
@@ -38,7 +38,7 @@ FixedBoundary<T, LatSet, flagType>::FixedBoundary(BasicLattice<T, LatSet>& lat,
 }
 
 template <typename T, typename LatSet, typename flagType>
-FixedBoundary<T, LatSet, flagType>::FixedBoundary(BasicLattice<T, LatSet>& lat,
+FixedBoundary<T, LatSet, flagType>::FixedBoundary(PopLattice<T, LatSet>& lat,
                                                   GenericArray<flagType>& f,
                                                   std::uint8_t cellflag,
                                                   std::uint8_t voidflag)
@@ -78,7 +78,7 @@ void FixedBoundary<T, LatSet, flagType>::Setup() {
 // --------------------------------------------------------------------------------
 
 template <typename T, typename LatSet, typename flagType>
-MovingBoundary<T, LatSet, flagType>::MovingBoundary(BasicLattice<T, LatSet>& lat,
+MovingBoundary<T, LatSet, flagType>::MovingBoundary(PopLattice<T, LatSet>& lat,
                                                     std::vector<std::size_t>& ids,
                                                     std::uint8_t voidflag,
                                                     std::uint8_t cellflag)
@@ -87,7 +87,7 @@ MovingBoundary<T, LatSet, flagType>::MovingBoundary(BasicLattice<T, LatSet>& lat
       voidFlag(voidflag) {}
 
 template <typename T, typename LatSet, typename flagType>
-MovingBoundary<T, LatSet, flagType>::MovingBoundary(BasicLattice<T, LatSet>& lat,
+MovingBoundary<T, LatSet, flagType>::MovingBoundary(PopLattice<T, LatSet>& lat,
                                                     std::vector<std::size_t>& ids,
                                                     GenericArray<flagType>& f,
                                                     std::uint8_t voidflag,

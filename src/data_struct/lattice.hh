@@ -26,7 +26,7 @@
 #include "lattice.h"
 
 template <typename T, typename LatSet>
-BasicLattice<T, LatSet>::BasicLattice(Geometry<T, LatSet::d>& geo, AbstractConverter<T>& conv,
+PopLattice<T, LatSet>::PopLattice(Geometry<T, LatSet::d>& geo, AbstractConverter<T>& conv,
                                       VectorFieldAOS<T, LatSet::d>& velocity, bool InitIdx)
     : Geo(geo), Nx(geo.getNx()), Ny(geo.getNy()), Nz(geo.getNz()), Pops(geo.getVoxelsNum()),
       Omega(conv.getOMEGA()), Velocity(velocity), RhoLattice<T>(conv, geo.getVoxelsNum()) {
@@ -56,10 +56,10 @@ BasicLattice<T, LatSet>::BasicLattice(Geometry<T, LatSet::d>& geo, AbstractConve
   }
 }
 template <typename T, typename LatSet>
-void BasicLattice<T, LatSet>::UpdateRho(const std::vector<int>& index) {
+void PopLattice<T, LatSet>::UpdateRho(const std::vector<int>& index) {
 #pragma omp parallel for num_threads(Thread_Num) schedule(static)
   for (int id : index) {
-    BasicCell<T, LatSet> cell(id, *this);
+    BasicPopCell<T, LatSet> cell(id, *this);
     moment::Rho<T, LatSet>::apply(cell, this->Rho.get(id));
   }
 }
@@ -67,11 +67,11 @@ void BasicLattice<T, LatSet>::UpdateRho(const std::vector<int>& index) {
 
 template <typename T, typename LatSet>
 template <typename ArrayType>
-void BasicLattice<T, LatSet>::UpdateRho(const ArrayType& flagarr, std::uint8_t flag) {
+void PopLattice<T, LatSet>::UpdateRho(const ArrayType& flagarr, std::uint8_t flag) {
 #pragma omp parallel for num_threads(Thread_Num) schedule(static)
   for (int id = 0; id < N; ++id) {
     if (util::isFlag(flagarr[id], flag)) {
-      BasicCell<T, LatSet> cell(id, *this);
+      BasicPopCell<T, LatSet> cell(id, *this);
       moment::Rho<T, LatSet>::apply(cell, this->Rho.get(id));
     }
   }
@@ -79,12 +79,12 @@ void BasicLattice<T, LatSet>::UpdateRho(const ArrayType& flagarr, std::uint8_t f
 
 template <typename T, typename LatSet>
 template <typename ArrayType>
-void BasicLattice<T, LatSet>::UpdateRho_Source(const ArrayType& flagarr,
+void PopLattice<T, LatSet>::UpdateRho_Source(const ArrayType& flagarr,
                                                std::uint8_t flag, const GenericArray<T>& source) {
 #pragma omp parallel for num_threads(Thread_Num) schedule(static)
   for (int id = 0; id < N; ++id) {
     if (util::isFlag(flagarr[id], flag)) {
-      BasicCell<T, LatSet> cell(id, *this);
+      BasicPopCell<T, LatSet> cell(id, *this);
       moment::Rho<T, LatSet>::apply(cell, this->Rho.get(id), source[id]);
     }
   }
@@ -92,30 +92,30 @@ void BasicLattice<T, LatSet>::UpdateRho_Source(const ArrayType& flagarr,
 
 template <typename T, typename LatSet>
 template <typename ArrayType>
-void BasicLattice<T, LatSet>::UpdateU(const ArrayType& flagarr, std::uint8_t flag) {
+void PopLattice<T, LatSet>::UpdateU(const ArrayType& flagarr, std::uint8_t flag) {
 #pragma omp parallel for num_threads(Thread_Num) schedule(static)
   for (int id = 0; id < N; ++id) {
     if (util::isFlag(flagarr[id], flag)) {
-      BasicCell<T, LatSet> cell(id, *this);
+      BasicPopCell<T, LatSet> cell(id, *this);
       moment::Velocity<T, LatSet>::apply(cell, Velocity.get(id));
     }
   }
 }
 
 template <typename T, typename LatSet>
-void BasicLattice<T, LatSet>::UpdateU(const std::vector<int>& index) {
+void PopLattice<T, LatSet>::UpdateU(const std::vector<int>& index) {
 #pragma omp parallel for num_threads(Thread_Num) schedule(static)
   for (int id : index) {
-    BasicCell<T, LatSet> cell(id, *this);
+    BasicPopCell<T, LatSet> cell(id, *this);
     moment::Velocity<T, LatSet>::apply(cell, Velocity.get(id));
   }
 }
 
 template <typename T, typename LatSet>
-void BasicLattice<T, LatSet>::UpdateRhoU(const std::vector<int>& index) {
+void PopLattice<T, LatSet>::UpdateRhoU(const std::vector<int>& index) {
 #pragma omp parallel for num_threads(Thread_Num) schedule(static)
   for (int id : index) {
-    BasicCell<T, LatSet> cell(id, *this);
+    BasicPopCell<T, LatSet> cell(id, *this);
     moment::RhoVelocity<T, LatSet>::apply(cell, this->Rho.get(id), Velocity.get(id));
   }
 }
@@ -123,20 +123,20 @@ void BasicLattice<T, LatSet>::UpdateRhoU(const std::vector<int>& index) {
 
 template <typename T, typename LatSet>
 template <void (*GetFeq)(std::array<T, LatSet::q>&, const Vector<T, LatSet::d>&, T)>
-void BasicLattice<T, LatSet>::BGK() {
+void PopLattice<T, LatSet>::BGK() {
 #pragma omp parallel for num_threads(Thread_Num) schedule(static)
   for (int id = 0; id < N; ++id) {
-    Cell<T, LatSet> cell(id, *this);
+    PopCell<T, LatSet> cell(id, *this);
     collision::BGK<T, LatSet>::template apply<GetFeq>(cell);
   }
 }
 
 template <typename T, typename LatSet>
 template <void (*GetFeq)(std::array<T, LatSet::q>&, const Vector<T, LatSet::d>&, T)>
-void BasicLattice<T, LatSet>::BGK(const std::vector<int>& index) {
+void PopLattice<T, LatSet>::BGK(const std::vector<int>& index) {
 #pragma omp parallel for num_threads(Thread_Num) schedule(static)
   for (int id : index) {
-    Cell<T, LatSet> cell(id, *this);
+    PopCell<T, LatSet> cell(id, *this);
     collision::BGK<T, LatSet>::template apply<GetFeq>(cell);
   }
 }
@@ -144,11 +144,11 @@ void BasicLattice<T, LatSet>::BGK(const std::vector<int>& index) {
 template <typename T, typename LatSet>
 template <void (*GetFeq)(std::array<T, LatSet::q>&, const Vector<T, LatSet::d>&, T),
           typename ArrayType>
-void BasicLattice<T, LatSet>::BGK(const ArrayType& flagarr, std::uint8_t flag) {
+void PopLattice<T, LatSet>::BGK(const ArrayType& flagarr, std::uint8_t flag) {
 #pragma omp parallel for num_threads(Thread_Num) schedule(static)
   for (int id = 0; id < N; ++id) {
     if (util::isFlag(flagarr[id], flag)) {
-      Cell<T, LatSet> cell(id, *this);
+      PopCell<T, LatSet> cell(id, *this);
       collision::BGK<T, LatSet>::template apply<GetFeq>(cell);
     }
   }
@@ -157,13 +157,13 @@ void BasicLattice<T, LatSet>::BGK(const ArrayType& flagarr, std::uint8_t flag) {
 template <typename T, typename LatSet>
 template <void (*GetFeq)(std::array<T, LatSet::q>&, const Vector<T, LatSet::d>&, T),
           typename ArrayType>
-void BasicLattice<T, LatSet>::BGK_Source(const ArrayType& flagarr, std::uint8_t flag,
+void PopLattice<T, LatSet>::BGK_Source(const ArrayType& flagarr, std::uint8_t flag,
                                          const GenericArray<T>& source) {
   T fOmega = T(1) - Omega * T(0.5);
 #pragma omp parallel for num_threads(Thread_Num) schedule(static)
   for (int id = 0; id < N; ++id) {
     if (util::isFlag(flagarr[id], flag)) {
-      Cell<T, LatSet> cell(id, *this);
+      PopCell<T, LatSet> cell(id, *this);
       collision::BGK<T, LatSet>::template applySource<GetFeq>(cell,
                                                               source[id]);
     }
@@ -171,28 +171,28 @@ void BasicLattice<T, LatSet>::BGK_Source(const ArrayType& flagarr, std::uint8_t 
 }
 
 template <typename T, typename LatSet>
-void BasicLattice<T, LatSet>::Stream() {
+void PopLattice<T, LatSet>::Stream() {
   for (int i = 1; i < LatSet::q; ++i) {
     Pops.getField(i).rotate(LatSet::c[i] * Projection);
   }
 }
 
 template <typename T, typename LatSet>
-inline void BasicLattice<T, LatSet>::EnableToleranceRho(T rhores) {
+inline void PopLattice<T, LatSet>::EnableToleranceRho(T rhores) {
   RhoRes = rhores;
   RhoOld.reserve(N);
   for (int i = 0; i < N; ++i) RhoOld.push_back(this->Rho.get(i));
 }
 
 template <typename T, typename LatSet>
-inline void BasicLattice<T, LatSet>::EnableToleranceU(T ures) {
+inline void PopLattice<T, LatSet>::EnableToleranceU(T ures) {
   URes = ures;
   UOld.reserve(N);
   for (int i = 0; i < N; ++i) UOld.push_back(Velocity.get(i));
 }
 
 template <typename T, typename LatSet>
-inline T BasicLattice<T, LatSet>::getToleranceRho() {
+inline T PopLattice<T, LatSet>::getToleranceRho() {
   T res;
   T maxres = T(0);
   // rho and u with void flag should never be updated
@@ -205,7 +205,7 @@ inline T BasicLattice<T, LatSet>::getToleranceRho() {
 }
 
 template <typename T, typename LatSet>
-inline T BasicLattice<T, LatSet>::getToleranceU() {
+inline T PopLattice<T, LatSet>::getToleranceU() {
   T res0, res1, res;
   T maxres = T(0);
   for (int i = 0; i < N; ++i) {
@@ -221,7 +221,7 @@ inline T BasicLattice<T, LatSet>::getToleranceU() {
 }
 
 template <typename T, typename LatSet>
-T BasicLattice<T, LatSet>::getTolRho(int shift) {
+T PopLattice<T, LatSet>::getTolRho(int shift) {
   T res;
   T maxres = T(0);
 
@@ -251,7 +251,7 @@ T BasicLattice<T, LatSet>::getTolRho(int shift) {
 }
 
 template <typename T, typename LatSet>
-T BasicLattice<T, LatSet>::getTolU(int shift) {
+T PopLattice<T, LatSet>::getTolU(int shift) {
   T res0, res1, res;
   T maxres = T(0);
   if constexpr (LatSet::d == 2) {

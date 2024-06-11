@@ -204,7 +204,7 @@ template <typename T, typename LatSet>
 struct BGK {
   // BGK collision operator
   template <void (*GetFeq)(std::array<T, LatSet::q>&, const Vector<T, LatSet::d>&, T)>
-  static void apply(Cell<T, LatSet>& cell) {
+  static void apply(PopCell<T, LatSet>& cell) {
     std::array<T, LatSet::q> feq{};
     GetFeq(feq, cell.getVelocity(), cell.getRho());
 
@@ -218,7 +218,7 @@ struct BGK {
 
   // BGK collision operator with force
   template <void (*GetFeq)(std::array<T, LatSet::q>&, const Vector<T, LatSet::d>&, T)>
-  static void applyForce(Cell<T, LatSet>& cell, const Vector<T, LatSet::d>& force) {
+  static void applyForce(PopCell<T, LatSet>& cell, const Vector<T, LatSet::d>& force) {
     std::array<T, LatSet::q> feq{};
     GetFeq(feq, cell.getVelocity(), cell.getRho());
 
@@ -235,7 +235,7 @@ struct BGK {
   }
 
   template <void (*GetFeq)(std::array<T, LatSet::q>&, const Vector<T, LatSet::d>&, T)>
-  static void applySource(Cell<T, LatSet>& cell, const std::array<T, LatSet::q>& fi) {
+  static void applySource(PopCell<T, LatSet>& cell, const std::array<T, LatSet::q>& fi) {
     std::array<T, LatSet::q> feq{};
     GetFeq(feq, cell.getVelocity(), cell.getRho());
 
@@ -249,7 +249,7 @@ struct BGK {
   }
 
   template <void (*GetFeq)(std::array<T, LatSet::q>&, const Vector<T, LatSet::d>&, T)>
-  static void applySource(Cell<T, LatSet>& cell, const T S) {
+  static void applySource(PopCell<T, LatSet>& cell, const T S) {
     std::array<T, LatSet::q> feq{};
     GetFeq(feq, cell.getVelocity(), cell.getRho());
 

@@ -33,7 +33,7 @@
 
 // TODO: use a unified geometry reference like BasicBlock
 
-// a base lattice for BasicLattice
+// a base lattice for PopLattice
 template <typename T>
 class RhoLattice {
  protected:
@@ -60,7 +60,7 @@ class RhoLattice {
 };
 
 template <typename T, typename LatSet>
-class BasicLattice : public RhoLattice<T> {
+class PopLattice : public RhoLattice<T> {
  protected:
   // domain size
   int Nx;
@@ -98,7 +98,7 @@ class BasicLattice : public RhoLattice<T> {
   std::vector<int> InnerIndex;
 
  public:
-  BasicLattice(Geometry<T, LatSet::d>& geo, AbstractConverter<T>& conv,
+  PopLattice(Geometry<T, LatSet::d>& geo, AbstractConverter<T>& conv,
                VectorFieldAOS<T, LatSet::d>& velocity, bool InitIdx = true);
 
   void InitPop(int Id, T rho) {
@@ -109,12 +109,12 @@ class BasicLattice : public RhoLattice<T> {
   T& getPopdir(std::size_t id, int dir) { return Pops.getField(dir)[id]; }
   const T& getPopdir(std::size_t id, int dir) const { return Pops.getField(dir)[id]; }
 
-  Cell<T, LatSet> getNeighbor(const Cell<T, LatSet>& cell, int i) const {
-    return Cell<T, LatSet>(cell.getId() + Delta_Index[i], *this);
+  PopCell<T, LatSet> getNeighbor(const PopCell<T, LatSet>& cell, int i) const {
+    return PopCell<T, LatSet>(cell.getId() + Delta_Index[i], *this);
   }
-  Cell<T, LatSet> getNeighbor(const Cell<T, LatSet>& cell,
+  PopCell<T, LatSet> getNeighbor(const PopCell<T, LatSet>& cell,
                               const Vector<int, LatSet::d>& direction) const {
-    return Cell<T, LatSet>(cell.getId() + direction * Projection, *this);
+    return PopCell<T, LatSet>(cell.getId() + direction * Projection, *this);
   }
 
   const std::array<int, LatSet::q>& getDelta_Index() const { return Delta_Index; }

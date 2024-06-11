@@ -163,9 +163,9 @@ int main() {
   // velocity field
   VectorFieldAOS<T, LatSet0::d> Velocity(Geo0.getVoxelsNum());
   // LATTICE
-  BasicLattice<T, LatSet0> NSLattice(Geo0, BaseConv, Velocity);
+  PopLattice<T, LatSet0> NSLattice(Geo0, BaseConv, Velocity);
   //   NSLattice.EnableToleranceU();
-  BasicLattice<T, LatSet1> THLattice(Geo1, TempConv, Velocity);
+  PopLattice<T, LatSet1> THLattice(Geo1, TempConv, Velocity);
   // bcs
   // NS BCS
   std::vector<int> NS_BCS_Index;

@@ -26,29 +26,29 @@
 
 template <typename T, typename LatSet>
 struct BounceBackLikeMethod {
-  static inline void normal_bounceback(Cell<T, LatSet> &cell, int k) {
+  static inline void normal_bounceback(PopCell<T, LatSet> &cell, int k) {
     cell[k] = cell.getPrevious(LatSet::opp[k]);
   }
-  static inline void anti_bounceback_simplified(Cell<T, LatSet> &cell, int k) {
+  static inline void anti_bounceback_simplified(PopCell<T, LatSet> &cell, int k) {
     cell[k] = 2 * cell.getRho() * LatSet::w[k] - cell.getPrevious(LatSet::opp[k]);
   }
   // however the velocity here is NOT Wall velocity but fluid velocity relative to wall
   // so you don't need to specify the wall velocity when calling this function
-  static inline void movingwall_bounceback(Cell<T, LatSet> &cell, int k) {
+  static inline void movingwall_bounceback(PopCell<T, LatSet> &cell, int k) {
     cell[k] = cell.getPrevious(LatSet::opp[k]) + 2 * LatSet::InvCs2 * LatSet::w[k] *
                                                    cell.getRho() *
                                                    (cell.getVelocity() * LatSet::c[k]);
   }
-  static inline void anti_bounceback_O1(Cell<T, LatSet> &cell, int k) {
+  static inline void anti_bounceback_O1(PopCell<T, LatSet> &cell, int k) {
     cell[k] = 2 * Equilibrium<T, LatSet>::Order1(k, cell.getVelocity(), cell.getRho()) -
               cell.getPrevious(LatSet::opp[k]);
   }
-  static inline void anti_bounceback_O2(Cell<T, LatSet> &cell, int k) {
+  static inline void anti_bounceback_O2(PopCell<T, LatSet> &cell, int k) {
     cell[k] = 2 * Equilibrium<T, LatSet>::Order2(k, cell.getVelocity(), cell.getRho(),
                                                  cell.getVelocity().getnorm2()) -
               cell.getPrevious(LatSet::opp[k]);
   }
-  static inline void anti_bounceback_pressure(Cell<T, LatSet> &cell, int k) {
+  static inline void anti_bounceback_pressure(PopCell<T, LatSet> &cell, int k) {
     // get the interpolated velocity
     const Vector<T, LatSet::d> uwall =
       cell.getVelocity() +
@@ -61,14 +61,14 @@ struct BounceBackLikeMethod {
 };
 
 // Fixed BounceBackLike Boundary
-template <typename T, typename LatSet, void (*BBLikemethod)(Cell<T, LatSet> &, int),
+template <typename T, typename LatSet, void (*BBLikemethod)(PopCell<T, LatSet> &, int),
           typename flagType = std::uint8_t>
 class BBLikeFixedBoundary final : public FixedBoundary<T, LatSet, flagType> {
  private:
   std::string _name;
 
  public:
-  BBLikeFixedBoundary(std::string name, BasicLattice<T, LatSet> &lat,
+  BBLikeFixedBoundary(std::string name, PopLattice<T, LatSet> &lat,
                       std::uint8_t cellflag, std::uint8_t voidflag = std::uint8_t(1))
       : FixedBoundary<T, LatSet, flagType>(lat, cellflag, voidflag), _name(name) {}
 
@@ -79,14 +79,14 @@ class BBLikeFixedBoundary final : public FixedBoundary<T, LatSet, flagType> {
 };
 
 // Moving BounceBackLike Boundary
-template <typename T, typename LatSet, void (*BBLikemethod)(Cell<T, LatSet> &, int),
+template <typename T, typename LatSet, void (*BBLikemethod)(PopCell<T, LatSet> &, int),
           typename flagType = std::uint8_t>
 class BBLikeMovingBoundary final : public MovingBoundary<T, LatSet, flagType> {
  private:
   std::string _name;
 
  public:
-  BBLikeMovingBoundary(std::string name, BasicLattice<T, LatSet> &lat,
+  BBLikeMovingBoundary(std::string name, PopLattice<T, LatSet> &lat,
                        std::vector<std::size_t> &ids, std::uint8_t voidflag,
                        std::uint8_t cellflag = std::uint8_t(0));
 

@@ -178,7 +178,7 @@ class ZhuStefanescu3D {
 
  public:
   ZhuStefanescu3D(ZSConverter<T>& convca, RhoLattice<T>& lbmso,
-                  RhoLattice<T>& lbmth, BasicLattice<T, LatSet>& lbmns, T psi,
+                  RhoLattice<T>& lbmth, PopLattice<T, LatSet>& lbmns, T psi,
                   T theta, T phi, T epsilon, int siteid, int num = LatSet::q);
   ~ZhuStefanescu3D() {}
 

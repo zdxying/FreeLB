@@ -26,7 +26,7 @@ namespace CA {
 template <typename T, typename LatSet>
 ZhuStefanescu2D<T, LatSet>::ZhuStefanescu2D(ZSConverter<T> &convca, RhoLattice<T> &lbmso,
                                             RhoLattice<T> &lbmth,
-                                            BasicLattice<T, LatSet> &lbmns, T delta_,
+                                            PopLattice<T, LatSet> &lbmns, T delta_,
                                             T theta, int siteid, int num)
     : Geo(lbmns.getGeo()), ConvCA(convca), lbmSO(lbmso), lbmTH(lbmth), delta(delta_),
       Theta(theta), SiteId(siteid), GT(convca.Lattice_GT_Coef), C0(lbmso.getLatRhoInit()),

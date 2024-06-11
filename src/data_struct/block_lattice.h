@@ -55,7 +55,7 @@ struct InterpBlockLatComm {
 template <typename T, typename LatSet, typename TypePack>
 class BlockLattice : public BlockLatticeBase<T, LatSet, TypePack> {
  public:
-  using CellType = BCell<T, LatSet, TypePack>;
+  using CellType = Cell<T, LatSet, TypePack>;
   using LatticeSet = LatSet;
   using FloatType = T;
 
@@ -121,6 +121,12 @@ class BlockLattice : public BlockLatticeBase<T, LatSet, TypePack> {
   template <typename CELLDYNAMICS>
   void ApplyCellDynamics();
 
+  template <typename CELLDYNAMICS, typename ArrayType>
+  void ApplyInnerCellDynamics(const ArrayType& flagarr);
+
+  template <typename CELLDYNAMICS>
+  void ApplyInnerCellDynamics();
+
   // tolerance
   void EnableToleranceRho(T rhores = T(1e-5));
   void EnableToleranceU(T ures = T(1e-5));
@@ -140,8 +146,9 @@ class BlockLatticeManager : public BlockLatticeManagerBase<T, LatSet, TypePack> 
   using ALLFIELDS = typename ExtractFieldPack<TypePack>::mergedpack;
 
   using BLOCKLATTICE = BlockLattice<T, LatSet, ALLFIELDS>;
-  using CellType = BCell<T, LatSet, ALLFIELDS>;
+  using CellType = Cell<T, LatSet, ALLFIELDS>;
   using FloatType = T;
+  using LatticeSet = LatSet;
 
   using GenericRho = typename GetGenericRhoType<T, FIELDS>::type;
 
@@ -215,8 +222,21 @@ class BlockLatticeManager : public BlockLatticeManagerBase<T, LatSet, TypePack> 
   template <typename CELLDYNAMICS>
   void ApplyCellDynamics(std::int64_t count);
 
+
+  template <typename CELLDYNAMICS, typename FieldType>
+  void ApplyInnerCellDynamics(std::int64_t count,
+                         const BlockFieldManager<FieldType, T, LatSet::d>& BFM);
+  
   template <typename CELLDYNAMICS>
-  void ApplyCellDynamics();
+  void ApplyInnerCellDynamics(std::int64_t count);
+
+  template <typename Func>
+  void ForEachBlockLattice(Func&& func){
+    for (auto& blocklat : BlockLats){
+      func(blocklat);
+    }
+  }
+
 
 #ifdef MPI_ENABLED
   void MPIAverComm(std::int64_t count);

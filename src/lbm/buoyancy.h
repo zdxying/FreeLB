@@ -28,7 +28,7 @@ template <typename T, typename LatSet>
 class Buoyancy {
  private:
   // NS lattice
-  BasicLattice<T, LatSet> &NSLat;
+  PopLattice<T, LatSet> &NSLat;
   // source lattice, e.g., thermal and solute lattice
   std::vector<RhoLattice<T> *> Source;
   VectorFieldAOS<T, LatSet::d> &Velocity;
@@ -41,7 +41,7 @@ class Buoyancy {
   T fOmega;
 
  public:
-  Buoyancy(BasicLattice<T, LatSet> &lat, VectorFieldAOS<T, LatSet::d> &velocity)
+  Buoyancy(PopLattice<T, LatSet> &lat, VectorFieldAOS<T, LatSet::d> &velocity)
       : NSLat(lat), Velocity(velocity), Omega(lat.getOmega()), _Omega(lat.get_Omega()),
         fOmega(T(1) - lat.getOmega() * T(0.5)), Force(lat.getN(), T(0)) {
   }
@@ -92,7 +92,7 @@ class Buoyancy {
   void BGK_U(const std::vector<int> &index) {
 #pragma omp parallel for num_threads(Thread_Num) schedule(static)
     for (int id : index) {
-      Cell<T, LatSet> cell(id, NSLat);
+      PopCell<T, LatSet> cell(id, NSLat);
       std::array<T, LatSet::q> Fi{};
       force::ForcePop<T, LatSet>::compute(Fi, Velocity.get(id), getForce(id));
       moment::Velocity<T, LatSet>::apply(cell, Velocity.get(id), Fi);
@@ -105,7 +105,7 @@ class Buoyancy {
   void BGK(const std::vector<int> &index) {
 #pragma omp parallel for num_threads(Thread_Num) schedule(static)
     for (int id : index) {
-      Cell<T, LatSet> cell(id, NSLat);
+      PopCell<T, LatSet> cell(id, NSLat);
         std::array<T, LatSet::q> Fi{};
         force::ForcePop<T, LatSet>::compute(Fi, Velocity.get(id), getForce(id));
         collision::BGK<T, LatSet>::template applySource<GetFeq>(cell, Fi);
@@ -119,7 +119,7 @@ class Buoyancy {
 #pragma omp parallel for num_threads(Thread_Num) schedule(static)
     for (int id = 0; id < NSLat.getN(); ++id) {
       if (util::isFlag(flagarr[id], flag)) {
-        Cell<T, LatSet> cell(id, NSLat);
+        PopCell<T, LatSet> cell(id, NSLat);
         std::array<T, LatSet::q> Fi{};
         force::ForcePop<T, LatSet>::compute(Fi, Velocity.get(id), getForce(id));
         moment::Velocity<T, LatSet>::apply(cell, Velocity.get(id), Fi);
@@ -134,7 +134,7 @@ class Buoyancy {
 #pragma omp parallel for num_threads(Thread_Num) schedule(static)
     for (int id = 0; id < NSLat.getN(); ++id) {
       if (util::isFlag(flagarr[id], flag)) {
-        Cell<T, LatSet> cell(id, NSLat);
+        PopCell<T, LatSet> cell(id, NSLat);
         std::array<T, LatSet::q> Fi{};
         force::ForcePop<T, LatSet>::compute(Fi, Velocity.get(id), getForce(id));
         collision::BGK<T, LatSet>::template applySource<GetFeq>(cell, Fi);
@@ -144,7 +144,7 @@ class Buoyancy {
   void UpdateU(const std::vector<int> &index) {
 #pragma omp parallel for num_threads(Thread_Num) schedule(static)
     for (int id : index) {
-      BasicCell<T, LatSet> cell(id, NSLat);
+      BasicPopCell<T, LatSet> cell(id, NSLat);
       std::array<T, LatSet::q> Fi{};
       force::ForcePop<T, LatSet>::compute(Fi, Velocity.get(id), getForce(id));
       moment::Velocity<T, LatSet>::apply(cell, Velocity.get(id), Fi);

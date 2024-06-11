@@ -252,12 +252,42 @@ struct ExtractFieldPack<TypePack<Params1...>> {
   using mergedpack = TypePack<Params1...>;
 };
 
+template <typename... Packs>
+struct MergeFieldPack;
+
+template <typename... Params1, typename... Params2>
+struct MergeFieldPack<TypePack<Params1...>, TypePack<Params2...>> {
+  using mergedpack = TypePack<Params1..., Params2...>;
+};
+
+template <typename... Params1, typename... Params2, typename... Params3>
+struct MergeFieldPack<TypePack<Params1...>, TypePack<Params2...>, TypePack<Params3...>> {
+  using mergedpack = TypePack<Params1..., Params2..., Params3...>;
+};
+
+
 template <typename... Parameter>
 struct ValuePack {
   std::tuple<Parameter...> values;
 
   ValuePack(Parameter... value) : values(value...) {}
+  ValuePack(const std::tuple<Parameter...>& value) : values(value) {}
 };
+
+// merge two ValuePack
+template <typename... Params1, typename... Params2>
+ValuePack<Params1..., Params2...> mergeValuePack(ValuePack<Params1...> &pack1,
+                                                 ValuePack<Params2...> &pack2) {
+  return ValuePack<Params1..., Params2...>(std::tuple_cat(pack1.values, pack2.values));
+}
+template <typename... Params1, typename... Params2, typename... Params3>
+ValuePack<Params1..., Params2..., Params3...> mergeValuePack(ValuePack<Params1...> &pack1,
+                                                             ValuePack<Params2...> &pack2,
+                                                             ValuePack<Params3...> &pack3) {
+  return ValuePack<Params1..., Params2..., Params3...>(std::tuple_cat(pack1.values, pack2.values,
+                                                       pack3.values));
+}
+
 
 
 template <typename T, typename Pack>

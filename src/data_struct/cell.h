@@ -31,7 +31,7 @@
 #include "lbm/unit_converter.h"
 
 template <typename T, typename LatSet>
-class BasicLattice;
+class PopLattice;
 
 template <typename T, typename LatSet, typename TypePack>
 class BlockLattice;
@@ -40,15 +40,15 @@ template <typename T, typename LatSet, typename TypePack>
 class BlockLatticeBase;
 
 template <typename T, typename LatSet>
-class BasicCell {
+class BasicPopCell {
  protected:
   // populations of distribution functions
   std::array<T*, LatSet::q> Pop;
 
  public:
-  BasicCell(std::size_t id, BasicLattice<T, LatSet>& lat) : Pop(lat.getPop(id)) {}
+  BasicPopCell(std::size_t id, PopLattice<T, LatSet>& lat) : Pop(lat.getPop(id)) {}
   template <typename BLOCKLATTICE>
-  BasicCell(std::size_t id, BLOCKLATTICE& lat) : Pop(lat.getPop(id)) {}
+  BasicPopCell(std::size_t id, BLOCKLATTICE& lat) : Pop(lat.getPop(id)) {}
 
   // access to pop[i]
   const T& operator[](int i) const { return *Pop[i]; }
@@ -60,24 +60,24 @@ class BasicCell {
 };
 
 template <typename T, typename LatSet>
-class Cell final : public BasicCell<T, LatSet> {
+class PopCell final : public BasicPopCell<T, LatSet> {
  protected:
   // global cell index to access field data and distribution functions
   std::size_t Id;
   // reference to lattice
-  BasicLattice<T, LatSet>& Lat;
+  PopLattice<T, LatSet>& Lat;
 
  public:
   using FloatType = T;
   using LatticeSet = LatSet;
-  Cell(std::size_t id, BasicLattice<T, LatSet>& lat)
-      : Id(id), Lat(lat), BasicCell<T, LatSet>(id, lat) {}
+  PopCell(std::size_t id, PopLattice<T, LatSet>& lat)
+      : Id(id), Lat(lat), BasicPopCell<T, LatSet>(id, lat) {}
 
-  Cell<T, LatSet> getNeighbor(int i) const { return Lat.getNeighbor(*this, i); }
-  Cell<T, LatSet> getNeighbor(const Vector<int, LatSet::d>& direction) const {
+  PopCell<T, LatSet> getNeighbor(int i) const { return Lat.getNeighbor(*this, i); }
+  PopCell<T, LatSet> getNeighbor(const Vector<int, LatSet::d>& direction) const {
     return Lat.getNeighbor(*this, direction);
   }
-  BasicLattice<T, LatSet>& getLattice() { return Lat; }
+  PopLattice<T, LatSet>& getLattice() { return Lat; }
   int getNeighborId(int i) const { return Id + Lat.getDelta_Index(i); }
 
   // get cell index
@@ -101,7 +101,7 @@ class Cell final : public BasicCell<T, LatSet> {
 
 // cell interface for block lattice
 template <typename T, typename LatSet, typename TypePack>
-class BCell final : public BasicCell<T, LatSet> {
+class Cell final : public BasicPopCell<T, LatSet> {
  protected:
   // global cell index to access field data and distribution functions
   std::size_t Id;
@@ -114,8 +114,8 @@ class BCell final : public BasicCell<T, LatSet> {
   using BLOCKLATTICE = BlockLattice<T, LatSet, TypePack>;
   using GenericRho = typename BLOCKLATTICE::GenericRho;
 
-  BCell(std::size_t id, BlockLattice<T, LatSet, TypePack>& lat)
-      : Id(id), Lat(lat), BasicCell<T, LatSet>(id, lat) {}
+  Cell(std::size_t id, BlockLattice<T, LatSet, TypePack>& lat)
+      : Id(id), Lat(lat), BasicPopCell<T, LatSet>(id, lat) {}
 
   template <typename FieldType, unsigned int i = 0>
   auto& get() {
@@ -150,11 +150,20 @@ class BCell final : public BasicCell<T, LatSet> {
     }
   }
 
-  BCell<T, LatSet, TypePack> getNeighbor(int i) const {
-    return BCell<T, LatSet, TypePack>(Id + Lat.getDelta_Index()[i], Lat);
+  template <typename FieldType>
+  auto& getField() {
+    return Lat.template getField<FieldType>();
   }
-  BCell<T, LatSet, TypePack> getNeighbor(const Vector<int, LatSet::d>& direction) const {
-    return BCell<T, LatSet, TypePack>(Id + direction * Lat.getProjection());
+  template <typename FieldType>
+  const auto& getField() const {
+    return Lat.template getField<FieldType>();
+  }
+
+  Cell<T, LatSet, TypePack> getNeighbor(int i) const {
+    return Cell<T, LatSet, TypePack>(Id + Lat.getDelta_Index()[i], Lat);
+  }
+  Cell<T, LatSet, TypePack> getNeighbor(const Vector<int, LatSet::d>& direction) const {
+    return Cell<T, LatSet, TypePack>(Id + direction * Lat.getProjection());
   }
 
   // get cell index
