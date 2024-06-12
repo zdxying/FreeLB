@@ -88,6 +88,11 @@ using FSFIELDS = TypePack<STATE, MASS<T>, VOLUMEFRAC<T>, EXCESSMASS<T, LatSet::q
 template <typename T>
 using FSPARAMS = TypePack<Lonely_Th<T>, VOF_Trans_Th<T>, Surface_Tension_Enabled, Surface_Tension_Parameter<T>>;
 
+struct NbrInfo {
+  bool fluid_nbr = false;
+  bool gas_nbr = false;
+  int interface_nbrs = 0;
+};
 // incorporate free surface fields into BlockLattice is possible
 // (considered as a post-process of NS Lattice)
 // which may be done in the future
@@ -121,6 +126,19 @@ class FreeSurface2D : public BlockLatticeBase<T, LatSet, FSFIELDS<T, LatSet>>{
 
   inline T getClampedVOF(std::size_t id) const {
     return std::clamp(this->template getField<VOLUMEFRAC<T>>().get(id), T(0), T{1});
+  }
+
+  void getNbrInfo(std::size_t id, NbrInfo& nbrinfo) const {
+    for (int i = 1; i < LatSet::q; ++i) {
+      auto iflag = this->template getField<STATE>().get(id + this->Delta_Index[i]);
+      if (util::isFlag(iflag, FSType::Fluid)) {
+        nbrinfo.fluid_nbr = true;
+      } else if (util::isFlag(iflag, FSType::Gas)) {
+        nbrinfo.gas_nbr = true;
+      } else if (util::isFlag(iflag, FSType::Interface)) {
+        ++nbrinfo.interface_nbrs;
+      }
+    }
   }
 
   // mass transfer/ advection
@@ -260,23 +278,29 @@ struct FreeSurfaceHelper{
 
 // free surface as a post process of NS Lattice
 
+// functions for free surface
+
+template <typename CELL>
+typename CELL::FloatType getClampedVOF(CELL& cell) {
+  using T = typename CELL::FloatType;
+  return std::clamp(cell.template get<VOLUMEFRAC<T>>(), T{}, T{1});
+}
+
+template <typename CELL>
+static bool hasNeighborType(CELL& cell, FSType fstype) {
+  using LatSet = typename CELL::LatticeSet;
+  for (int i = 1; i < LatSet::q; ++i) {
+    if (util::isFlag(cell.template getField<STATE>().get(cell.getNeighborId(i)), fstype)) return true;
+  }
+  return false;
+}
+
 // mass transfer
 template <typename CELLTYPE>
 struct MassTransfer {
   using CELL = CELLTYPE;
   using T = typename CELL::FloatType;
-  using LatSet = typename CELL::LatticeSet;
-
-  static T getClampedVOF(CELL& cell) {
-    return std::clamp(cell.template get<VOLUMEFRAC<T>>(), T{}, T{1});
-  }
-
-  static bool hasNeighborType(CELL& cell, FSType fstype) {
-  for (int i = 1; i < LatSet::q; ++i) {
-    if (util::isFlag(cell.template getField<STATE>().get(cell.getNeighborId(i)), fstype)) return true;
-  }
-  return false;
-  }
+  using LatSet = typename CELL::LatticeSet;  
 
   // this is from openLB's struct NeighbourInfo in FreeSurfaceHelpers.h
   struct NbrInfo {
@@ -349,8 +373,6 @@ struct MassTransfer {
               massflow = cell[kopp] - celln[k];
             } 
           }
-
-          // massflow = cell[kopp] - celln[k];
 
           deltamass += massflow * T(0.5) * (getClampedVOF(cell) + getClampedVOF(celln));
         }

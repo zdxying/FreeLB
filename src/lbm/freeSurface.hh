@@ -33,16 +33,57 @@ void FreeSurface2D<T, LatSet, TypePack>::MassTransfer() {
       // for interface cells
       if (util::isFlag(this->template getField<STATE>().get(id), FSType::Interface)) {
         T deltamass{};
+        T massflow{};
+        // cell's nbr info
         Cell<T, LatSet, TypePack> cell(id, NS);
+        NbrInfo cellNbrInfo;
+        getNbrInfo(cell.getId(), cellNbrInfo);
         // find neighbor cells
         for (int k = 1; k < LatSet::q; ++k) {
           std::size_t idn = id + this->Delta_Index[k];
           Cell<T, LatSet, TypePack> celln(idn, NS);
+          int kopp = LatSet::opp[k];
           if (util::isFlag(this->template getField<STATE>().get(idn), FSType::Fluid)) {
-            deltamass += cell[LatSet::opp[k]] - celln[k];
+            deltamass += cell[kopp] - celln[k];
           } else if (util::isFlag(this->template getField<STATE>().get(idn), FSType::Interface)) {
-            deltamass += (cell[LatSet::opp[k]] - celln[k]) * T(0.5) *
-                         (getClampedVOF(id) + getClampedVOF(idn));
+          // celln's nbr info
+          NbrInfo cellnNbrInfo;
+          getNbrInfo(celln.getId(), cellnNbrInfo);
+          if (!cellNbrInfo.fluid_nbr){
+            if (!cellnNbrInfo.fluid_nbr){
+              if (cellNbrInfo.interface_nbrs < cellnNbrInfo.interface_nbrs){
+                massflow = -celln[k];
+              } else if (cellNbrInfo.interface_nbrs > cellnNbrInfo.interface_nbrs){
+                massflow = cell[kopp];
+              } else {
+                massflow = cell[kopp] - celln[k];
+              }
+            } else {
+              massflow = -celln[k];
+            }
+          } else if (!cellNbrInfo.gas_nbr){
+            if (!cellnNbrInfo.gas_nbr){
+              if (cellNbrInfo.interface_nbrs < cellnNbrInfo.interface_nbrs){
+                massflow = cell[kopp];
+              } else if (cellNbrInfo.interface_nbrs > cellnNbrInfo.interface_nbrs){
+                massflow = -celln[k];
+              } else {
+                massflow = cell[kopp] - celln[k];
+              }
+            } else {
+              massflow = cell[kopp];
+            }
+          } else {
+            if (!cellnNbrInfo.fluid_nbr){
+              massflow = cell[kopp];
+            } else if (!cellnNbrInfo.gas_nbr){
+              massflow = -celln[k];
+            } else {
+              massflow = cell[kopp] - celln[k];
+            } 
+          }
+
+          deltamass += massflow * T(0.5) * (getClampedVOF(cell.getId()) + getClampedVOF(celln.getId()));
           }
         }
         this->template getField<MASS<T>>().get(id) += deltamass;
