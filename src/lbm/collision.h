@@ -24,6 +24,7 @@
 
 #include "data_struct/cell.h"
 #include "lbm/force.h"
+#include "lbm/powerlaw.h"
 
 namespace collision {
 

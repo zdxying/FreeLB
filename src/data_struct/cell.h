@@ -159,6 +159,11 @@ class Cell final : public BasicPopCell<T, LatSet> {
     return Lat.template getField<FieldType>();
   }
 
+  template <typename FieldType>
+  static constexpr bool hasField() {
+    return BLOCKLATTICE::template hasField<FieldType>();
+  }
+
   Cell<T, LatSet, TypePack> getNeighbor(int i) const {
     return Cell<T, LatSet, TypePack>(Id + Lat.getDelta_Index()[i], Lat);
   }

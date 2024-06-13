@@ -130,13 +130,19 @@ int main() {
   // ------------------ define lattice ------------------
   using NSFIELDS = TypePack<RHO<T>, VELOCITY<T, 2>, POP<T, LatSet::q>, SCALARCONSTFORCE<T>>;
 
-  using ALLFIELDS = MergeFieldPack<NSFIELDS, FS::FSFIELDS<T, LatSet>, FS::FSPARAMS<T>>::mergedpack;
+  // using ALLFIELDS = MergeFieldPack<NSFIELDS, FS::FSFIELDS<T, LatSet>, FS::FSPARAMS<T>>::mergedpack;
+  using ALLNSFS_FIELDS = MergeFieldPack<NSFIELDS, FS::FSFIELDS<T, LatSet>, FS::FSPARAMS<T>>::mergedpack;
+  using ALLFIELDS = MergeFieldPack<ALLNSFS_FIELDS, PowerLawPARAMS<T>>::mergedpack;
 
   ValuePack NSInitValues(BaseConv.getLatRhoInit(), Vector<T, 2>{}, T{}, -BaseConv.Lattice_g);
   ValuePack FSInitValues(FS::FSType::Solid, T{}, T{}, T{});
   ValuePack FSParamsInitValues(T{0.3}, T{0.01}, false, T{});
+  // power-law dynamics for non-Newtonian fluid
+  ValuePack PowerLawInitValues(BaseConv.Lattice_VisKine, T{-0.1}, BaseConv.Lattice_VisKine*T{0.5}, BaseConv.Lattice_VisKine);
 
-  auto ALLValues = mergeValuePack(NSInitValues, FSInitValues, FSParamsInitValues);
+  // auto ALLValues = mergeValuePack(NSInitValues, FSInitValues, FSParamsInitValues);
+  auto ALLNSFSValues = mergeValuePack(NSInitValues, FSInitValues, FSParamsInitValues);
+  auto ALLValues = mergeValuePack(ALLNSFSValues, PowerLawInitValues);
 
   using NSCELL = Cell<T, LatSet, ALLFIELDS>;
   using NSLAT = BlockLatticeManager<T, LatSet, ALLFIELDS>;
@@ -168,7 +174,7 @@ int main() {
   // NS task
   using NSBulkTask =
     tmp::Key_TypePair<FS::FSType::Fluid | FS::FSType::Interface,
-                      collision::BGKForce_Feq_RhoU<equilibrium::SecondOrder<NSCELL>,
+                      collision::PowerLaw_BGKForce_Feq_RhoU<equilibrium::SecondOrder<NSCELL>,
                                                    force::ScalarConstForce<NSCELL>, true>>;
   using NSWallTask = tmp::Key_TypePair<FS::FSType::Wall, collision::BounceBack<NSCELL>>;
 

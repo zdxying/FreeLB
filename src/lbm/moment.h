@@ -315,7 +315,7 @@ struct strainRate {
   // f_i^(1) = f_i - f_i^eq
   // PI_ab^eq = SUM_i(f_i^eq*c_ia*c_ib) = rho*U_a*U_b + rho*Cs^2*delta_ab
   static inline void get(CELL& cell,
-                         std::array<T, util::SymmetricMatrixSize<LatSet::d>>& tensor,
+                         std::array<T, util::SymmetricMatrixSize<LatSet::d>()>& tensor,
                          const T rho, const Vector<T, LatSet::d>& u) {
     unsigned int i{};
     const T coeff = T{-1.5} * cell.getOmega();
@@ -344,10 +344,16 @@ struct shearRateMag {
   using T = typename CELL::FloatType;
   using LatSet = typename CELL::LatticeSet;
   // \dot{gamma} = sqrt(2*trace(S^2)) = sqrt(2*SUM_{a,b}S_ab^2)
-  static inline T get(const std::array<T, util::SymmetricMatrixSize<LatSet::d>>& tensor) {
+  static inline T get(const std::array<T, util::SymmetricMatrixSize<LatSet::d>()>& tensor) {
     T value{};
-    for (unsigned int i = 0; i < util::SymmetricMatrixSize<LatSet::d>; ++i) {
-      value += tensor[i] * tensor[i];
+    unsigned int i{};
+    for (unsigned int alpha = 0; alpha < LatSet::d; ++alpha) {
+      for (unsigned int beta = alpha; beta < LatSet::d; ++beta) {
+        T sq = tensor[i] * tensor[i];
+        if (alpha != beta) sq *= T{2};
+        value += sq;
+        ++i;
+      }
     }
     return std::sqrt(T{2} * value);
   }

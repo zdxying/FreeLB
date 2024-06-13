@@ -28,25 +28,41 @@
 struct ConsistencyIndexBase : public FieldBase<1> {};
 // n-1
 struct BehaviorIndexMinus1Base : public FieldBase<1> {};
+// max nu
+struct MaxNuBase : public FieldBase<1> {};
+// min nu
+struct MinNuBase : public FieldBase<1> {};
 
 template <typename T>
 using ConsistencyIndex = Array<T, ConsistencyIndexBase>;
 template <typename T>
 using BehaviorIndexMinus1 = Array<T, BehaviorIndexMinus1Base>;
+template <typename T>
+using MaxNu = Array<T, MaxNuBase>;
+template <typename T>
+using MinNu = Array<T, MinNuBase>;
 
+template <typename T>
+using PowerLawPARAMS = TypePack<ConsistencyIndex<T>, BehaviorIndexMinus1<T>, MinNu<T>, MaxNu<T>>;
 // power-law dynamics for non-Newtonian fluid
 
 // in power-law dynamics: compute omega from magnitude of shear rate
 template <typename CELLTYPE>
-struct omegaFromShearRate {
+struct PowerLaw_Omega {
   using CELL = CELLTYPE;
   using T = typename CELL::FloatType;
   using LatSet = typename CELL::LatticeSet;
 
-  static inline T computeOmega(const T gamma, const T m, const T n_minus1) {
+  static inline T get(T gamma, CELL& cell) {
+    T m = cell.template get<ConsistencyIndex<T>>();
+    T n_minus1 = cell.template get<BehaviorIndexMinus1<T>>();
     // Ostwald-de Waele/ power-law
     // nu = m * gamma^(n-1)
     T nu = m * std::pow(gamma, n_minus1);
+    
+    nu = std::min(nu, cell.template get<MaxNu<T>>());
+    nu = std::max(nu, cell.template get<MinNu<T>>());
+    
     // nu = cs^2 * (tau - 0.5) = (1/omega - 0.5)/3
     T omega = T{1} / (nu * LatSet::InvCs2 + T{0.5});
     return omega;
@@ -62,24 +78,61 @@ struct PowerLaw_BGK_Feq_RhoU {
   using LatSet = typename CELL::LatticeSet;
   using equilibriumscheme = EquilibriumScheme;
 
-  static void apply(CELL& cell, const T m, const T n_minus1) {
+  static void apply(CELL& cell) {
     // update macroscopic variables
     T rho{};
     Vector<T, LatSet::d> u{};
     moment::template rhou<CELL, WriteToField>::apply(cell, rho, u);
     // strain rate
-    std::array<T, util::SymmetricMatrixSize<LatSet::d>> strain_rate{};
+    std::array<T, util::SymmetricMatrixSize<LatSet::d>()> strain_rate{};
     moment::template strainRate<CELL>::get(cell, strain_rate, rho, u);
     // magnitude of shear rate
     T gamma = moment::template shearRateMag<CELL>::get(strain_rate);
     // equilibrium distribution function
     std::array<T, LatSet::q> feq{};
-    EquilibriumScheme::apply(cell, feq, rho, u);
+    EquilibriumScheme::apply(feq, rho, u);
     // BGK collision
-    const T omega = omegaFromShearRate<CELL>::computeOmega(gamma, m, n_minus1);
+    const T omega = PowerLaw_Omega<CELL>::get(gamma, cell);
     const T _omega = T{1} - omega;
     for (unsigned int i = 0; i < LatSet::q; ++i) {
       cell[i] = omega * feq[i] + _omega * cell[i];
+    }
+  }
+};
+
+template <typename EquilibriumScheme, typename ForceScheme, bool WriteToField = false,
+          unsigned int dir = 2>
+struct PowerLaw_BGKForce_Feq_RhoU {
+  using CELL = typename EquilibriumScheme::CELLTYPE;
+  using T = typename CELL::FloatType;
+  using LatSet = typename CELL::LatticeSet;
+  using equilibriumscheme = EquilibriumScheme;
+  using GenericRho = typename CELL::GenericRho;
+
+  static void apply(CELL& cell) {
+    // update macroscopic variables
+    T rho{};
+    Vector<T, LatSet::d> u{};
+    moment::template forceRhou<CELL, WriteToField, dir>::apply(
+      cell, ForceScheme::getForce(cell), rho, u);
+    // strain rate
+    std::array<T, util::SymmetricMatrixSize<LatSet::d>()> strain_rate{};
+    moment::template strainRate<CELL>::get(cell, strain_rate, rho, u);
+    // magnitude of shear rate
+    T gamma = moment::template shearRateMag<CELL>::get(strain_rate);
+    // compute force term
+    std::array<T, LatSet::q> fi{};
+    ForceScheme::apply(u, ForceScheme::getForce(cell), fi);
+    // equilibrium distribution function
+    std::array<T, LatSet::q> feq{};
+    EquilibriumScheme::apply(feq, rho, u);
+    // PowerLaw-BGK collision
+    const T omega = PowerLaw_Omega<CELL>::get(gamma, cell);
+    const T _omega = T{1} - omega;
+    const T fomega = T{1} - T{0.5} * omega;
+
+    for (unsigned int i = 0; i < LatSet::q; ++i) {
+      cell[i] = omega * feq[i] + _omega * cell[i] + fomega * fi[i];
     }
   }
 };
