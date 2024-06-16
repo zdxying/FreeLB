@@ -37,7 +37,7 @@ T surface_tension_coefficient;
 // Anti jitter value
 T VOF_Trans_Threshold;
 // When to remove lonely cells
-T lonelyThreshold;
+T LonelyThreshold;
 // init conditions
 Vector<T, 2> U_Ini;  // mm/s
 T U_Max;
@@ -70,7 +70,7 @@ void readParam() {
   surface_tension_coefficient =
     param_reader.getValue<T>("Free_Surface", "surface_tension_coefficient");
   VOF_Trans_Threshold = param_reader.getValue<T>("Free_Surface", "VOF_Trans_Threshold");
-  lonelyThreshold = param_reader.getValue<T>("Free_Surface", "lonelyThreshold");
+  LonelyThreshold = param_reader.getValue<T>("Free_Surface", "LonelyThreshold");
   // init conditions
   U_Ini[0] = param_reader.getValue<T>("Init_Conditions", "U_Ini0");
   U_Ini[1] = param_reader.getValue<T>("Init_Conditions", "U_Ini1");
@@ -142,7 +142,7 @@ int main() {
 
   ValuePack FSInitValues(FS::FSType::Solid, T{}, T{}, T{});
 
-  FS::FreeSurface2DManager<T, LatSet, NSFIELDS> FreeSurface(NSLattice, FSInitValues);
+  FS::FreeSurface2DManager<T, LatSet, NSFIELDS> FreeSurface(NSLattice, FSInitValues, LonelyThreshold, VOF_Trans_Threshold);
   // set cell state
   FreeSurface.getField<FS::STATE>().forEach(
     cavity, [&](auto& field, std::size_t id) { field.SetField(id, FS::FSType::Gas); });

@@ -909,9 +909,16 @@ void BlockGeometryHelper2D<T>::LoadBalancing(int ProcessNum) {
   // print info
   MPI_RANK(0)
   std::cout << "[LoadBalancing result]: " << "\n";
+  std::cout << "Rank:     ";
   for (int i = 0; i < BlockIndex.size(); ++i) {
-    std::cout << "Rank " << i << ": " << BlockIndex[i].size() << " Blocks" << std::endl;
+    std::cout << i << " | " ;
   }
+  std::cout << std::endl;
+  std::cout << "BlockNum: ";
+  for (int i = 0; i < BlockIndex.size(); ++i) {
+    std::cout << BlockIndex[i].size() << " | ";
+  }
+  std::cout << std::endl;
 #endif
 }
 

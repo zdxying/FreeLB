@@ -164,9 +164,9 @@ class FreeSurface2DManager : public BlockLatticeManagerBase<T, LatSet, FSFIELDS<
 
   BlockLatticeManager<T, LatSet, TypePack>& NSLatMan;
 
-  T Lonely_Threshold = 0.1;
+  T Lonely_Threshold;
   // vof transition threshold
-  T VOF_Trans_Threshold = 0.003;
+  T VOF_Trans_Threshold;
 
   bool Surface_Tension_Enabled = false;
   T surface_tension_parameter;  // coefficient_factor * coefficient
@@ -174,9 +174,11 @@ class FreeSurface2DManager : public BlockLatticeManagerBase<T, LatSet, FSFIELDS<
  public:
   //  FSType::Solid, T{}, T{}, T{}
   template <typename INITVALUEPACK>
-  FreeSurface2DManager(BlockLatticeManager<T, LatSet, TypePack>& lm, INITVALUEPACK& initvalues)
+  FreeSurface2DManager(BlockLatticeManager<T, LatSet, TypePack>& lm, INITVALUEPACK& initvalues, 
+  T lonely_th = 0.3, T vof_trans_th = 0.01, T surface_tension = false, T surface_tension_param = 0.0)
       : BlockLatticeManagerBase<T, LatSet, FSFIELDS<T, LatSet>>(lm.getGeo(), initvalues),
-      NSLatMan(lm){
+      NSLatMan(lm), Lonely_Threshold(lonely_th), VOF_Trans_Threshold(vof_trans_th), 
+      Surface_Tension_Enabled(surface_tension), surface_tension_parameter(surface_tension_param) {
     // init FreeSurface2D
     for (int i = 0; i < this->BlockGeo.getBlockNum(); ++i){
       BlockFS.emplace_back(

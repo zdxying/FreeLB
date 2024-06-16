@@ -48,7 +48,6 @@ int BlockNumX;
 int BlockNum;
 
 void readParam() {
-  
   iniReader param_reader("refblock.ini");
   Ni = param_reader.getValue<int>("Mesh", "Ni");
   Nj = param_reader.getValue<int>("Mesh", "Nj");
@@ -57,13 +56,15 @@ void readParam() {
   BlockNum = param_reader.getValue<int>("Mesh", "BlockNum");
 }
 
-int main() {
-  std::uint8_t VoidFlag = std::uint8_t(1);
-  std::uint8_t AABBFlag = std::uint8_t(2);
-  std::uint8_t BouncebackFlag = std::uint8_t(4);
-  std::uint8_t BBMovingWallFlag = std::uint8_t(8);
+int main(int argc, char* argv[]) {
+  constexpr std::uint8_t VoidFlag = std::uint8_t(1);
+  constexpr std::uint8_t AABBFlag = std::uint8_t(2);
+  constexpr std::uint8_t BouncebackFlag = std::uint8_t(4);
+  constexpr std::uint8_t BBMovingWallFlag = std::uint8_t(8);
 
-  // Printer::Print_BigBanner(std::string("Initializing..."));
+  mpi().init(&argc, &argv);
+
+  MPI_DEBUG_WAIT
 
   readParam();
 
@@ -89,28 +90,27 @@ int main() {
 
   BlockGeometryHelper2D<T> GeoHelper(Ni, Nj, cavity, Cell_Len, Ni / BlockNumX);
 
-  GeoHelper.forEachBlockCell([&](BasicBlock<T, 2>& block) {
-    if (!isOverlapped(block, outercavity)) {
-      block.refine();
-    }
-  });
+  // GeoHelper.forEachBlockCell([&](BasicBlock<T, 2>& block) {
+  //   if (!isOverlapped(block, outercavity)) {
+  //     block.refine();
+  //   }
+  // });
   GeoHelper.forEachBlockCell([&](BasicBlock<T, 2>& block) {
     if (isOverlapped(block, innercavity)) {
-      block.refine();
+      block.refine(std::uint8_t(2));
     }
   });
   GeoHelper.CheckRefine();
   GeoHelper.CreateBlocks();
   GeoHelper.AdaptiveOptimization(BlockNum);
-  GeoHelper.LoadBalancing();
+  GeoHelper.LoadBalancing(mpi().getSize());
 
   // geometry
   BlockGeometry2D<T> Geo(GeoHelper);
 
-  BlockFieldManager<FlagField, T, 2> FlagFM(Geo, VoidFlag);
-  FlagFM.forEach(cavity,
-                 [&](FlagField& field, std::size_t id) { field.SetField(id, AABBFlag); });
-  FlagFM.template SetupBoundary<LatSet>(cavity, BouncebackFlag);
+  BlockFieldManager<RHO<T>, T, 2> FlagFM(Geo, VoidFlag);
+  FlagFM.forEach([&](auto& field, std::size_t id) { field.SetField(id, mpi().getRank()); });
+  // FlagFM.template SetupBoundary<LatSet>(cavity, BouncebackFlag);
 
   vtmo::ScalarWriter FlagWriter("flag", FlagFM);
   vtmo::vtmWriter<T, 2> GeoWriter("GeoFlag", Geo, 1);
