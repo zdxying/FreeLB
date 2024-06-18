@@ -45,6 +45,11 @@ T U_Max;
 // bcs
 Vector<T, 2> U_Wall;  // mm/s
 
+// power-law
+T BehaviorIndex;
+T MInViscCoef;
+T MaxViscCoef;
+
 // Simulation settings
 int MaxStep;
 int OutputStep;
@@ -71,6 +76,12 @@ void readParam() {
     param_reader.getValue<T>("Free_Surface", "surface_tension_coefficient");
   VOF_Trans_Threshold = param_reader.getValue<T>("Free_Surface", "VOF_Trans_Threshold");
   LonelyThreshold = param_reader.getValue<T>("Free_Surface", "LonelyThreshold");
+
+  // power law
+  BehaviorIndex = param_reader.getValue<T>("PowerLaw", "BehaviorIndex");
+  MInViscCoef = param_reader.getValue<T>("PowerLaw", "MInViscCoef");
+  MaxViscCoef = param_reader.getValue<T>("PowerLaw", "MaxViscCoef");
+
   // init conditions
   U_Ini[0] = param_reader.getValue<T>("Init_Conditions", "U_Ini0");
   U_Ini[1] = param_reader.getValue<T>("Init_Conditions", "U_Ini1");
@@ -134,11 +145,18 @@ int main() {
   using ALLNSFS_FIELDS = MergeFieldPack<NSFIELDS, FS::FSFIELDS<T, LatSet>, FS::FSPARAMS<T>>::mergedpack;
   using ALLFIELDS = MergeFieldPack<ALLNSFS_FIELDS, PowerLawPARAMS<T>>::mergedpack;
 
+  // a conversion factor of unit s^2 / g
+  // [surface_tension_coefficient_factor * surface_tension_coefficient] = [1]
+  // (LatRT_ - T(0.5)) * cs2 * deltaX_ * deltaX_ / VisKine_
+
+  T surface_tension_coefficient_factor =
+    BaseConv.Conv_Time * BaseConv.Conv_Time / (rho_ref * std::pow(BaseConv.Conv_L, 3));
+
   ValuePack NSInitValues(BaseConv.getLatRhoInit(), Vector<T, 2>{}, T{}, -BaseConv.Lattice_g);
   ValuePack FSInitValues(FS::FSType::Solid, T{}, T{}, T{});
-  ValuePack FSParamsInitValues(T{0.3}, T{0.01}, false, T{});
+  ValuePack FSParamsInitValues(LonelyThreshold, VOF_Trans_Threshold, true, surface_tension_coefficient_factor* surface_tension_coefficient);
   // power-law dynamics for non-Newtonian fluid
-  ValuePack PowerLawInitValues(BaseConv.Lattice_VisKine, T{-0.1}, BaseConv.Lattice_VisKine*T{0.5}, BaseConv.Lattice_VisKine);
+  ValuePack PowerLawInitValues(BaseConv.Lattice_VisKine, BehaviorIndex - 1, BaseConv.Lattice_VisKine*MInViscCoef, BaseConv.Lattice_VisKine*MaxViscCoef);
 
   // auto ALLValues = mergeValuePack(NSInitValues, FSInitValues, FSParamsInitValues);
   auto ALLNSFSValues = mergeValuePack(NSInitValues, FSInitValues, FSParamsInitValues);
@@ -150,12 +168,6 @@ int main() {
   BlockLatticeManager<T, LatSet, ALLFIELDS> NSLattice(Geo, ALLValues, BaseConv);
 
   //// free surface
-  // a conversion factor of unit s^2 / g
-  // [surface_tension_coefficient_factor * surface_tension_coefficient] = [1]
-  // (LatRT_ - T(0.5)) * cs2 * deltaX_ * deltaX_ / VisKine_
-
-  // T surface_tension_coefficient_factor =
-  //   BaseConv.Conv_Time * BaseConv.Conv_Time / (rho_ref * std::pow(BaseConv.Conv_L, 3));
 
   // set cell state
   NSLattice.getField<FS::STATE>().forEach(

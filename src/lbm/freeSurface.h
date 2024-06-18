@@ -38,11 +38,6 @@ enum FSType : std::uint8_t {
   To_Interface = 128
 };
 
-template <typename CELL>
-typename CELL::FloatType ComputeCurvature(CELL& cell){
-  using T = typename CELL::FloatType;
-  return T{};
-}
 
 // define unique FS Field
 struct STATEBase : public FieldBase<1> {};
@@ -296,6 +291,240 @@ static bool hasNeighborType(CELL& cell, FSType fstype) {
   }
   return false;
 }
+
+// Parker-Youngs normal 
+// Parker-Youngs weights, a corrected version:
+// |c|^2  1  2  3
+// weight 4  2  1 
+template <typename LatSet>
+constexpr std::array<int, LatSet::q> Parker_YoungsWeights() {
+  return make_Array<int, LatSet::q>([&](unsigned int i) {
+    int weight = 8;
+    if (LatSet::c[i][0] != 0) weight /= 2;
+    if (LatSet::c[i][1] != 0) weight /= 2;
+    if constexpr (LatSet::d == 3) {
+      if (LatSet::c[i][2] != 0) weight /= 2;
+    }
+    return weight;
+  });
+}
+
+template <typename CELL>
+void computeParker_YoungsNormal(CELL& cell, Vector<typename CELL::FloatType, CELL::LatticeSet::d>& normal){
+  using T = typename CELL::FloatType;
+  using LatSet = typename CELL::LatticeSet;
+  for (int i = 1; i < LatSet::q; ++i) {
+    CELL celln = cell.getNeighbor(i);
+    T clampedvof = getClampedVOF(celln);
+    normal -= Parker_YoungsWeights<LatSet>()[i] * LatSet::c[i] * clampedvof;
+  }
+}
+
+// openlb offset calculation
+template<typename T>
+T offsetHelper2D(T volume, const std::vector<T>& sorted_normal) {
+  T d2 = volume * sorted_normal[1] + 0.5 * sorted_normal[0];
+  if(d2 >= sorted_normal[0]){
+    return d2;
+  }
+  T d1 = std::sqrt(2. * sorted_normal[0] * sorted_normal[1] * volume);
+  return d1;
+}
+
+template<typename T>
+T offsetHelper3D(T volume, const std::vector<T>& sorted_normal) {
+  return T{};
+}
+
+// openlb 
+template<typename T, typename LatSet>
+T calculateCubeOffset(T volume, const Vector<T,LatSet::d>& normal) {
+  std::vector<T> abs_normal(LatSet::d, T{});
+  for(unsigned int i = 0; i < LatSet::d; i++){
+    abs_normal[i] = std::abs(normal[i]);
+  }
+
+  T volume_symmetry = 0.5 - std::abs(volume - 0.5);
+
+  std::sort(abs_normal.begin(), abs_normal.end());
+
+  if constexpr (LatSet::d == 2) {
+    abs_normal[0] = std::max(normal[0], 1e-5);
+  } else if (LatSet::d == 3){
+    abs_normal[0] = std::max(normal[0], 1e-12);
+    abs_normal[1] = std::max(normal[1], 1e-12);
+  }
+
+  T d{};
+  if constexpr (LatSet::d == 2) {
+    d = offsetHelper2D<T>(volume_symmetry, abs_normal);
+  } else if (LatSet::d == 3){
+    d = offsetHelper3D<T>(volume_symmetry, abs_normal);
+  }
+
+  T sorted_normal_acc = 0;
+  for(unsigned int i = 0; i < LatSet::d; i++){
+    sorted_normal_acc += abs_normal[i];
+  }
+
+  return std::copysign(d - 0.5 * sorted_normal_acc, volume - 0.5);
+}
+
+// openlb pivoted LU solver
+template<typename T, size_t S>
+std::array<T,S> solvePivotedLU(std::array<std::array<T,S>,S>& matrix, const std::array<T,S>& b, size_t N) {
+  std::array<T,S> x;
+  std::array<T,S> pivots;
+  for(size_t i = 0; i < S; ++i){
+    pivots[i] = i;
+    x[i] = 0.;
+  }
+
+  N = std::min(N,S);
+
+  for(size_t i = 0; i < N; ++i){
+
+    T max = 0.;
+    size_t max_index = i;
+
+    for(size_t j = i; j < N; ++j){
+      T abs = std::abs(matrix[pivots[j]][i]);
+      if(abs > max){
+        max_index = j;
+        max = abs;
+      }
+    }
+
+    if(max_index != i){
+      size_t tmp_index = pivots[i];
+      pivots[i] = pivots[max_index];
+      pivots[max_index] = tmp_index;
+    }
+
+    for(size_t j = i + 1; j < N; ++j){
+      matrix[pivots[j]][i] /= matrix[pivots[i]][i];
+
+      for(size_t k = i + 1; k < N; ++k){
+
+        matrix[pivots[j]][k] -= matrix[pivots[j]][i] * matrix[pivots[i]][k];
+      }
+    }
+  }
+
+  for(size_t i = 0; i  < N; ++i){
+    x[i] = b[pivots[i]];
+
+    for(size_t j = 0; j < i; ++j){
+      x[i] -= matrix[pivots[i]][j] * x[j];
+    }
+  }
+
+  for(size_t i = N; i > 0; --i){
+    for(size_t j = i; j < N; ++j){
+      x[i-1] -= matrix[pivots[i-1]][j] * x[j];
+    }
+
+    x[i-1] /= matrix[pivots[i-1]][i-1];
+  }
+
+  return x;
+}
+
+
+// openlb 
+template <typename CELL>
+typename CELL::FloatType ComputeCurvature2D(CELL& cell) {
+  using T = typename CELL::FloatType;
+  using LatSet = typename CELL::LatticeSet;
+
+  // Parker-Youngs Normal
+  Vector<T, 2> normal{};
+  computeParker_YoungsNormal(cell, normal);
+  T norm = normal.getnorm();
+  if (norm < 1e-6) return T{};
+  normal /= norm;
+
+  // Rotation matrix is
+  // ( n1 | -n0 )
+  // ( n0 |  n1 )
+
+  // It is 2 because of the amount of fitting parameters. Not because of the dimension
+  constexpr size_t S = 2;
+  std::array<std::array<T, S>, S> lq_matrix;
+  std::array<T, S> b_rhs;
+  for(size_t i = 0; i < S; ++i){
+    for(size_t j = 0; j < S; ++j){
+      lq_matrix[i][j] = 0.;
+    }
+    b_rhs[i] = 0.;
+  }
+
+  // Offset for the plic correction
+  T origin_offset{};
+  T VOF = getClampedVOF(cell);
+  origin_offset = calculateCubeOffset<T, LatSet>(VOF, normal);
+
+  std::size_t healthy_interfaces = 0;
+
+  for (int iPop=1; iPop < LatSet::q; ++iPop) {
+    CELL cellC = cell.getNeighbor(iPop);
+    if(!util::isFlag(cellC.template get<STATE>(), FSType::Interface) || !hasNeighborType(cellC, FSType::Gas)) {
+      continue;
+    }
+
+    ++healthy_interfaces;
+
+    T fill_level = getClampedVOF(cellC);
+
+    T cube_offset = calculateCubeOffset<T, LatSet>(fill_level, normal);
+
+    T x_pos = LatSet::c[iPop][0];
+    T y_pos = LatSet::c[iPop][1];
+
+    // Rotation
+    T rot_x_pos = x_pos * normal[1] - y_pos * normal[0];
+    T rot_y_pos = x_pos * normal[0] + y_pos * normal[1] + (cube_offset - origin_offset);
+
+    T rot_x_pos_2 = rot_x_pos * rot_x_pos;
+    T rot_x_pos_3 = rot_x_pos_2 * rot_x_pos;
+    T rot_x_pos_4 = rot_x_pos_3 * rot_x_pos;
+
+    lq_matrix[1][1] += rot_x_pos_2;
+    lq_matrix[1][0] += rot_x_pos_3;
+    lq_matrix[0][0] += rot_x_pos_4;
+
+    b_rhs[0] += rot_x_pos_2*(rot_y_pos);
+    b_rhs[1] += rot_x_pos*(rot_y_pos);
+  }
+
+  lq_matrix[0][1] = lq_matrix[1][0];
+
+  // Thikonov regularization parameter
+  T alpha{};
+  for(size_t i = 0; i < LatSet::d; ++i){
+    lq_matrix[i][i] += alpha;
+  }
+
+  // It is 2 because of the fitting parameters. Not dependent on the dimension
+  std::array<T,S> solved_fit = solvePivotedLU<T,S>(lq_matrix, b_rhs, healthy_interfaces);
+
+  // signed curvature -> kappa = y'' / ( (1 + y'²)^(3/2) )
+  T denom = std::sqrt(1. + solved_fit[1]*solved_fit[1]);
+  denom = denom * denom * denom;
+  T curvature = 2.*solved_fit[0] / denom;
+  return std::max(-1., std::min(1., curvature));
+}
+
+template <typename CELL>
+typename CELL::FloatType ComputeCurvature(CELL& cell) {
+  using LatSet = typename CELL::LatticeSet;
+  if constexpr (LatSet::d == 2) {
+    return ComputeCurvature2D(cell);
+  } else if constexpr (LatSet::d == 3) {
+    return ComputeCurvature3D(cell);
+  }
+}
+
 
 // mass transfer
 template <typename CELLTYPE>

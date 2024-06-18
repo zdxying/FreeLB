@@ -88,6 +88,51 @@ class FieldPtrCollection<TypePack<Fields...>> {
   std::tuple<Fields*...> fields;
 };
 
+template <typename T, typename Base>
+class Data {
+ public:
+  using value_type = T;
+  static constexpr unsigned int array_dim = 1;
+  using array_type = Data<T, Base>;
+  static constexpr bool isField = false;
+
+ private:
+  T _Data;
+
+ public:
+  Data() : _Data{} {}
+  // argument size will not be used
+  Data(std::size_t size) : _Data{} {}
+  Data(std::size_t size, T initialValue) : _Data(initialValue) {}
+  ~Data() = default;
+
+  template <unsigned int i = 0>
+  auto& get() {
+    return _Data;
+  }
+  template <unsigned int i = 0>
+  const auto& get() const {
+    return _Data;
+  }
+  auto& get(unsigned int i) { return _Data; }
+  const auto& get(unsigned int i) const { return _Data; }
+
+  // argument i will not be used
+  auto& getField(std::size_t i = 0) { return *this; }
+  const auto& getField(std::size_t i = 0) const { return *this; }
+
+  // init
+  void Init(T value = T{}) {
+    _Data = value;
+  }
+  template <unsigned int i = 0>
+  void SetField(T value) {
+    _Data = value;
+  }
+  void SetField(int i, T value) { _Data = value; }
+
+  static constexpr unsigned int Size() { return 1; }
+};
 
 // a single std::array, type T couldn't dynamically allocate memory
 template <typename T, typename Base>

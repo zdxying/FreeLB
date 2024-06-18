@@ -401,42 +401,5 @@ void CopyFromFieldArray(const Vector<int, Dim> &Mesh, int Overlap, const ArrayTy
   }
 }
 
-template <typename T, typename LatSet>
-class Parker_YoungsNormal2D {
- private:
-  int Nx;
-  int Ny;
-  std::array<int, LatSet::q> Nbr;
-  std::array<int, LatSet::q> Weight;
-  const T *f;
-
- public:
-  Parker_YoungsNormal2D(int nx, int ny, const GenericArray<T> &f_)
-      : Nx(nx), Ny(ny), f(f_.getdata()) {
-    Nbr = make_Array<int, LatSet::q>(
-      [&](int i) { return LatSet::c[i] * Vector<int, 2>{1, Nx}; });
-
-    Weight = make_Array<int, LatSet::q>([&](int i) {
-      int weight = 1;
-      if (LatSet::c[i][0] != 0) weight *= 2;
-      if (LatSet::c[i][1] != 0) weight *= 2;
-      weight /= 2;
-      return weight;
-    });
-  }
-
-  // Parker & Youngs (1992) interface normal
-  Vector<T, 2> get(std::size_t id) const {
-    T x = T{};
-    T y = T{};
-    for (int i = 1; i < LatSet::q; ++i) {
-      std::size_t idn = id + Nbr[i];
-      T clampedvof = std::clamp(f[idn], T(0), T(1));
-      x -= Weight[i] * LatSet::c[i][0] * clampedvof;
-      y -= Weight[i] * LatSet::c[i][1] * clampedvof;
-    }
-    return Vector<T, 2>{x, y};
-  }
-};
 
 }  // namespace util

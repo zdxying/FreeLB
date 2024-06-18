@@ -90,9 +90,9 @@ void FreeSurface2D<T, LatSet, TypePack>::MassTransfer() {
 
         // reconstruct pop streamed in from a gas cell
         T curvature{};
-        if (Surface_Tension_Enabled) {
-          if (hasNeighborType(id, FSType::Gas)) curvature = ComputeCurvature(cell);
-        }
+        // if (Surface_Tension_Enabled) {
+        //   if (hasNeighborType(id, FSType::Gas)) curvature = ComputeCurvature(cell);
+        // }
         T rho_gas = T(1) - T(6) * surface_tension_parameter * curvature;
         const Vector<T, LatSet::d>& u = cell.template get<VELOCITY<T,LatSet::d>>();
         T u2 = u.getnorm2();
@@ -218,8 +218,8 @@ void FreeSurface2D<T, LatSet, TypePack>::ToGasNbrConversion() {
 
 template <typename T, typename LatSet, typename TypePack>
 void FreeSurface2D<T, LatSet, TypePack>::InterfaceExcessMass() {
-  util::Parker_YoungsNormal2D<T, LatSet> PYNormal(NS.getNx(), NS.getNy(),
-                                                  this->template getField<VOLUMEFRAC<T>>().getField(0));
+  // util::Parker_YoungsNormal2D<T, LatSet> PYNormal(NS.getNx(), NS.getNy(),
+  //                                                 this->template getField<VOLUMEFRAC<T>>().getField(0));
   for (int j = NS.getOverlap(); j < NS.getNy() - NS.getOverlap(); ++j) {
     for (int i = NS.getOverlap(); i < NS.getNx() - NS.getOverlap(); ++i) {
       const std::size_t id = i + j * NS.getNx();
