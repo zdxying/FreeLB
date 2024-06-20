@@ -290,6 +290,7 @@ void BlockGeometry2D<T>::InitIntpComm() {
             std::size_t Cid3 = Cid2 + 1;
             std::size_t Fid = (iy * 2 + startFy) * block.getNx() + ix * 2 + startFx;
 
+            // shift 1 voxel upward(+y direction)
             std::size_t Cid0_ = Cid0 + nblock->getNx();
             std::size_t Cid1_ = Cid1 + nblock->getNx();
             std::size_t Cid2_ = Cid2 + nblock->getNx();
@@ -302,7 +303,7 @@ void BlockGeometry2D<T>::InitIntpComm() {
             // comm.InterpWeights.emplace_back(
             //   InterpWeight<T, 2>{T(0.0625), T(0.1875), T(0.1875), T(0.5625)});
 
-            // 1
+            // 1, shift along +x direction
             Cid0 += 1;
             Cid1 += 1;
             Cid2 += 1;
@@ -319,7 +320,7 @@ void BlockGeometry2D<T>::InitIntpComm() {
             // comm.InterpWeights.emplace_back(
             //   InterpWeight<T, 2>{T(0.1875), T(0.5625), T(0.0625), T(0.1875)});
 
-            // 3
+            // 3, shift along +x direction
             Cid0_ += 1;
             Cid1_ += 1;
             Cid2_ += 1;

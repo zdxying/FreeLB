@@ -98,6 +98,7 @@ class AABB {
 
   // called on AABB<int, D>
   void divide(int Nx, int Ny, std::vector<AABB<int, 2>>& subAABBs) const;
+  void divide(int Nx, int Ny, int Nz, std::vector<AABB<int, 3>>& subAABBs) const ;
 };
 
 // get intersection of 2 AABBs without checking if is intersected
@@ -317,7 +318,16 @@ struct InterpBlockComm {
     {T(0.1875), T(0.0625), T(0.5625), T(0.1875)}, 
     {T(0.1875), T(0.5625), T(0.0625), T(0.1875)}, 
     {T(0.5625), T(0.1875), T(0.1875), T(0.0625)}}};
-  static constexpr std::array<InterpWeight<T, 3>, 8> InterpWeight3D{};
+  static constexpr std::array<InterpWeight<T, 3>, 8> InterpWeight3D{
+    {T{0.015625}, T{0.046875}, T{0.046875}, T{0.140625}, T{0.046875}, T{0.140625}, T{0.140625}, T{0.421875}},
+    {T{0.046875}, T{0.015625}, T{0.140625}, T{0.046875}, T{0.140625}, T{0.046875}, T{0.421875}, T{0.140625}},
+    {T{0.046875}, T{0.140625}, T{0.015625}, T{0.046875}, T{0.140625}, T{0.421875}, T{0.046875}, T{0.140625}},
+    {T{0.140625}, T{0.046875}, T{0.046875}, T{0.015625}, T{0.421875}, T{0.140625}, T{0.140625}, T{0.046875}},
+    {T{0.046875}, T{0.140625}, T{0.140625}, T{0.421875}, T{0.015625}, T{0.046875}, T{0.046875}, T{0.140625}},
+    {T{0.140625}, T{0.046875}, T{0.421875}, T{0.140625}, T{0.046875}, T{0.015625}, T{0.140625}, T{0.046875}},
+    {T{0.140625}, T{0.421875}, T{0.046875}, T{0.140625}, T{0.046875}, T{0.140625}, T{0.015625}, T{0.046875}},
+    {T{0.421875}, T{0.140625}, T{0.140625}, T{0.046875}, T{0.140625}, T{0.046875}, T{0.046875}, T{0.015625}}
+  };
 
   static constexpr auto getIntpWeight() {
     if constexpr (D == 2) {
@@ -434,4 +444,46 @@ static void DivideBlock2D(int NX, int NY, int blocknum, const AABB<int, 2>& idxA
     Child_0.divide(Xblocks - rest, Yblocks, blocksvec);
     Child_1.divide(rest, Yblocks + 1, blocksvec);
   }
+}
+
+
+template <typename T>
+static void DivideBlock3D(BasicBlock<T, 3>& block, int blocknum,
+                          std::vector<AABB<int, 3>>& blocksvec) {
+  DivideBlock3D<T>(block.getNx(), block.getNy(), block.getNz(), blocknum, block.getIdxBlock(),
+                   blocksvec);
+}
+
+template <typename T>
+static void DivideBlock3D(BasicBlock<T, 3>& block, int blocknum,
+                          std::vector<BasicBlock<T, 3>>& basicblocksvec) {
+  std::vector<AABB<int, 3>> blocksvec;
+  const AABB<int, 3>& IdxBlock = block.getIdxBlock();
+  // divide block
+  DivideBlock3D<T>(block.getNx(), block.getNy(), block.getNz(), blocknum, IdxBlock, blocksvec);
+  // construct basicblocks from aabb
+  std::uint8_t level = block.getLevel();
+  T voxsize = block.getVoxelSize();
+  const Vector<T, 3>& Min = block.getMin();
+  int ratio = static_cast<int>(std::pow(2, static_cast<int>(level)));
+  int blockid = 0;
+  for (const AABB<int, 3>& idxaabb : blocksvec) {
+    // relative index location
+    Vector<int, 3> idxmin = idxaabb.getMin() - IdxBlock.getMin();
+    Vector<int, 3> idxmax = idxaabb.getMax() - IdxBlock.getMin();
+    Vector<T, 3> min = Min + voxsize * ratio * idxmin;
+    // remember to add Vector<int, 2>{1}
+    Vector<T, 3> max = Min + voxsize * ratio * (idxmax + Vector<int, 3>{1});
+    AABB<T, 3> aabb{min, max};
+    // mesh
+    Vector<int, 3> Mesh = (idxaabb.getExtension() + Vector<int, 3>{1}) * ratio;
+    basicblocksvec.emplace_back(level, voxsize, blockid, aabb, idxaabb, Mesh);
+    ++blockid;
+  }
+}
+
+template <typename T>
+static void DivideBlock3D(int NX, int NY, int Nz, int blocknum, const AABB<int, 3>& idxAABBs,
+                          std::vector<AABB<int, 3>>& blocksvec) {
+
 }

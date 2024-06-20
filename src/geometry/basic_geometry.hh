@@ -188,6 +188,63 @@ void AABB<T, D>::divide(int Nx, int Ny, std::vector<AABB<int, 2>>& subAABBs) con
   }
 }
 
+template <typename T, unsigned int D>
+void AABB<T, D>::divide(int Nx, int Ny, int Nz, std::vector<AABB<int, 3>>& subAABBs) const {
+  if (Nx == 0 || Ny == 0 || Nz == 0){
+    return;
+  }
+  int Nx_child = 0;
+  int Ny_child = 0;
+  int Nz_child = 0;
+  T minx_child = _min[0];
+  T miny_child = _min[1];
+  T minz_child = _min[2];
+  // Calculate the size of each part
+  int partX = (_extension[0] + 1) / Nx;
+  int partY = (_extension[1] + 1) / Ny;
+  int partZ = (_extension[2] + 1) / Nz;
+  int partX_ = partX + 1;
+  int partY_ = partY + 1;
+  int partZ_ = partZ + 1;
+  // Calculate the remainder
+  int remainderX = (_extension[0] + 1) % Nx;
+  int remainderY = (_extension[1] + 1) % Ny;
+  int remainderZ = (_extension[2] + 1) % Nz;
+  int rX = Nx - remainderX;
+  int rY = Ny - remainderY;
+  int rZ = Nz - remainderZ;
+
+  for (int iZ = 0; iZ < Nz; iZ++) {
+    if (iZ < rZ) {
+      Nz_child = partZ;
+    } else {
+      Nz_child = partZ_;
+    }
+    for (int iY = 0; iY < Ny; iY++) {
+      if (iY < rY) {
+        Ny_child = partY;
+      } else {
+        Ny_child = partY_;
+      }
+      for (int iX = 0; iX < Nx; iX++) {
+        if (iX < rX) {
+          Nx_child = partX;
+        } else {
+          Nx_child = partX_;
+        }
+        subAABBs.emplace_back(Vector<int, 3>{minx_child, miny_child, minz_child},
+                              Vector<int, 3>{minx_child + Nx_child - 1, miny_child + Ny_child - 1,
+                                             minz_child + Nz_child - 1});
+        minx_child += Nx_child;
+      }
+      minx_child = _min[0];
+      miny_child += Ny_child;
+    }
+    miny_child = _min[1];
+    minz_child += Nz_child;
+  }
+
+}
 
 // ---------------------basicblock----------------------
 
