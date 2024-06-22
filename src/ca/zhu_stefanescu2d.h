@@ -23,9 +23,7 @@
 // of dendritic growth in solidification of alloys 2007
 #pragma once
 
-#include <algorithm>
 #include <atomic>
-#include <vector>
 
 #include "ca/cazs.h"
 #include "data_struct/block_lattice.h"

@@ -220,6 +220,7 @@ void BlockGeometry3D<T>::InitAverComm() {
     // get the first layer of overlapped cells(counted from inside to outside)
     BasicBlock<T, 3> baseblock_ext1 = block.getBaseBlock().getExtBlock(1);
     std::uint8_t blocklevel = block.getLevel();
+    std::size_t XY = block.getNx() * block.getNy();
     for (Block3D<T> *nblock : block.getNeighbors()) {
       // find block of blocklevel+1
       if (nblock->getLevel() == blocklevel + 1) {
@@ -244,9 +245,7 @@ void BlockGeometry3D<T>::InitAverComm() {
         int startFy = static_cast<int>(std::round(startF[1] / Fvoxsize));
         int startFz = static_cast<int>(std::round(startF[2] / Fvoxsize));
 
-        std::size_t XY = block.getNx() * block.getNy();
         std::size_t nXY = nblock->getNx() * nblock->getNy();
-
         for (int iz = 0; iz < CNz; ++iz) {
           for (int iy = 0; iy < CNy; ++iy) {
             for (int ix = 0; ix < CNx; ++ix) {
@@ -284,6 +283,7 @@ void BlockGeometry3D<T>::InitIntpComm() {
     std::uint8_t blocklevel = block.getLevel();
     std::vector<InterpBlockComm<T, 3>> &Communicators = block.getInterpBlockComm();
     Communicators.clear();
+    std::size_t XY = block.getNx() * block.getNy();
     for (Block3D<T> *nblock : block.getNeighbors()) {
       // find block of blocklevel-1
       if (nblock->getLevel() == blocklevel - 1) {
@@ -309,9 +309,7 @@ void BlockGeometry3D<T>::InitIntpComm() {
         int startFy = static_cast<int>(std::round(startF[1] / Fvoxsize));
         int startFz = static_cast<int>(std::round(startF[2] / Fvoxsize));
 
-        std::size_t XY = block.getNx() * block.getNy();
         std::size_t nXY = nblock->getNx() * nblock->getNy();
-
         for (int iz = 0; iz < CNz; ++iz) {
           for (int iy = 0; iy < CNy; ++iy) {
             for (int ix = 0; ix < CNx; ++ix) {
@@ -505,10 +503,9 @@ void BlockGeometry3D<T>::InitMPIAverComm(BlockGeometryHelper3D<T> &GeoHelper) {
     BasicBlock<T, 3> baseblock_ext1 = baseblock.getExtBlock(1);
     std::vector<std::pair<int, int>> &nbrs =
       GeoHelper.getMPIBlockNbrs(block.getBlockId());
+    std::size_t XY = block.getNx() * block.getNy();
     for (const std::pair<int, int> &nbr : nbrs) {
       const BasicBlock<T, 3> &nbaseblock = GeoHelper.getAllBasicBlock(nbr.second);
-      std::size_t XY = block.getNx() + block.getNy();
-
       if (nbaseblock.getLevel() == blocklevel - 1) {
         BasicBlock<T, 3> nbaseblock_ext1 = nbaseblock.getExtBlock(1);
         // init sender
@@ -599,10 +596,9 @@ void BlockGeometry3D<T>::InitMPIIntpComm(BlockGeometryHelper3D<T> &GeoHelper) {
     BasicBlock<T, 3> baseblock_ext2 = baseblock.getExtBlock(2);
     std::vector<std::pair<int, int>> &nbrs =
       GeoHelper.getMPIBlockNbrs(block.getBlockId());
+    std::size_t XY = block.getNx() * block.getNy();
     for (const std::pair<int, int> &nbr : nbrs) {
       const BasicBlock<T, 3> &nbaseblock = GeoHelper.getAllBasicBlock(nbr.second);
-      std::size_t XY = block.getNx() + block.getNy();
-
       if (nbaseblock.getLevel() == blocklevel + 1) {
         BasicBlock<T, 3> nbaseblock_ext2 = nbaseblock.getExtBlock(2);
         // init sender
@@ -630,15 +626,14 @@ void BlockGeometry3D<T>::InitMPIIntpComm(BlockGeometryHelper3D<T> &GeoHelper) {
             for (int ix = 0; ix < CNx; ++ix) {
               // original
               std::size_t Cid0 =
-                (iz + startCz) * nXY + (iy + startCy) * nblock->getNx() + ix + startCx;
+                (iz + startCz) * XY + (iy + startCy) * block.getNx() + ix + startCx;
               std::size_t Cid1 = Cid0 + 1;
-              std::size_t Cid2 = Cid0 + nblock->getNx();
+              std::size_t Cid2 = Cid0 + block.getNx();
               std::size_t Cid3 = Cid2 + 1;
-              std::size_t Cid4 = Cid0 + nXY;
+              std::size_t Cid4 = Cid0 + XY;
               std::size_t Cid5 = Cid4 + 1;
-              std::size_t Cid6 = Cid4 + nblock->getNx();
+              std::size_t Cid6 = Cid4 + block.getNx();
               std::size_t Cid7 = Cid6 + 1;
-              std::size_t Fid = (iy * 2 + startFy) * block.getNx() + ix * 2 + startFx;
 
               // shift 1 voxel along +x direction
               std::size_t Cid0_x = Cid0 + 1;
@@ -649,29 +644,26 @@ void BlockGeometry3D<T>::InitMPIIntpComm(BlockGeometryHelper3D<T> &GeoHelper) {
               std::size_t Cid5_x = Cid5 + 1;
               std::size_t Cid6_x = Cid6 + 1;
               std::size_t Cid7_x = Cid7 + 1;
-              std::size_t Fid_x = Fid + 1;
 
               // shift 1 voxel along +y direction
-              std::size_t Cid0_y = Cid0 + nblock->getNx();
-              std::size_t Cid1_y = Cid1 + nblock->getNx();
-              std::size_t Cid2_y = Cid2 + nblock->getNx();
-              std::size_t Cid3_y = Cid3 + nblock->getNx();
-              std::size_t Cid4_y = Cid4 + nblock->getNx();
-              std::size_t Cid5_y = Cid5 + nblock->getNx();
-              std::size_t Cid6_y = Cid6 + nblock->getNx();
-              std::size_t Cid7_y = Cid7 + nblock->getNx();
-              std::size_t Fid_y = Fid + block.getNx();
+              std::size_t Cid0_y = Cid0 + block.getNx();
+              std::size_t Cid1_y = Cid1 + block.getNx();
+              std::size_t Cid2_y = Cid2 + block.getNx();
+              std::size_t Cid3_y = Cid3 + block.getNx();
+              std::size_t Cid4_y = Cid4 + block.getNx();
+              std::size_t Cid5_y = Cid5 + block.getNx();
+              std::size_t Cid6_y = Cid6 + block.getNx();
+              std::size_t Cid7_y = Cid7 + block.getNx();
 
               // shift 1 voxel along +z direction
-              std::size_t Cid0_z = Cid0 + nXY;
-              std::size_t Cid1_z = Cid1 + nXY;
-              std::size_t Cid2_z = Cid2 + nXY;
-              std::size_t Cid3_z = Cid3 + nXY;
-              std::size_t Cid4_z = Cid4 + nXY;
-              std::size_t Cid5_z = Cid5 + nXY;
-              std::size_t Cid6_z = Cid6 + nXY;
-              std::size_t Cid7_z = Cid7 + nXY;
-              std::size_t Fid_z = Fid + XY;
+              std::size_t Cid0_z = Cid0 + XY;
+              std::size_t Cid1_z = Cid1 + XY;
+              std::size_t Cid2_z = Cid2 + XY;
+              std::size_t Cid3_z = Cid3 + XY;
+              std::size_t Cid4_z = Cid4 + XY;
+              std::size_t Cid5_z = Cid5 + XY;
+              std::size_t Cid6_z = Cid6 + XY;
+              std::size_t Cid7_z = Cid7 + XY;
 
               // 0
               sender.SendCells.emplace_back(
@@ -694,7 +686,6 @@ void BlockGeometry3D<T>::InitMPIIntpComm(BlockGeometryHelper3D<T> &GeoHelper) {
               std::size_t Cid5_xy = Cid5_y + 1;
               std::size_t Cid6_xy = Cid6_y + 1;
               std::size_t Cid7_xy = Cid7_y + 1;
-              std::size_t Fid_xy = Fid_y + 1;
 
               sender.SendCells.emplace_back(InterpSource<3>{
                 Cid0_xy, Cid1_xy, Cid2_xy, Cid3_xy, Cid4_xy, Cid5_xy, Cid6_xy, Cid7_xy});
@@ -712,21 +703,19 @@ void BlockGeometry3D<T>::InitMPIIntpComm(BlockGeometryHelper3D<T> &GeoHelper) {
               std::size_t Cid5_xz = Cid5_z + 1;
               std::size_t Cid6_xz = Cid6_z + 1;
               std::size_t Cid7_xz = Cid7_z + 1;
-              std::size_t Fid_xz = Fid_z + XY;
 
               sender.SendCells.emplace_back(InterpSource<3>{
                 Cid0_xz, Cid1_xz, Cid2_xz, Cid3_xz, Cid4_xz, Cid5_xz, Cid6_xz, Cid7_xz});
 
               // 6
-              std::size_t Cid0_yz = Cid0_z + nblock->getNx();
-              std::size_t Cid1_yz = Cid1_z + nblock->getNx();
-              std::size_t Cid2_yz = Cid2_z + nblock->getNx();
-              std::size_t Cid3_yz = Cid3_z + nblock->getNx();
-              std::size_t Cid4_yz = Cid4_z + nblock->getNx();
-              std::size_t Cid5_yz = Cid5_z + nblock->getNx();
-              std::size_t Cid6_yz = Cid6_z + nblock->getNx();
-              std::size_t Cid7_yz = Cid7_z + nblock->getNx();
-              std::size_t Fid_yz = Fid_z + XY;
+              std::size_t Cid0_yz = Cid0_z + block.getNx();
+              std::size_t Cid1_yz = Cid1_z + block.getNx();
+              std::size_t Cid2_yz = Cid2_z + block.getNx();
+              std::size_t Cid3_yz = Cid3_z + block.getNx();
+              std::size_t Cid4_yz = Cid4_z + block.getNx();
+              std::size_t Cid5_yz = Cid5_z + block.getNx();
+              std::size_t Cid6_yz = Cid6_z + block.getNx();
+              std::size_t Cid7_yz = Cid7_z + block.getNx();
 
               sender.SendCells.emplace_back(InterpSource<3>{
                 Cid0_yz, Cid1_yz, Cid2_yz, Cid3_yz, Cid4_yz, Cid5_yz, Cid6_yz, Cid7_yz});
@@ -740,7 +729,6 @@ void BlockGeometry3D<T>::InitMPIIntpComm(BlockGeometryHelper3D<T> &GeoHelper) {
               std::size_t Cid5_xyz = Cid5_yz + 1;
               std::size_t Cid6_xyz = Cid6_yz + 1;
               std::size_t Cid7_xyz = Cid7_yz + 1;
-              std::size_t Fid_xyz = Fid_yz + 1;
 
               sender.SendCells.emplace_back(InterpSource<3>{Cid0_xyz, Cid1_xyz, Cid2_xyz,
                                                             Cid3_xyz, Cid4_xyz, Cid5_xyz,
@@ -771,7 +759,8 @@ void BlockGeometry3D<T>::InitMPIIntpComm(BlockGeometryHelper3D<T> &GeoHelper) {
         for (int iz = 0; iz < CNz; ++iz) {
           for (int iy = 0; iy < CNy; ++iy) {
             for (int ix = 0; ix < CNx; ++ix) {
-              std::size_t Fid0 = (iy * 2 + startFy) * block.getNx() + ix * 2 + startFx;
+              std::size_t Fid0 = (iz * 2 + startFz) * XY +
+                                 (iy * 2 + startFy) * block.getNx() + ix * 2 + startFx;
               std::size_t Fid1 = Fid0 + 1;
               std::size_t Fid2 = Fid0 + block.getNx();
               std::size_t Fid3 = Fid2 + 1;

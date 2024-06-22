@@ -23,8 +23,8 @@
 #pragma once
 
 #include "data_struct/cell.h"
-#include "geometry/block_geometry2d.h"
-#include "geometry/block_geometry3d.h"
+#include "geometry/geometry2d.h"
+#include "geometry/geometry3d.h"
 #include "lbm/unit_converter.h"
 #include "lbm/collision.h"
 #include "lbm/moment.h"

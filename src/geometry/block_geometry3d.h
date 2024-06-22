@@ -23,6 +23,8 @@
 #pragma once
 
 #include "geometry/basic_geometry.h"
+#include "parallel/communicator.h"
+#include "io/stlreader.h"
 
 template <typename T>
 class Block3D : public BasicBlock<T, 3> {

@@ -23,7 +23,6 @@
 #include <stdexcept>
 
 #include <omp.h>
-#include <stdio.h>
 #include <stdlib.h>
 // #define Thread_Num 16
 // // if define Thread_Nums in makefile

@@ -28,8 +28,6 @@
 #include <array>
 #include <iostream>
 #include <limits>
-#include <type_traits>
-#include <utility>
 #include <vector>
 
 #include "data_struct/Vector.h"

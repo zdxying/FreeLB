@@ -23,7 +23,6 @@
 #pragma once
 
 #include "data_struct/lattice.h"
-#include "lattice.h"
 
 template <typename T, typename LatSet>
 PopLattice<T, LatSet>::PopLattice(Geometry<T, LatSet::d>& geo, AbstractConverter<T>& conv,

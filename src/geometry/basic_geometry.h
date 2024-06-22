@@ -22,11 +22,16 @@
 
 #pragma once
 
+// used in isOverlapped() 
 #include <limits>
 
-#include "data_struct/field_struct.h"
-#include "data_struct/interpolation.h"
-#include "parallel/communicator.h"
+#include <vector>
+// uint8_t size_t
+#include <cstdint>
+// pow()
+#include <cmath>
+// std::max(), std::min()
+#include <algorithm>
 
 // axis-aligned bounding box (AABB) class
 // all the voxels in the computational domain are inside the AABB
@@ -287,63 +292,6 @@ class BasicBlock : public AABB<T, D> {
   // cellIdx will be cleared before adding new indices
   void getCellIdx(const AABB<T, D>& base, const AABB<T, D>& AABBs,
                   std::vector<std::size_t>& cellIdx) const;
-};
-
-// communication structure for block geometry
-template <typename T, unsigned int D>
-struct BlockComm {
-  std::vector<std::size_t> SendCells;  // index in sendblock
-  std::vector<std::size_t> RecvCells;  // index in recvblock
-  Block<T, D>* SendBlock;
-
-  BlockComm(Block<T, D>* block) : SendBlock(block) {}
-  int getSendId() const { return SendBlock->getBlockId(); }
-};
-
-// communication structure for blocks of different (refine) levels
-// heterogeneous communication/ interpolation
-template <typename T, unsigned int D>
-struct InterpBlockComm {
-  // index in sendblock
-  std::vector<InterpSource<D>> SendCells;
-  // interp weight
-  // std::vector<InterpWeight<T, D>> InterpWeights;
-  // index in recvblock
-  std::vector<std::size_t> RecvCells;
-  // receive data from sendblock
-  Block<T, D>* SendBlock;
-  // predefined interp weight
-  static constexpr std::array<InterpWeight<T, 2>, 4> InterpWeight2D{
-    {{T(0.0625), T(0.1875), T(0.1875), T(0.5625)},
-     {T(0.1875), T(0.0625), T(0.5625), T(0.1875)},
-     {T(0.1875), T(0.5625), T(0.0625), T(0.1875)},
-     {T(0.5625), T(0.1875), T(0.1875), T(0.0625)}}};
-  static constexpr std::array<InterpWeight<T, 3>, 8> InterpWeight3D{
-    {T{0.015625}, T{0.046875}, T{0.046875}, T{0.140625}, T{0.046875}, T{0.140625}, T{0.140625}, T{0.421875}},
-    {T{0.046875}, T{0.015625}, T{0.140625}, T{0.046875}, T{0.140625}, T{0.046875}, T{0.421875}, T{0.140625}},
-    {T{0.046875}, T{0.140625}, T{0.015625}, T{0.046875}, T{0.140625}, T{0.421875}, T{0.046875}, T{0.140625}},
-    {T{0.140625}, T{0.046875}, T{0.046875}, T{0.015625}, T{0.421875}, T{0.140625}, T{0.140625}, T{0.046875}},
-    {T{0.046875}, T{0.140625}, T{0.140625}, T{0.421875}, T{0.015625}, T{0.046875}, T{0.046875}, T{0.140625}},
-    {T{0.140625}, T{0.046875}, T{0.421875}, T{0.140625}, T{0.046875}, T{0.015625}, T{0.140625}, T{0.046875}},
-    {T{0.140625}, T{0.421875}, T{0.046875}, T{0.140625}, T{0.046875}, T{0.140625}, T{0.015625}, T{0.046875}},
-    {T{0.421875}, T{0.140625}, T{0.140625}, T{0.046875}, T{0.140625}, T{0.046875}, T{0.046875}, T{0.015625}}
-  };
-
-  static constexpr auto getIntpWeight() {
-    if constexpr (D == 2) {
-      return InterpWeight2D;
-    } else {
-      return InterpWeight3D;
-    }
-  }
-
-  InterpBlockComm(Block<T, D>* block) : SendBlock(block) {}
-
-  int getSendId() const { return SendBlock->getBlockId(); }
-  // return (D == 2) ? 4 : 8;
-  static constexpr int getSourceNum() { return (D == 2) ? 4 : 8; }
-  // return (D == 2) ? T(0.25) : T(0.125);
-  static constexpr T getUniformWeight() { return (D == 2) ? T(0.25) : T(0.125); }
 };
 
 

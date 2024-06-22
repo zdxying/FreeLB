@@ -23,9 +23,7 @@
 // quantitative simulation of solutal dendritic growth 2010
 #pragma once
 
-#include <algorithm>
 #include <atomic>
-#include <vector>
 
 #include "data_struct/field_struct.h"
 #include "ca/cazs.h"

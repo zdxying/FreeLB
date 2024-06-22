@@ -22,71 +22,12 @@
 
 #pragma once
 
-// #include <array>
-#include <algorithm>
 #include <cstddef>
-#include <vector>
 
 #include "data_struct/Vector.h"
 #include "utils/alias.h"
 #include "utils/util.h"
 
-
-template <typename Pack>
-class FieldCollection;
-
-template <typename... Fields>
-class FieldCollection<TypePack<Fields...>> {
- public:
-  FieldCollection() : fields(std::make_tuple(Fields()...)) {}
-  FieldCollection(std::size_t size) : fields(std::make_tuple(Fields(size)...)) {}
-  ~FieldCollection() = default;
-
-  template <typename FieldType>
-  FieldType& getField() {
-    return std::get<FieldType>(fields);
-  }
-  template <typename FieldType>
-  const FieldType& getField() const {
-    return std::get<FieldType>(fields);
-  }
-
- private:
-  std::tuple<Fields...> fields;
-};
-
-template <typename Pack>
-class FieldPtrCollection;
-
-template <typename... Fields>
-class FieldPtrCollection<TypePack<Fields...>> {
- public:
-  FieldPtrCollection(Fields&... fieldrefs) : fields(&fieldrefs...) {}
-  FieldPtrCollection(std::tuple<Fields*...> fieldrefs) : fields(fieldrefs) {}
-  void Init(Fields&... fieldrefs) { fields = std::make_tuple(&fieldrefs...); }
-
-  template <typename FieldType>
-  FieldType& getField() {
-    return *(std::get<FieldType*>(fields));
-  }
-  template <typename FieldType>
-  const FieldType& getField() const {
-    return *(std::get<FieldType*>(fields));
-  }
-
-  // assign a field pointer to the ith position
-  // template <typename FieldType, unsigned int i>
-  // void addField(FieldType& field) {
-  //   std::get<i>(fields) = &field;
-  // }
-  template <typename FieldType>
-  void addField(FieldType& field) {
-    std::get<FieldType*>(fields) = &field;
-  }
-
- private:
-  std::tuple<Fields*...> fields;
-};
 
 template <typename T, typename Base>
 class Data {

@@ -20,7 +20,6 @@
 
 // basic_geometry.hh
 
-#include "basic_geometry.h"
 #include "geometry/basic_geometry.h"
 
 template <typename T, unsigned int D>
