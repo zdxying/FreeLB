@@ -18,10 +18,10 @@
  *
  */
 
-// cavblock2d.cpp
+// cavblock3d.cpp
 
-// Lid-driven cavity flow 2d
-// this is a benchmark for the freeLB library
+// Lid-driven cavity flow 3d
+// this is a benchmark for the freeLB
 
 // the top wall is set with a constant velocity,
 // while the other walls are set with a no-slip boundary condition
@@ -36,28 +36,28 @@
 
 // int Total_Macro_Step = 0;
 using T = FLOAT;
-using LatSet = D2Q9<T>;
+using LatSet = D3Q19<T>;
 
 /*----------------------------------------------
                 Simulation Parameters
 -----------------------------------------------*/
 int Ni;
 int Nj;
+int Nk;
 T Cell_Len;
 T RT;
 int Thread_Num;
 
 // physical properties
 T rho_ref;    // g/mm^3
-T Dyna_Visc;  // Pa·s Dynamic viscosity of the liquid
 T Kine_Visc;  // mm^2/s kinematic viscosity of the liquid
 T Ra;         // Rayleigh number
 // init conditions
-Vector<T, 2> U_Ini;  // mm/s
+Vector<T, 3> U_Ini;  // mm/s
 T U_Max;
 
 // bcs
-Vector<T, 2> U_Wall;  // mm/s
+Vector<T, 3> U_Wall;  // mm/s
 
 // Simulation settings
 int MaxStep;
@@ -66,26 +66,27 @@ T tol;
 std::string work_dir;
 
 void readParam() {
-  iniReader param_reader("cavityblock2d.ini");
-  // mesh
+  iniReader param_reader("cavityblock3d.ini");
   work_dir = param_reader.getValue<std::string>("workdir", "workdir_");
   // parallel
   Thread_Num = param_reader.getValue<int>("parallel", "thread_num");
-
+  // mesh
   Ni = param_reader.getValue<int>("Mesh", "Ni");
   Nj = param_reader.getValue<int>("Mesh", "Nj");
+  Nk = param_reader.getValue<int>("Mesh", "Nk");
   Cell_Len = param_reader.getValue<T>("Mesh", "Cell_Len");
   // physical properties
   rho_ref = param_reader.getValue<T>("Physical_Property", "rho_ref");
-  Dyna_Visc = param_reader.getValue<T>("Physical_Property", "Dyna_Visc");
   Kine_Visc = param_reader.getValue<T>("Physical_Property", "Kine_Visc");
   // init conditions
   U_Ini[0] = param_reader.getValue<T>("Init_Conditions", "U_Ini0");
   U_Ini[1] = param_reader.getValue<T>("Init_Conditions", "U_Ini1");
+  U_Ini[2] = param_reader.getValue<T>("Init_Conditions", "U_Ini2");
   U_Max = param_reader.getValue<T>("Init_Conditions", "U_Max");
   // bcs
   U_Wall[0] = param_reader.getValue<T>("Boundary_Conditions", "Velo_Wall0");
   U_Wall[1] = param_reader.getValue<T>("Boundary_Conditions", "Velo_Wall1");
+  U_Wall[2] = param_reader.getValue<T>("Boundary_Conditions", "Velo_Wall2");
   // LB
   RT = param_reader.getValue<T>("LB", "RT");
   // Simulation settings
@@ -121,14 +122,15 @@ int main() {
   ConvManager.Check_and_Print();
 
   // ------------------ define geometry ------------------
-  AABB<T, 2> cavity(Vector<T, 2>(T(0), T(0)),
-                    Vector<T, 2>(T(Ni * Cell_Len), T(Nj * Cell_Len)));
-  AABB<T, 2> toplid(Vector<T, 2>(Cell_Len, T((Nj - 1) * Cell_Len)),
-                    Vector<T, 2>(T((Ni - 1) * Cell_Len), T(Nj * Cell_Len)));
-  BlockGeometry2D<T> Geo(Ni, Nj, Thread_Num, cavity, Cell_Len);
+  AABB<T, 3> cavity(Vector<T, 3>{},
+                    Vector<T, 3>(T(Ni * Cell_Len), T(Nj * Cell_Len), T(Nk * Cell_Len)));
+  AABB<T, 3> toplid(
+    Vector<T, 3>(Cell_Len, Cell_Len, T((Nk - 1) * Cell_Len)),
+    Vector<T, 3>(T((Ni - 1) * Cell_Len), T((Nj - 1) * Cell_Len), T(Nk * Cell_Len)));
+  BlockGeometry3D<T> Geo(Ni, Nj, Nk, Thread_Num, cavity, Cell_Len);
 
   // ------------------ define flag field ------------------
-  BlockFieldManager<FLAG, T, 2> FlagFM(Geo, VoidFlag);
+  BlockFieldManager<FLAG, T, 3> FlagFM(Geo, VoidFlag);
   FlagFM.forEach(cavity,
                  [&](FLAG& field, std::size_t id) { field.SetField(id, AABBFlag); });
   FlagFM.template SetupBoundary<LatSet>(cavity, BouncebackFlag);
@@ -137,7 +139,7 @@ int main() {
   });
 
   vtmwriter::ScalarWriter FlagWriter("flag", FlagFM);
-  vtmwriter::vtmWriter<T, 2> GeoWriter("GeoFlag", Geo);
+  vtmwriter::vtmWriter<T, 3> GeoWriter("GeoFlag", Geo);
   GeoWriter.addWriterSet(FlagWriter);
   GeoWriter.WriteBinary();
 
@@ -147,21 +149,21 @@ int main() {
   // using FIELDSPACK = TypePack<FIELDS, FIELDREFS>;
   // using CELL = Cell<T, LatSet, ExtractFieldPack<FIELDSPACK>::mergedpack>;
   using CELL = Cell<T, LatSet, FIELDS>;
-  ValuePack InitValues(BaseConv.getLatRhoInit(), Vector<T, 2>{}, T{});
+  ValuePack InitValues(BaseConv.getLatRhoInit(), Vector<T, 3>{}, T{});
   // lattice
   BlockLatticeManager<T, LatSet, FIELDS> NSLattice(Geo, InitValues, BaseConv);
   NSLattice.EnableToleranceU();
   T res = 1;
   // set initial value of field
-  Vector<T, 2> LatU_Wall = BaseConv.getLatticeU(U_Wall);
+  Vector<T, 3> LatU_Wall = BaseConv.getLatticeU(U_Wall);
   NSLattice.getField<VELOCITY<T, LatSet::d>>().forEach(
     toplid, FlagFM, BBMovingWallFlag,
     [&](auto& field, std::size_t id) { field.SetField(id, LatU_Wall); });
 
   // bcs
-  BBLikeFixedBlockBdManager<bounceback::normal<CELL>, BlockLatticeManager<T, LatSet, FIELDS>, BlockFieldManager<FLAG, T, 2>>
+  BBLikeFixedBlockBdManager<bounceback::normal<CELL>, BlockLatticeManager<T, LatSet, FIELDS>, BlockFieldManager<FLAG, T, 3>>
     NS_BB("NS_BB", NSLattice, FlagFM, BouncebackFlag, VoidFlag);
-  BBLikeFixedBlockBdManager<bounceback::movingwall<CELL>, BlockLatticeManager<T, LatSet, FIELDS>, BlockFieldManager<FLAG, T, 2>>
+  BBLikeFixedBlockBdManager<bounceback::movingwall<CELL>, BlockLatticeManager<T, LatSet, FIELDS>, BlockFieldManager<FLAG, T, 3>>
     NS_BBMW("NS_BBMW", NSLattice, FlagFM, BBMovingWallFlag, VoidFlag);
   BlockBoundaryManager BM(&NS_BB, &NS_BBMW);
 
@@ -186,7 +188,7 @@ int main() {
 
   // writers
   vtmwriter::ScalarWriter RhoWriter("Rho", NSLattice.getField<RHO<T>>());
-  vtmwriter::VectorWriter VecWriter("Velocity", NSLattice.getField<VELOCITY<T, 2>>());
+  vtmwriter::VectorWriter VecWriter("Velocity", NSLattice.getField<VELOCITY<T, 3>>());
   vtmwriter::vtmWriter<T, LatSet::d> NSWriter("cavblock2d", Geo);
   NSWriter.addWriterSet(RhoWriter, VecWriter);
 

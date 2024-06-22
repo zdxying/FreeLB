@@ -197,41 +197,43 @@ class BlockField : public FieldType {
       for (int iArr = 0; iArr < FieldType::Size(); ++iArr) {
         const auto& nArray = nblockF->getField(iArr);
         auto& Array = FieldType::getField(iArr);
-        if constexpr (Dim == 2) {
-          for (std::size_t id = 0; id < size; id += 4) {
-            {
-              const InterpSource<Dim>& sends = comm.getSend(id);
-              auto value = nArray[sends[0]] * comm.Comm->getIntpWeight()[0][0] +
-                           nArray[sends[1]] * comm.Comm->getIntpWeight()[0][1] +
-                           nArray[sends[2]] * comm.Comm->getIntpWeight()[0][2] +
-                           nArray[sends[3]] * comm.Comm->getIntpWeight()[0][3];
-              Array.set(comm.getRecv(id), value);
-            }
-            {
-              const InterpSource<Dim>& sends = comm.getSend(id + 1);
-              auto value = nArray[sends[0]] * comm.Comm->getIntpWeight()[1][0] +
-                           nArray[sends[1]] * comm.Comm->getIntpWeight()[1][1] +
-                           nArray[sends[2]] * comm.Comm->getIntpWeight()[1][2] +
-                           nArray[sends[3]] * comm.Comm->getIntpWeight()[1][3];
-              Array.set(comm.getRecv(id + 1), value);
-            }
-            {
-              const InterpSource<Dim>& sends = comm.getSend(id + 2);
-              auto value = nArray[sends[0]] * comm.Comm->getIntpWeight()[2][0] +
-                           nArray[sends[1]] * comm.Comm->getIntpWeight()[2][1] +
-                           nArray[sends[2]] * comm.Comm->getIntpWeight()[2][2] +
-                           nArray[sends[3]] * comm.Comm->getIntpWeight()[2][3];
-              Array.set(comm.getRecv(id + 2), value);
-            }
-            {
-              const InterpSource<Dim>& sends = comm.getSend(id + 3);
-              auto value = nArray[sends[0]] * comm.Comm->getIntpWeight()[3][0] +
-                           nArray[sends[1]] * comm.Comm->getIntpWeight()[3][1] +
-                           nArray[sends[2]] * comm.Comm->getIntpWeight()[3][2] +
-                           nArray[sends[3]] * comm.Comm->getIntpWeight()[3][3];
-              Array.set(comm.getRecv(id + 3), value);
-            }
-          }
+        const auto& sends = comm.getSends();
+        const auto& recvs = comm.getRecvs();
+        std::size_t idx = 0;
+        for (std::size_t id = 0; id < size;) {
+          Interpolation<FloatType, Dim>(Array, nArray, sends, recvs, id, idx);
+            // {
+            //   const InterpSource<Dim>& sends = comm.getSend(id);
+            //   auto value = nArray[sends[0]] * comm.Comm->getIntpWeight()[0][0] +
+            //                nArray[sends[1]] * comm.Comm->getIntpWeight()[0][1] +
+            //                nArray[sends[2]] * comm.Comm->getIntpWeight()[0][2] +
+            //                nArray[sends[3]] * comm.Comm->getIntpWeight()[0][3];
+            //   Array.set(comm.getRecv(id), value);
+            // }
+            // {
+            //   const InterpSource<Dim>& sends = comm.getSend(id + 1);
+            //   auto value = nArray[sends[0]] * comm.Comm->getIntpWeight()[1][0] +
+            //                nArray[sends[1]] * comm.Comm->getIntpWeight()[1][1] +
+            //                nArray[sends[2]] * comm.Comm->getIntpWeight()[1][2] +
+            //                nArray[sends[3]] * comm.Comm->getIntpWeight()[1][3];
+            //   Array.set(comm.getRecv(id + 1), value);
+            // }
+            // {
+            //   const InterpSource<Dim>& sends = comm.getSend(id + 2);
+            //   auto value = nArray[sends[0]] * comm.Comm->getIntpWeight()[2][0] +
+            //                nArray[sends[1]] * comm.Comm->getIntpWeight()[2][1] +
+            //                nArray[sends[2]] * comm.Comm->getIntpWeight()[2][2] +
+            //                nArray[sends[3]] * comm.Comm->getIntpWeight()[2][3];
+            //   Array.set(comm.getRecv(id + 2), value);
+            // }
+            // {
+            //   const InterpSource<Dim>& sends = comm.getSend(id + 3);
+            //   auto value = nArray[sends[0]] * comm.Comm->getIntpWeight()[3][0] +
+            //                nArray[sends[1]] * comm.Comm->getIntpWeight()[3][1] +
+            //                nArray[sends[2]] * comm.Comm->getIntpWeight()[3][2] +
+            //                nArray[sends[3]] * comm.Comm->getIntpWeight()[3][3];
+            //   Array.set(comm.getRecv(id + 3), value);
+            // }
         }
       }
     }
@@ -367,7 +369,7 @@ class BlockField : public FieldType {
       for (unsigned int iArr = 0; iArr < array_dim; ++iArr) {
         const auto& Array = FieldType::getField(iArr);
         for (std::size_t i = 0; i < size;) {
-          getInterpolation<FloatType, Dim>(Array, sendcells, i, buffer, bufidx);
+          Interpolation<FloatType, Dim>(Array, sendcells, i, buffer, bufidx);
         }
       }
     }
@@ -685,7 +687,7 @@ class BlockFieldManager {
   }
 
   template <typename LatSet>
-  void SetupBoundary(const AABB<FloatType, 2>& block, datatype bdvalue) {
+  void SetupBoundary(const AABB<FloatType, Dim>& block, datatype bdvalue) {
     int iblock = 0;
     for (Block<FloatType, Dim>& blockgeo : _BlockGeo.getBlocks()) {
       auto& field = _Fields[iblock];

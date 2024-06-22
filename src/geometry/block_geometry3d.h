@@ -22,7 +22,7 @@
 
 #pragma once
 
-#include "geometry/geometry3d.h"
+#include "geometry/basic_geometry.h"
 
 template <typename T>
 class Block3D : public BasicBlock<T, 3> {
@@ -97,25 +97,6 @@ class Block3D : public BasicBlock<T, 3> {
   const MPIInterpBlockComm<T, 3>& getMPIAverBlockComm() const { return MPIAverComm; }
 
 #endif
-
-  int findIndex(const Vector<T, 3>& loc) const {
-    int x = int((loc[0] - this->_min[0]) / _voxelSize);
-    int y = int((loc[1] - this->_min[1]) / _voxelSize);
-    int z = int((loc[2] - this->_min[2]) / _voxelSize);
-    return x + y * Projection[1] + z * Projection[2];
-  }
-  int findCellId(const Vector<T, 3>& pos) const {
-    int i = int((pos[0] - this->_min[0]) / _voxelSize);
-    int j = int((pos[1] - this->_min[1]) / _voxelSize);
-    int k = int((pos[2] - this->_min[2]) / _voxelSize);
-    i = i < 0 ? 0 : i;
-    j = j < 0 ? 0 : j;
-    k = k < 0 ? 0 : k;
-    i = i > _Nx - 1 ? _Nx - 1 : i;
-    j = j > _Ny - 1 ? _Ny - 1 : j;
-    k = k > _Nz - 1 ? _Nz - 1 : k;
-    return i + j * Projection[1] + k * Projection[2];
-  }
 };
 
 template <typename T>
@@ -125,6 +106,7 @@ class BlockGeometry3D : public BasicBlock<T, 3> {
   BasicBlock<T, 3> _BaseBlock;
   // TODO: _BlockAABBs may be removed
   std::vector<AABB<int, 3>> _BlockAABBs;
+  std::vector<BasicBlock<T, 3>> _BasicBlocks;
   std::vector<Block3D<T>> _Blocks;
 
   // ext(overlap) of the whole domain
@@ -149,6 +131,8 @@ class BlockGeometry3D : public BasicBlock<T, 3> {
   std::vector<Block3D<T>>& getBlocks() { return _Blocks; }
   const std::vector<Block3D<T>>& getBlocks() const { return _Blocks; }
 
+  const std::vector<BasicBlock<T, 3>>& getBasicBlocks() const { return _BasicBlocks; }
+
   Block3D<T>& getBlock(int id) { return _Blocks[id]; }
   const Block3D<T>& getBlock(int id) const { return _Blocks[id]; }
 
@@ -162,7 +146,7 @@ class BlockGeometry3D : public BasicBlock<T, 3> {
 
   // first divide blockgeometry into blocks, stored in _BlockAABBs
   void DivideBlocks(int blocknum);
-  void CreateBlocks();
+  void CreateBlocks(int blocknum);
   void SetupNbrs();
 
   // --- communication ---
@@ -359,9 +343,6 @@ class BlockGeometryHelper3D : public BasicBlock<T, 3> {
   void Optimize(int ProcessNum, bool enforce = true);
   void Optimize(std::vector<BasicBlock<T, 3>>& Blocks, int ProcessNum,
                 bool enforce = true);
-  // calculate the Standard Deviation of the number of points in each block
-  T ComputeStdDev() const;
-  T ComputeStdDev(const std::vector<BasicBlock<T, 3>>& Blocks) const;
 
   void LoadBalancing(int ProcessNum = mpi().getSize());
 

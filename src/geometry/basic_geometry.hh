@@ -146,6 +146,7 @@ std::size_t AABB<T, D>::getLocIdx(const Vector<int, D>& pt, const Vector<int, D>
 
 template <typename T, unsigned int D>
 void AABB<T, D>::divide(int Nx, int Ny, std::vector<AABB<int, 2>>& subAABBs) const {
+  static_assert(D == 2, "Only 2D AABB can be divided into Nx * Ny parts.");
   if (Nx == 0 || Ny == 0){
     return;
   }
@@ -190,6 +191,7 @@ void AABB<T, D>::divide(int Nx, int Ny, std::vector<AABB<int, 2>>& subAABBs) con
 
 template <typename T, unsigned int D>
 void AABB<T, D>::divide(int Nx, int Ny, int Nz, std::vector<AABB<int, 3>>& subAABBs) const {
+  static_assert(D == 3, "Only 3D AABB can be divided into Nx * Ny * Nz parts.");
   if (Nx == 0 || Ny == 0 || Nz == 0){
     return;
   }
@@ -243,7 +245,6 @@ void AABB<T, D>::divide(int Nx, int Ny, int Nz, std::vector<AABB<int, 3>>& subAA
     miny_child = _min[1];
     minz_child += Nz_child;
   }
-
 }
 
 // ---------------------basicblock----------------------

@@ -77,8 +77,7 @@ BlockGeometry2D<T>::BlockGeometry2D(int Nx, int Ny, int blocknum, const AABB<T, 
       _BaseBlock(voxelSize, block,
                  AABB<int, 2>(Vector<int, 2>{1}, Vector<int, 2>{Nx, Ny})),
       _overlap(overlap), _MaxLevel(std::uint8_t(0)) {
-  DivideBlocks(blocknum);
-  CreateBlocks();
+  CreateBlocks(blocknum);
   SetupNbrs();
   InitComm();
 #ifndef MPI_ENABLED
@@ -150,9 +149,13 @@ void BlockGeometry2D<T>::DivideBlocks(int blocknum) {
 }
 
 template <typename T>
-void BlockGeometry2D<T>::CreateBlocks() {
+void BlockGeometry2D<T>::CreateBlocks(int blocknum) {
+  DivideBlocks(blocknum);
+
   _Blocks.clear();
   _Blocks.reserve(_BlockAABBs.size());
+  _BasicBlocks.clear();
+  _BasicBlocks.reserve(_BlockAABBs.size());
   // create blocks
   int blockid = 0;
   for (const AABB<int, 2> &blockaabb : _BlockAABBs) {
@@ -163,6 +166,7 @@ void BlockGeometry2D<T>::CreateBlocks() {
       BasicBlock<T, 2>::_min;
     AABB<T, 2> aabb(MIN, MAX);
     _Blocks.emplace_back(aabb, blockaabb, blockid, _BaseBlock.getVoxelSize(), _overlap);
+    _BasicBlocks.emplace_back(_BaseBlock.getVoxelSize(), aabb, blockaabb, blockid);
     blockid++;
   }
 }
@@ -831,27 +835,6 @@ void BlockGeometryHelper2D<T>::Optimize(std::vector<BasicBlock<T, 2>> &Blocks,
   for (int i = 0; i < Blocks.size(); ++i) {
     Blocks[i].setBlockId(i);
   }
-}
-
-template <typename T>
-T BlockGeometryHelper2D<T>::ComputeStdDev() const {
-  return ComputeStdDev(getAllBasicBlocks());
-}
-
-template <typename T>
-T BlockGeometryHelper2D<T>::ComputeStdDev(
-  const std::vector<BasicBlock<T, 2>> &Blocks) const {
-  T mean = 0;
-  for (const BasicBlock<T, 2> &block : Blocks) {
-    mean += block.getN();
-  }
-  mean /= Blocks.size();
-  T stdDev = 0;
-  for (const BasicBlock<T, 2> &block : Blocks) {
-    stdDev += std::pow((static_cast<T>(block.getN()) / mean - T(1)), 2);
-  }
-  stdDev = std::sqrt(stdDev / Blocks.size());
-  return stdDev;
 }
 
 template <typename T>

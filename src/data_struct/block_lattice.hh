@@ -713,11 +713,11 @@ void BlockLatticeManager<T, LatSet, TypePack>::MPIInterpComm(std::int64_t count)
           const std::size_t size = sendcells.size();
           std::size_t bufidx = 0;
           for (std::size_t i = 0; i < size;) {
-            getInterpolation<T, LatSet::d>(RhoArray, sendcells, i, rhobuffer, bufidx);
+            Interpolation<T, LatSet::d>(RhoArray, sendcells, i, rhobuffer, bufidx);
           }
           bufidx = 0;
           for (std::size_t i = 0; i < size;) {
-            getInterpolation<T, LatSet::d>(UArray, sendcells, i, ubuffer, bufidx);
+            Interpolation<T, LatSet::d>(UArray, sendcells, i, ubuffer, bufidx);
           }
           bufidx = 0;
           for (unsigned int iArr = 0; iArr < LatSet::q; ++iArr) {
@@ -725,7 +725,7 @@ void BlockLatticeManager<T, LatSet, TypePack>::MPIInterpComm(std::int64_t count)
               this->template getField<POP<T, LatSet::q>>().getBlockField(ifield).getField(
                 iArr);
             for (std::size_t i = 0; i < size;) {
-              getInterpolation<T, LatSet::d>(PopArray, sendcells, i, popbuffer, bufidx);
+              Interpolation<T, LatSet::d>(PopArray, sendcells, i, popbuffer, bufidx);
             }
           }
           // pop conversion

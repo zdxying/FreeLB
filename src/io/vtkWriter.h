@@ -28,6 +28,9 @@
 #include "data_struct/lattice.h"
 #include "io/basic_writer.h"
 
+#include "data_struct/quadtree.h"
+#include "data_struct/octree.h"
+
 // vtk format:
 // dataType is one of the types: bit, unsigned_char, char, unsigned_short,
 // short, unsigned_int, int, unsigned_long, long, float, or double

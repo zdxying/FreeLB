@@ -77,8 +77,7 @@ BlockGeometry3D<T>::BlockGeometry3D(int Nx, int Ny, int Nz, int blocknum,
       _BaseBlock(voxelSize, block,
                  AABB<int, 3>(Vector<int, 3>{1}, Vector<int, 3>{Nx, Ny, Nz})),
       _overlap(overlap), _MaxLevel(std::uint8_t(0)) {
-  DivideBlocks(blocknum);
-  CreateBlocks();
+  CreateBlocks(blocknum);
   SetupNbrs();
   InitComm();
 #ifndef MPI_ENABLED
@@ -150,9 +149,13 @@ void BlockGeometry3D<T>::DivideBlocks(int blocknum) {
 }
 
 template <typename T>
-void BlockGeometry3D<T>::CreateBlocks() {
+void BlockGeometry3D<T>::CreateBlocks(int blocknum) {
+  DivideBlocks(blocknum);
+
   _Blocks.clear();
   _Blocks.reserve(_BlockAABBs.size());
+  _BasicBlocks.clear();
+  _BasicBlocks.reserve(_BlockAABBs.size());
   // create blocks
   int blockid = 0;
   for (const AABB<int, 3> &blockaabb : _BlockAABBs) {
@@ -163,6 +166,7 @@ void BlockGeometry3D<T>::CreateBlocks() {
       BasicBlock<T, 3>::_min;
     AABB<T, 3> aabb(MIN, MAX);
     _Blocks.emplace_back(aabb, blockaabb, blockid, _BaseBlock.getVoxelSize(), _overlap);
+    _BasicBlocks.emplace_back(_BaseBlock.getVoxelSize(), aabb, blockaabb, blockid);
     blockid++;
   }
 }
@@ -966,8 +970,6 @@ void BlockGeometryHelper3D<T>::CreateBlocks() {
         }
       end_z_expansion:
 
-        int Nz = 1;
-        startid = id + Nz * XY;
         // create block
         Vector<int, 3> Ext = BlockLen * Vector<int, 3>{Nx, Ny, Nz};
         Vector<int, 3> min = _BlockCells[id].getIdxBlock().getMin();
@@ -1126,26 +1128,6 @@ void BlockGeometryHelper3D<T>::Optimize(std::vector<BasicBlock<T, 3>> &Blocks,
   }
 }
 
-template <typename T>
-T BlockGeometryHelper3D<T>::ComputeStdDev() const {
-  return ComputeStdDev(getAllBasicBlocks());
-}
-
-template <typename T>
-T BlockGeometryHelper3D<T>::ComputeStdDev(
-  const std::vector<BasicBlock<T, 3>> &Blocks) const {
-  T mean = 0;
-  for (const BasicBlock<T, 3> &block : Blocks) {
-    mean += block.getN();
-  }
-  mean /= Blocks.size();
-  T stdDev = 0;
-  for (const BasicBlock<T, 3> &block : Blocks) {
-    stdDev += std::pow((static_cast<T>(block.getN()) / mean - T(1)), 2);
-  }
-  stdDev = std::sqrt(stdDev / Blocks.size());
-  return stdDev;
-}
 
 template <typename T>
 void BlockGeometryHelper3D<T>::LoadBalancing(int ProcessNum) {

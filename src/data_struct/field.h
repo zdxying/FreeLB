@@ -766,12 +766,21 @@ typename ArrayType::value_type getInterpolation(const ArrayType& Arr,
            Arr[src[1]] * InterpBlockComm<FloatType, Dim>::getIntpWeight()[D][1] +
            Arr[src[2]] * InterpBlockComm<FloatType, Dim>::getIntpWeight()[D][2] +
            Arr[src[3]] * InterpBlockComm<FloatType, Dim>::getIntpWeight()[D][3];
+  } else if constexpr (Dim == 3) {
+    Intp = Arr[src[0]] * InterpBlockComm<FloatType, Dim>::getIntpWeight()[D][0] +
+           Arr[src[1]] * InterpBlockComm<FloatType, Dim>::getIntpWeight()[D][1] +
+           Arr[src[2]] * InterpBlockComm<FloatType, Dim>::getIntpWeight()[D][2] +
+           Arr[src[3]] * InterpBlockComm<FloatType, Dim>::getIntpWeight()[D][3] +
+           Arr[src[4]] * InterpBlockComm<FloatType, Dim>::getIntpWeight()[D][4] +
+           Arr[src[5]] * InterpBlockComm<FloatType, Dim>::getIntpWeight()[D][5] +
+           Arr[src[6]] * InterpBlockComm<FloatType, Dim>::getIntpWeight()[D][6] +
+           Arr[src[7]] * InterpBlockComm<FloatType, Dim>::getIntpWeight()[D][7];
   }
   return Intp;
 }
 
 template <typename FloatType, unsigned int Dim, typename ArrayType>
-void getInterpolation(const ArrayType& Arr, const std::vector<InterpSource<Dim>>& srcs,
+void Interpolation(const ArrayType& Arr, const std::vector<InterpSource<Dim>>& srcs,
                       std::size_t& srcidx,
                       std::vector<typename ArrayType::value_type>& Buffer,
                       std::size_t& Bufferidx) {
@@ -781,5 +790,35 @@ void getInterpolation(const ArrayType& Arr, const std::vector<InterpSource<Dim>>
     Buffer[Bufferidx++] = getInterpolation<2, FloatType, Dim>(Arr, srcs[srcidx++]);
     Buffer[Bufferidx++] = getInterpolation<3, FloatType, Dim>(Arr, srcs[srcidx++]);
   } else if constexpr (Dim == 3) {
+    Buffer[Bufferidx++] = getInterpolation<0, FloatType, Dim>(Arr, srcs[srcidx++]);
+    Buffer[Bufferidx++] = getInterpolation<1, FloatType, Dim>(Arr, srcs[srcidx++]);
+    Buffer[Bufferidx++] = getInterpolation<2, FloatType, Dim>(Arr, srcs[srcidx++]);
+    Buffer[Bufferidx++] = getInterpolation<3, FloatType, Dim>(Arr, srcs[srcidx++]);
+    Buffer[Bufferidx++] = getInterpolation<4, FloatType, Dim>(Arr, srcs[srcidx++]);
+    Buffer[Bufferidx++] = getInterpolation<5, FloatType, Dim>(Arr, srcs[srcidx++]);
+    Buffer[Bufferidx++] = getInterpolation<6, FloatType, Dim>(Arr, srcs[srcidx++]);
+    Buffer[Bufferidx++] = getInterpolation<7, FloatType, Dim>(Arr, srcs[srcidx++]);
+  }
+}
+
+template <typename FloatType, unsigned int Dim, typename ArrayType>
+void Interpolation(ArrayType& Arr, const ArrayType& nArr, 
+const std::vector<InterpSource<Dim>>& sends,
+const std::vector<std::size_t>& recvs,
+std::size_t& sendidx, std::size_t& recvidx) {
+  if constexpr (Dim == 2) {
+    Arr.set(recvs[recvidx++], getInterpolation<0, FloatType, Dim>(nArr, sends[sendidx++]));
+    Arr.set(recvs[recvidx++], getInterpolation<1, FloatType, Dim>(nArr, sends[sendidx++]));
+    Arr.set(recvs[recvidx++], getInterpolation<2, FloatType, Dim>(nArr, sends[sendidx++]));
+    Arr.set(recvs[recvidx++], getInterpolation<3, FloatType, Dim>(nArr, sends[sendidx++]));
+  } else if constexpr (Dim == 3) {
+    Arr.set(recvs[recvidx++], getInterpolation<0, FloatType, Dim>(nArr, sends[sendidx++]));
+    Arr.set(recvs[recvidx++], getInterpolation<1, FloatType, Dim>(nArr, sends[sendidx++]));
+    Arr.set(recvs[recvidx++], getInterpolation<2, FloatType, Dim>(nArr, sends[sendidx++]));
+    Arr.set(recvs[recvidx++], getInterpolation<3, FloatType, Dim>(nArr, sends[sendidx++]));
+    Arr.set(recvs[recvidx++], getInterpolation<4, FloatType, Dim>(nArr, sends[sendidx++]));
+    Arr.set(recvs[recvidx++], getInterpolation<5, FloatType, Dim>(nArr, sends[sendidx++]));
+    Arr.set(recvs[recvidx++], getInterpolation<6, FloatType, Dim>(nArr, sends[sendidx++]));
+    Arr.set(recvs[recvidx++], getInterpolation<7, FloatType, Dim>(nArr, sends[sendidx++]));
   }
 }

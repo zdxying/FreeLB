@@ -98,7 +98,7 @@ class AABB {
 
   // called on AABB<int, D>
   void divide(int Nx, int Ny, std::vector<AABB<int, 2>>& subAABBs) const;
-  void divide(int Nx, int Ny, int Nz, std::vector<AABB<int, 3>>& subAABBs) const ;
+  void divide(int Nx, int Ny, int Nz, std::vector<AABB<int, 3>>& subAABBs) const;
 };
 
 // get intersection of 2 AABBs without checking if is intersected
@@ -268,14 +268,14 @@ class BasicBlock : public AABB<T, D> {
   // lambda functions take LOCAL index: func(std::size_t idx)
   template <typename Func>
   void forEach(Func func);
-  
+
   template <typename Func>
   void forEach(const AABB<T, D>& AABBs, Func func);
 
   // lambda functions take LOCAL index, for cells with specific flag
   template <typename ArrayType, typename Func>
-  void forEach(const AABB<T, D>& AABBs, const ArrayType& flag,
-               std::uint8_t fromflag, Func func);
+  void forEach(const AABB<T, D>& AABBs, const ArrayType& flag, std::uint8_t fromflag,
+               Func func);
 
   template <typename ArrayType, typename Func>
   void forEach(const ArrayType& flag, std::uint8_t fromflag, Func func);
@@ -313,11 +313,11 @@ struct InterpBlockComm {
   // receive data from sendblock
   Block<T, D>* SendBlock;
   // predefined interp weight
-  static constexpr std::array<InterpWeight<T, 2>, 4> InterpWeight2D{{
-    {T(0.0625), T(0.1875), T(0.1875), T(0.5625)}, 
-    {T(0.1875), T(0.0625), T(0.5625), T(0.1875)}, 
-    {T(0.1875), T(0.5625), T(0.0625), T(0.1875)}, 
-    {T(0.5625), T(0.1875), T(0.1875), T(0.0625)}}};
+  static constexpr std::array<InterpWeight<T, 2>, 4> InterpWeight2D{
+    {{T(0.0625), T(0.1875), T(0.1875), T(0.5625)},
+     {T(0.1875), T(0.0625), T(0.5625), T(0.1875)},
+     {T(0.1875), T(0.5625), T(0.0625), T(0.1875)},
+     {T(0.5625), T(0.1875), T(0.1875), T(0.0625)}}};
   static constexpr std::array<InterpWeight<T, 3>, 8> InterpWeight3D{
     {T{0.015625}, T{0.046875}, T{0.046875}, T{0.140625}, T{0.046875}, T{0.140625}, T{0.140625}, T{0.421875}},
     {T{0.046875}, T{0.015625}, T{0.140625}, T{0.046875}, T{0.140625}, T{0.046875}, T{0.421875}, T{0.140625}},
@@ -395,21 +395,38 @@ static void DivideBlock2D(int NX, int NY, int blocknum, const AABB<int, 2>& idxA
   }
   int Xblocks = 0;
   int Yblocks = 0;
+  // bestratio in the range of (0, +inf)
   T bestRatio = T(NX) / T(NY);
-  T difRatio = std::fabs(bestRatio - 1) + 1;  // >= 1
+  // init difratio, >= 1, make sure in the first loop, dist_to_bestRatio <= difRatio
+  T difRatio = std::fabs(bestRatio - 1) + 1;
   for (int i = 1; i <= blocknum; i++) {
     int j = blocknum / i;
-    if (i * j <= blocknum) {
-      if (std::fabs(bestRatio - T(i) / T(j)) <= difRatio) {
-        difRatio = std::fabs(bestRatio - T(i) / T(j));
-        Xblocks = i;
-        Yblocks = j;
-      }
+    // find the Xblocks and Yblocks with the closest ratio to bestRatio
+    T dist_to_bestRatio = std::fabs(bestRatio - T(i) / T(j));
+    if (dist_to_bestRatio <= difRatio) {
+      difRatio = dist_to_bestRatio;
+      Xblocks = i;
+      Yblocks = j;
     }
   }
 
+  // exchange i and j and find the best ratio?
+  // for (int j = 1; j <= blocknum; j++) {
+  //   int i = blocknum / j;
+  //   T dist_to_bestRatio = std::fabs(bestRatio - T(i) / T(j));
+  //   if (dist_to_bestRatio <= difRatio) {
+  //     difRatio = dist_to_bestRatio;
+  //     Xblocks = i;
+  //     Yblocks = j;
+  //   }
+  // }
+  // end of exchange i and j and find the best ratio
+
   T ratio = T(Xblocks) / T(Yblocks);
   int rest = blocknum - Xblocks * Yblocks;
+  // xy + rest = blocknum
+  // = x(y - rest) + (x + 1)rest
+  // = y(x - rest) + (y + 1)rest
 
   // create aabbs
   if (rest == 0) {
@@ -417,10 +434,13 @@ static void DivideBlock2D(int NX, int NY, int blocknum, const AABB<int, 2>& idxA
     return;
   }
 
+  // (Yblocks - rest) may be negative, but (Xblocks - rest) is always positive
   if (ratio < bestRatio && (Yblocks - rest) >= 0) {
     // divide along y direction
+    // x(y - rest) 
     int rest_blocknum = Xblocks * (Yblocks - rest);
     T bestVolume = (T)NX * NY * rest_blocknum / (T)blocknum;
+    // int (x(y - rest)/blocknum) * NY
     int seg_Y = (int)(bestVolume / (T)NX);
     Vector<int, 2> min0 = idxAABBs.getMin();
     Vector<int, 2> max0 = Vector<int, 2>{idxAABBs.getMax()[0], min0[1] + seg_Y - 1};
@@ -432,8 +452,10 @@ static void DivideBlock2D(int NX, int NY, int blocknum, const AABB<int, 2>& idxA
     Child_1.divide(Xblocks + 1, rest, blocksvec);
   } else {
     // divide along x direction
+    // y(x - rest), note that (Xblocks - rest) >= 1
     int rest_blocknum = Yblocks * (Xblocks - rest);
     T bestVolume = (T)NX * NY * rest_blocknum / (T)blocknum;
+    // int (y(x - rest)/blocknum + 0.9999) * NX
     int seg_X = (int)(bestVolume / (T)NY + 0.9999);
     Vector<int, 2> min0 = idxAABBs.getMin();
     Vector<int, 2> max0 = Vector<int, 2>{min0[0] + seg_X - 1, idxAABBs.getMax()[1]};
@@ -450,8 +472,8 @@ static void DivideBlock2D(int NX, int NY, int blocknum, const AABB<int, 2>& idxA
 template <typename T>
 static void DivideBlock3D(BasicBlock<T, 3>& block, int blocknum,
                           std::vector<AABB<int, 3>>& blocksvec) {
-  DivideBlock3D<T>(block.getNx(), block.getNy(), block.getNz(), blocknum, block.getIdxBlock(),
-                   blocksvec);
+  DivideBlock3D<T>(block.getNx(), block.getNy(), block.getNz(), blocknum,
+                   block.getIdxBlock(), blocksvec);
 }
 
 template <typename T>
@@ -460,7 +482,8 @@ static void DivideBlock3D(BasicBlock<T, 3>& block, int blocknum,
   std::vector<AABB<int, 3>> blocksvec;
   const AABB<int, 3>& IdxBlock = block.getIdxBlock();
   // divide block
-  DivideBlock3D<T>(block.getNx(), block.getNy(), block.getNz(), blocknum, IdxBlock, blocksvec);
+  DivideBlock3D<T>(block.getNx(), block.getNy(), block.getNz(), blocknum, IdxBlock,
+                   blocksvec);
   // construct basicblocks from aabb
   std::uint8_t level = block.getLevel();
   T voxsize = block.getVoxelSize();
@@ -472,7 +495,7 @@ static void DivideBlock3D(BasicBlock<T, 3>& block, int blocknum,
     Vector<int, 3> idxmin = idxaabb.getMin() - IdxBlock.getMin();
     Vector<int, 3> idxmax = idxaabb.getMax() - IdxBlock.getMin();
     Vector<T, 3> min = Min + voxsize * ratio * idxmin;
-    // remember to add Vector<int, 2>{1}
+    // remember to add Vector<int, 3>{1}
     Vector<T, 3> max = Min + voxsize * ratio * (idxmax + Vector<int, 3>{1});
     AABB<T, 3> aabb{min, max};
     // mesh
@@ -483,7 +506,372 @@ static void DivideBlock3D(BasicBlock<T, 3>& block, int blocknum,
 }
 
 template <typename T>
-static void DivideBlock3D(int NX, int NY, int Nz, int blocknum, const AABB<int, 3>& idxAABBs,
+static void DivideBlock3D(int NX, int NY, int NZ, int blocknum,
+                          const AABB<int, 3>& idxAABBs,
                           std::vector<AABB<int, 3>>& blocksvec) {
+  if (blocknum == 1) {
+    blocksvec.push_back(idxAABBs);
+    return;
+  }
+  Vector<int, 3> AABBminIdx = idxAABBs.getMin();
+  Vector<int, 3> AABBmaxIdx = idxAABBs.getMax();
 
+  int iXX = 1;
+  int iYY = 1;
+  int iZZ = blocknum;
+  int nX = NX / iXX;
+  int bestIx = iXX;
+  int nY = NY / iYY;
+  int bestIy = iYY;
+  int nZ = NZ / iZZ;
+  int bestIz = iZZ;
+  T bestRatio =
+    ((T)(NX / iXX) / (T)(NY / iYY) - 1) * ((T)(NX / iXX) / (T)(NY / iYY) - 1) +
+    ((T)(NY / iYY) / (T)(NZ / iZZ) - 1) * ((T)(NY / iYY) / (T)(NZ / iZZ) - 1) +
+    ((T)(NZ / iZZ) / (T)(NX / iXX) - 1) * ((T)(NZ / iZZ) / (T)(NX / iXX) - 1);
+
+  for (int iX = 1; iX <= blocknum; iX++) {
+    for (int iY = 1; iY * iX <= blocknum; iY++) {
+      for (int iZ = blocknum / (iX * iY); iZ * iY * iX <= blocknum; iZ++) {
+        if ((iX + 1) * iY * iZ > blocknum && iX * (iY + 1) * iZ > blocknum) {
+          T ratio =
+            ((T)(NX / iX) / (T)(NY / iY) - 1) * ((T)(NX / iX) / (T)(NY / iY) - 1) +
+            ((T)(NY / iY) / (T)(NZ / iZ) - 1) * ((T)(NY / iY) / (T)(NZ / iZ) - 1) +
+            ((T)(NZ / iZ) / (T)(NX / iX) - 1) * ((T)(NZ / iZ) / (T)(NX / iX) - 1);
+          if (ratio < bestRatio) {
+            bestRatio = ratio;
+            bestIx = iX;
+            bestIy = iY;
+            bestIz = iZ;
+            nX = NX / iX;
+            nY = NY / iY;
+            nZ = NZ / iZ;
+          }
+        }
+      }
+    }
+  }
+
+  int rest = blocknum - bestIx * bestIy * bestIz;
+
+  if (rest == 0) {
+    idxAABBs.divide(bestIx, bestIy, bestIz, blocksvec);
+    return;
+  } else {
+
+    // add in z than in y direction
+    // 1
+    if (nZ > nY && nZ > nX) {
+      int restY = rest % bestIy;
+      // split in two cuboid
+      if (restY == 0) {
+        int restX = rest / bestIy;
+
+        std::vector<AABB<int, 2>> GeoHelperVec;
+        AABB<int, 2> AABBXZ(Vector<int, 2>{AABBminIdx[0], AABBminIdx[2]},
+                            Vector<int, 2>{AABBmaxIdx[0], AABBmaxIdx[2]});
+        DivideBlock2D<T>(NX, NZ, bestIx * bestIz + restX, AABBXZ, GeoHelperVec);
+
+        int miny_child = AABBminIdx[1];
+        for (int iY = 0; iY < bestIy; iY++) {
+          int Ny_child = (NY + bestIy - iY - 1) / bestIy;
+          for (AABB<int, 2>& aabb : GeoHelperVec) {
+            blocksvec.emplace_back(Vector<int, 3>{aabb.getMin()[0], miny_child, aabb.getMin()[1]},
+                                   Vector<int, 3>{aabb.getMax()[0], miny_child + Ny_child - 1, aabb.getMax()[1]});
+          }
+          miny_child += Ny_child;
+        }
+        return;
+      }
+
+      // split in four cuboid
+
+      int restX = rest / bestIy + 1;
+      int Ny_child = 0;
+      int miny_child = AABBminIdx[1];
+      int splited_nY = (int)(NY * (T)((bestIx * bestIz + restX) * restY) / (T)blocknum);
+
+      std::vector<AABB<int, 2>> GeoHelperVec0;
+      AABB<int, 2> AABBXZ0(Vector<int, 2>{AABBminIdx[0], AABBminIdx[2]},
+                            Vector<int, 2>{AABBmaxIdx[0], AABBmaxIdx[2]});
+      DivideBlock2D<T>(NX, NZ, bestIx * bestIz + restX, AABBXZ0, GeoHelperVec0);
+
+      for (int iY = 0; iY < restY; iY++) {
+        Ny_child = (splited_nY + restY - iY - 1) / restY;
+        for (AABB<int, 2>& aabb : GeoHelperVec0) {
+          blocksvec.emplace_back(Vector<int, 3>{aabb.getMin()[0], miny_child, aabb.getMin()[1]},
+                                 Vector<int, 3>{aabb.getMax()[0], miny_child + Ny_child - 1, aabb.getMax()[1]});
+        }
+        miny_child += Ny_child;
+      }
+
+      splited_nY = NY - splited_nY;
+      restX = rest / bestIy;
+
+      std::vector<AABB<int, 2>> GeoHelperVec1;
+      AABB<int, 2> AABBXZ1(Vector<int, 2>{AABBminIdx[0], AABBminIdx[2]},
+                            Vector<int, 2>{AABBmaxIdx[0], AABBmaxIdx[2]});
+      DivideBlock2D<T>(NX, NZ, bestIx * bestIz + restX, AABBXZ1, GeoHelperVec1);
+
+      miny_child = AABBminIdx[1];;
+      for (int iY = 0; iY < bestIy - restY; iY++) {
+        Ny_child = (splited_nY + bestIy - restY - iY - 1) / (bestIy - restY);
+        for (AABB<int, 2>& aabb : GeoHelperVec1) {
+          blocksvec.emplace_back(Vector<int, 3>{aabb.getMin()[0], miny_child, aabb.getMin()[1]},
+                                 Vector<int, 3>{aabb.getMax()[0], miny_child + Ny_child - 1, aabb.getMax()[1]});
+        }
+        miny_child += Ny_child;
+      }
+      return;
+    }
+    // 1
+
+    // add in x than in y direction
+    // 2
+    else if (nX > nY && nX > nZ) {
+      int restY = rest % bestIy;
+      // split in two cuboid
+      if (restY == 0) {
+        int restZ = rest / bestIy;
+
+        std::vector<AABB<int, 2>> GeoHelperVec;
+        AABB<int, 2> AABBXZ(Vector<int, 2>{AABBminIdx[0], AABBminIdx[2]},
+                            Vector<int, 2>{AABBmaxIdx[0], AABBmaxIdx[2]});
+        DivideBlock2D<T>(NX, NZ, bestIx * bestIz + restZ, AABBXZ, GeoHelperVec);
+
+        int miny_child = AABBminIdx[1];
+        for (int iY = 0; iY < bestIy; iY++) {
+          int Ny_child = (NY + bestIy - iY - 1) / bestIy;
+          for (AABB<int, 2>& aabb : GeoHelperVec) {
+            blocksvec.emplace_back(Vector<int, 3>{aabb.getMin()[0], miny_child, aabb.getMin()[1]},
+                                   Vector<int, 3>{aabb.getMax()[0], miny_child + Ny_child - 1, aabb.getMax()[1]});
+          }
+          miny_child += Ny_child;
+        }
+        return;
+      }
+
+      // split in four cuboid
+
+      int restZ = rest / bestIy + 1;
+      int Ny_child = 0;
+      int miny_child = AABBminIdx[1];
+      int splited_nY = (int)(NY * (T)((bestIx * bestIz + restZ) * restY) / (T)blocknum);
+
+      std::vector<AABB<int, 2>> GeoHelperVec0;
+      AABB<int, 2> AABBXZ0(Vector<int, 2>{AABBminIdx[0], AABBminIdx[2]},
+                            Vector<int, 2>{AABBmaxIdx[0], AABBmaxIdx[2]});
+      DivideBlock2D<T>(NX, NZ, bestIx * bestIz + restZ, AABBXZ0, GeoHelperVec0);
+
+      for (int iY = 0; iY < restY; iY++) {
+        Ny_child = (splited_nY + restY - iY - 1) / restY;
+        for (AABB<int, 2>& aabb : GeoHelperVec0) {
+          blocksvec.emplace_back(Vector<int, 3>{aabb.getMin()[0], miny_child, aabb.getMin()[1]},
+                                 Vector<int, 3>{aabb.getMax()[0], miny_child + Ny_child - 1, aabb.getMax()[1]});
+        }
+        miny_child += Ny_child;
+      }
+
+      splited_nY = NY - splited_nY;
+      restZ = rest / bestIy;
+
+      std::vector<AABB<int, 2>> GeoHelperVec1;
+      AABB<int, 2> AABBXZ1(Vector<int, 2>{AABBminIdx[0], AABBminIdx[2]},
+                            Vector<int, 2>{AABBmaxIdx[0], AABBmaxIdx[2]});
+      DivideBlock2D<T>(NX, NZ, bestIx * bestIz + restZ, AABBXZ1, GeoHelperVec1);
+
+      miny_child = AABBminIdx[1];
+      for (int iY = 0; iY < bestIy - restY; iY++) {
+        Ny_child = (splited_nY + bestIy - restY - iY - 1) / (bestIy - restY);
+        for (AABB<int, 2>& aabb : GeoHelperVec1) {
+          blocksvec.emplace_back(Vector<int, 3>{aabb.getMin()[0], miny_child, aabb.getMin()[1]},
+                                 Vector<int, 3>{aabb.getMax()[0], miny_child + Ny_child - 1, aabb.getMax()[1]});
+        }
+        miny_child += Ny_child;
+      }
+      return;
+    }
+    // 2
+
+    // add in y than in x direction
+    // 3
+    else {
+      int restX = rest % bestIx;
+      // split in two cuboid
+      if (restX == 0) {
+        int restZ = rest / bestIx;
+        
+        std::vector<AABB<int, 2>> GeoHelperVec;
+        AABB<int, 2> AABBZY(Vector<int, 2>{AABBminIdx[2], AABBminIdx[1]},
+                            Vector<int, 2>{AABBmaxIdx[2], AABBmaxIdx[1]});
+        DivideBlock2D<T>(NZ, NY, bestIz * bestIy + restZ, AABBZY, GeoHelperVec);
+
+        int minx_child = AABBminIdx[0];
+        for (int iX = 0; iX < bestIx; iX++) {
+          int Nx_child = (NX + bestIx - iX - 1) / bestIx;
+          for (AABB<int, 2>& aabb : GeoHelperVec) {
+            blocksvec.emplace_back(Vector<int, 3>{minx_child, aabb.getMin()[1], aabb.getMin()[0]},
+                                   Vector<int, 3>{minx_child + Nx_child - 1, aabb.getMax()[1], aabb.getMax()[0]});
+          }
+          minx_child += Nx_child;
+        }
+        return;
+      }
+
+      // split in four cuboid
+
+      int restZ = rest / bestIx + 1;
+      int Nx_child = 0;
+      int minx_child = AABBminIdx[0];
+      int splited_nX = (int)(NX * (T)((bestIz * bestIy + restZ) * restX) / (T)blocknum);
+
+      std::vector<AABB<int, 2>> GeoHelperVec0;
+      AABB<int, 2> AABBZY0(Vector<int, 2>{AABBminIdx[2], AABBminIdx[1]},
+                          Vector<int, 2>{AABBmaxIdx[2], AABBmaxIdx[1]});
+      DivideBlock2D<T>(NZ, NY, bestIz * bestIy + restZ, AABBZY0, GeoHelperVec0);
+
+      for (int iX = 0; iX < restX; iX++) {
+        Nx_child = (splited_nX + restX - iX - 1) / restX;
+        for (AABB<int, 2>& aabb : GeoHelperVec0) {
+          blocksvec.emplace_back(Vector<int, 3>{minx_child, aabb.getMin()[1], aabb.getMin()[0]},
+                                 Vector<int, 3>{minx_child + Nx_child - 1, aabb.getMax()[1], aabb.getMax()[0]});
+        }
+        minx_child += Nx_child;
+      }
+
+      splited_nX = NX - splited_nX;
+      restZ = rest / bestIx;
+
+      std::vector<AABB<int, 2>> GeoHelperVec1;
+      AABB<int, 2> AABBZY1(Vector<int, 2>{AABBminIdx[2], AABBminIdx[1]},
+                          Vector<int, 2>{AABBmaxIdx[2], AABBmaxIdx[1]});
+      DivideBlock2D<T>(NZ, NY, bestIz * bestIy + restZ, AABBZY1, GeoHelperVec1);
+
+      minx_child = AABBminIdx[0];
+      for (int iX = 0; iX < bestIx - restX; iX++) {
+        Nx_child = (splited_nX + bestIx - restX - iX - 1) / (bestIx - restX);
+        for (AABB<int, 2>& aabb : GeoHelperVec1) {
+          blocksvec.emplace_back(Vector<int, 3>{minx_child, aabb.getMin()[1], aabb.getMin()[0]},
+                                 Vector<int, 3>{minx_child + Nx_child - 1, aabb.getMax()[1], aabb.getMax()[0]});
+        }
+        minx_child += Nx_child;
+      }
+      return;
+    }
+  }
 }
+
+
+// calculate the Standard Deviation of the number of points in each block
+template <typename T, unsigned int D>
+T ComputeStdDev(const std::vector<BasicBlock<T, D>> &Blocks) {
+  T mean{};
+  for (const BasicBlock<T, D> &block : Blocks) {
+    mean += block.getN();
+  }
+  mean /= Blocks.size();
+  T stdDev{};
+  for (const BasicBlock<T, D> &block : Blocks) {
+    stdDev += std::pow((static_cast<T>(block.getN()) / mean - T(1)), 2);
+  }
+  stdDev = std::sqrt(stdDev / Blocks.size());
+  return stdDev;
+}
+
+
+template <typename T, unsigned int D>
+class BlockGeometryHelperBase : public BasicBlock<T, D> {
+  protected:
+  // base block
+  BasicBlock<T, D> _BaseBlock;
+
+  // rectanglar blocks
+  std::vector<BasicBlock<T, D>> _BasicBlocks0;
+  // store old geometry info for data transfer, blockcomms are not needed here
+  // simply store basicblocks is ok since block could be constructed from basicblock
+  std::vector<BasicBlock<T, D>> _BasicBlocks1;
+  // exchange flag for _BasicBlocks0 and _BasicBlocks1
+  bool _Exchanged;
+
+  // for mpi
+  std::vector<std::vector<int>> _BlockIndex0;
+  std::vector<std::vector<int>> _BlockIndex1;
+  std::vector<std::vector<BasicBlock<T, D>*>> _BlockIndexPtr0;
+  std::vector<std::vector<BasicBlock<T, D>*>> _BlockIndexPtr1;
+  bool _IndexExchanged;
+
+  std::size_t getTotalBaseCellNum() {
+    std::size_t sum = 0;
+    for (BasicBlock<T, 2>& block : getAllBasicBlocks()) {
+      sum += block.getN();
+    }
+    return sum;
+  }
+
+  // get all new basic blocks
+  std::vector<BasicBlock<T, 2>>& getAllBasicBlocks() {
+    if (_Exchanged)
+      return _BasicBlocks1;
+    else
+      return _BasicBlocks0;
+  }
+  BasicBlock<T, 2>& getAllBasicBlock(int id) { return getAllBasicBlocks()[id]; }
+  const BasicBlock<T, 2>& getAllBasicBlock(int id) const {
+    return getAllBasicBlocks()[id];
+  }
+  // get all old basic blocks
+  std::vector<BasicBlock<T, 2>>& getAllOldBasicBlocks() {
+    if (_Exchanged)
+      return _BasicBlocks0;
+    else
+      return _BasicBlocks1;
+  }
+  BasicBlock<T, 2>& getAllOldBasicBlock(int id) { return getAllOldBasicBlocks()[id]; }
+  const BasicBlock<T, 2>& getAllOldBasicBlock(int id) const {
+    return getAllOldBasicBlocks()[id];
+  }
+
+
+  std::vector<std::vector<int>>& getAllBlockIndices() {
+    if (_IndexExchanged)
+      return _BlockIndex1;
+    else
+      return _BlockIndex0;
+  }
+  std::vector<std::vector<int>>& getAllOldBlockIndices() {
+    if (_IndexExchanged)
+      return _BlockIndex0;
+    else
+      return _BlockIndex1;
+  }
+
+
+  std::vector<std::vector<BasicBlock<T, 2>*>>& getAllBlockIndexPtrs() {
+    if (_IndexExchanged)
+      return _BlockIndexPtr1;
+    else
+      return _BlockIndexPtr0;
+  }
+  // get basic blocks from std::vector<std::vector<BasicBlock<T, 2>*>> _BlockIndexPtr
+  std::vector<BasicBlock<T, 2>*>& getBasicBlocks() {
+    return getAllBlockIndexPtrs()[mpi().getRank()];
+  }
+  BasicBlock<T, 2>& getBasicBlock(int id) { return *(getBasicBlocks()[id]); }
+  const BasicBlock<T, 2>& getBasicBlock(int id) const { return *(getBasicBlocks()[id]); }
+
+  std::vector<std::vector<BasicBlock<T, 2>*>>& getAllOldBlockIndexPtrs() {
+    if (_IndexExchanged)
+      return _BlockIndexPtr0;
+    else
+      return _BlockIndexPtr1;
+  }
+  std::vector<BasicBlock<T, 2>*>& getOldBasicBlocks() {
+    return getAllOldBlockIndexPtrs()[mpi().getRank()];
+  }
+  BasicBlock<T, 2>& getOldBasicBlock(int id) { return *(getOldBasicBlocks()[id]); }
+  const BasicBlock<T, 2>& getOldBasicBlock(int id) const {
+    return *(getOldBasicBlocks()[id]);
+  }
+
+
+};

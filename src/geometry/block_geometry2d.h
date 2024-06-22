@@ -22,7 +22,7 @@
 
 #pragma once
 
-#include "geometry/geometry2d.h"
+#include "geometry/basic_geometry.h"
 
 // basic block 2d structure, BasicBlock stores the original AABB and index AABB(not
 // extended)
@@ -113,6 +113,7 @@ class BlockGeometry2D : public BasicBlock<T, 2> {
   BasicBlock<T, 2> _BaseBlock;
   // TODO: _BlockAABBs may be removed
   std::vector<AABB<int, 2>> _BlockAABBs;
+  std::vector<BasicBlock<T, 2>> _BasicBlocks;
   std::vector<Block2D<T>> _Blocks;
 
   // ext(overlap) of the whole domain
@@ -137,6 +138,8 @@ class BlockGeometry2D : public BasicBlock<T, 2> {
   std::vector<Block2D<T>>& getBlocks() { return _Blocks; }
   const std::vector<Block2D<T>>& getBlocks() const { return _Blocks; }
 
+  const std::vector<BasicBlock<T, 2>>& getBasicBlocks() const { return _BasicBlocks; }
+
   Block2D<T>& getBlock(int id) { return _Blocks[id]; }
   const Block2D<T>& getBlock(int id) const { return _Blocks[id]; }
 
@@ -150,7 +153,7 @@ class BlockGeometry2D : public BasicBlock<T, 2> {
 
   // first divide blockgeometry into blocks, stored in _BlockAABBs
   void DivideBlocks(int blocknum);
-  void CreateBlocks();
+  void CreateBlocks(int blocknum);
   void SetupNbrs();
 
   // --- communication ---
@@ -350,9 +353,6 @@ class BlockGeometryHelper2D : public BasicBlock<T, 2> {
   void Optimize(int ProcessNum, bool enforce = true);
   void Optimize(std::vector<BasicBlock<T, 2>>& Blocks, int ProcessNum,
                 bool enforce = true);
-  // calculate the Standard Deviation of the number of points in each block
-  T ComputeStdDev() const;
-  T ComputeStdDev(const std::vector<BasicBlock<T, 2>>& Blocks) const;
 
   void LoadBalancing(int ProcessNum = mpi().getSize());
 

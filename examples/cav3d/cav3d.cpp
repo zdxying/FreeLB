@@ -47,7 +47,6 @@ int Thread_Num;
 
 // physical properties
 T rho_ref;    // g/mm^3
-T Dyna_Visc;  // Pa·s Dynamic viscosity of the liquid
 T Kine_Visc;  // mm^2/s kinematic viscosity of the liquid
 T Ra;         // Rayleigh number
 // init conditions
@@ -74,7 +73,6 @@ void readParam() {
   Cell_Len = param_reader.getValue<T>("Mesh", "Cell_Len");
   // physical properties
   rho_ref = param_reader.getValue<T>("Physical_Property", "rho_ref");
-  Dyna_Visc = param_reader.getValue<T>("Physical_Property", "Dyna_Visc");
   Kine_Visc = param_reader.getValue<T>("Physical_Property", "Kine_Visc");
   // init conditions
   U_Ini[0] = param_reader.getValue<T>("Init_Conditions", "U_Ini0");
@@ -125,7 +123,7 @@ int main() {
   ConvManager.Check_and_Print();
 
   // ------------------ define geometry ------------------
-  AABB<T, 3> cavity(Vector<T, 3>(T(0), T(0), T(0)),
+  AABB<T, 3> cavity(Vector<T, 3>{},
                     Vector<T, 3>(T(Ni * Cell_Len), T(Nj * Cell_Len), T(Nk * Cell_Len)));
   AABB<T, 3> toplid(
     Vector<T, 3>(Cell_Len, Cell_Len, T((Nk - 1) * Cell_Len)),
