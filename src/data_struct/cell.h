@@ -23,12 +23,11 @@
 #pragma once
 
 #include <array>
-#include <cstddef>
-#include <type_traits>
+#include <cstdint>
 
 #include "data_struct/field_struct.h"
 #include "lbm/equilibrium.h"
-#include "lbm/unit_converter.h"
+
 
 template <typename T, typename LatSet>
 class PopLattice;

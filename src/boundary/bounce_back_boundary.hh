@@ -23,7 +23,7 @@
 #pragma once
 
 #include "boundary/bounce_back_boundary.h"
-
+#include "lbm/moment.h"
 
 // --------------------------------------------------------------------------
 // Fixed BounceBackLike Boundary

@@ -1,8 +1,28 @@
+/* This file is part of FreeLB
+ *
+ * Copyright (C) 2024 Yuan Man
+ * E-mail contact: ymmanyuan@outlook.com
+ * The most recent progress of FreeLB will be updated at
+ * <https://github.com/zdxying/FreeLB>
+ *
+ * FreeLB is free software: you can redistribute it and/or modify it under the terms of
+ * the GNU General Public License as published by the Free Software Foundation, either
+ * version 3 of the License, or (at your option) any later version.
+ *
+ * FreeLB is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
+ * without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
+ * PURPOSE. See the GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License along with FreeLB. If
+ * not, see <https://www.gnu.org/licenses/>.
+ *
+ */
 
 #include "ca/zhu_stefanescu3d.h"
 #include "ca/zhu_stefanescu3d.hh"
 #include "freelb.h"
 #include "freelb.hh"
+#include "lbm/buoyancy.h"
 // Known bugs: Segmentation fault may occur, but running rhe executable again
 // may resolve this without re-compile
 //  this may be caused by parallel
@@ -85,13 +105,12 @@ int OutputStep;
 std::string work_dir;
 
 void readParam() {
-  
   iniReader param_reader("ZS3Dparam.ini");
   // mesh
   work_dir = param_reader.getValue<std::string>("workdir", "workdir_");
   // parallel
   Thread_Num = param_reader.getValue<int>("parallel", "thread_num");
-  
+
   Ni = param_reader.getValue<int>("Mesh", "Ni");
   Nj = param_reader.getValue<int>("Mesh", "Nj");
   Nk = param_reader.getValue<int>("Mesh", "Nk");
@@ -109,10 +128,8 @@ void readParam() {
   m_Solidus = param_reader.getValue<T>("Phase_Diagram", "m_Solidus");
   // physical properties
   rho_ref = param_reader.getValue<T>("Phys_Prop", "rho_ref");
-  Solutal_Expan_Coeff =
-      param_reader.getValue<T>("Phys_Prop", "Solutal_Expan_Coeff");
-  Thermal_Expan_Coeff =
-      param_reader.getValue<T>("Phys_Prop", "Thermal_Expan_Coeff");
+  Solutal_Expan_Coeff = param_reader.getValue<T>("Phys_Prop", "Solutal_Expan_Coeff");
+  Thermal_Expan_Coeff = param_reader.getValue<T>("Phys_Prop", "Thermal_Expan_Coeff");
   SHeatCap_Liq = param_reader.getValue<T>("Phys_Prop", "SHeatCap_Liq");
   SHeatCap_Soli = param_reader.getValue<T>("Phys_Prop", "SHeatCap_Soli");
   LatHeat = param_reader.getValue<T>("Phys_Prop", "LatHeat");
@@ -151,10 +168,9 @@ void readParam() {
   Cl = 0;
   Ch = (T_Melt - T_Eute) / m_Liquidus;
 
-  
+
   std::cout << "------------Simulation Parameters:-------------\n" << std::endl;
-  std::cout << "[Simulation_Settings]:"
-            << "TotalStep:         " << MaxStep << "\n"
+  std::cout << "[Simulation_Settings]:" << "TotalStep:         " << MaxStep << "\n"
             << "OutputStep:        " << OutputStep << "\n"
 #ifdef _OPENMP
             << "Running on " << Thread_Num << " threads\n"
@@ -167,7 +183,7 @@ int main() {
   std::uint8_t AABBflag = std::uint8_t(2);
   std::uint8_t BouncebackFlag = std::uint8_t(4);
   std::uint8_t FI_Flag =
-      static_cast<std::uint8_t>(CA::CAType::Fluid | CA::CAType::Interface);
+    static_cast<std::uint8_t>(CA::CAType::Fluid | CA::CAType::Interface);
 
   Printer::Print_BigBanner(std::string("Initializing..."));
 
@@ -175,15 +191,14 @@ int main() {
 
   BaseConverter<T> BaseConv(LatSet0::cs2);
   // Conv.SimplifiedConvertFromViscosity(Ni - 2, U_Max, Kine_Visc);
-  BaseConv.ConvertFromRT(Cell_Len, RT, rho_ref, Ni * Cell_Len, U_Max,
-                         Kine_Visc);
+  BaseConv.ConvertFromRT(Cell_Len, RT, rho_ref, Ni * Cell_Len, U_Max, Kine_Visc);
 
   TempConverter<T> TempConv(LatSet1::cs2, BaseConv, Temp_Ini);
   // Conv.ConvertTempFromTDiff_with_Ra(Tl, Th, TDiff, Ra);
   // Conv.ConvertTempFromSHeatCap_and_TCond_with_Ra(Tl, Th, T_Cond_Liq,
   // SHeatCap_Liq, Ra);
-  TempConv.ConvertTempFromSHeatCap_and_TCond_with_Texpan(
-      Tl, Th, T_Cond_Liq, SHeatCap_Liq, Thermal_Expan_Coeff);
+  TempConv.ConvertTempFromSHeatCap_and_TCond_with_Texpan(Tl, Th, T_Cond_Liq, SHeatCap_Liq,
+                                                         Thermal_Expan_Coeff);
 
   ConcConverter<T> ConcConv(LatSet1::cs2, BaseConv, Conc_Ini);
   ConcConv.ConvertConc_withCExpan(Cl, Ch, Diff_Liq, Solutal_Expan_Coeff);
@@ -200,16 +215,13 @@ int main() {
   ConvManager.Check_and_Print();
 
   // ------------------ define geometry ------------------
-  AABB<T, 3> cavity(
-      Vector<T, 3>(T(0), T(0), T(0)),
-      Vector<T, 3>(T(Ni * Cell_Len), T(Nj * Cell_Len), T(Nk * Cell_Len)));
+  AABB<T, 3> cavity(Vector<T, 3>(T(0), T(0), T(0)),
+                    Vector<T, 3>(T(Ni * Cell_Len), T(Nj * Cell_Len), T(Nk * Cell_Len)));
   // NS geometry
-  Geometry3D<T> Geo0(Ni, Nj, Nk, cavity, Cell_Len, Vector<T, 3>{}, AABBflag,
-                     voidflag);
+  Geometry3D<T> Geo0(Ni, Nj, Nk, cavity, Cell_Len, Vector<T, 3>{}, AABBflag, voidflag);
   Geo0.SetupBoundary<LatSet0>(AABBflag, BouncebackFlag);
   // thermal geometry
-  Geometry3D<T> Geo1(Ni, Nj, Nk, cavity, Cell_Len, Vector<T, 3>{}, AABBflag,
-                     voidflag);
+  Geometry3D<T> Geo1(Ni, Nj, Nk, cavity, Cell_Len, Vector<T, 3>{}, AABBflag, voidflag);
   Geo1.SetupBoundary<LatSet1>(AABBflag, BouncebackFlag);
 
   // ------------------ define lattice ------------------
@@ -223,51 +235,44 @@ int main() {
   PopLattice<T, LatSet1> THLattice(Geo1, TempConv, Velocity);
   // --------------------- CA ---------------------
   CA::ZhuStefanescu3D<T, LatSet0, RhoLat> CA(
-      CAConv, SOLattice, THLattice, NSLattice, Psi, Theta, Phi, Epsilon,
-      Geo0.findCellId(Vector<T, 3>{T(Ni * Cell_Len / 2), T(Nj * Cell_Len / 2),
-                                   T(Nk * Cell_Len / 2)}));
+    CAConv, SOLattice, THLattice, NSLattice, Psi, Theta, Phi, Epsilon,
+    Geo0.findCellId(
+      Vector<T, 3>{T(Ni * Cell_Len / 2), T(Nj * Cell_Len / 2), T(Nk * Cell_Len / 2)}));
 
   // --------------------- BCs ---------------------
   // NS
-  BBLikeFixedBoundary<
-      T, LatSet0, BounceBackLikeMethod<T, LatSet0>::normal_bounceback>
-      NS_BB("NS_BB", NSLattice, BouncebackFlag);
-  BBLikeMovingBoundary<
-      T, LatSet0, BounceBackLikeMethod<T, LatSet0>::normal_bounceback>
-      NS_MBB("NS_MBB", NSLattice, CA.getInterface(), CA::CAType::Solid);
+  BBLikeFixedBoundary<T, LatSet0, BounceBackLikeMethod<T, LatSet0>::normal_bounceback>
+    NS_BB("NS_BB", NSLattice, BouncebackFlag);
+  BBLikeMovingBoundary<T, LatSet0, BounceBackLikeMethod<T, LatSet0>::normal_bounceback>
+    NS_MBB("NS_MBB", NSLattice, CA.getInterface(), CA::CAType::Solid);
 
   // Conc
-  BBLikeFixedBoundary<
-      T, LatSet1, BounceBackLikeMethod<T, LatSet1>::normal_bounceback>
-      SO_BB("SO_BB", SOLattice, BouncebackFlag);
-  BBLikeMovingBoundary<
-      T, LatSet1, BounceBackLikeMethod<T, LatSet1>::normal_bounceback>
-      SO_MBB("SO_MBB", SOLattice, CA.getInterface(), CA::CAType::Solid);
+  BBLikeFixedBoundary<T, LatSet1, BounceBackLikeMethod<T, LatSet1>::normal_bounceback>
+    SO_BB("SO_BB", SOLattice, BouncebackFlag);
+  BBLikeMovingBoundary<T, LatSet1, BounceBackLikeMethod<T, LatSet1>::normal_bounceback>
+    SO_MBB("SO_MBB", SOLattice, CA.getInterface(), CA::CAType::Solid);
 
   Buoyancy<T, LatSet0> Force(NSLattice, Velocity);
   Force.AddSource(&SOLattice);
   Force.AddSource(&THLattice);
 
 
-
   // writer
-//   vtkWriter::PhysScalarWriter RhoWriter(
-//       "rho", NSLattice.getRhoField().getField(), BaseConv);
-  vtkWriter::PhysScalarWriter CWriter("C", SOLattice.getRhoField().getField(),
-                                      ConcConv);
+  //   vtkWriter::PhysScalarWriter RhoWriter(
+  //       "rho", NSLattice.getRhoField().getField(), BaseConv);
+  vtkWriter::PhysScalarWriter CWriter("C", SOLattice.getRhoField().getField(), ConcConv);
   vtkWriter::FlagWriter CellTypwWriter("CellType", CA.getState().getField());
-//   vtkWriter::PhysVelocityWriter_AOS<T, LatSet0::d> VelocityWriter(
-//       "velocity", NSLattice.getVelocityField().getField(), BaseConv);
+  //   vtkWriter::PhysVelocityWriter_AOS<T, LatSet0::d> VelocityWriter(
+  //       "velocity", NSLattice.getVelocityField().getField(), BaseConv);
   //
   vtkWriter::ScalarWriter WMCWriter("WMC", CA.getWMC().getField());
-//   vtkWriter::ScalarWriter DFsWriter("DFs", CA.getDeltaFs().getField());
-	vtkWriter::ScalarWriter FsWriter("Fs", CA.getFs().getField());
+  //   vtkWriter::ScalarWriter DFsWriter("DFs", CA.getDeltaFs().getField());
+  vtkWriter::ScalarWriter FsWriter("Fs", CA.getFs().getField());
 
   vtkStruPointsWriter<T, LatSet0::d> CAZSWriter("CAZS", Geo0);
   // CAZSWriter.addtoWriteList(&RhoWriter, &CWriter, &CellTypwWriter, &WMCWriter,
   //                           &DFsWriter, &FsWriter, &VelocityWriter);
-	CAZSWriter.addtoWriteList(&CWriter, &CellTypwWriter, &WMCWriter
-                            , &FsWriter);
+  CAZSWriter.addtoWriteList(&CWriter, &CellTypwWriter, &WMCWriter, &FsWriter);
 
   // count and timer
   Timer MainLoopTimer;
@@ -280,7 +285,8 @@ int main() {
     ++OutputTimer;
 
     // NSLattice.UpdateRho(CA.getState().getField(), FI_Flag);
-    SOLattice.UpdateRho_Source(CA.getState().getField(), FI_Flag, CA.getExcessC_().getField());
+    SOLattice.UpdateRho_Source(CA.getState().getField(), FI_Flag,
+                               CA.getExcessC_().getField());
     CA.apply_SimpleCapture();
 
     // Force.GetBuoyancy(CA.getState().getField(), FI_Flag);
@@ -291,7 +297,7 @@ int main() {
     //     CA.getState().getField(), CA::CAType::Interface);
 
     SOLattice.BGK_Source<Equilibrium<T, LatSet1>::SecondOrder>(
-        CA.getState().getField(), FI_Flag, CA.getExcessC_().getField());
+      CA.getState().getField(), FI_Flag, CA.getExcessC_().getField());
 
     // NSLattice.Stream();
     SOLattice.Stream();
@@ -305,7 +311,7 @@ int main() {
       OutputTimer.Print_InnerLoopPerformance(Geo0.getVoxelsNum(), OutputStep);
       // Printer::Print_SolidFraction<T>(CellComm.getSolidFraction<T>());
       Printer::Print<int>("Interface Cells", CA.getInterface().size());
-      Printer::Print<T>("Solid%", CA.getSolidCountFracton()*100);
+      Printer::Print<T>("Solid%", CA.getSolidCountFracton() * 100);
       Printer::Endl();
       CAZSWriter.Write(MainLoopTimer());
     }

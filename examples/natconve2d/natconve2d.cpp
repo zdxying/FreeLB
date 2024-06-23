@@ -20,6 +20,7 @@
 
 #include "freelb.h"
 #include "freelb.hh"
+#include "lbm/buoyancy.h"
 
 using T = FLOAT;
 using LatSet0 = D2Q9<T>;

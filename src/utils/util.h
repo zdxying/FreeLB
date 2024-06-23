@@ -24,15 +24,16 @@
 #include <math.h>
 #include <omp.h>
 
+// copy
 #include <algorithm>
 #include <array>
 #include <iostream>
+// numeric_limits
 #include <limits>
 #include <vector>
 
-#include "data_struct/Vector.h"
+#include "head.h"
 #include "utils/tmp.h"
-
 
 
 template <typename T, unsigned D, typename F, std::size_t... INDICES>
@@ -314,6 +315,8 @@ struct OMP_helper {
 
 template <typename T>
 class GenericArray;
+template <typename T, unsigned int D>
+class Vector;
 
 namespace util {
 // return true if a is close to zero

@@ -22,9 +22,10 @@
 
 #pragma once
 
+// std::array
 #include <array>
+// size_t, uint8_t
 #include <cstdint>
-#include <type_traits>
 
 template <unsigned int D>
 struct BasicInterp;

@@ -21,7 +21,7 @@
 // buoyancy.h
 #pragma once
 
-#include "data_struct/block_lattice.h"
+#include "data_struct/lattice.h"
 
 // buoyancy for basiclattice
 template <typename T, typename LatSet>

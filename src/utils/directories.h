@@ -34,8 +34,9 @@
 #define STAT stat
 #endif
 #include <iostream>
+// dir name
 #include <string>
-
+// MPI_RANK(x)
 #include "parallel/mpi_manager.h"
 
 struct DirCreator {

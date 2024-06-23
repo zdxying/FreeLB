@@ -22,9 +22,9 @@
 
 #pragma once
 
-#include "data_struct/cell.h"
-#include "lbm/force.h"
-#include "lbm/powerlaw.h"
+
+#include "lbm/moment.h"
+
 
 namespace collision {
 
@@ -250,22 +250,22 @@ struct BGK {
   }
 
   // BGK collision operator with force
-  template <void (*GetFeq)(std::array<T, LatSet::q>&, const Vector<T, LatSet::d>&, T)>
-  static void applyForce(PopCell<T, LatSet>& cell, const Vector<T, LatSet::d>& force) {
-    std::array<T, LatSet::q> feq{};
-    GetFeq(feq, cell.getVelocity(), cell.getRho());
+  // template <void (*GetFeq)(std::array<T, LatSet::q>&, const Vector<T, LatSet::d>&, T)>
+  // static void applyForce(PopCell<T, LatSet>& cell, const Vector<T, LatSet::d>& force) {
+  //   std::array<T, LatSet::q> feq{};
+  //   GetFeq(feq, cell.getVelocity(), cell.getRho());
 
-    std::array<T, LatSet::q> fi{};
-    force::ForcePop<T, LatSet>::compute(fi, cell.getVelocity(), force);
+  //   std::array<T, LatSet::q> fi{};
+  //   force::ForcePop<T, LatSet>::compute(fi, cell.getVelocity(), force);
 
-    const T omega = cell.getOmega();
-    const T _omega = cell.get_Omega();
-    const T fomega = cell.getfOmega();
+  //   const T omega = cell.getOmega();
+  //   const T _omega = cell.get_Omega();
+  //   const T fomega = cell.getfOmega();
 
-    for (int i = 0; i < LatSet::q; ++i) {
-      cell[i] = omega * feq[i] + _omega * cell[i] + fomega * fi[i];
-    }
-  }
+  //   for (int i = 0; i < LatSet::q; ++i) {
+  //     cell[i] = omega * feq[i] + _omega * cell[i] + fomega * fi[i];
+  //   }
+  // }
 
   template <void (*GetFeq)(std::array<T, LatSet::q>&, const Vector<T, LatSet::d>&, T)>
   static void applySource(PopCell<T, LatSet>& cell, const std::array<T, LatSet::q>& fi) {

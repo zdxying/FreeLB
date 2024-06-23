@@ -21,6 +21,7 @@
 #pragma once
 
 #include "boundary/basic_boundary.h"
+#include "lbm/moment.h"
 
 // virtual node scheme(cell with void flag)
 // impl periodic bcs is to handle the pops in the virtual nodes

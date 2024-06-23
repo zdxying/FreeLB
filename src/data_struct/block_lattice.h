@@ -23,6 +23,8 @@
 #pragma once
 
 #include "data_struct/block_lattice_base.h"
+// AbstractConverter
+#include "lbm/unit_converter.h"
 
 template <typename T, typename LatSet, typename TypePack>
 struct BlockLatComm {

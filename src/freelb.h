@@ -22,9 +22,12 @@
 //include haeder files for LBM
 
 #include "boundary/boundary.h"
+// io
 #include "io/vtkWriter.h"
 #include "io/vtm_writer.h"
 #include "io/ini_reader.h"
 #include "lbm/lattice_set.h"
-#include "lbm/buoyancy.h"
+// lbm dynamics
+#include "lbm/lbm.h"
+// timer
 #include "utils/timer.h"

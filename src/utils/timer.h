@@ -20,11 +20,14 @@
 
 #pragma once
 
+// std::chrono::high_resolution_clock, std::chrono::milliseconds
 #include <chrono>
+// std::int64_t
 #include <cstdint>
+// std::cout, std::endl
 #include <iostream>
-
-#include "head.h"
+// MPI_RANK(x), mpi().getSize()
+#include "parallel/mpi_manager.h"
 
 // timer and counters
 

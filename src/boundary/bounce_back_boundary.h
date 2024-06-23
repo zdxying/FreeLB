@@ -23,6 +23,7 @@
 #pragma once
 
 #include "boundary/basic_boundary.h"
+#include "lbm/equilibrium.h"
 
 template <typename T, typename LatSet>
 struct BounceBackLikeMethod {

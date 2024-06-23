@@ -22,8 +22,11 @@
 
 #pragma once
 
+// Cell
 #include "data_struct/cell.h"
+// Block and BlockGeometry
 #include "utils/alias.h"
+
 
 // base class for block lattice
 // without special treatment for population field

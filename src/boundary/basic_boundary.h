@@ -24,14 +24,13 @@
 
 #include <algorithm>
 #include <cmath>
-#include <cstddef>
+#include <cstdint>
 #include <iomanip>
 #include <iostream>
 
 #include "data_struct/block_lattice.h"
-#include "lbm/equilibrium.h"
-#include "lbm/moment.h"
 #include "utils/alias.h"
+
 
 // fixed boundary cell structure
 struct FixedBdCell {
