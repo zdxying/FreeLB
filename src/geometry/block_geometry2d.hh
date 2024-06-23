@@ -578,19 +578,19 @@ void BlockGeometry2D<T>::InitAllMPIComm(BlockGeometryHelper2D<T> &GeoHelper) {
 
 template <typename T>
 BlockGeometryHelper2D<T>::BlockGeometryHelper2D(int Nx, int Ny, const AABB<T, 2> &AABBs,
-                                                T voxelSize, int blocklen,
+                                                T voxelSize, int blockcelllen,
                                                 std::uint8_t llimit, int ext)
     : BasicBlock<T, 2>(voxelSize, AABBs.getExtended(Vector<T, 2>{voxelSize * ext}),
                        AABB<int, 2>(Vector<int, 2>{0}, Vector<int, 2>{Nx + 1, Ny + 1})),
       _BaseBlock(voxelSize, AABBs,
                  AABB<int, 2>(Vector<int, 2>{1}, Vector<int, 2>{Nx, Ny})),
-      BlockLen(blocklen), Ext(ext), _MaxLevel(std::uint8_t(0)), _Exchanged(true),
+      BlockCellLen(blockcelllen), Ext(ext), _MaxLevel(std::uint8_t(0)), _Exchanged(true),
       _IndexExchanged(true), _LevelLimit(llimit) {
-  if (BlockLen < 4) {
-    std::cerr << "BlockGeometryHelper2D<T>, BlockLen < 4" << std::endl;
+  if (BlockCellLen < 4) {
+    std::cerr << "BlockGeometryHelper2D<T>, BlockCellLen < 4" << std::endl;
   }
-  CellsNx = _BaseBlock.getNx() / BlockLen;
-  CellsNy = _BaseBlock.getNy() / BlockLen;
+  CellsNx = _BaseBlock.getNx() / BlockCellLen;
+  CellsNy = _BaseBlock.getNy() / BlockCellLen;
   CellsN = CellsNx * CellsNy;
 
   Delta_Cellidx = {-CellsNx - 1, -CellsNx, -CellsNx + 1, -1, 1,
@@ -683,7 +683,7 @@ void BlockGeometryHelper2D<T>::CreateBlocks() {
       }
     end_y_expansion:
       // create block
-      Vector<int, 2> Ext = BlockLen * Vector<int, 2>{Nx, Ny};
+      Vector<int, 2> Ext = BlockCellLen * Vector<int, 2>{Nx, Ny};
       Vector<int, 2> min = _BlockCells[id].getIdxBlock().getMin();
       Vector<int, 2> max = min + Ext - Vector<int, 2>{1};
       AABB<int, 2> idxblock(min, max);

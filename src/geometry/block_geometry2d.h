@@ -203,7 +203,7 @@ class BlockGeometryHelper2D : public BasicBlock<T, 2> {
   int CellsNy;
   int CellsN;
   // block length
-  int BlockLen;
+  int BlockCellLen;
   // extension of the whole domain
   int Ext;
   // max level limit

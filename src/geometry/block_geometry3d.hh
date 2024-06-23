@@ -93,6 +93,7 @@ BlockGeometry3D<T>::BlockGeometry3D(BlockGeometryHelper3D<T> &GeoHelper)
   for (BasicBlock<T, 3> *baseblock : GeoHelper.getBasicBlocks()) {
     int overlap = (baseblock->getLevel() != std::uint8_t(0)) ? 2 : 1;
     _Blocks.emplace_back(*baseblock, overlap);
+    _BasicBlocks.emplace_back(*baseblock);
   }
   SetupNbrs();
   InitAllComm();
@@ -113,10 +114,12 @@ template <typename T>
 void BlockGeometry3D<T>::Init(BlockGeometryHelper3D<T> &GeoHelper) {
   ;
   _Blocks.clear();
+  _BasicBlocks.clear();
   // create blocks from GeoHelper
   for (BasicBlock<T, 3> *baseblock : GeoHelper.getBasicBlocks()) {
     int overlap = (baseblock->getLevel() != std::uint8_t(0)) ? 2 : 1;
     _Blocks.emplace_back(*baseblock, overlap);
+    _BasicBlocks.emplace_back(*baseblock);
   }
   SetupNbrs();
   InitAllComm();
@@ -801,56 +804,32 @@ void BlockGeometry3D<T>::InitAllMPIComm(BlockGeometryHelper3D<T> &GeoHelper) {
 
 
 // BlockGeometryHelper3D
+#include "lbm/lattice_set.h"
 
 template <typename T>
 BlockGeometryHelper3D<T>::BlockGeometryHelper3D(int Nx, int Ny, int Nz,
                                                 const AABB<T, 3> &AABBs, T voxelSize,
-                                                int blocklen, std::uint8_t llimit,
+                                                int blockcelllen, std::uint8_t llimit,
                                                 int ext)
     : BasicBlock<T, 3>(
         voxelSize, AABBs.getExtended(Vector<T, 3>{voxelSize * ext}),
         AABB<int, 3>(Vector<int, 3>{0}, Vector<int, 3>{Nx + 1, Ny + 1, Nz + 1})),
       _BaseBlock(voxelSize, AABBs,
                  AABB<int, 3>(Vector<int, 3>{1}, Vector<int, 3>{Nx, Ny, Nz})),
-      BlockLen(blocklen), Ext(ext), _MaxLevel(std::uint8_t(0)), _Exchanged(true),
+      BlockCellLen(blockcelllen), Ext(ext), _MaxLevel(std::uint8_t(0)), _Exchanged(true),
       _IndexExchanged(true), _LevelLimit(llimit) {
-  if (BlockLen < 4) {
-    std::cerr << "BlockGeometryHelper3D<T>, BlockLen < 4" << std::endl;
+  if (BlockCellLen < 4) {
+    std::cerr << "BlockGeometryHelper3D<T>, BlockCellLen < 4" << std::endl;
   }
-  CellsNx = _BaseBlock.getNx() / BlockLen;
-  CellsNy = _BaseBlock.getNy() / BlockLen;
-  CellsNz = _BaseBlock.getNz() / BlockLen;
-  CellsN = CellsNx * CellsNy;
+  CellsNx = _BaseBlock.getNx() / BlockCellLen;
+  CellsNy = _BaseBlock.getNy() / BlockCellLen;
+  CellsNz = _BaseBlock.getNz() / BlockCellLen;
+  CellsN = CellsNx * CellsNy * CellsNz;
 
-  int XY = CellsNx * CellsNy;
+  Vector<int, 3> Projection{1, CellsNx, CellsNx * CellsNy};
 
-  Delta_Cellidx = {-XY - CellsNx - 1,
-                   -XY - CellsNx,
-                   -XY - CellsNx + 1,
-                   -XY - 1,
-                   -XY,
-                   -XY + 1,
-                   -XY + CellsNx - 1,
-                   -XY + CellsNx,
-                   -XY + CellsNx + 1,
-                   -CellsNx - 1,
-                   -CellsNx,
-                   -CellsNx + 1,
-                   -1,
-                   0,
-                   1,
-                   CellsNx - 1,
-                   CellsNx,
-                   CellsNx + 1,
-                   XY - CellsNx - 1,
-                   XY - CellsNx,
-                   XY - CellsNx + 1,
-                   XY - 1,
-                   XY,
-                   XY + 1,
-                   XY + CellsNx - 1,
-                   XY + CellsNx,
-                   XY + CellsNx + 1};
+  Delta_Cellidx = make_Array<int, D3Q27<T>::q - 1>(
+    [&](int i) { return D3Q27<T>::c[i + 1] * Projection; });
 
   CreateBlockCells();
 }
@@ -861,7 +840,7 @@ void BlockGeometryHelper3D<T>::CreateBlockCells() {
   std::vector<AABB<int, 3>> AABBCells;
   AABBCells.reserve(CellsN);
   // divide base block into cell aabbs
-  _BaseBlock.getIdxBlock().divide(CellsNx, CellsNy, AABBCells);
+  _BaseBlock.getIdxBlock().divide(CellsNx, CellsNy, CellsNz, AABBCells);
   // create cell blocks from cell aabbs
   _BlockCells.reserve(CellsN);
   int blockid = 0;
@@ -914,53 +893,51 @@ void BlockGeometryHelper3D<T>::CreateBlocks() {
         std::uint8_t level = _BlockCells[id].getLevel();
         T voxsize = _BlockCells[id].getVoxelSize();
         Vector<int, 3> NewMesh = _BlockCells[id].getMesh();
+
         // expand block along x
         int Nx = 1;
-        std::size_t tempid = id + Nx;
-        while (i + Nx < CellsNx && _BlockCells[tempid].getLevel() == level &&
-               !visited[tempid]) {
+        while (i + Nx < CellsNx) {
+          std::size_t tempid = id + Nx;
+          if (_BlockCells[tempid].getLevel() != level || visited[tempid]) {
+            break;
+          }
           NewMesh[0] += _BlockCells[tempid].getNx();
           ++Nx;
-          ++tempid;
         }
+
         // expand block along y
         int Ny = 1;
-        std::size_t startid = id + Ny * CellsNx;
         while (j + Ny < CellsNy) {
-          startid = id + Ny * CellsNx;
-          tempid = startid;
+          std::size_t startid = id + Ny * CellsNx;
           for (int iNx = 0; iNx < Nx; ++iNx) {
-            if (_BlockCells[tempid].getLevel() == level && !visited[tempid]) {
-              ++tempid;
-            } else {
+            std::size_t tempid = startid + iNx;
+            if (_BlockCells[tempid].getLevel() != level || visited[tempid]) {
               goto end_y_expansion;
             }
           }
-          ++Ny;
           NewMesh[1] += _BlockCells[startid].getNy();
+          ++Ny;
         }
       end_y_expansion:
         // expand block along z
         int Nz = 1;
         while (k + Nz < CellsNz) {
-          startid = id + Nz * XY;
           for (int jNy = 0; jNy < Ny; ++jNy) {
-            tempid = startid + jNy * CellsNx;
+            std::size_t startid = id + jNy * CellsNx + Nz * XY;
             for (int iNx = 0; iNx < Nx; ++iNx) {
-              if (_BlockCells[tempid].getLevel() == level && !visited[tempid]) {
-                ++tempid;
-              } else {
+              std::size_t tempid = startid + iNx;
+              if (_BlockCells[tempid].getLevel() != level || visited[tempid]) {
                 goto end_z_expansion;
               }
             }
           }
+          NewMesh[2] += _BlockCells[id + Nz * XY].getNz();
           ++Nz;
-          NewMesh[2] += _BlockCells[startid].getNz();
         }
       end_z_expansion:
 
         // create block
-        Vector<int, 3> Ext = BlockLen * Vector<int, 3>{Nx, Ny, Nz};
+        Vector<int, 3> Ext = BlockCellLen * Vector<int, 3>{Nx, Ny, Nz};
         Vector<int, 3> min = _BlockCells[id].getIdxBlock().getMin();
         Vector<int, 3> max = min + Ext - Vector<int, 3>{1};
         AABB<int, 3> idxblock(min, max);
@@ -973,9 +950,9 @@ void BlockGeometryHelper3D<T>::CreateBlocks() {
         // set visited
         for (int kk = 0; kk < Nz; ++kk) {
           for (int jj = 0; jj < Ny; ++jj) {
-            startid = id + jj * CellsNx + kk * XY;
+            std::size_t tempid = id + jj * CellsNx + kk * XY;
             for (int ii = 0; ii < Nx; ++ii) {
-              visited[startid + ii] = true;
+              visited[tempid + ii] = true;
             }
           }
         }

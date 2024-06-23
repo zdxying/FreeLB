@@ -108,7 +108,9 @@ class BlockGeometry3D : public BasicBlock<T, 3> {
   BasicBlock<T, 3> _BaseBlock;
   // TODO: _BlockAABBs may be removed
   std::vector<AABB<int, 3>> _BlockAABBs;
+  // _BasicBlocks may be removed, now is used in some functions take a vector of BasicBlock
   std::vector<BasicBlock<T, 3>> _BasicBlocks;
+  // info of blockaabbs and basicblocks is contained in _Blocks
   std::vector<Block3D<T>> _Blocks;
 
   // ext(overlap) of the whole domain
@@ -194,7 +196,7 @@ class BlockGeometryHelper3D : public BasicBlock<T, 3> {
   int CellsNz;
   int CellsN;
   // block length
-  int BlockLen;
+  int BlockCellLen;
   // extension of the whole domain
   int Ext;
   // max level limit
@@ -221,7 +223,7 @@ class BlockGeometryHelper3D : public BasicBlock<T, 3> {
  public:
   // domain of Nx * Ny will be divided into (Nx/blocklen)*(Ny/blocklen) blocks
   BlockGeometryHelper3D(int Nx, int Ny, int Nz, const AABB<T, 3>& AABBs, T voxelSize = T(1),
-                        int blocklen = 10, std::uint8_t llimit = std::uint8_t(2),
+                        int blockcelllen = 10, std::uint8_t llimit = std::uint8_t(2),
                         int ext = 1);
   ~BlockGeometryHelper3D() = default;
 

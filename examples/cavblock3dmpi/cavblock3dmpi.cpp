@@ -47,6 +47,7 @@ int Nk;
 T Cell_Len;
 T RT;
 int Thread_Num;
+int BlockCellNx;
 
 // physical properties
 T rho_ref;    // g/mm^3
@@ -66,7 +67,7 @@ T tol;
 std::string work_dir;
 
 void readParam() {
-  iniReader param_reader("cavityblock3d.ini");
+  iniReader param_reader("cavityblock3dmpi.ini");
   work_dir = param_reader.getValue<std::string>("workdir", "workdir_");
   // parallel
   Thread_Num = param_reader.getValue<int>("parallel", "thread_num");
@@ -75,6 +76,7 @@ void readParam() {
   Nj = param_reader.getValue<int>("Mesh", "Nj");
   Nk = param_reader.getValue<int>("Mesh", "Nk");
   Cell_Len = param_reader.getValue<T>("Mesh", "Cell_Len");
+  BlockCellNx = param_reader.getValue<int>("Mesh", "BlockCellNx");
   // physical properties
   rho_ref = param_reader.getValue<T>("Physical_Property", "rho_ref");
   Kine_Visc = param_reader.getValue<T>("Physical_Property", "Kine_Visc");
@@ -94,6 +96,7 @@ void readParam() {
   OutputStep = param_reader.getValue<int>("Simulation_Settings", "OutputStep");
   tol = param_reader.getValue<T>("tolerance", "tol");
 
+  MPI_RANK(0)
 
   std::cout << "------------Simulation Parameters:-------------\n" << std::endl;
   std::cout << "[Simulation_Settings]:" << "TotalStep:         " << MaxStep << "\n"
@@ -102,16 +105,21 @@ void readParam() {
 #ifdef _OPENMP
             << "Running on " << Thread_Num << " threads\n"
 #endif
+#ifdef MPI_ENABLED
+            << "Running on " << mpi().getSize() << " MPI processes\n"
+#endif
             << "----------------------------------------------" << std::endl;
 }
 
-int main() {
+int main(int argc, char* argv[]) {
   constexpr std::uint8_t VoidFlag = std::uint8_t(1);
   constexpr std::uint8_t AABBFlag = std::uint8_t(2);
   constexpr std::uint8_t BouncebackFlag = std::uint8_t(4);
   constexpr std::uint8_t BBMovingWallFlag = std::uint8_t(8);
 
-  Printer::Print_BigBanner(std::string("Initializing..."));
+  mpi().init(&argc, &argv);
+
+  MPI_DEBUG_WAIT
 
   readParam();
 
@@ -127,7 +135,13 @@ int main() {
   AABB<T, 3> toplid(
     Vector<T, 3>(Cell_Len, Cell_Len, T((Nk - 1) * Cell_Len)),
     Vector<T, 3>(T((Ni - 1) * Cell_Len), T((Nj - 1) * Cell_Len), T(Nk * Cell_Len)));
-  BlockGeometry3D<T> Geo(Ni, Nj, Nk, Thread_Num, cavity, Cell_Len);
+
+  BlockGeometryHelper3D<T> GeoHelper(Ni, Nj, Nk, cavity, Cell_Len, Ni / BlockCellNx);
+  GeoHelper.CreateBlocks();
+  GeoHelper.AdaptiveOptimization(mpi().getSize());
+  GeoHelper.LoadBalancing(mpi().getSize());
+
+  BlockGeometry3D<T> Geo(GeoHelper);
 
   // ------------------ define flag field ------------------
   BlockFieldManager<FLAG, T, 3> FlagFM(Geo, VoidFlag);
@@ -189,7 +203,7 @@ int main() {
   // writers
   vtmwriter::ScalarWriter RhoWriter("Rho", NSLattice.getField<RHO<T>>());
   vtmwriter::VectorWriter VecWriter("Velocity", NSLattice.getField<VELOCITY<T, 3>>());
-  vtmwriter::vtmWriter<T, LatSet::d> NSWriter("cavblock3d", Geo);
+  vtmwriter::vtmWriter<T, LatSet::d> NSWriter("cavblock3dmpi", Geo);
   NSWriter.addWriterSet(RhoWriter, VecWriter);
 
   // count and timer
@@ -216,7 +230,7 @@ int main() {
       NSLattice.ApplyCellDynamics<TaskSelectorRhoU>(MainLoopTimer(), FlagFM);
       
       res = NSLattice.getToleranceU(-1);
-      OutputTimer.Print_InnerLoopPerformance(Geo.getTotalCellNum(), OutputStep);
+      OutputTimer.Print_InnerLoopPerformance(GeoHelper.getTotalBaseCellNum(), OutputStep);
       Printer::Print_Res<T>(res);
       Printer::Endl();
       NSWriter.WriteBinary(MainLoopTimer());
@@ -224,7 +238,7 @@ int main() {
   }
 
   Printer::Print_BigBanner(std::string("Calculation Complete!"));
-  MainLoopTimer.Print_MainLoopPerformance(Geo.getTotalCellNum());
+  MainLoopTimer.Print_MainLoopPerformance(GeoHelper.getTotalBaseCellNum());
   Printer::Print("Total PhysTime", BaseConv.getPhysTime(MainLoopTimer()));
   Printer::Endl();
 

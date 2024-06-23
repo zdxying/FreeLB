@@ -50,7 +50,7 @@ int main() {
   constexpr std::uint8_t BouncebackFlag = std::uint8_t(4);
   constexpr std::uint8_t BBMovingWallFlag = std::uint8_t(8);
 
-  // Printer::Print_BigBanner(std::string("Initializing..."));
+  // Printer::Print_BigBanner(std::string("Initializing..."));  
 
   readParam();
 
@@ -63,7 +63,13 @@ int main() {
                    Vector<T, 2>(T(Ni * Cell_Len / 2), T(Nj * Cell_Len / 2)));
 
   // BlockGeometry2D<T> Geo(Ni, Nj, BlockNum, cavity, Cell_Len);
-  BlockGeometry3D<T> Geo(Ni, Nj, Nk, BlockNum, cavity, Cell_Len);
+  BlockGeometryHelper3D<T> GeoHelper(Ni, Nj, Nk, cavity, Cell_Len, Ni/5);
+  GeoHelper.CreateBlocks();
+  GeoHelper.AdaptiveOptimization(BlockNum);
+  GeoHelper.LoadBalancing();
+
+  // BlockGeometry3D<T> Geo(Ni, Nj, Nk, BlockNum, cavity, Cell_Len);
+  BlockGeometry3D<T> Geo(GeoHelper);
   T dev = ComputeStdDev(Geo.getBasicBlocks());
   std::cout << "Standard deviation: " << dev << std::endl;
 
