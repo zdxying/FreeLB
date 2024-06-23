@@ -561,7 +561,6 @@ static void DivideBlock3D(int NX, int NY, int NZ, int blocknum,
                             Vector<int, 2>{AABBmaxIdx[0], AABBmaxIdx[2]});
       DivideBlock2D<T>(NX, NZ, bestIx * bestIz + restX, AABBXZ1, GeoHelperVec1);
 
-      miny_child = AABBminIdx[1];;
       for (int iY = 0; iY < bestIy - restY; iY++) {
         Ny_child = (splited_nY + bestIy - restY - iY - 1) / (bestIy - restY);
         for (AABB<int, 2>& aabb : GeoHelperVec1) {
@@ -628,7 +627,6 @@ static void DivideBlock3D(int NX, int NY, int NZ, int blocknum,
                             Vector<int, 2>{AABBmaxIdx[0], AABBmaxIdx[2]});
       DivideBlock2D<T>(NX, NZ, bestIx * bestIz + restZ, AABBXZ1, GeoHelperVec1);
 
-      miny_child = AABBminIdx[1];
       for (int iY = 0; iY < bestIy - restY; iY++) {
         Ny_child = (splited_nY + bestIy - restY - iY - 1) / (bestIy - restY);
         for (AABB<int, 2>& aabb : GeoHelperVec1) {
@@ -695,7 +693,6 @@ static void DivideBlock3D(int NX, int NY, int NZ, int blocknum,
                           Vector<int, 2>{AABBmaxIdx[2], AABBmaxIdx[1]});
       DivideBlock2D<T>(NZ, NY, bestIz * bestIy + restZ, AABBZY1, GeoHelperVec1);
 
-      minx_child = AABBminIdx[0];
       for (int iX = 0; iX < bestIx - restX; iX++) {
         Nx_child = (splited_nX + bestIx - restX - iX - 1) / (bestIx - restX);
         for (AABB<int, 2>& aabb : GeoHelperVec1) {
@@ -748,37 +745,37 @@ class BlockGeometryHelperBase : public BasicBlock<T, D> {
   std::vector<std::vector<BasicBlock<T, D>*>> _BlockIndexPtr1;
   bool _IndexExchanged;
 
+
   std::size_t getTotalBaseCellNum() {
     std::size_t sum = 0;
-    for (BasicBlock<T, 2>& block : getAllBasicBlocks()) {
+    for (BasicBlock<T, D>& block : getAllBasicBlocks()) {
       sum += block.getN();
     }
     return sum;
   }
 
   // get all new basic blocks
-  std::vector<BasicBlock<T, 2>>& getAllBasicBlocks() {
+  std::vector<BasicBlock<T, D>>& getAllBasicBlocks() {
     if (_Exchanged)
       return _BasicBlocks1;
     else
       return _BasicBlocks0;
   }
-  BasicBlock<T, 2>& getAllBasicBlock(int id) { return getAllBasicBlocks()[id]; }
-  const BasicBlock<T, 2>& getAllBasicBlock(int id) const {
+  BasicBlock<T, D>& getAllBasicBlock(int id) { return getAllBasicBlocks()[id]; }
+  const BasicBlock<T, D>& getAllBasicBlock(int id) const {
     return getAllBasicBlocks()[id];
   }
   // get all old basic blocks
-  std::vector<BasicBlock<T, 2>>& getAllOldBasicBlocks() {
+  std::vector<BasicBlock<T, D>>& getAllOldBasicBlocks() {
     if (_Exchanged)
       return _BasicBlocks0;
     else
       return _BasicBlocks1;
   }
-  BasicBlock<T, 2>& getAllOldBasicBlock(int id) { return getAllOldBasicBlocks()[id]; }
-  const BasicBlock<T, 2>& getAllOldBasicBlock(int id) const {
+  BasicBlock<T, D>& getAllOldBasicBlock(int id) { return getAllOldBasicBlocks()[id]; }
+  const BasicBlock<T, D>& getAllOldBasicBlock(int id) const {
     return getAllOldBasicBlocks()[id];
   }
-
 
   std::vector<std::vector<int>>& getAllBlockIndices() {
     if (_IndexExchanged)
@@ -794,30 +791,30 @@ class BlockGeometryHelperBase : public BasicBlock<T, D> {
   }
 
 
-  std::vector<std::vector<BasicBlock<T, 2>*>>& getAllBlockIndexPtrs() {
+  std::vector<std::vector<BasicBlock<T, D>*>>& getAllBlockIndexPtrs() {
     if (_IndexExchanged)
       return _BlockIndexPtr1;
     else
       return _BlockIndexPtr0;
   }
-  // get basic blocks from std::vector<std::vector<BasicBlock<T, 2>*>> _BlockIndexPtr
-  std::vector<BasicBlock<T, 2>*>& getBasicBlocks() {
+  // get basic blocks from std::vector<std::vector<BasicBlock<T, D>*>> _BlockIndexPtr
+  std::vector<BasicBlock<T, D>*>& getBasicBlocks() {
     return getAllBlockIndexPtrs()[mpi().getRank()];
   }
-  BasicBlock<T, 2>& getBasicBlock(int id) { return *(getBasicBlocks()[id]); }
-  const BasicBlock<T, 2>& getBasicBlock(int id) const { return *(getBasicBlocks()[id]); }
+  BasicBlock<T, D>& getBasicBlock(int id) { return *(getBasicBlocks()[id]); }
+  const BasicBlock<T, D>& getBasicBlock(int id) const { return *(getBasicBlocks()[id]); }
 
-  std::vector<std::vector<BasicBlock<T, 2>*>>& getAllOldBlockIndexPtrs() {
+  std::vector<std::vector<BasicBlock<T, D>*>>& getAllOldBlockIndexPtrs() {
     if (_IndexExchanged)
       return _BlockIndexPtr0;
     else
       return _BlockIndexPtr1;
   }
-  std::vector<BasicBlock<T, 2>*>& getOldBasicBlocks() {
+  std::vector<BasicBlock<T, D>*>& getOldBasicBlocks() {
     return getAllOldBlockIndexPtrs()[mpi().getRank()];
   }
-  BasicBlock<T, 2>& getOldBasicBlock(int id) { return *(getOldBasicBlocks()[id]); }
-  const BasicBlock<T, 2>& getOldBasicBlock(int id) const {
+  BasicBlock<T, D>& getOldBasicBlock(int id) { return *(getOldBasicBlocks()[id]); }
+  const BasicBlock<T, D>& getOldBasicBlock(int id) const {
     return *(getOldBasicBlocks()[id]);
   }
 

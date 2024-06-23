@@ -327,6 +327,8 @@ class BlockGeometryHelper3D : public BasicBlock<T, 3> {
   void CreateBlockCells();
   // create block from BlockCells, this should be called after refinement
   void CreateBlocks();
+  // create block using normal divide method, like CreateBlocks() in BlockGeometry3D
+  void CreateBlocks(int blocknum);
   // tag neighbor refine cells
   void TagRefineLayer(std::vector<bool>& refine, bool& refined);
   // check refine cell status

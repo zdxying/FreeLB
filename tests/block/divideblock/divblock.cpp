@@ -64,7 +64,7 @@ int main() {
 
   // BlockGeometry2D<T> Geo(Ni, Nj, BlockNum, cavity, Cell_Len);
   BlockGeometryHelper3D<T> GeoHelper(Ni, Nj, Nk, cavity, Cell_Len, Ni/5);
-  GeoHelper.CreateBlocks();
+  GeoHelper.CreateBlocks(BlockNum);
   GeoHelper.AdaptiveOptimization(BlockNum);
   GeoHelper.LoadBalancing();
 

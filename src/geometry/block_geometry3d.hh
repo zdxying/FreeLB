@@ -966,6 +966,33 @@ void BlockGeometryHelper3D<T>::CreateBlocks() {
 }
 
 template <typename T>
+void BlockGeometryHelper3D<T>::CreateBlocks(int blocknum) {
+  std::vector<AABB<int, 3>> BlockAABBs;
+  BlockAABBs.reserve(blocknum);
+  DivideBlock3D(_BaseBlock, blocknum, BlockAABBs);
+
+  // create new blocks on relatively older blocks
+  std::vector<BasicBlock<T, 3>> &BasicBlocks = getAllOldBasicBlocks();
+  // now old blocks become new blocks
+  _Exchanged = !_Exchanged;
+
+  BasicBlocks.clear();
+  BasicBlocks.reserve(BlockAABBs.size());
+  // create blocks
+  int blockid = 0;
+  for (const AABB<int, 3> &blockaabb : BlockAABBs) {
+    Vector<T, 3> MIN =
+      blockaabb.getMin() * _BaseBlock.getVoxelSize() + BasicBlock<T, 3>::_min;
+    Vector<T, 3> MAX =
+      (blockaabb.getMax() + Vector<T, 3>{T(1)}) * _BaseBlock.getVoxelSize() +
+      BasicBlock<T, 3>::_min;
+    AABB<T, 3> aabb(MIN, MAX);
+    BasicBlocks.emplace_back(_BaseBlock.getVoxelSize(), aabb, blockaabb, blockid);
+    blockid++;
+  }
+}
+
+template <typename T>
 template <typename Func>
 void BlockGeometryHelper3D<T>::forEachBlockCell(Func func) {
   for (BasicBlock<T, 3> &block : _BlockCells) {
