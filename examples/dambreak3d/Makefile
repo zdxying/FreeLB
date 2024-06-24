@@ -1,11 +1,10 @@
 
-TARGET = dambreak2d_intlat.exe
+TARGET = dambreak3d.exe
 ROOT := ../..
 
 FLAGS += -O3 -march=native -fopenmp
 # FLAGS += -O3 -march=native
 # FLAGS += -march=native
-# FLAGS += -fopenmp
 # FLAGS += -g
 FLAGS += -DFLOAT_TYPE=double
 

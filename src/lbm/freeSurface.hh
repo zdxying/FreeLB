@@ -267,7 +267,6 @@ void FreeSurface2D<T, LatSet, TypePack>::InterfaceExcessMass() {
   }
 }
 
-
 template <typename T, typename LatSet, typename TypePack>
 void FreeSurface2D<T, LatSet, TypePack>::FinalizeConversion() {
   // update state

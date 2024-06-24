@@ -16,13 +16,14 @@
 
 // int Total_Macro_Step = 0;
 using T = FLOAT;
-using LatSet = D2Q9<T>;
+using LatSet = D3Q19<T>;
 
 /*----------------------------------------------
                 Simulation Parameters
 -----------------------------------------------*/
 int Ni;
 int Nj;
+int Nk;
 T Cell_Len;
 T RT;
 int Thread_Num;
@@ -39,11 +40,11 @@ T VOF_Trans_Threshold;
 // When to remove lonely cells
 T LonelyThreshold;
 // init conditions
-Vector<T, 2> U_Ini;  // mm/s
+Vector<T, 3> U_Ini;  // mm/s
 T U_Max;
 
 // bcs
-Vector<T, 2> U_Wall;  // mm/s
+Vector<T, 3> U_Wall;  // mm/s
 
 // power-law
 T BehaviorIndex;
@@ -57,7 +58,7 @@ int OutputStep;
 std::string work_dir;
 
 void readParam() {
-  iniReader param_reader("dambreak2d_intlat.ini");
+  iniReader param_reader("dambreak3d.ini");
   // Thread_Num = param_reader.getValue<int>("OMP", "Thread_Num");
   // mesh
   work_dir = param_reader.getValue<std::string>("workdir", "workdir_");
@@ -66,6 +67,7 @@ void readParam() {
 
   Ni = param_reader.getValue<int>("Mesh", "Ni");
   Nj = param_reader.getValue<int>("Mesh", "Nj");
+  Nk = param_reader.getValue<int>("Mesh", "Nk");
   Cell_Len = param_reader.getValue<T>("Mesh", "Cell_Len");
   // physical properties
   rho_ref = param_reader.getValue<T>("Physical_Property", "rho_ref");
@@ -85,10 +87,12 @@ void readParam() {
   // init conditions
   U_Ini[0] = param_reader.getValue<T>("Init_Conditions", "U_Ini0");
   U_Ini[1] = param_reader.getValue<T>("Init_Conditions", "U_Ini1");
+  U_Ini[2] = param_reader.getValue<T>("Init_Conditions", "U_Ini2");
   U_Max = param_reader.getValue<T>("Init_Conditions", "U_Max");
   // bcs
   U_Wall[0] = param_reader.getValue<T>("Boundary_Conditions", "Velo_Wall0");
   U_Wall[1] = param_reader.getValue<T>("Boundary_Conditions", "Velo_Wall1");
+  U_Wall[2] = param_reader.getValue<T>("Boundary_Conditions", "Velo_Wall2");
   // LB
   RT = param_reader.getValue<T>("LB", "RT");
   // Simulation settings
@@ -121,11 +125,11 @@ int main() {
   ConvManager.Check_and_Print();
 
   // define geometry
-  AABB<T, 2> cavity(Vector<T, 2>{},
-                    Vector<T, 2>(T(Ni * Cell_Len), T(Nj * Cell_Len)));
-  AABB<T, 2> fluid(Vector<T, 2>{},
-                   Vector<T, 2>(T(int(Ni / 2) * Cell_Len), T(int(Nj / 2) * Cell_Len)));
-  BlockGeometry2D<T> Geo(Ni, Nj, Thread_Num, cavity, Cell_Len);
+  AABB<T, 3> cavity(Vector<T, 3>{},
+                    Vector<T, 3>(T(Ni * Cell_Len), T(Nj * Cell_Len), T(Nk * Cell_Len)));
+  AABB<T, 3> fluid(Vector<T, 3>{},
+                   Vector<T, 3>(T(int(Ni / 2) * Cell_Len), T(int(Nj) * Cell_Len), T(int(Nk/2) * Cell_Len)));
+  BlockGeometry3D<T> Geo(Ni, Nj, Nk, Thread_Num, cavity, Cell_Len);
 
   // ------------------ define flag field ------------------
   // BlockFieldManager<FLAG, T, LatSet::d> FlagFM(Geo, VoidFlag);
@@ -152,7 +156,7 @@ int main() {
   T surface_tension_coefficient_factor =
     BaseConv.Conv_Time * BaseConv.Conv_Time / (rho_ref * std::pow(BaseConv.Conv_L, 3));
 
-  ValuePack NSInitValues(BaseConv.getLatRhoInit(), Vector<T, 2>{}, T{}, -BaseConv.Lattice_g);
+  ValuePack NSInitValues(BaseConv.getLatRhoInit(), Vector<T, LatSet::d>{}, T{}, -BaseConv.Lattice_g);
   ValuePack FSInitValues(FS::FSType::Solid, T{}, T{}, T{});
   ValuePack FSParamsInitValues(LonelyThreshold, VOF_Trans_Threshold, true, surface_tension_coefficient_factor* surface_tension_coefficient);
   // power-law dynamics for non-Newtonian fluid
@@ -165,7 +169,6 @@ int main() {
   using NSCELL = Cell<T, LatSet, ALLFIELDS>;
   using NSLAT = BlockLatticeManager<T, LatSet, ALLFIELDS>;
   using NSBlockLat = BlockLattice<T, LatSet, ALLFIELDS>;
-  using NSBlockLatMan = BlockLatticeManager<T, LatSet, ALLFIELDS>;
   BlockLatticeManager<T, LatSet, ALLFIELDS> NSLattice(Geo, ALLValues, BaseConv);
 
   //// free surface
@@ -181,11 +184,10 @@ int main() {
 
   FS::FreeSurfaceHelper<NSLAT>::Init(NSLattice);
 
-
   //// end free surface
 
   // define task/ dynamics:
-  // NS task  PowerLaw_BGKForce_Feq_RhoU
+  // NS task
   using NSBulkTask =
     tmp::Key_TypePair<FS::FSType::Fluid | FS::FSType::Interface,
                       collision::BGKForce_Feq_RhoU<equilibrium::SecondOrder<NSCELL>,
@@ -205,8 +207,8 @@ int main() {
   vtmo::VectorWriter VeloWriter("Velo", NSLattice.getField<VELOCITY<T, LatSet::d>>());
   vtmo::ScalarWriter VOFWriter("VOF", NSLattice.getField<FS::VOLUMEFRAC<T>>());
   vtmo::ScalarWriter StateWriter("State", NSLattice.getField<FS::STATE>());
-  vtmo::vtmWriter<T, LatSet::d> Writer("dambreak2d", Geo, 1);
-  Writer.addWriterSet(MassWriter, VOFWriter, VeloWriter, StateWriter);
+  vtmo::vtmWriter<T, LatSet::d> Writer("dambreak3d", Geo, 1);
+  Writer.addWriterSet(StateWriter, VeloWriter);
 
   // count and timer
   Timer MainLoopTimer;
@@ -224,7 +226,7 @@ int main() {
     // NS_BB.Apply(MainLoopTimer());
     NSLattice.Communicate(MainLoopTimer());
 
-    FS::FreeSurfaceApply<NSBlockLatMan>::Apply(NSLattice, MainLoopTimer());
+    FS::FreeSurfaceApply<BlockLatticeManager<T, LatSet, ALLFIELDS>>::Apply(NSLattice, MainLoopTimer());
 
 
     if (MainLoopTimer() % OutputStep == 0) {

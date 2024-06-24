@@ -251,25 +251,45 @@ struct FreeSurfaceHelper{
     if (util::isFlag(field.get(id), FSType::Fluid)) {
       for (int i = 1; i < LatSet::q; ++i) {
         std::size_t idn = id + LatSet::c[i] * block.getProjection();
-        if (util::isFlag(field.get(idn), FSType::Gas)) {
-          util::removeFlag(FSType::Gas, util::underlyingRef(field.get(idn)));
-          util::addFlag(FSType::Interface, util::underlyingRef(field.get(idn)));
+        Vector<T, LatSet::d> loc_t = block.getLoc_t(idn);
+        if (block.IsInside(loc_t)){
+          if (util::isFlag(field.get(idn), FSType::Gas)) {
+            util::removeFlag(FSType::Gas, util::underlyingRef(field.get(idn)));
+            util::addFlag(FSType::Interface, util::underlyingRef(field.get(idn)));
+          }
         }
       }
     }
   });
+
+  latman.template getField<STATE>().NormalCommunicate();
+  #ifdef MPI_ENABLED
+  latman.template getField<STATE>().MPINormalCommunicate(count);
+  #endif
+
   // set mass and volume fraction
   latman.template getField<MASS<T>>().forEach(latman.template getField<STATE>(), FSType::Fluid,
                   [&](auto& field, std::size_t id) { field.SetField(id, T{1}); });
   latman.template getField<MASS<T>>().forEach(latman.template getField<STATE>(), FSType::Interface,
                   [&](auto& field, std::size_t id) { field.SetField(id, T{0.5}); });
+
+  latman.template getField<MASS<T>>().NormalCommunicate();
+  #ifdef MPI_ENABLED
+  latman.template getField<MASS<T>>().MPINormalCommunicate(count);
+  #endif
   
   latman.template getField<VOLUMEFRAC<T>>().forEach(latman.template getField<STATE>(), FSType::Fluid,
                         [&](auto& field, std::size_t id) { field.SetField(id, T{1}); });
-  latman.template getField<VOLUMEFRAC<T>>().forEach(latman.template getField<STATE>(), FSType::Interface, [&](auto& field, std::size_t id) {
-    field.SetField(id, T{0.5});
-  });
+  latman.template getField<VOLUMEFRAC<T>>().forEach(latman.template getField<STATE>(), FSType::Interface, 
+                  [&](auto& field, std::size_t id) {field.SetField(id, T{0.5});});
+
+  latman.template getField<VOLUMEFRAC<T>>().NormalCommunicate();
+  #ifdef MPI_ENABLED
+  latman.template getField<VOLUMEFRAC<T>>().MPINormalCommunicate(count);
+  #endif
+
   }
+
 };
 
 
@@ -331,9 +351,81 @@ T offsetHelper2D(T volume, const std::vector<T>& sorted_normal) {
   return d1;
 }
 
+// openlb
+// A lot of magic numbers are happening here. Optimized algorithm taken from Moritz Lehmann
 template<typename T>
 T offsetHelper3D(T volume, const std::vector<T>& sorted_normal) {
-  return T{};
+  T sn0_plus_sn1 = sorted_normal[0] + sorted_normal[1];
+  T sn0_times_sn1 = sorted_normal[0] * sorted_normal[1];
+  T sn2_volume = sorted_normal[2] * volume;
+
+  T min_sn0_plus_sn1_and_sn2 = std::min(sn0_plus_sn1, sorted_normal[2]);
+
+  T d5 = sn2_volume + 0.5 * sn0_plus_sn1;
+  if(d5 > min_sn0_plus_sn1_and_sn2 && d5 <= sorted_normal[2]){
+    return d5;
+  }
+
+  T d2 = 0.5 * sorted_normal[0] + 0.28867513 * std::sqrt(std::max(0., 24. * sorted_normal[1] * sn2_volume - sorted_normal[0]*sorted_normal[0]) );
+
+  if(d2 > sorted_normal[0] && d2 <= sorted_normal[1]){
+    return d2;
+  }
+  // cubic root
+  T d1  = std::cbrt(6.0 * sn0_times_sn1 * sn2_volume);
+  if(d1 <= sorted_normal[0]){
+    return d1;
+  }
+
+  T x3 = 81.0  * sn0_times_sn1 * (sn0_plus_sn1 - 2. * sn2_volume);
+  T y3 = std::sqrt(std::max(0., 23328. * sn0_times_sn1*sn0_times_sn1*sn0_times_sn1 - x3*x3 ));
+  T u3 = std::cbrt(x3*x3 + y3*y3);
+  T d3 = sn0_plus_sn1 - (7.5595264 * sn0_times_sn1 + 0.26456684 * u3) * (1./std::sqrt(u3)) * std::sin(0.5235988 - 0.3333334 * std::atan(y3 / x3));
+  if(d3 > sorted_normal[1] && d3 <= min_sn0_plus_sn1_and_sn2){
+    return d3;
+  }
+
+  T t4 = 9. * std::pow(sn0_plus_sn1 + sorted_normal[2], 2) - 18.;
+  T x4 = std::max(sn0_times_sn1 * sorted_normal[2] * (324. - 648. * volume), 1.1754944e-38);
+  T y4 = std::sqrt(std::max(4. * t4*t4*t4 - x4*x4, 0.));
+  T u4 = std::cbrt(x4*x4 + y4*y4);
+  T d4  = 0.5 * (sn0_plus_sn1 + sorted_normal[2]) - (0.20998684 * t4 + 0.13228342 * u4) * (1./std::sqrt(u4)) * std::sin(0.5235988- 0.3333334 * std::atan(y4/x4));
+
+  return d4;
+}
+
+// openlb
+// A lot of magic numbers are happening here. Optimized algorithm taken from Moritz Lehmann
+template<typename T, typename LatSet>
+T offsetHelperOpt(T vol, const Vector<T,LatSet::d>& sn) {
+  const T sn0_p_sn1 = sn[0] + sn[1];
+  const T sn2_t_V = sn[2] * vol;
+
+  if(sn0_p_sn1 <= 2. * sn2_t_V){
+    return sn2_t_V + 0.5 * sn0_p_sn1;
+  }
+
+  const T sq_sn0 = std::pow(sn[0],2), sn1_6 = 6. * sn[1], v1 = sq_sn0 / sn1_6;
+
+  if(v1 <= sn2_t_V && sn2_t_V < v1 + 0.5 * (sn[1]-sn[0])){
+    return 0.5 *(sn[0] + std::sqrt(sq_sn0 + 8.0 * sn[1] * (sn2_t_V - v1)));
+  }
+
+  const T v6 = sn[0] * sn1_6 * sn2_t_V;
+  if(sn2_t_V < v1){
+    return std::cbrt(v6);
+  }
+
+  const T v3 = sn[2] < sn0_p_sn1 ? (std::pow(sn[2],2) * (3. * sn0_p_sn1 - sn[2]) + sq_sn0 *(sn[0] - 3.0 * sn[2]) + std::pow(sn[1],2)*(sn[1]-3.0 * sn[2])) / (sn[0] * sn1_6) : 0.5 * sn0_p_sn1;
+
+  const T sq_sn0_sq_sn1 = sq_sn0 + std::pow(sn[1],2), v6_cb_sn0_sn1 = v6 - std::pow(sn[0],3) - std::pow(sn[1],3);
+
+  const bool case34 = sn2_t_V < v3;
+  const T a = case34 ? v6_cb_sn0_sn1 : 0.5 * (v6_cb_sn0_sn1 - std::pow(sn[2], 3));
+  const T b = case34 ? sq_sn0_sq_sn1 : 0.5 * (sq_sn0_sq_sn1 + std::pow(sn[2], 2));
+  const T c = case34 ? sn0_p_sn1 : 0.5;
+  const T t = std::sqrt(std::pow(c,2) - b);
+  return c - 2.0 * t * std::sin(0.33333334 * std::asin((std::pow(c,3) - 0.5 * a - 1.5 * b * c) / std::pow(t,3)));
 }
 
 // openlb 
@@ -368,6 +460,27 @@ T calculateCubeOffset(T volume, const Vector<T,LatSet::d>& normal) {
   }
 
   return std::copysign(d - 0.5 * sorted_normal_acc, volume - 0.5);
+}
+
+// openlb Optimized version of calculateCubeOffset
+template<typename T, typename LatSet>
+T calculateCubeOffsetOpt(T volume, const Vector<T,LatSet::d>& normal) {
+  Vector<T, LatSet::d> abs_normal = normal.getabs();
+
+  T a_l1 = abs_normal[0] + abs_normal[1] + abs_normal[2];
+
+  T volume_symmetry = 0.5 - std::abs(volume - 0.5);
+
+  Vector<T,LatSet::d> sorted_normal{};
+  sorted_normal[0] = std::min(std::min(abs_normal[0], abs_normal[1]), abs_normal[2]) / a_l1;
+  sorted_normal[1] = 0.;
+  sorted_normal[2] = std::max(std::max(abs_normal[0], abs_normal[1]), abs_normal[2]) / a_l1;
+
+  sorted_normal[1] = std::max(1. - sorted_normal[0] - sorted_normal[2], 0.);
+
+  T d = offsetHelperOpt<T,LatSet>(volume_symmetry, sorted_normal);
+
+  return a_l1 * std::copysign(0.5 - d, volume - 0.5);
 }
 
 // openlb pivoted LU solver
@@ -514,6 +627,194 @@ typename CELL::FloatType ComputeCurvature2D(CELL& cell) {
   T curvature = 2.*solved_fit[0] / denom;
   return std::max(-1., std::min(1., curvature));
 }
+
+
+// openlb 
+template <typename CELL>
+typename CELL::FloatType ComputeCurvature3D(CELL& cell){
+  using T = typename CELL::FloatType;
+  using LatSet = typename CELL::LatticeSet;
+  // This is b_z
+  // Parker-Youngs Normal
+  Vector<T, 3> normal{};
+  computeParker_YoungsNormal(cell, normal);
+  T norm = normal.getnorm();
+  if (norm < 1e-6) return T{};
+  normal /= norm;
+
+  std::array<T,3> r_vec{0.56270900, 0.32704452, 0.75921047};
+  /*
+  std::array<T,DESCRIPTOR::d> r_vec{
+    0.,0.,1.
+  };
+  */
+  std::array<std::array<T,3>,3> rotation{{
+    {{0., 0., 0.}},
+    //{{normal[1], -normal[0], 0.}},
+    {{normal[1] * r_vec[2] - normal[2] * r_vec[1], normal[2] * r_vec[0] - normal[0] * r_vec[2], normal[0] * r_vec[1] - normal[1] * r_vec[0]}},
+    {{normal[0], normal[1], normal[2]}}
+  }};
+
+  // Cross product with (0,0,1) x normal
+  // This is b_y
+
+  // (normal[0], normal[1], normal[2])
+
+  T cross_norm = 0.;
+  for(size_t i = 0; i < LatSet::d; ++i){
+    cross_norm += rotation[1][i] * rotation[1][i];
+  }
+
+  // If too close too each other use the identity matrix
+  if(cross_norm > 1e-6){
+    cross_norm = std::sqrt(cross_norm);
+    for(size_t i = 0; i <LatSet::d; ++i){
+      rotation[1][i] /= cross_norm;
+    }
+  }else {
+    rotation[1] = {{
+      -normal[2],
+      0.,
+      normal[0]
+    }};
+
+    cross_norm = 0.;
+    for(size_t i = 0; i < LatSet::d; ++i){
+      cross_norm += rotation[1][i] * rotation[1][i];
+    }
+
+    cross_norm = std::sqrt(cross_norm);
+
+    for(size_t i = 0; i <LatSet::d; ++i){
+      rotation[1][i] /= cross_norm;
+    }
+  }
+
+  // Cross product of ((0,0,1) x normal / | (0,0,1) x normal |) x normal
+  // This is b_x
+  rotation[0] = {{
+    rotation[1][1] * normal[2] - rotation[1][2] * normal[1],
+    rotation[1][2] * normal[0] - rotation[1][0] * normal[2],
+    rotation[1][0] * normal[1] - rotation[1][1] * normal[0]
+  }};
+
+  // These three form a matrix and are entered into each row
+  // ( b_x )
+  // ( b_y )
+  // ( b_z )
+
+  constexpr size_t S = 5;
+  std::array<std::array<T,S>, S> lq_matrix;
+  std::array<T,S> b_rhs;
+  for(size_t i = 0; i < S; ++i){
+    for(size_t j = 0; j < S; ++j){
+      lq_matrix[i][j] = 0.;
+    }
+    b_rhs[i] = 0.;
+  }
+  T origin_offset{};
+  {
+    T fill_level = getClampedVOF(cell);
+    origin_offset = calculateCubeOffsetOpt<T,LatSet>(fill_level, normal);
+  }
+
+  size_t healthy_interfaces = 0;
+  for(int iPop = 1; iPop < LatSet::q; iPop++){
+    auto cellC = cell.getNeighbor(iPop);
+
+    if(!util::isFlag(cellC.template get<STATE>(), FSType::Interface) || !hasNeighborType(cellC, FSType::Gas)) {
+      continue;
+    }
+
+    ++healthy_interfaces;
+
+    T fill_level = getClampedVOF(cellC);
+
+    T cube_offset = calculateCubeOffsetOpt<T, LatSet>(fill_level, normal);
+
+    int i = LatSet::c[iPop][0];
+    int j = LatSet::c[iPop][1];
+    int k = LatSet::c[iPop][2];
+
+    std::array<T,3> pos{static_cast<T>(i),static_cast<T>(j),static_cast<T>(k)};
+    std::array<T,3> r_pos{0.,0.,cube_offset - origin_offset};
+
+    for(size_t a = 0; a < LatSet::d; ++a){
+      for(size_t b = 0; b < LatSet::d; ++b){
+        r_pos[a] += rotation[a][b] * pos[b];
+      }
+    }
+
+    T r_x_2 = r_pos[0] * r_pos[0];
+    T r_x_3 = r_x_2 * r_pos[0];
+    T r_x_4 = r_x_3 * r_pos[0];
+
+    T r_y_2 = r_pos[1] * r_pos[1];
+    T r_y_3 = r_y_2 * r_pos[1];
+    T r_y_4 = r_y_3 * r_pos[1];
+
+    T r_x_2_y_2 = r_x_2 * r_y_2;
+    T r_x_3_y = r_x_3 * r_pos[1];
+    T r_x_2_y = r_x_2 * r_pos[1];
+
+    T r_x_y_3 = r_pos[0] * r_y_3;
+    T r_x_y_2 = r_pos[0] * r_y_2;
+
+    T r_x_y = r_pos[0] * r_pos[1];
+
+    lq_matrix[0][0] += r_x_4;
+    lq_matrix[1][1] += r_y_4;
+    lq_matrix[2][2] += r_x_2_y_2;
+    lq_matrix[3][3] += r_x_2;
+    lq_matrix[4][4] += r_y_2;
+
+    // skip [1][0] copy later from [2][2]
+    lq_matrix[2][0] += r_x_3_y;
+    lq_matrix[3][0] += r_x_3;
+    lq_matrix[4][0] += r_x_2_y;
+
+    lq_matrix[2][1] += r_x_y_3;
+    lq_matrix[3][1] += r_x_y_2;
+    lq_matrix[4][1] += r_y_3;
+
+    // skip [3][2] copy from [4][0]
+    // skip [4][2] copy from [3][1]
+
+    lq_matrix[4][3] += r_x_y;
+
+    b_rhs[0] +=  r_x_2 * r_pos[2];
+    b_rhs[1] +=  r_y_2 * r_pos[2];
+    b_rhs[2] +=  r_x_y * r_pos[2];
+    b_rhs[3] +=  r_pos[0] * r_pos[2];
+    b_rhs[4] +=  r_pos[1] * r_pos[2];
+  }
+
+  lq_matrix[1][0] = lq_matrix[2][2];
+  lq_matrix[3][2] = lq_matrix[4][0];
+  lq_matrix[4][2] = lq_matrix[3][1];
+
+  for(size_t i = 0; i < S; ++i){
+    for(size_t j = i + 1; j < S; ++j){
+      lq_matrix[i][j] = lq_matrix[j][i];
+    }
+  }
+
+  // Consider using Thikonov regularization?
+  //T alpha = 1e-8;
+  T alpha{};
+  for(size_t i = 0; i < S; ++i){
+    lq_matrix[i][i] += alpha;
+  }
+
+  std::array<T,S> solved_fit = solvePivotedLU<T,S>(lq_matrix, b_rhs, healthy_interfaces);
+
+  T denom = std::sqrt(1. + solved_fit[3]*solved_fit[3] + solved_fit[4]*solved_fit[4]);
+  denom = denom * denom * denom;
+  T curvature = ( (1.+solved_fit[4]*solved_fit[4]) * solved_fit[0] + (1. + solved_fit[3]*solved_fit[3] ) * solved_fit[1] - solved_fit[3] * solved_fit[4] * solved_fit[2] ) / denom;
+
+  return std::max(-1., std::min(1., curvature));
+}
+
 
 template <typename CELL>
 typename CELL::FloatType ComputeCurvature(CELL& cell) {
@@ -870,6 +1171,87 @@ struct ClearExcessMass {
     lattice.template getField<EXCESSMASS<T,LatSet::q>>().Init();
   }
   
+};
+
+// apply all the free surface dynamics
+template <typename LATTICEMANAGERTYPE>
+struct FreeSurfaceApply{
+  using CELL = typename LATTICEMANAGERTYPE::CellType;
+  using BLOCKLAT = typename LATTICEMANAGERTYPE::BLOCKLATTICE;
+  using T = typename CELL::FloatType;
+  using LatSet = typename CELL::LatticeSet;
+
+  static void Apply(LATTICEMANAGERTYPE& latManager, std::int64_t count) {
+
+    // mass transfer
+    latManager.template ApplyInnerCellDynamics<MassTransfer<CELL>>(count);
+
+    latManager.template getField<STATE>().NormalCommunicate(count);
+    #ifdef MPI_ENABLED
+    latManager.template getField<STATE>().MPINormalCommunicate(count);
+    #endif
+    latManager.template getField<MASS<T>>().CommunicateAll(count);
+
+
+    // to fluid neighbor conversion
+    latManager.template ApplyInnerCellDynamics<ToFluidNbrConversion<CELL>>(count);
+
+    latManager.template getField<STATE>().NormalCommunicate(count);
+    #ifdef MPI_ENABLED
+    latManager.template getField<STATE>().MPINormalCommunicate(count);
+    #endif
+
+
+    // gas to interface pop init
+    latManager.template ApplyInnerCellDynamics<GasToInterfacePopInit<CELL>>(count);
+
+    latManager.Communicate(count);
+
+
+    // to gas neighbor conversion
+    latManager.template ApplyInnerCellDynamics<ToGasNbrConversion<CELL>>(count);
+
+    latManager.template getField<STATE>().NormalCommunicate(count);
+    #ifdef MPI_ENABLED
+    latManager.template getField<STATE>().MPINormalCommunicate(count);
+    #endif
+
+
+    // interface excess mass
+    latManager.template ApplyInnerCellDynamics<InterfaceExcessMass<CELL>>(count);
+
+    latManager.template getField<MASS<T>>().CommunicateAll(count);
+    latManager.template getField<EXCESSMASS<T, LatSet::q>>().CommunicateAll(count);
+
+
+    // finalize conversion
+    latManager.template ApplyInnerCellDynamics<FinalizeConversion<CELL>>(count);
+
+    latManager.template getField<STATE>().NormalCommunicate(count);
+    #ifdef MPI_ENABLED
+    latManager.template getField<STATE>().MPINormalCommunicate(count);
+    #endif
+    latManager.template getField<MASS<T>>().CommunicateAll(count);
+    latManager.template getField<VOLUMEFRAC<T>>().CommunicateAll(count);
+    latManager.template getField<VELOCITY<T,LatSet::d>>().CommunicateAll(count);
+
+
+    // stream EXCESSMASS<T,LatSet::q>
+    latManager.ForEachBlockLattice(count, [&](auto& blocklat){StreamExcessMass<BLOCKLAT>::apply(blocklat);});
+
+
+    // collect excess mass
+    latManager.template ApplyInnerCellDynamics<CollectExcessMass<CELL>>(count);
+
+    latManager.template getField<MASS<T>>().CommunicateAll(count);
+    latManager.template getField<VOLUMEFRAC<T>>().CommunicateAll(count);
+
+
+    // clear EXCESSMASS<T,LatSet::q>
+    latManager.ForEachBlockLattice(count, [&](auto& blocklat){ClearExcessMass<BLOCKLAT>::apply(blocklat);});
+    
+
+  }
 };
 
 }  // namespace FS

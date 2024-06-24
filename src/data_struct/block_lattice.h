@@ -168,7 +168,8 @@ class BlockLatticeManager : public BlockLatticeManagerBase<T, LatSet, TypePack> 
 
   void Init();
   template <typename... InitValues>
-  void Init(BlockGeometryHelper<T, LatSet::d>& GeoHelper, const std::tuple<InitValues...>& initvalues);
+  void Init(BlockGeometryHelper<T, LatSet::d>& GeoHelper,
+            const std::tuple<InitValues...>& initvalues);
 
   template <typename Func>
   void ForEachField(Func&& func) {
@@ -227,15 +228,25 @@ class BlockLatticeManager : public BlockLatticeManagerBase<T, LatSet, TypePack> 
 
   template <typename CELLDYNAMICS, typename FieldType>
   void ApplyInnerCellDynamics(std::int64_t count,
-                         const BlockFieldManager<FieldType, T, LatSet::d>& BFM);
-  
+                              const BlockFieldManager<FieldType, T, LatSet::d>& BFM);
+
   template <typename CELLDYNAMICS>
   void ApplyInnerCellDynamics(std::int64_t count);
 
   template <typename Func>
-  void ForEachBlockLattice(Func&& func){
-    for (auto& blocklat : BlockLats){
+  void ForEachBlockLattice(Func&& func) {
+    for (auto& blocklat : BlockLats) {
       func(blocklat);
+    }
+  }
+
+  template <typename Func>
+  void ForEachBlockLattice(std::int64_t count, Func&& func) {
+    for (auto& blocklat : BlockLats) {
+      const int deLevel = static_cast<int>(getMaxLevel() - blocklat.getLevel());
+      if (count % (static_cast<int>(pow(2, deLevel))) == 0) {
+        func(blocklat);
+      }
     }
   }
 
@@ -323,8 +334,8 @@ class DynamicBlockLatticeHelper2D {
                               const std::vector<T>& refineth,
                               const std::vector<T>& coarsenth, int MaxRefineLevel = 2)
       : BlockLatMan(blocklatman), BlockGeo(blocklatman.getGeo()),
-        BlockGeoHelper(geohelper), _RefineTholds(refineth),
-        _CoarsenTholds(coarsenth), _MaxRefineLevel(MaxRefineLevel)
+        BlockGeoHelper(geohelper), _RefineTholds(refineth), _CoarsenTholds(coarsenth),
+        _MaxRefineLevel(MaxRefineLevel)
   // ,_GradNorm2F(BlockGeo.getBaseBlock().getN(), T(0)) {
   {
     // int minsize = std::min(_RefineTholds.size(), _CoarsenTholds.size());
