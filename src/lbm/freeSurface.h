@@ -975,17 +975,29 @@ struct ToFluidNbrConversion {
   using LatSet = typename CELL::LatticeSet;
 
   static void apply(CELL& cell) {
-    if (util::isFlag(cell.template get<STATE>(), FSType::To_Fluid)) {
-      // check neighbors
-      for (int k = 1; k < LatSet::q; ++k) {
-        CELL celln = cell.getNeighbor(k);
-        if (util::isFlag(celln.template get<STATE>(), FSType::To_Gas)) {
-          // remove to_gas flag
-          util::removeFlag(FSType::To_Gas, util::underlyingRef(celln.template get<STATE>()));
-        } else if (util::isFlag(celln.template get<STATE>(), FSType::Gas)) {
-          // set to_interface for gas neighbor cells
-          util::addFlag(FSType::To_Interface, util::underlyingRef(celln.template get<STATE>()));
-        }
+    // if (util::isFlag(cell.template get<STATE>(), FSType::To_Fluid)) {
+    //   // check neighbors
+    //   for (int k = 1; k < LatSet::q; ++k) {
+    //     CELL celln = cell.getNeighbor(k);
+    //     if (util::isFlag(celln.template get<STATE>(), FSType::To_Gas)) {
+    //       // remove to_gas flag
+    //       util::removeFlag(FSType::To_Gas, util::underlyingRef(celln.template get<STATE>()));
+    //     } else if (util::isFlag(celln.template get<STATE>(), FSType::Gas)) {
+    //       // set to_interface for gas neighbor cells
+    //       util::addFlag(FSType::To_Interface, util::underlyingRef(celln.template get<STATE>()));
+    //     }
+    //   }
+    // }
+
+    if (util::isFlag(cell.template get<STATE>(), FSType::To_Gas)) {
+      if (hasNeighborType(cell, FSType::To_Fluid)){
+        // remove to_gas flag
+        util::removeFlag(FSType::To_Gas, util::underlyingRef(cell.template get<STATE>()));
+      }
+    } else if (util::isFlag(cell.template get<STATE>(), FSType::Gas)) {
+      if (hasNeighborType(cell, FSType::To_Fluid)){
+        // set to_interface
+        util::addFlag(FSType::To_Interface, util::underlyingRef(cell.template get<STATE>()));
       }
     }
   }
@@ -1033,16 +1045,24 @@ struct ToGasNbrConversion {
   using LatSet = typename CELL::LatticeSet;
 
   static void apply(CELL& cell) {
-    if (util::isFlag(cell.template get<STATE>(), FSType::To_Gas)) {
-      // check neighbors
-      for (int k = 1; k < LatSet::q; ++k) {
-        CELL celln = cell.getNeighbor(k);
-        if (util::isFlag(celln.template get<STATE>(), FSType::Fluid)) {
-          // to interface
-          util::addFlag(FSType::To_Interface, util::underlyingRef(celln.template get<STATE>()));
-        }
+    // if (util::isFlag(cell.template get<STATE>(), FSType::To_Gas)) {
+    //   // check neighbors
+    //   for (int k = 1; k < LatSet::q; ++k) {
+    //     CELL celln = cell.getNeighbor(k);
+    //     if (util::isFlag(celln.template get<STATE>(), FSType::Fluid)) {
+    //       // to interface
+    //       util::addFlag(FSType::To_Interface, util::underlyingRef(celln.template get<STATE>()));
+    //     }
+    //   }
+    // }
+
+    if (util::isFlag(cell.template get<STATE>(), FSType::Fluid)) {
+      if (hasNeighborType(cell, FSType::To_Gas)){
+        // set to_interface
+        util::addFlag(FSType::To_Interface, util::underlyingRef(cell.template get<STATE>()));
       }
     }
+
   }
 
 };
@@ -1233,7 +1253,7 @@ struct FreeSurfaceApply{
     #endif
     latManager.template getField<MASS<T>>().CommunicateAll(count);
     latManager.template getField<VOLUMEFRAC<T>>().CommunicateAll(count);
-    latManager.template getField<VELOCITY<T,LatSet::d>>().CommunicateAll(count);
+    // latManager.template getField<VELOCITY<T,LatSet::d>>().CommunicateAll(count);
 
 
     // stream EXCESSMASS<T,LatSet::q>
