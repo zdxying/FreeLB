@@ -206,7 +206,7 @@ struct BounceBack {
   //               (cell.template get<VELOCITY<T, LatSet::d>>() * LatSet::c[k]);
   // }
 
-// full way bounce back with moving wall, could be regarded as a mpdified collision process
+// full way bounce back with moving wall, could be regarded as a modified collision process
 // swap the populations in the opposite direction
 // LatSet must have rest population(D2Q4 is not supported)
 template <typename CELLTYPE>

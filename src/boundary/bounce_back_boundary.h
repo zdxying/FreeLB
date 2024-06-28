@@ -24,6 +24,7 @@
 
 #include "boundary/basic_boundary.h"
 #include "lbm/equilibrium.h"
+#include "lbm/moment.h"
 
 template <typename T, typename LatSet>
 struct BounceBackLikeMethod {
@@ -69,14 +70,37 @@ class BBLikeFixedBoundary final : public FixedBoundary<T, LatSet, flagType> {
   std::string _name;
 
  public:
-  BBLikeFixedBoundary(std::string name, PopLattice<T, LatSet> &lat,
-                      std::uint8_t cellflag, std::uint8_t voidflag = std::uint8_t(1))
+  BBLikeFixedBoundary(std::string name, PopLattice<T, LatSet> &lat, std::uint8_t cellflag,
+                      std::uint8_t voidflag = std::uint8_t(1))
       : FixedBoundary<T, LatSet, flagType>(lat, cellflag, voidflag), _name(name) {}
 
-  void Apply() override;
-  void getinfo() override;
-  void UpdateRho() override;
-  void UpdateU() override;
+  void Apply() override {
+#pragma omp parallel for num_threads(Thread_Num)
+    for (const auto &bdcell : this->BdCells) {
+      PopCell<T, LatSet> cell(bdcell.Id, this->Lat);
+      for (int k : bdcell.outflows) {
+        BBLikemethod(cell, k);
+      }
+    }
+  }
+  void getinfo() override {
+    std::cout << std::setw(18) << std::left << _name << std::setw(10) << std::left
+              << this->BdCells.size() << std::endl;
+  }
+  void UpdateRho() override {
+#pragma omp parallel for num_threads(Thread_Num) schedule(static)
+    for (const auto &bdcell : this->BdCells) {
+      BasicPopCell<T, LatSet> cell(bdcell.Id, this->Lat);
+      moment::Rho<T, LatSet>::apply(cell, this->Lat.getRho(bdcell.Id));
+    }
+  }
+  void UpdateU() override {
+#pragma omp parallel for num_threads(Thread_Num) schedule(static)
+    for (const auto &bdcell : this->BdCells) {
+      BasicPopCell<T, LatSet> cell(bdcell.Id, this->Lat);
+      moment::Velocity<T, LatSet>::apply(cell, this->Lat.getVelocity(bdcell.Id));
+    }
+  }
 };
 
 // Moving BounceBackLike Boundary
@@ -89,19 +113,44 @@ class BBLikeMovingBoundary final : public MovingBoundary<T, LatSet, flagType> {
  public:
   BBLikeMovingBoundary(std::string name, PopLattice<T, LatSet> &lat,
                        std::vector<std::size_t> &ids, std::uint8_t voidflag,
-                       std::uint8_t cellflag = std::uint8_t(0));
+                       std::uint8_t cellflag = std::uint8_t(0))
+      : MovingBoundary<T, LatSet, flagType>(lat, ids, voidflag, cellflag), _name(name) {}
 
-  void Apply() override;
-  void getinfo() override;
-  void UpdateRho() override;
-  void UpdateU() override;
+  void Apply() override {
+    for (std::size_t id : this->Ids) {
+      PopCell<T, LatSet> cell(id, this->Lat);
+      for (int k = 1; k < LatSet::q; ++k) {
+        if (util::isFlag(this->Field[this->Lat.getNbrId(id, k)], this->voidFlag)) {
+          BBLikemethod(cell, LatSet::opp[k]);
+        }
+      }
+    }
+  }
+  void getinfo() override {
+    std::cout << std::setw(18) << std::left << _name << std::setw(10) << std::left
+              << this->Ids.size() << std::endl;
+  }
+  void UpdateRho() override {
+    for (std::size_t id : this->Ids) {
+      BasicPopCell<T, LatSet> cell(id, this->Lat);
+      moment::Rho<T, LatSet>::apply(cell, this->Lat.getRho(id));
+    }
+  }
+  void UpdateU() override {
+    for (std::size_t id : this->Ids) {
+      BasicPopCell<T, LatSet> cell(id, this->Lat);
+      moment::Velocity<T, LatSet>::apply(cell, this->Lat.getVelocity(id));
+    }
+  }
 };
+
 
 // --------------------------------------------------------------------------------------
 // -----------------------------------BlockBoundary--------------------------------------
 // --------------------------------------------------------------------------------------
 
 namespace bounceback {
+
 template <typename CELL>
 struct normal {
   using LatSet = typename CELL::LatticeSet;
@@ -118,8 +167,8 @@ struct anti_simple {
   using GenericRho = typename CELL::GenericRho;
 
   static inline void apply(CELL &cell, unsigned int k) {
-    cell[k] =
-      2 * cell.template get<GenericRho>() * LatSet::w[k] - cell.getPrevious(LatSet::opp[k]);
+    cell[k] = 2 * cell.template get<GenericRho>() * LatSet::w[k] -
+              cell.getPrevious(LatSet::opp[k]);
   }
 };
 template <typename CELL>
@@ -129,10 +178,10 @@ struct anti_O1 {
   using GenericRho = typename CELL::GenericRho;
 
   static inline void apply(CELL &cell, unsigned int k) {
-    cell[k] =
-      2 * equilibrium::FirstOrder<CELL>::get(
-            k, cell.template get<VELOCITY<T, LatSet::d>>(), cell.template get<GenericRho>()) -
-      cell.getPrevious(LatSet::opp[k]);
+    cell[k] = 2 * equilibrium::FirstOrder<CELL>::get(
+                    k, cell.template get<VELOCITY<T, LatSet::d>>(),
+                    cell.template get<GenericRho>()) -
+              cell.getPrevious(LatSet::opp[k]);
   }
 };
 template <typename CELL>
@@ -142,11 +191,11 @@ struct anti_O2 {
   using GenericRho = typename CELL::GenericRho;
 
   static inline void apply(CELL &cell, unsigned int k) {
-    cell[k] =
-      2 * equilibrium::SecondOrder<CELL>::get(
-            k, cell.template get<VELOCITY<T, LatSet::d>>(), cell.template get<GenericRho>(),
-            cell.template get<VELOCITY<T, LatSet::d>>().getnorm2()) -
-      cell.getPrevious(LatSet::opp[k]);
+    cell[k] = 2 * equilibrium::SecondOrder<CELL>::get(
+                    k, cell.template get<VELOCITY<T, LatSet::d>>(),
+                    cell.template get<GenericRho>(),
+                    cell.template get<VELOCITY<T, LatSet::d>>().getnorm2()) -
+              cell.getPrevious(LatSet::opp[k]);
   }
 };
 template <typename CELL>
@@ -188,89 +237,3 @@ struct movingwall {
 };
 
 }  // namespace bounceback
-
-// --------------------------------------------------------------------------
-// BBLike Fixed BlockBoundary
-// --------------------------------------------------------------------------
-template <typename BLOCKLATTICE, typename ArrayType>
-class BBLikeFixedBlockBoundary : public BlockFixedBoundary<BLOCKLATTICE, ArrayType> {
- public:
-  using CELL = typename BLOCKLATTICE::CellType;
-
-  BBLikeFixedBlockBoundary(BLOCKLATTICE &lat, const ArrayType &f, std::uint8_t cellflag,
-                           std::uint8_t voidflag);
-  template <typename CELLDYNAMICS>
-  void ApplyCellDynamics();
-};
-
-template <typename CELLDYNAMICS, typename BLOCKLATTICEMANAGER, typename BLOCKFIELDMANAGER>
-class BBLikeFixedBlockBdManager final : public AbstractBlockBoundary {
- public:
-  using BLOCKLATTICE = typename BLOCKLATTICEMANAGER::BLOCKLATTICE;
-  using ArrayType = typename BLOCKFIELDMANAGER::array_type;
-
- private:
-  std::string _name;
-  std::vector<BBLikeFixedBlockBoundary<BLOCKLATTICE, ArrayType>> BdBlocks;
-  // boundary cell flag
-  std::uint8_t BdCellFlag;
-  // boundary flag
-  std::uint8_t voidFlag;
-
-  BLOCKLATTICEMANAGER &LatMan;
-
-  BLOCKFIELDMANAGER &BlockFManager;
-
- public:
-  BBLikeFixedBlockBdManager(std::string name, BLOCKLATTICEMANAGER &lat,
-                            BLOCKFIELDMANAGER &BlockFM, std::uint8_t cellflag,
-                            std::uint8_t voidflag = std::uint8_t(1));
-
-  void Init();
-  void Apply(std::int64_t count) override;
-};
-
-
-// --------------------------------------------------------------------------
-// BBLike Moving BlockBoundary
-// --------------------------------------------------------------------------
-template <typename BLOCKLATTICE, typename ArrayType>
-class BBLikeMovingBlockBoundary : public BlockMovingBoundary<BLOCKLATTICE, ArrayType> {
- public:
-  using CELL = typename BLOCKLATTICE::CellType;
-  using LatSet = typename CELL::LatticeSet;
-
-  BBLikeMovingBlockBoundary(BLOCKLATTICE &lat, std::vector<std::size_t> *ids,
-                            ArrayType &f, std::uint8_t voidflag, std::uint8_t cellflag);
-
-  template <typename CELLDYNAMICS>
-  void ApplyCellDynamics();
-};
-
-template <typename CELLDYNAMICS, typename BLOCKLATTICEMANAGER, typename BLOCKFIELDMANAGER>
-class BBLikeMovingBlockBdManager final : public AbstractBlockBoundary {
- public:
-  using BLOCKLATTICE = typename BLOCKLATTICEMANAGER::BLOCKLATTICE;
-  using ArrayType = typename BLOCKFIELDMANAGER::array_type;
-
-  BBLikeMovingBlockBdManager(std::string name, BLOCKLATTICEMANAGER &lat,
-                             std::vector<std::vector<std::size_t> *> &idss,
-                             BLOCKFIELDMANAGER &BlockFM, std::uint8_t voidflag,
-                             std::uint8_t cellflag = std::uint8_t(0));
-
-  void Init();
-  void Apply(std::int64_t count) override;
-
- private:
-  std::string _name;
-  std::vector<BBLikeMovingBlockBoundary<BLOCKLATTICE, ArrayType>> BdBlocks;
-  // boundary cell flag
-  std::uint8_t BdCellFlag;
-  // boundary flag
-  std::uint8_t voidFlag;
-  BLOCKLATTICEMANAGER &LatMan;
-  // ids
-  std::vector<std::vector<std::size_t> *> &IDss;
-
-  BLOCKFIELDMANAGER &BlockFManager;
-};

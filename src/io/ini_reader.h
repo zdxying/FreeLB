@@ -96,6 +96,17 @@ class iniReader {
   // get value from section and key
   template <typename T>
   T getValue(const std::string& section, const std::string& name) {
+    // find if section exists
+    if (iniContent.find(section) == iniContent.end()) {
+      std::cerr << "Section: [" << section << "] not found" << std::endl;
+      exit(1);
+    }
+    // find if key exists
+    if (iniContent[section].find(name) == iniContent[section].end()) {
+      std::cerr << "Key: \"" << name << "\" not found" << std::endl;
+      exit(1);
+    }
+    // read
     std::string value = iniContent[section][name];
     std::istringstream is_value(value);
     T val;

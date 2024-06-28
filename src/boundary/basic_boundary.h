@@ -69,18 +69,45 @@ class FixedBoundary : public AbstractBoundary {
   GenericArray<flagType> &Field;
 
  public:
-  FixedBoundary(PopLattice<T, LatSet> &lat, std::uint8_t cellflag,
-                std::uint8_t voidflag);
+  FixedBoundary(PopLattice<T, LatSet> &lat, std::uint8_t cellflag, std::uint8_t voidflag)
+      : Lat(lat), Geo(lat.getGeo()), Field(lat.getGeo().getGeoFlagField().getField()),
+        BdCellFlag(cellflag), voidFlag(voidflag) {
+    Setup();
+  }
   FixedBoundary(PopLattice<T, LatSet> &lat, GenericArray<flagType> &f,
-                std::uint8_t cellflag, std::uint8_t voidflag);
+                std::uint8_t cellflag, std::uint8_t voidflag)
+      : Lat(lat), Geo(lat.getGeo()), Field(f), BdCellFlag(cellflag), voidFlag(voidflag) {
+    Setup();
+  }
   // get boundary cell flag
   std::uint8_t getBdCellFlag() const { return BdCellFlag; }
   // get void cell flag
   std::uint8_t getVoidFlag() const { return voidFlag; }
   // add to boundary cells
-  void addtoBd(std::size_t id);
+  void addtoBd(std::size_t id) {
+    BdCells.emplace_back(id, LatSet::q);
+    // get reference to the last element
+    FixedBdCell &fixedbdcell = BdCells.back();
+    // get neighbor
+    // Attention: if voidFlag is 0, DO NOT use util::isFlag
+    for (unsigned int k = 1; k < LatSet::q; ++k) {
+      // if (Field[Lat.getNbrId(id, k)] == voidFlag &&
+      //     Field[Lat.getNbrId(id, LatSet::opp[k])] != voidFlag) {
+      //   fixedbdcell.outflows.push_back(LatSet::opp[k]);
+      // }
+
+      // using util::isFlag requires voidFlag to be non-zero
+      if (util::isFlag(Field[Lat.getNbrId(id, k)], voidFlag)) {
+        fixedbdcell.outflows.push_back(LatSet::opp[k]);
+      }
+    }
+  }
   // setup boundary cells
-  void Setup();
+  void Setup() {
+    for (std::size_t id = 0; id < Geo.getVoxelsNum(); ++id) {
+      if (util::isFlag(Field[id], BdCellFlag)) addtoBd(id);
+    }
+  }
 };
 
 template <typename T, typename LatSet, typename flagType>
@@ -101,9 +128,14 @@ class MovingBoundary : public AbstractBoundary {
 
  public:
   MovingBoundary(PopLattice<T, LatSet> &lat, std::vector<std::size_t> &ids,
-                 std::uint8_t voidflag, std::uint8_t cellflag);
+                 std::uint8_t voidflag, std::uint8_t cellflag)
+      : Lat(lat), Geo(lat.getGeo()), Ids(ids),
+        Field(lat.getGeo().getGeoFlagField().getField()), BdCellFlag(cellflag),
+        voidFlag(voidflag) {}
   MovingBoundary(PopLattice<T, LatSet> &lat, std::vector<std::size_t> &ids,
-                 GenericArray<flagType> &f, std::uint8_t voidflag, std::uint8_t cellflag);
+                 GenericArray<flagType> &f, std::uint8_t voidflag, std::uint8_t cellflag)
+      : Lat(lat), Geo(lat.getGeo()), Ids(ids), Field(f), BdCellFlag(cellflag),
+        voidFlag(voidflag) {}
 
   // get boundary cell flag
   std::uint8_t getBdCellFlag() const { return BdCellFlag; }
@@ -112,7 +144,12 @@ class MovingBoundary : public AbstractBoundary {
   // get std::vector<std::size_t> &Ids;
   std::vector<std::size_t> &getIds() { return Ids; }
   // update boundary cells: std::vector<std::size_t> &Ids;
-  void UpdateBdCells();
+  void UpdateBdCells() {
+    Ids.clear();
+    for (std::size_t id = 0; id < Geo.getVoxelsNum(); ++id) {
+      if (util::isFlag(Field[id], BdCellFlag)) Ids.push_back(id);
+    }
+  }
 };
 
 // --------------------------------------------------------------------------------------
@@ -139,18 +176,68 @@ class BlockFixedBoundary {
   const ArrayType &Field;
 
  public:
- using LatSet = typename BLOCKLATTICE::LatticeSet;
-  BlockFixedBoundary(BLOCKLATTICE &lat, const ArrayType &f,
-                     std::uint8_t cellflag, std::uint8_t voidflag);
+  using LatSet = typename BLOCKLATTICE::LatticeSet;
+
+  BlockFixedBoundary(BLOCKLATTICE &lat, const ArrayType &f, std::uint8_t cellflag,
+                     std::uint8_t voidflag)
+      : Lat(lat), Field(f), BdCellFlag(cellflag), voidFlag(voidflag) {
+    Setup();
+  }
   // get boundary cell flag
   std::uint8_t getBdCellFlag() const { return BdCellFlag; }
   // get void cell flag
   std::uint8_t getVoidFlag() const { return voidFlag; }
   BLOCKLATTICE &getLat() { return Lat; }
   // add to boundary cells: std::vector<FixedBdCell> BdCells
-  void addtoBd(std::size_t id);
+  void addtoBd(std::size_t id) {
+    BdCells.emplace_back(id, LatSet::q);
+    // get reference to the last element
+    FixedBdCell &fixedbdcell = BdCells.back();
+    // get neighbor
+    // Attention: if voidFlag is 0, DO NOT use util::isFlag
+    for (int k = 1; k < LatSet::q; ++k) {
+      // if (util::isFlag(Field[Lat.getNbrId(id, k)], voidFlag) &&
+      //     !util::isFlag(Field[Lat.getNbrId(id, LatSet::opp[k])], voidFlag)) {
+
+      // using util::isFlag requires voidFlag to be non-zero
+      if (util::isFlag(Field[Lat.getNbrId(id, k)], voidFlag)) {
+        fixedbdcell.outflows.push_back(LatSet::opp[k]);
+      }
+    }
+  }
   // setup boundary cells
-  void Setup();
+  void Setup() {
+    std::size_t reserveSize;
+    if constexpr (LatSet::d == 2) {
+      reserveSize = (Lat.getNx() + Lat.getNy()) * 2;
+    } else if constexpr (LatSet::d == 3) {
+      reserveSize = (Lat.getNx() * Lat.getNy() + Lat.getNx() * Lat.getNz() +
+                     Lat.getNy() * Lat.getNz()) *
+                    2;
+    }
+    BdCells.reserve(reserveSize);
+    // add inner cells
+    if constexpr (LatSet::d == 2) {
+      for (int iy = Lat.getOverlap(); iy < Lat.getNy() - Lat.getOverlap(); ++iy) {
+        for (int ix = Lat.getOverlap(); ix < Lat.getNx() - Lat.getOverlap(); ++ix) {
+          std::size_t id = ix + iy * Lat.getNx();
+          if (util::isFlag(Field[id], BdCellFlag)) addtoBd(id);
+        }
+      }
+    } else if constexpr (LatSet::d == 3) {
+      for (int iz = Lat.getOverlap(); iz < Lat.getNz() - Lat.getOverlap(); ++iz) {
+        for (int iy = Lat.getOverlap(); iy < Lat.getNy() - Lat.getOverlap(); ++iy) {
+          for (int ix = Lat.getOverlap(); ix < Lat.getNx() - Lat.getOverlap(); ++ix) {
+            std::size_t id =
+              ix + iy * Lat.getProjection()[1] + iz * Lat.getProjection()[2];
+            if (util::isFlag(Field[id], BdCellFlag)) addtoBd(id);
+          }
+        }
+      }
+    }
+    // shrink capacity to actual size
+    BdCells.shrink_to_fit();
+  }
 };
 
 template <typename BLOCKLATTICE, typename ArrayType>
@@ -168,9 +255,9 @@ class BlockMovingBoundary {
   ArrayType &Field;
 
  public:
-  BlockMovingBoundary(BLOCKLATTICE &lat, std::vector<std::size_t> &ids,
-                      ArrayType &f, std::uint8_t voidflag,
-                      std::uint8_t cellflag);
+  BlockMovingBoundary(BLOCKLATTICE &lat, std::vector<std::size_t> &ids, ArrayType &f,
+                      std::uint8_t voidflag, std::uint8_t cellflag)
+      : Lat(lat), Ids(ids), Field(f), BdCellFlag(cellflag), voidFlag(voidflag) {}
   // get boundary cell flag
   std::uint8_t getBdCellFlag() const { return BdCellFlag; }
   // get void cell flag
@@ -179,7 +266,12 @@ class BlockMovingBoundary {
   std::vector<std::size_t> &getIds() { return Ids; }
   BLOCKLATTICE &getLat() { return Lat; }
   // update boundary cells
-  void UpdateBdCells();
+  void UpdateBdCells() {
+    Ids.clear();
+    for (std::size_t id = 0; id < Lat.getGeo().getN(); ++id) {
+      if (util::isFlag(Field[id], BdCellFlag)) Ids.push_back(id);
+    }
+  }
 };
 
 class BoundaryManager {
@@ -191,7 +283,7 @@ class BoundaryManager {
     printinfo();
   }
   template <typename... Args>
-  BoundaryManager(Args*... args) : _Boundaries{args...} {
+  BoundaryManager(Args *...args) : _Boundaries{args...} {
     printinfo();
   }
 
@@ -199,8 +291,7 @@ class BoundaryManager {
     for (AbstractBoundary *boundary : _Boundaries) boundary->Apply();
   }
   void printinfo() {
-    std::cout << "[Boundary Statistics]: "
-              << "\n"
+    std::cout << "[Boundary Statistics]: " << "\n"
               << "Boundary Type  |  Number of Boundary Cells" << std::endl;
     for (AbstractBoundary *boundary : _Boundaries) boundary->getinfo();
   }
@@ -221,7 +312,7 @@ class BlockBoundaryManager {
       : _Boundaries(boundaries) {}
 
   template <typename... Args>
-  BlockBoundaryManager(Args*... args) : _Boundaries{args...} {}
+  BlockBoundaryManager(Args *...args) : _Boundaries{args...} {}
 
   void Apply(std::int64_t count) {
     for (AbstractBlockBoundary *boundary : _Boundaries) boundary->Apply(count);

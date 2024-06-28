@@ -53,6 +53,29 @@ struct rho {
   }
 };
 
+template <typename CELLTYPE, typename CONSTRHOTYPE = CONSTRHO<typename CELLTYPE::FloatType>, bool WriteToField = false>
+struct constrho {
+  using CELL = CELLTYPE;
+  using T = typename CELL::FloatType;
+  using LatSet = typename CELL::LatticeSet;
+
+  using GenericRho = typename CELL::GenericRho;
+
+  static inline T get(CELL& cell) {
+    T rho_value = cell.template get<CONSTRHOTYPE>();
+    if constexpr (WriteToField) cell.template get<GenericRho>() = rho_value;
+    return rho_value;
+  }
+  static inline void apply(CELL& cell, T& rho_value) {
+    rho_value = cell.template get<CONSTRHOTYPE>();
+    if constexpr (WriteToField) cell.template get<GenericRho>() = rho_value;
+  }
+  // always write to field
+  static inline void apply(CELL& cell) {
+    cell.template get<GenericRho>() = cell.template get<CONSTRHOTYPE>();
+  }
+};
+
 // update rho(usually temperature or concentration in advection-diffusion problems) with
 // source term, no need to preprocess the source term
 template <typename CELLTYPE, bool WriteToField = false>
@@ -93,7 +116,7 @@ struct u {
   using LatSet = typename CELL::LatticeSet;
 
   static inline Vector<T, LatSet::d> get(CELL& cell) {
-    Vector<T, LatSet::d> u_value;
+    Vector<T, LatSet::d> u_value{};
     T rho_value{};
     for (unsigned int i = 0; i < LatSet::q; ++i) {
       rho_value += cell[i];
@@ -122,6 +145,27 @@ struct u {
       u_value += LatSet::c[i] * cell[i];
     }
     u_value /= rho_value;
+  }
+};
+
+template <typename CELLTYPE, bool WriteToField = false>
+struct constu {
+  using CELL = CELLTYPE;
+  using T = typename CELL::FloatType;
+  using LatSet = typename CELL::LatticeSet;
+
+  static inline Vector<T, LatSet::d> get(CELL& cell) {
+    Vector<T, LatSet::d> u_value = cell.template get<CONSTU<T, LatSet::d>>();
+    if constexpr (WriteToField) cell.template get<VELOCITY<T, LatSet::d>>() = u_value;
+    return u_value;
+  }
+  static inline void apply(CELL& cell, Vector<T, LatSet::d>& u_value) {
+    u_value = cell.template get<CONSTU<T, LatSet::d>>();
+    if constexpr (WriteToField) cell.template get<VELOCITY<T, LatSet::d>>() = u_value;
+  }
+  // always write to field
+  static inline void apply(CELL& cell) {
+    cell.template get<VELOCITY<T, LatSet::d>>() = cell.template get<CONSTU<T, LatSet::d>>();
   }
 };
 

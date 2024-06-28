@@ -20,7 +20,6 @@
 
 // freelb.hh
 // include haeder files for LBM
-#include "boundary/boundary.hh"
 #include "geometry/geometry.hh"
 #include "lbm/unit_converter.hh"
 #include "data_struct/lattice.hh"

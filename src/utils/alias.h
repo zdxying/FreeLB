@@ -92,6 +92,9 @@ struct FieldBase {
 };
 
 template <typename T, typename Base>
+class Data;
+
+template <typename T, typename Base>
 class Array;
 
 template <typename ArrayType, unsigned int D>
@@ -128,6 +131,7 @@ using VectorFieldSoA = GenericArrayField<GenericArray<T>, D>;
 template <typename T, unsigned int q>
 using PopulationField = GenericArrayField<CyclicArray<T>, q>;
 
+
 // specific field name for access by Cell interface, not alias
 struct RHOBase : public FieldBase<1> {};
 struct TEMPBase : public FieldBase<1> {};
@@ -138,6 +142,8 @@ struct FORCEBase : public FieldBase<1> {};
 struct SCALARFORCEBase : public FieldBase<1> {};
 struct CONSTFORCEBase : public FieldBase<1> {};
 struct SCALARCONSTFORCEBase : public FieldBase<1> {};
+struct CONSTRHOBase : public FieldBase<1> {};
+struct CONSTUBase : public FieldBase<1> {};
 
 struct RHOINITBase : public FieldBase<1> {};
 struct TEMPINITBase : public FieldBase<1> {};
@@ -166,23 +172,29 @@ template <typename T>
 using SCALARFORCE = GenericField<GenericArray<T>, SCALARFORCEBase>;
 
 template <typename T, unsigned int D>
-using CONSTFORCE = Array<Vector<T, D>, CONSTFORCEBase>;
+using CONSTFORCE = Data<Vector<T, D>, CONSTFORCEBase>;
 
 template <typename T>
-using SCALARCONSTFORCE = Array<T, SCALARCONSTFORCEBase>;
+using SCALARCONSTFORCE = Data<T, SCALARCONSTFORCEBase>;
 
 template <typename T, unsigned int q>
 using POP = GenericField<CyclicArray<T>, POPBase<q>>;
 
 template <typename T>
-using RHOINIT = Array<T, RHOINITBase>;
+using RHOINIT = Data<T, RHOINITBase>;
 template <typename T>
-using TEMPINIT = Array<T, TEMPINITBase>;
+using TEMPINIT = Data<T, TEMPINITBase>;
 template <typename T>
-using CONCINIT = Array<T, CONCINITBase>;
+using CONCINIT = Data<T, CONCINITBase>;
 
 template <typename T>
-using GBETA = Array<T, GBETABase>;
+using GBETA = Data<T, GBETABase>;
+
+template <typename T>
+using CONSTRHO = Data<T, CONSTRHOBase>;
+
+template <typename T, unsigned int D>
+using CONSTU = Data<Vector<T, D>, CONSTUBase>;
 
 // ---------block field alias-----------
 template <typename FieldType, typename FloatType, unsigned int Dim>

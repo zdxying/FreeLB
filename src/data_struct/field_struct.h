@@ -1198,3 +1198,57 @@ struct ExtractFieldPtrs<T, LatSet, TypePack<Fields...>> {
     return BFMCol.get_ith(i);
   }
 };
+
+
+// vector of Genericvector
+template <typename T>
+class GenericvectorManager{
+  private:
+  // generic vectors
+  std::vector<Genericvector<T>> _vectors;
+
+ public:
+  using datatype = T;
+  using array_type = Genericvector<T>;
+
+  GenericvectorManager() = default;
+  GenericvectorManager(std::size_t size) : _vectors(size) {}
+  GenericvectorManager(std::size_t size, T initvalue) : _vectors(size, initvalue) {}
+  // copy constructor
+  GenericvectorManager(const GenericvectorManager& vecManager) : _vectors(vecManager._vectors) {}
+  // move constructor
+  GenericvectorManager(GenericvectorManager&& vecManager) noexcept
+      : _vectors(std::move(vecManager._vectors)) {}
+  // copy assignment operator
+  GenericvectorManager& operator=(const GenericvectorManager& vecManager) {
+    if (this != &vecManager) {
+      _vectors = vecManager._vectors;
+    }
+    return *this;
+  }
+  // move assignment operator
+  GenericvectorManager& operator=(GenericvectorManager&& vecManager) noexcept {
+    if (this != &vecManager) {
+      _vectors = std::move(vecManager._vectors);
+    }
+    return *this;
+  }
+
+  ~GenericvectorManager() = default;
+
+  void Init(std::size_t size) { _vectors.resize(size); }
+  
+  Genericvector<T>& getvector(int i) { return _vectors[i]; }
+  const Genericvector<T>& getvector(int i) const { return _vectors[i]; }
+
+  std::vector<Genericvector<T>>& getallvectors() { return _vectors; }
+  const std::vector<Genericvector<T>>& getallvectors() const { return _vectors; }
+
+  std::vector<std::vector<T>*> getallvectorptrs() const {
+    std::vector<std::vector<T>*> vecptrs;
+    for (auto& vec : _vectors) {
+      vecptrs.push_back(&vec.getvector());
+    }
+    return vecptrs;
+  }
+};

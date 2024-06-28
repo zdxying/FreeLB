@@ -58,7 +58,7 @@ using VOLUMEFRAC = GenericField<GenericArray<T>, VOLUMEFRACBase>;
 template <typename T, unsigned int q>
 using EXCESSMASS = GenericField<CyclicArray<T>, EXCESSMASSBase<q>>;
 
-// define FS parameters as single data stored in Array
+// define FS parameters as single data stored in Data
 struct Lonely_ThBase : public FieldBase<1> {};
 struct VOF_Trans_ThBase : public FieldBase<1> {};
 struct Surface_Tension_EnabledBase : public FieldBase<1> {};
@@ -66,15 +66,15 @@ struct Surface_Tension_ParameterBase : public FieldBase<1> {};
 
 // lonely threshold in mass transfer
 template <typename T>
-using Lonely_Th = Array<T, Lonely_ThBase>;
+using Lonely_Th = Data<T, Lonely_ThBase>;
 // vof transition threshold
 template <typename T>
-using VOF_Trans_Th = Array<T, VOF_Trans_ThBase>;
+using VOF_Trans_Th = Data<T, VOF_Trans_ThBase>;
 // surface tension enabled
-using Surface_Tension_Enabled = Array<bool, Surface_Tension_EnabledBase>;
+using Surface_Tension_Enabled = Data<bool, Surface_Tension_EnabledBase>;
 // surface tension parameter
 template <typename T>
-using Surface_Tension_Parameter = Array<T, Surface_Tension_ParameterBase>;
+using Surface_Tension_Parameter = Data<T, Surface_Tension_ParameterBase>;
 
 
 template <typename T, typename LatSet>

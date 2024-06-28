@@ -29,6 +29,7 @@
 #include "utils/util.h"
 
 
+// single data
 template <typename T, typename Base>
 class Data {
  public:
@@ -74,6 +75,7 @@ class Data {
 
   static constexpr unsigned int Size() { return 1; }
 };
+
 
 // a single std::array, type T couldn't dynamically allocate memory
 template <typename T, typename Base>
@@ -126,113 +128,97 @@ class Array {
   static constexpr unsigned int Size() { return array_dim; }
 };
 
-template <typename ArrayType, unsigned int D>
-class GenericArrayField {
+
+// a class containing std::vector with some methods
+template <typename T>
+class Genericvector {
  private:
-  // field data
-  std::array<ArrayType, D> _Data;
+  // vector
+  std::vector<T> data;
 
  public:
-  using array_type = ArrayType;
-  using value_type = typename ArrayType::value_type;
-  static constexpr unsigned int array_dim = D;
-  static constexpr bool isField = true;
+  using value_type = T;
 
-  GenericArrayField() : _Data{} {}
-  GenericArrayField(std::size_t size)
-      : _Data(make_array<ArrayType, D>([&]() { return ArrayType(size); })) {}
-  GenericArrayField(std::size_t size, value_type initialValue)
-      : _Data(make_array<ArrayType, D>([&]() { return ArrayType(size, initialValue); })) {
+  Genericvector() = default;
+  Genericvector(std::size_t size) {
+    data.resize(size, T{});
+  }
+  Genericvector(std::size_t size, T InitValue) {
+    data.resize(size, InitValue);
   }
   // Copy constructor
-  GenericArrayField(const GenericArrayField& genF) : _Data{} {
-    for (unsigned int i = 0; i < D; ++i) _Data[i] = genF._Data[i];
-  }
+  Genericvector(const Genericvector& arr) : data(arr.data) {}
   // Move constructor
-  GenericArrayField(GenericArrayField&& genF) noexcept {
-    // manually moving each element of the array
-    for (unsigned int i = 0; i < D; ++i) {
-      _Data[i] = std::move(genF._Data[i]);
-    }
-    // Reset moved-from _Data
-    genF._Data = {};
-  }
+  Genericvector(Genericvector&& arr) noexcept : data(std::move(arr.data)) {}
   // Copy assignment operator
-  GenericArrayField& operator=(const GenericArrayField& genF) {
-    if (&genF == this) return *this;
-    for (unsigned int i = 0; i < D; ++i) _Data[i] = genF._Data[i];
+  Genericvector& operator=(const Genericvector& arr) {
+    if (&arr == this) return *this;
+    data = arr.data;
     return *this;
   }
   // Move assignment operator
-  GenericArrayField& operator=(GenericArrayField&& genF) noexcept {
-    if (&genF == this) return *this;
-    for (unsigned int i = 0; i < D; ++i) {
-      _Data[i] = std::move(genF._Data[i]);
-    }
-    // Reset moved-from _Data
-    genF._Data = {};
+  Genericvector& operator=(Genericvector&& arr) noexcept {
+    if (&arr == this) return *this;
+    data = std::move(arr.data);
     return *this;
   }
 
-  ~GenericArrayField() = default;
+  ~Genericvector() = default;
 
-  ArrayType& getField(std::size_t i = 0) { return _Data[i]; }
-  const ArrayType& getField(std::size_t i = 0) const { return _Data[i]; }
-  // get<i>(id): return _Data[i][id];
-  template <unsigned int i = 0>
-  auto& get(std::size_t id) {
-    return _Data[i][id];
-  }
-  template <unsigned int i = 0>
-  const auto& get(std::size_t id) const {
-    return _Data[i][id];
-  }
-  auto& get(std::size_t id, unsigned int dir) { return _Data[dir][id]; }
-  const auto& get(std::size_t id, unsigned int dir) const { return _Data[dir][id]; }
-  // get pointer to ith data in all arrays
-  std::array<value_type*, D> getArray(std::size_t id) {
-    std::array<value_type*, D> data{};
-    for (unsigned int i = 0; i < D; ++i) data[i] = _Data[i].getdataPtr(id);
-    return data;
-  }
-  // get all arrays
-  std::array<value_type*, D> getArray() {
-    std::array<value_type*, D> data{};
-    for (unsigned int i = 0; i < D; ++i) data[i] = _Data[i].getdata();
-    return data;
-  }
+  void Init(T InitValue) { std::fill(data.begin(), data.end(), InitValue); }
 
-  template <unsigned int i = 0>
-  void SetField(std::size_t id, value_type value) {
-    _Data[i].set(id, value);
-  }
-  void SetField(int i, std::size_t id, value_type value) { _Data[i].set(id, value); }
-  // resize each array/field
   void Resize(std::size_t size) {
-    for (unsigned int i = 0; i < D; ++i) _Data[i].Resize(size);
-  }
-  // init
-  void Init(value_type value = value_type{}) {
-    for (unsigned int i = 0; i < D; ++i) _Data[i].Init(value);
+    data.resize(size);
   }
 
-  static constexpr unsigned int Size() { return D; }
+  const T& operator[](std::size_t i) const { return data[i]; }
+  T& operator[](std::size_t i) { return data[i]; }
+
+  // get underlying value from enum
+  template <typename U = T>
+  typename std::enable_if<std::is_enum<U>::value, std::underlying_type_t<U>&>::type
+  getUnderlying(std::size_t index) {
+    return reinterpret_cast<std::underlying_type_t<U>&>(data[index]);
+  }
+
+  template <typename U = T>
+  typename std::enable_if<std::is_enum<U>::value, const std::underlying_type_t<U>&>::type
+  getUnderlying(std::size_t index) const {
+    return reinterpret_cast<const std::underlying_type_t<U>&>(data[index]);
+  }
+
+  // return pointer to the data
+  T* getdata() { return data.data(); }
+  const T* getdata() const { return data.data(); }
+  // return the pointer of ith element
+  T* getdataPtr(std::size_t i) { return data.data() + i; }
+  const T* getdataPtr(std::size_t i) const { return data.data() + i; }
+  // return reference to the data
+  std::vector<T>& getvector() { return data; }
+  const std::vector<T>& getvector() const { return data; }
+
+  template <typename Func>
+  void for_isflag(T flag, Func func) {
+    for (std::size_t i = 0; i < data.size(); ++i) {
+      if (data[i] == flag) {
+        func(i);
+      }
+    }
+  }
+  template <typename Func>
+  void for_isNotflag(T flag, Func func) {
+    for (std::size_t i = 0; i < data.size(); ++i) {
+      if (data[i] != flag) {
+        func(i);
+      }
+    }
+  }
+
+  inline void set(std::size_t i, T value) { data[i] = value; }
+
+  std::size_t size() const { return data.size(); }
 };
 
-template <typename ArrayType, typename Base>
-class GenericField : public GenericArrayField<ArrayType, Base::array_dim> {
- public:
-  static constexpr unsigned int array_dim = Base::array_dim;
-  using array_type = ArrayType;
-  using value_type = typename ArrayType::value_type;
-
-  GenericField() = default;
-  GenericField(std::size_t size) : GenericArrayField<ArrayType, array_dim>(size) {}
-  GenericField(std::size_t size, value_type initialValue)
-      : GenericArrayField<ArrayType, array_dim>(size, initialValue) {}
-
-  ~GenericField() = default;
-};
 
 template <typename T>
 class GenericArray {
@@ -512,6 +498,115 @@ class CyclicArray {
     }
     refresh();
   }
+};
+
+
+template <typename ArrayType, unsigned int D>
+class GenericArrayField {
+ private:
+  // field data
+  std::array<ArrayType, D> _Data;
+
+ public:
+  using array_type = ArrayType;
+  using value_type = typename ArrayType::value_type;
+  static constexpr unsigned int array_dim = D;
+  static constexpr bool isField = true;
+
+  GenericArrayField() : _Data{} {}
+  GenericArrayField(std::size_t size)
+      : _Data(make_array<ArrayType, D>([&]() { return ArrayType(size); })) {}
+  GenericArrayField(std::size_t size, value_type initialValue)
+      : _Data(make_array<ArrayType, D>([&]() { return ArrayType(size, initialValue); })) {
+  }
+  // Copy constructor
+  GenericArrayField(const GenericArrayField& genF) : _Data{} {
+    for (unsigned int i = 0; i < D; ++i) _Data[i] = genF._Data[i];
+  }
+  // Move constructor
+  GenericArrayField(GenericArrayField&& genF) noexcept {
+    // manually moving each element of the array
+    for (unsigned int i = 0; i < D; ++i) {
+      _Data[i] = std::move(genF._Data[i]);
+    }
+    // Reset moved-from _Data
+    genF._Data = {};
+  }
+  // Copy assignment operator
+  GenericArrayField& operator=(const GenericArrayField& genF) {
+    if (&genF == this) return *this;
+    for (unsigned int i = 0; i < D; ++i) _Data[i] = genF._Data[i];
+    return *this;
+  }
+  // Move assignment operator
+  GenericArrayField& operator=(GenericArrayField&& genF) noexcept {
+    if (&genF == this) return *this;
+    for (unsigned int i = 0; i < D; ++i) {
+      _Data[i] = std::move(genF._Data[i]);
+    }
+    // Reset moved-from _Data
+    genF._Data = {};
+    return *this;
+  }
+
+  ~GenericArrayField() = default;
+
+  ArrayType& getField(std::size_t i = 0) { return _Data[i]; }
+  const ArrayType& getField(std::size_t i = 0) const { return _Data[i]; }
+  // get<i>(id): return _Data[i][id];
+  template <unsigned int i = 0>
+  auto& get(std::size_t id) {
+    return _Data[i][id];
+  }
+  template <unsigned int i = 0>
+  const auto& get(std::size_t id) const {
+    return _Data[i][id];
+  }
+  auto& get(std::size_t id, unsigned int dir) { return _Data[dir][id]; }
+  const auto& get(std::size_t id, unsigned int dir) const { return _Data[dir][id]; }
+  // get pointer to ith data in all arrays
+  std::array<value_type*, D> getArray(std::size_t id) {
+    std::array<value_type*, D> data{};
+    for (unsigned int i = 0; i < D; ++i) data[i] = _Data[i].getdataPtr(id);
+    return data;
+  }
+  // get all arrays
+  std::array<value_type*, D> getArray() {
+    std::array<value_type*, D> data{};
+    for (unsigned int i = 0; i < D; ++i) data[i] = _Data[i].getdata();
+    return data;
+  }
+
+  template <unsigned int i = 0>
+  void SetField(std::size_t id, value_type value) {
+    _Data[i].set(id, value);
+  }
+  void SetField(int i, std::size_t id, value_type value) { _Data[i].set(id, value); }
+  // resize each array/field
+  void Resize(std::size_t size) {
+    for (unsigned int i = 0; i < D; ++i) _Data[i].Resize(size);
+  }
+  // init
+  void Init(value_type value = value_type{}) {
+    for (unsigned int i = 0; i < D; ++i) _Data[i].Init(value);
+  }
+
+  static constexpr unsigned int Size() { return D; }
+};
+
+template <typename ArrayType, typename Base>
+class GenericField : public GenericArrayField<ArrayType, Base::array_dim> {
+ public:
+  static constexpr unsigned int array_dim = Base::array_dim;
+  using array_type = ArrayType;
+  using value_type = typename ArrayType::value_type;
+
+  GenericField() = default;
+  GenericField(std::size_t size) : GenericArrayField<ArrayType, array_dim>(size) {}
+  GenericField(std::size_t size, value_type initialValue)
+      : GenericArrayField<ArrayType, array_dim>(size, initialValue) {}
+
+  ~GenericField() = default;
 };
 
 template <typename T, unsigned int D>

@@ -123,6 +123,12 @@ class BlockLattice : public BlockLatticeBase<T, LatSet, TypePack> {
   template <typename CELLDYNAMICS>
   void ApplyCellDynamics();
 
+  template <typename CELLDYNAMICS>
+  void ApplyCellDynamics(const Genericvector<std::size_t>& Idx);
+
+  template <typename DYNAMICS, typename elementType>
+  void ApplyDynamics(const Genericvector<elementType>& Idx);
+
   template <typename CELLDYNAMICS, typename ArrayType>
   void ApplyInnerCellDynamics(const ArrayType& flagarr);
 
@@ -224,6 +230,12 @@ class BlockLatticeManager : public BlockLatticeManagerBase<T, LatSet, TypePack> 
 
   template <typename CELLDYNAMICS>
   void ApplyCellDynamics(std::int64_t count);
+
+  template <typename CELLDYNAMICS>
+  void ApplyCellDynamics(std::int64_t count, const GenericvectorManager<std::size_t>& blockids);
+
+  template <typename DYNAMICS, typename elementType>
+  void ApplyDynamics(std::int64_t count, const GenericvectorManager<elementType>& blockids);
 
 
   template <typename CELLDYNAMICS, typename FieldType>

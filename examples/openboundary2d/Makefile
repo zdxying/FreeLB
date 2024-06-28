@@ -1,5 +1,5 @@
 
-TARGET = dambreak2d.exe
+TARGET = openbd2d.exe
 ROOT := ../..
 
 FLAGS += -O3 -march=native -fopenmp

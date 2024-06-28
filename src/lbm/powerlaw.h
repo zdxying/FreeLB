@@ -34,13 +34,13 @@ struct MaxNuBase : public FieldBase<1> {};
 struct MinNuBase : public FieldBase<1> {};
 
 template <typename T>
-using ConsistencyIndex = Array<T, ConsistencyIndexBase>;
+using ConsistencyIndex = Data<T, ConsistencyIndexBase>;
 template <typename T>
-using BehaviorIndexMinus1 = Array<T, BehaviorIndexMinus1Base>;
+using BehaviorIndexMinus1 = Data<T, BehaviorIndexMinus1Base>;
 template <typename T>
-using MaxNu = Array<T, MaxNuBase>;
+using MaxNu = Data<T, MaxNuBase>;
 template <typename T>
-using MinNu = Array<T, MinNuBase>;
+using MinNu = Data<T, MinNuBase>;
 
 template <typename T>
 using PowerLawPARAMS = TypePack<ConsistencyIndex<T>, BehaviorIndexMinus1<T>, MinNu<T>, MaxNu<T>>;
