@@ -223,27 +223,40 @@ class BlockLatticeManager : public BlockLatticeManagerBase<T, LatSet, TypePack> 
   }
 
   void Stream(std::int64_t count);
+  void Stream();
 
   template <typename CELLDYNAMICS, typename FieldType>
   void ApplyCellDynamics(std::int64_t count,
                          const BlockFieldManager<FieldType, T, LatSet::d>& BFM);
+  template <typename CELLDYNAMICS, typename FieldType>
+  void ApplyCellDynamics(const BlockFieldManager<FieldType, T, LatSet::d>& BFM);
 
   template <typename CELLDYNAMICS>
   void ApplyCellDynamics(std::int64_t count);
+  template <typename CELLDYNAMICS>
+  void ApplyCellDynamics();
 
   template <typename CELLDYNAMICS>
   void ApplyCellDynamics(std::int64_t count, const GenericvectorManager<std::size_t>& blockids);
+  template <typename CELLDYNAMICS>
+  void ApplyCellDynamics(const GenericvectorManager<std::size_t>& blockids);
 
   template <typename DYNAMICS, typename elementType>
   void ApplyDynamics(std::int64_t count, const GenericvectorManager<elementType>& blockids);
+  template <typename DYNAMICS, typename elementType>
+  void ApplyDynamics(const GenericvectorManager<elementType>& blockids);
 
 
   template <typename CELLDYNAMICS, typename FieldType>
   void ApplyInnerCellDynamics(std::int64_t count,
                               const BlockFieldManager<FieldType, T, LatSet::d>& BFM);
+  template <typename CELLDYNAMICS, typename FieldType>
+  void ApplyInnerCellDynamics(const BlockFieldManager<FieldType, T, LatSet::d>& BFM);
 
   template <typename CELLDYNAMICS>
   void ApplyInnerCellDynamics(std::int64_t count);
+  template <typename CELLDYNAMICS>
+  void ApplyInnerCellDynamics();
 
   template <typename Func>
   void ForEachBlockLattice(Func&& func) {

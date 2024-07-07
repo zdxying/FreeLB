@@ -41,7 +41,7 @@ struct Counter {
   void operator++() { count++; }
   // get count
   // define () operator, use: Counter c; c(); or c.operator()();
-  std::int64_t operator()() { return count; }
+  std::int64_t operator()() const { return count; }
 };
 
 struct Timer : public Counter {

@@ -723,6 +723,8 @@ T ComputeStdDev(const std::vector<BasicBlock<T, D>> &Blocks) {
   return stdDev;
 }
 
+using CellTagType = std::uint8_t;
+enum BlockCellTag : CellTagType { none = 1, refine = 2, coarsen = 4, solid = 8 };
 
 template <typename T, unsigned int D>
 class BlockGeometryHelperBase : public BasicBlock<T, D> {

@@ -180,8 +180,6 @@ class BlockGeometry2D : public BasicBlock<T, 2> {
 #endif
 };
 
-enum BlockCellTag : std::uint8_t { none = 1, refine = 2, coarsen = 4, solid = 8 };
-
 // especially designed for refine blockgeometry, uniform blockgeometry does not need this
 // all BasicBlocks here refer to the base block, overlaps will not be handled here
 template <typename T>

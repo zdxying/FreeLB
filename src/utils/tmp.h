@@ -21,6 +21,7 @@
 #pragma once
 
 #include <type_traits>
+#include <tuple>
 #include <utility>
 
 // #include "head.h"
@@ -369,4 +370,13 @@ struct FindGenericRhoType<T, TypePack<First>> {
   using type =
     std::conditional_t<isOneOf<First, RHO<T>, TEMP<T>, CONC<T>>::value, First, void>;
 };
+
+// unroll a for loop, use: unroll_for<x, y>([&](unsigned int i) { ... });
+template <unsigned int start, unsigned int end, typename Func>
+void unroll_for(Func &&f) {
+  if constexpr (start < end) {
+    f(start);
+    unroll_for<start + 1, end>(std::forward<Func>(f));
+  }
+}
 

@@ -24,7 +24,7 @@ all: $(TARGET)
 	
 # ------------target----------------
 %.o: %.cpp
-	$(CXXC) $(FLAGS) -fPIC -I$(ROOT)/src/ -c $< -o $@
+	$(CXXC) $(FLAGS) -I$(ROOT)/src/ -c $< -o $@
 
 $(TARGET): $(OBJS)
 	$(CXXC) $(FLAGS) -o $@ $^ 

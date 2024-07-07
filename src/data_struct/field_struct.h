@@ -1214,6 +1214,16 @@ class GenericvectorManager{
   GenericvectorManager() = default;
   GenericvectorManager(std::size_t size) : _vectors(size) {}
   GenericvectorManager(std::size_t size, T initvalue) : _vectors(size, initvalue) {}
+  template <typename FLAGFM, typename FLAGTYPE>
+  GenericvectorManager(std::size_t size, FLAGFM& FlagFM, FLAGTYPE Flag, std::string name = "GenericvectorManager"): _vectors(size) {
+    Init(FlagFM, Flag);
+    // get vector info
+    std::size_t sumsize{};
+    for(auto& vec : _vectors){
+      sumsize += vec.size();
+    }
+    std::cout <<"[" << name <<"Num of indices]: " << sumsize << std::endl;
+  }
   // copy constructor
   GenericvectorManager(const GenericvectorManager& vecManager) : _vectors(vecManager._vectors) {}
   // move constructor
@@ -1237,6 +1247,19 @@ class GenericvectorManager{
   ~GenericvectorManager() = default;
 
   void Init(std::size_t size) { _vectors.resize(size); }
+
+  // init using flags
+  template <typename FLAGFM, typename FLAGTYPE>
+  void Init(FLAGFM& FlagFM, FLAGTYPE Flag){
+    FlagFM.forEachField([&](auto& blockfield){
+    auto& block = blockfield.getBlock();
+    auto& VecIds = getvector(block.getBlockId()).getvector();
+    block.forEach([&](std::size_t id){
+      if (util::isFlag(blockfield.get(id), Flag)) {
+        VecIds.push_back(id);
+      }});
+  });
+  }
   
   Genericvector<T>& getvector(int i) { return _vectors[i]; }
   const Genericvector<T>& getvector(int i) const { return _vectors[i]; }

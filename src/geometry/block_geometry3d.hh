@@ -1233,7 +1233,7 @@ void BlockGeometryHelper3D<T>::TagRefineLayer(std::vector<bool> &refine, bool &r
               for (int delta : Delta_Cellidx) {
                 int ncellid = cellid + delta;
                 if (_BlockCells[ncellid].getLevel() < level &&
-                    util::isFlag(_BlockCellTags[ncellid], BlockCellTag::none)) {
+                    util::isFlag(static_cast<CellTagType>(_BlockCellTags[ncellid]), static_cast<CellTagType>(BlockCellTag::none))) {
                   _BlockCellTags[ncellid] = BlockCellTag::refine;
                   refined = true;
                 }
@@ -1262,7 +1262,7 @@ void BlockGeometryHelper3D<T>::CheckRefine() {
             for (int delta : Delta_Cellidx) {
               int ncellid = cellid + delta;
               if (_BlockCells[ncellid].getLevel() < (level - std::uint8_t(1)) &&
-                  util::isFlag(_BlockCellTags[ncellid], BlockCellTag::none)) {
+                  util::isFlag(static_cast<CellTagType>(_BlockCellTags[ncellid]), static_cast<CellTagType>(BlockCellTag::none))) {
                 _BlockCellTags[ncellid] = BlockCellTag::refine;
               }
             }
@@ -1277,7 +1277,7 @@ void BlockGeometryHelper3D<T>::CheckRefine() {
 template <typename T>
 void BlockGeometryHelper3D<T>::Refine() {
   for (int i = 0; i < CellsN; ++i) {
-    if (util::isFlag(_BlockCellTags[i], BlockCellTag::refine)) {
+    if (util::isFlag(static_cast<CellTagType>(_BlockCellTags[i]), static_cast<CellTagType>(BlockCellTag::refine))) {
       _BlockCells[i].refine();
       // reset tag
       _BlockCellTags[i] = BlockCellTag::none;

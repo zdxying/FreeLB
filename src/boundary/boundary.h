@@ -41,11 +41,12 @@ class BBLikeFixedBlockBoundary : public BlockFixedBoundary<BLOCKLATTICE, ArrayTy
 
   template <typename CELLDYNAMICS>
   void ApplyCellDynamics() {
+    CELL cell(0, this->Lat);
 #ifdef SingleBlock_OMP
-#pragma omp parallel for num_threads(Thread_Num)
+#pragma omp parallel for num_threads(Thread_Num) schedule(static) firstprivate(cell)
 #endif
     for (const auto &bdcell : this->BdCells) {
-      CELL cell(bdcell.Id, this->Lat);
+      cell.setId(bdcell.Id);
       for (unsigned int k : bdcell.outflows) {
         CELLDYNAMICS::apply(cell, k);
       }
@@ -91,7 +92,9 @@ class BBLikeFixedBlockBdManager final : public AbstractBlockBoundary {
   }
   void Apply(std::int64_t count) override {
     std::uint8_t MaxLevel = LatMan.getMaxLevel();
+#ifndef SingleBlock_OMP
 #pragma omp parallel for num_threads(Thread_Num)
+#endif
     for (auto &bdBlock : BdBlocks) {
       if (count %
             (static_cast<int>(pow(2, int(MaxLevel - bdBlock.getLat().getLevel())))) ==
@@ -118,11 +121,12 @@ class BBLikeMovingBlockBoundary : public BlockMovingBoundary<BLOCKLATTICE, Array
 
   template <typename CELLDYNAMICS>
   void ApplyCellDynamics() {
+    CELL cell(0, this->Lat);
 #ifdef SingleBlock_OMP
-#pragma omp parallel for num_threads(Thread_Num)
+#pragma omp parallel for num_threads(Thread_Num) schedule(static) firstprivate(cell)
 #endif
     for (std::size_t id : this->Ids) {
-      CELL cell(id, this->Lat);
+      cell.setId(id);
       for (unsigned int k = 1; k < LatSet::q; ++k) {
         if (util::isFlag(this->Field[this->Lat.getNbrId(id, k)], this->voidFlag)) {
           CELLDYNAMICS::apply(cell, LatSet::opp[k]);
@@ -171,7 +175,9 @@ class BBLikeMovingBlockBdManager final : public AbstractBlockBoundary {
   }
   void Apply(std::int64_t count) override {
     std::uint8_t MaxLevel = LatMan.getMaxLevel();
+#ifndef SingleBlock_OMP
 #pragma omp parallel for num_threads(Thread_Num)
+#endif
     for (auto &bdBlock : BdBlocks) {
       if (count %
             (static_cast<int>(pow(2, int(MaxLevel - bdBlock.getLat().getLevel())))) ==

@@ -75,7 +75,9 @@ class BBLikeFixedBoundary final : public FixedBoundary<T, LatSet, flagType> {
       : FixedBoundary<T, LatSet, flagType>(lat, cellflag, voidflag), _name(name) {}
 
   void Apply() override {
-#pragma omp parallel for num_threads(Thread_Num)
+#ifdef SingleBlock_OMP
+#pragma omp parallel for num_threads(Thread_Num) schedule(static)
+#endif
     for (const auto &bdcell : this->BdCells) {
       PopCell<T, LatSet> cell(bdcell.Id, this->Lat);
       for (int k : bdcell.outflows) {
@@ -88,14 +90,18 @@ class BBLikeFixedBoundary final : public FixedBoundary<T, LatSet, flagType> {
               << this->BdCells.size() << std::endl;
   }
   void UpdateRho() override {
+#ifdef SingleBlock_OMP
 #pragma omp parallel for num_threads(Thread_Num) schedule(static)
+#endif
     for (const auto &bdcell : this->BdCells) {
       BasicPopCell<T, LatSet> cell(bdcell.Id, this->Lat);
       moment::Rho<T, LatSet>::apply(cell, this->Lat.getRho(bdcell.Id));
     }
   }
   void UpdateU() override {
+#ifdef SingleBlock_OMP
 #pragma omp parallel for num_threads(Thread_Num) schedule(static)
+#endif
     for (const auto &bdcell : this->BdCells) {
       BasicPopCell<T, LatSet> cell(bdcell.Id, this->Lat);
       moment::Velocity<T, LatSet>::apply(cell, this->Lat.getVelocity(bdcell.Id));
@@ -117,6 +123,9 @@ class BBLikeMovingBoundary final : public MovingBoundary<T, LatSet, flagType> {
       : MovingBoundary<T, LatSet, flagType>(lat, ids, voidflag, cellflag), _name(name) {}
 
   void Apply() override {
+#ifdef SingleBlock_OMP
+#pragma omp parallel for num_threads(Thread_Num) schedule(static)
+#endif
     for (std::size_t id : this->Ids) {
       PopCell<T, LatSet> cell(id, this->Lat);
       for (int k = 1; k < LatSet::q; ++k) {
@@ -131,12 +140,18 @@ class BBLikeMovingBoundary final : public MovingBoundary<T, LatSet, flagType> {
               << this->Ids.size() << std::endl;
   }
   void UpdateRho() override {
+#ifdef SingleBlock_OMP
+#pragma omp parallel for num_threads(Thread_Num) schedule(static)
+#endif
     for (std::size_t id : this->Ids) {
       BasicPopCell<T, LatSet> cell(id, this->Lat);
       moment::Rho<T, LatSet>::apply(cell, this->Lat.getRho(id));
     }
   }
   void UpdateU() override {
+#ifdef SingleBlock_OMP
+#pragma omp parallel for num_threads(Thread_Num) schedule(static)
+#endif
     for (std::size_t id : this->Ids) {
       BasicPopCell<T, LatSet> cell(id, this->Lat);
       moment::Velocity<T, LatSet>::apply(cell, this->Lat.getVelocity(id));
