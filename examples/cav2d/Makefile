@@ -2,7 +2,7 @@
 TARGET = cav2d.exe
 ROOT := ../..
 
-FLAGS += -O3 -march=native -fopenmp
+FLAGS += -O3 -Wall -march=native -fopenmp
 # FLAGS += -O3 -march=native
 # FLAGS += -g
 # FLAGS += -pg

@@ -61,12 +61,12 @@ class FixedBoundary : public AbstractBoundary {
   PopLattice<T, LatSet> &Lat;
   // reference to geometry
   Geometry<T, LatSet::d> &Geo;
+  // geometry flag
+  GenericArray<flagType> &Field;
   // boundary cell flag
   std::uint8_t BdCellFlag;
   // boundary flag
   std::uint8_t voidFlag;
-  // geometry flag
-  GenericArray<flagType> &Field;
 
  public:
   FixedBoundary(PopLattice<T, LatSet> &lat, std::uint8_t cellflag, std::uint8_t voidflag)
@@ -104,7 +104,7 @@ class FixedBoundary : public AbstractBoundary {
   }
   // setup boundary cells
   void Setup() {
-    for (std::size_t id = 0; id < Geo.getVoxelsNum(); ++id) {
+    for (int id = 0; id < Geo.getVoxelsNum(); ++id) {
       if (util::isFlag(Field[id], BdCellFlag)) addtoBd(id);
     }
   }
@@ -113,18 +113,19 @@ class FixedBoundary : public AbstractBoundary {
 template <typename T, typename LatSet, typename flagType>
 class MovingBoundary : public AbstractBoundary {
  protected:
-  // boundary cells
-  std::vector<std::size_t> &Ids;
   // reference to lattice
   PopLattice<T, LatSet> &Lat;
   // reference to geometry
   Geometry<T, LatSet::d> &Geo;
+  // boundary cells
+  std::vector<std::size_t> &Ids;
+  // geometry flag
+  GenericArray<flagType> &Field;
   // boundary cell flag
   std::uint8_t BdCellFlag;
   // boundary flag
   std::uint8_t voidFlag;
-  // geometry flag
-  GenericArray<flagType> &Field;
+
 
  public:
   MovingBoundary(PopLattice<T, LatSet> &lat, std::vector<std::size_t> &ids,
@@ -168,12 +169,12 @@ class BlockFixedBoundary {
   std::vector<FixedBdCell> BdCells;
   // reference to lattice
   BLOCKLATTICE &Lat;
+  // geometry flag
+  const ArrayType &Field;
   // boundary cell flag
   std::uint8_t BdCellFlag;
   // boundary flag
   std::uint8_t voidFlag;
-  // geometry flag
-  const ArrayType &Field;
 
  public:
   using LatSet = typename BLOCKLATTICE::LatticeSet;
@@ -195,7 +196,7 @@ class BlockFixedBoundary {
     FixedBdCell &fixedbdcell = BdCells.back();
     // get neighbor
     // Attention: if voidFlag is 0, DO NOT use util::isFlag
-    for (int k = 1; k < LatSet::q; ++k) {
+    for (unsigned int k = 1; k < LatSet::q; ++k) {
       // if (util::isFlag(Field[Lat.getNbrId(id, k)], voidFlag) &&
       //     !util::isFlag(Field[Lat.getNbrId(id, LatSet::opp[k])], voidFlag)) {
 
@@ -247,17 +248,18 @@ class BlockMovingBoundary {
   std::vector<std::size_t> &Ids;
   // reference to lattice
   BLOCKLATTICE &Lat;
+  // geometry flag
+  ArrayType &Field;
   // boundary cell flag
   std::uint8_t BdCellFlag;
   // boundary flag
   std::uint8_t voidFlag;
-  // geometry flag
-  ArrayType &Field;
+
 
  public:
   BlockMovingBoundary(BLOCKLATTICE &lat, std::vector<std::size_t> &ids, ArrayType &f,
                       std::uint8_t voidflag, std::uint8_t cellflag)
-      : Lat(lat), Ids(ids), Field(f), BdCellFlag(cellflag), voidFlag(voidflag) {}
+      : Ids(ids), Lat(lat), Field(f), BdCellFlag(cellflag), voidFlag(voidflag) {}
   // get boundary cell flag
   std::uint8_t getBdCellFlag() const { return BdCellFlag; }
   // get void cell flag

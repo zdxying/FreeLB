@@ -48,7 +48,6 @@ int Thread_Num;
 // physical properties
 T rho_ref;    // g/mm^3
 T Kine_Visc;  // mm^2/s kinematic viscosity of the liquid
-T Ra;         // Rayleigh number
 // init conditions
 Vector<T, 3> U_Ini;  // mm/s
 T U_Max;
@@ -107,7 +106,7 @@ void readParam() {
 }
 
 int main() {
-  std::uint8_t VoidFlag = std::uint8_t(1);
+  // std::uint8_t VoidFlag = std::uint8_t(1);
   std::uint8_t AABBFlag = std::uint8_t(2);
   std::uint8_t BouncebackFlag = std::uint8_t(4);
   std::uint8_t BBMovingWallFlag = std::uint8_t(8);

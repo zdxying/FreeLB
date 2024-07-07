@@ -93,9 +93,16 @@ struct D2Q8 : public Basic_Lattice_Set<2, 8> {
 template <typename T, typename LatSet>
 class ZhuStefanescu2D {
  private:
+
+  Geometry2D<T>& Geo;
+  ZSConverter<T>& ConvCA;
+  RhoLattice<T>& lbmSO;
+  RhoLattice<T>& lbmTH;
+
   int Ni;
   int Nj;
   int N;
+
   // preferred growth angle to x-axis, manually chosen
   T Theta;
   // nucleation sites
@@ -118,10 +125,7 @@ class ZhuStefanescu2D {
   // interface cells
   std::vector<std::size_t> Interface;
 
-  Geometry2D<T>& Geo;
-  ZSConverter<T>& ConvCA;
-  RhoLattice<T>& lbmSO;
-  RhoLattice<T>& lbmTH;
+
   VectorFieldAOS<T, LatSet::d>& Velocity;
 
   // state field std::uint8_t
@@ -267,6 +271,8 @@ using ALLFIELDS = typename ExtractFieldPack<FIELDPACK<T>>::mergedpack;
 template <typename T, typename LatSet>
 class BlockZhuStefanescu2D : public BlockLatticeBase<T, LatSet, ALLFIELDS<T>> {
  private:
+
+  ZSConverter<T>& ConvCA;
   // preferred growth angle to x-axis, manually chosen
   T Theta;
   // anisotropy coefficient, manually chosen
@@ -275,21 +281,21 @@ class BlockZhuStefanescu2D : public BlockLatticeBase<T, LatSet, ALLFIELDS<T>> {
   T GT;
   // initial composition C0
   // low limit of temperature
-  // equilibrium liquidus temperature at the initial composition C0
-  T Tl_eq;
   // slope of liquidus line
   T m_l;
   // partition coefficient
   T Part_Coef;
   // (1 - partition coefficient)
   T _Part_Coef;
+  // equilibrium liquidus temperature at the initial composition C0
+  T Tl_eq;
 
   // interface cells
   std::vector<std::size_t> Interface;
   // solid count
   std::size_t SolidCount;
 
-  ZSConverter<T>& ConvCA;
+
 
  public:
   template <typename... FIELDPTRS>
@@ -367,7 +373,7 @@ class BlockZhuStefanescu2DManager
       : BlockLatticeManagerBase<T, CALatSet, FIELDPACK<T>>(blockgeo, initvalues, fieldptrs...),
         ConvCA(convca), Theta(theta), delta(delta_), SolidCount(std::size_t{}) {
     // create BlockZhuStefanescu2D
-    for (std::size_t i = 0; i < this->BlockGeo.getBlockNum(); ++i) {
+    for (int i = 0; i < this->BlockGeo.getBlockNum(); ++i) {
       BlockZS.emplace_back(this->BlockGeo.getBlock(i), ConvCA,
                            ExtractFieldPtrs<T, CALatSet, FIELDPACK<T>>::getFieldPtrTuple(
                              i, this->Fields, this->FieldPtrs),
@@ -400,7 +406,7 @@ class BlockZhuStefanescu2DManager
 
   void Init() {
     BlockZS.clear();
-    for (std::size_t i = 0; i < this->BlockGeo.getBlockNum(); ++i) {
+    for (int i = 0; i < this->BlockGeo.getBlockNum(); ++i) {
       BlockZS.emplace_back(this->BlockGeo.getBlock(i), ConvCA,
                            ExtractFieldPtrs<T, CALatSet, FIELDPACK<T>>::getFieldPtrTuple(
                              i, this->Fields, this->FieldPtrs),
@@ -415,7 +421,7 @@ class BlockZhuStefanescu2DManager
 
   void Setup(std::size_t SiteId, int num = CALatSet::q) {
     // find block to setup
-    std::size_t blockid;
+    std::size_t blockid{};
     std::vector<int> nums;
     nums.resize(this->BlockGeo.getBlockNum(), 0);
 
@@ -512,7 +518,7 @@ class BlockZhuStefanescu2DManager
     bool willrefine = false;
     std::vector<bool> hasSolid(GeoHelper.getBlockCells().size(), false);
 #pragma omp parallel for num_threads(Thread_Num)
-    for (int icell = 0; icell < GeoHelper.getBlockCells().size(); ++icell) {
+    for (std::size_t icell = 0; icell < GeoHelper.getBlockCells().size(); ++icell) {
       // cell block
       const BasicBlock<T, 2>& cellblock = GeoHelper.getBlockCell(icell);
       if (cellblock.getLevel() <= LevelLimit) {

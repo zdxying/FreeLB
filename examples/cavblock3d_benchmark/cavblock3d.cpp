@@ -52,7 +52,6 @@ int Block_Num;
 // physical properties
 T rho_ref;    // g/mm^3
 T Kine_Visc;  // mm^2/s kinematic viscosity of the liquid
-T Ra;         // Rayleigh number
 // init conditions
 Vector<T, 3> U_Ini;  // mm/s
 T U_Max;

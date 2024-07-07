@@ -21,7 +21,6 @@
 // cav2d.cpp
 
 // Lid-driven cavity flow 2d
-// this is a benchmark for the freeLB library
 
 // the top wall is set with a constant velocity,
 // while the other walls are set with a no-slip boundary condition
@@ -46,9 +45,7 @@ int Thread_Num;
 
 // physical properties
 T rho_ref;    // g/mm^3
-T Dyna_Visc;  // Pa·s Dynamic viscosity of the liquid
 T Kine_Visc;  // mm^2/s kinematic viscosity of the liquid
-T Ra;         // Rayleigh number
 // init conditions
 Vector<T, 2> U_Ini;  // mm/s
 T U_Max;
@@ -72,7 +69,6 @@ void readParam() {
   Cell_Len = param_reader.getValue<T>("Mesh", "Cell_Len");
   // physical properties
   rho_ref = param_reader.getValue<T>("Physical_Property", "rho_ref");
-  Dyna_Visc = param_reader.getValue<T>("Physical_Property", "Dyna_Visc");
   Kine_Visc = param_reader.getValue<T>("Physical_Property", "Kine_Visc");
   // init conditions
   U_Ini[0] = param_reader.getValue<T>("Init_Conditions", "U_Ini0");
@@ -106,7 +102,7 @@ void readParam() {
 }
 
 int main() {
-  std::uint8_t VoidFlag = std::uint8_t(1);
+  // std::uint8_t VoidFlag = std::uint8_t(1);
   std::uint8_t AABBFlag = std::uint8_t(2);
   std::uint8_t BouncebackFlag = std::uint8_t(4);
   std::uint8_t BBMovingWallFlag = std::uint8_t(8);

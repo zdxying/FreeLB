@@ -170,11 +170,11 @@ template <typename T>
 void MPIBlockBufferInit(const MPIBlockComm& MPIComm, MPIBlockBuffer<T>& MPIBuffer,
                         unsigned int Size = 1) {
   MPIBuffer.SendBuffers.resize(MPIComm.Senders.size(), std::vector<T>{});
-  for (int i = 0; i < MPIComm.Senders.size(); ++i) {
+  for (std::size_t i = 0; i < MPIComm.Senders.size(); ++i) {
     MPIBuffer.SendBuffers[i].resize(Size * MPIComm.Senders[i].SendCells.size(), T{});
   }
   MPIBuffer.RecvBuffers.resize(MPIComm.Recvers.size(), std::vector<T>{});
-  for (int i = 0; i < MPIComm.Recvers.size(); ++i) {
+  for (std::size_t i = 0; i < MPIComm.Recvers.size(); ++i) {
     MPIBuffer.RecvBuffers[i].resize(Size * MPIComm.Recvers[i].RecvCells.size(), T{});
   }
 }
@@ -183,11 +183,11 @@ template <typename FloatType, unsigned int Dim, typename T>
 void MPIBlockBufferInit(const MPIInterpBlockComm<FloatType,Dim>& MPIComm, MPIBlockBuffer<T>& MPIBuffer,
                         unsigned int Size = 1) {
   MPIBuffer.SendBuffers.resize(MPIComm.Senders.size(), std::vector<T>{});
-  for (int i = 0; i < MPIComm.Senders.size(); ++i) {
+  for (std::size_t i = 0; i < MPIComm.Senders.size(); ++i) {
     MPIBuffer.SendBuffers[i].resize(Size * MPIComm.Senders[i].SendCells.size(), T{});
   }
   MPIBuffer.RecvBuffers.resize(MPIComm.Recvers.size(), std::vector<T>{});
-  for (int i = 0; i < MPIComm.Recvers.size(); ++i) {
+  for (std::size_t i = 0; i < MPIComm.Recvers.size(); ++i) {
     MPIBuffer.RecvBuffers[i].resize(Size * MPIComm.Recvers[i].RecvCells.size(), T{});
   }
 }

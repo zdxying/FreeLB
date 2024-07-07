@@ -128,7 +128,7 @@ class BBLikeMovingBoundary final : public MovingBoundary<T, LatSet, flagType> {
 #endif
     for (std::size_t id : this->Ids) {
       PopCell<T, LatSet> cell(id, this->Lat);
-      for (int k = 1; k < LatSet::q; ++k) {
+      for (unsigned int k = 1; k < LatSet::q; ++k) {
         if (util::isFlag(this->Field[this->Lat.getNbrId(id, k)], this->voidFlag)) {
           BBLikemethod(cell, LatSet::opp[k]);
         }

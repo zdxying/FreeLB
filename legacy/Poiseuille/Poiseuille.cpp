@@ -1,6 +1,6 @@
 // Poiseuille.cpp
 // poiseuille flow 2d
-// this is a benchmark for the freeLB library
+
 
 // pressure driven flow in a channel
 // pressure gradient is applied in the x direction, i.e. along the channel

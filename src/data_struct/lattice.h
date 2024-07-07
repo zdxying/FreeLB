@@ -37,13 +37,14 @@
 template <typename T>
 class RhoLattice {
  protected:
-  ScalarField<T> Rho;
   // converter
   AbstractConverter<T>& Conv;
   // rho init
   T Lattice_Rho_Init;
   // buoyancy
   T Lattice_gbeta;
+
+  ScalarField<T> Rho;
 
  public:
   RhoLattice(AbstractConverter<T>& conv, std::size_t size)
@@ -71,9 +72,7 @@ class PopLattice : public RhoLattice<T> {
   Geometry<T, LatSet::d>& Geo;
   // velocity field
   VectorFieldAOS<T, LatSet::d>& Velocity;
-  // projection to 1d array
-  Vector<int, LatSet::d> Projection;
-
+  // population field
   PopulationField<T, LatSet::q> Pops;
 
   // omega
@@ -83,6 +82,8 @@ class PopLattice : public RhoLattice<T> {
   // 1 - omega/2
   T fOmega;
 
+  // projection to 1d array
+  Vector<int, LatSet::d> Projection;
   // nbr index
   std::array<int, LatSet::q> Delta_Index;
 

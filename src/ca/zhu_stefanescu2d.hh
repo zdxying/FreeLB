@@ -28,12 +28,12 @@ ZhuStefanescu2D<T, LatSet>::ZhuStefanescu2D(ZSConverter<T> &convca, RhoLattice<T
                                             RhoLattice<T> &lbmth,
                                             PopLattice<T, LatSet> &lbmns, T delta_,
                                             T theta, int siteid, int num)
-    : Geo(lbmns.getGeo()), ConvCA(convca), lbmSO(lbmso), lbmTH(lbmth), delta(delta_),
-      Theta(theta), SiteId(siteid), GT(convca.Lattice_GT_Coef), C0(lbmso.getLatRhoInit()),
+    : Geo(lbmns.getGeo()), ConvCA(convca), lbmSO(lbmso), lbmTH(lbmth), 
+      Ni(lbmns.getGeo().getNx()), Nj(lbmns.getGeo().getNy()), N(lbmns.getGeo().getVoxelsNum()),
+      Theta(theta), SiteId(siteid), delta(delta_), GT(convca.Lattice_GT_Coef), C0(lbmso.getLatRhoInit()),
       Tl_eq(convca.get_LatTliq(lbmso.getLatRhoInit())), m_l(convca.Lattice_m_Liq),
       Part_Coef(convca.Part_Coef), _Part_Coef(T(1) - convca.Part_Coef),
-      Velocity(lbmns.getVelocityField()), Ni(lbmns.getGeo().getNx()),
-      Nj(lbmns.getGeo().getNy()), N(lbmns.getGeo().getVoxelsNum()),
+      Velocity(lbmns.getVelocityField()), 
       State(lbmns.getGeo().getVoxelsNum(), CAType::Fluid),
       Flag(lbmns.getGeo().getVoxelsNum(), CAFlag::None),
       Fs(lbmns.getGeo().getVoxelsNum(), T(0)),
@@ -201,7 +201,7 @@ void ZhuStefanescu2D<T, LatSet>::DistributeExcessC(int id, T excessC) {
   nbrs.reserve(LatSet::q);
   dirs.reserve(LatSet::q);
   T sum = T(0);
-  for (int i = 1; i < LatSet::q; i++) {
+  for (unsigned int i = 1; i < LatSet::q; i++) {
     int idn = Geo.template getNeighborId<LatSet>(id, i);
     if (util::isFlag(State.get(idn), CAType::Fluid)) {
       nbrs.push_back(idn);
@@ -211,7 +211,7 @@ void ZhuStefanescu2D<T, LatSet>::DistributeExcessC(int id, T excessC) {
   }
   T inv_sum = T(1) / sum;
   if (nbrs.size() == 0) return;
-  for (int i = 0; i < nbrs.size(); i++) {
+  for (std::size_t i = 0; i < nbrs.size(); i++) {
     ExcessC.get(nbrs[i])[dirs[i]] = excessC * LatSet::w[dirs[i]] * inv_sum;
   }
 }
@@ -220,7 +220,7 @@ template <typename T, typename LatSet>
 void ZhuStefanescu2D<T, LatSet>::CollectExcessC() {
 #pragma omp parallel for num_threads(Thread_Num) schedule(static)
   for (int id = 0; id < N; ++id) {
-    for (int i = 1; i < LatSet::q; i++) {
+    for (unsigned int i = 1; i < LatSet::q; i++) {
       ExcessC_.get(id) += ExcessC.get(id)[i];
     }
   }
@@ -265,7 +265,7 @@ T ZhuStefanescu2D<T, LatSet>::getSolidCountFracton() {
 
 template <typename T, typename LatSet>
 bool ZhuStefanescu2D<T, LatSet>::hasNeighborType(int id, std::uint8_t type) const {
-  for (int i = 1; i < LatSet::q; ++i) {
+  for (unsigned int i = 1; i < LatSet::q; ++i) {
     if (util::isFlag(State.get(id + Delta_Index[i]), type)) return true;
   }
   return false;
@@ -273,7 +273,7 @@ bool ZhuStefanescu2D<T, LatSet>::hasNeighborType(int id, std::uint8_t type) cons
 
 template <typename T, typename LatSet>
 bool ZhuStefanescu2D<T, LatSet>::hasNeighborFlag(int id, std::uint8_t flag) const {
-  for (int i = 1; i < LatSet::q; ++i) {
+  for (unsigned int i = 1; i < LatSet::q; ++i) {
     if (util::isFlag(Flag.get(id + Delta_Index[i]), flag)) return true;
   }
   return false;
@@ -292,7 +292,7 @@ BlockZhuStefanescu2D<T, LatSet>::BlockZhuStefanescu2D(Block2D<T> &geo,
                                                       std::tuple<FIELDPTRS...> fieldptrs,
                                                       T delta, T theta)
     : BlockLatticeBase<T, LatSet, ALLFIELDS<T>>(geo, fieldptrs), ConvCA(convca),
-      delta(delta), Theta(theta),
+      Theta(theta), delta(delta), 
       GT(convca.Lattice_GT_Coef * pow(2, int(geo.getLevel()))), m_l(convca.Lattice_m_Liq),
       Part_Coef(convca.Part_Coef), _Part_Coef(T(1) - convca.Part_Coef),
       SolidCount(std::size_t(0)) {
@@ -480,7 +480,7 @@ void BlockZhuStefanescu2D<T, LatSet>::DistributeExcessC() {
         std::vector<int> dirs;
         dirs.reserve(LatSet::q);
         T sum = T(0);
-        for (int i = 0; i < LatSet::q; ++i) {
+        for (unsigned int i = 0; i < LatSet::q; ++i) {
           std::size_t idn = id + this->Delta_Index[i];
           if (util::isFlag(this->template getField<STATE>().get(idn), CAType::Fluid)) {
             dirs.push_back(i);
@@ -521,7 +521,7 @@ void BlockZhuStefanescu2D<T, LatSet>::SimpleCapture() {
 template <typename T, typename LatSet>
 bool BlockZhuStefanescu2D<T, LatSet>::hasNeighborType(std::size_t id,
                                                       std::uint8_t type) const {
-  for (int i = 0; i < LatSet::q; ++i) {
+  for (unsigned int i = 0; i < LatSet::q; ++i) {
     if (util::isFlag(this->template getField<STATE>().get(id + this->Delta_Index[i]),
                      type))
       return true;

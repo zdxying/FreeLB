@@ -188,10 +188,9 @@ class BasicBlock : public AABB<T, D> {
   BasicBlock() = default;
   BasicBlock(T voxsize, const AABB<T, D>& aabb, const AABB<int, D>& idxblock,
              int blockid = -1)
-      : VoxelSize(voxsize), AABB<T, D>(aabb),
-        MinCenter(aabb.getMin() + Vector<T, D>{T(0.5) * voxsize}), IndexBlock(idxblock),
-        Mesh(idxblock.getExtension() + Vector<int, D>{1}), BlockId(blockid),
-        _level(std::uint8_t(0)) {
+      : AABB<T, D>(aabb), IndexBlock(idxblock), Mesh(idxblock.getExtension() + Vector<int, D>{1}), 
+        VoxelSize(voxsize), MinCenter(aabb.getMin() + Vector<T, D>{T(0.5) * voxsize}), 
+         BlockId(blockid), _level(std::uint8_t{}) {
     if constexpr (D == 2) {
       N = Mesh[0] * Mesh[1];
       Projection = Vector<int, 2>{1, Mesh[0]};
@@ -204,9 +203,9 @@ class BasicBlock : public AABB<T, D> {
   // indexblock is the GLOBAL index block
   BasicBlock(std::uint8_t level, T newvoxsize, int blockid, const AABB<T, D>& aabb,
              const AABB<int, D>& idxblock, const Vector<int, D>& mesh)
-      : VoxelSize(newvoxsize), _level(level), AABB<T, D>(aabb), BlockId(blockid),
-        MinCenter(aabb.getMin() + Vector<T, D>{T(0.5) * newvoxsize}),
-        IndexBlock(idxblock), Mesh(mesh) {
+      : AABB<T, D>(aabb), IndexBlock(idxblock), Mesh(mesh), VoxelSize(newvoxsize), 
+      MinCenter(aabb.getMin() + Vector<T, D>{T(0.5) * newvoxsize}),
+      BlockId(blockid), _level(level) {
     if constexpr (D == 2) {
       N = Mesh[0] * Mesh[1];
       Projection = Vector<int, 2>{1, Mesh[0]};
@@ -763,8 +762,8 @@ class BlockGeometryHelperBase : public BasicBlock<T, D> {
     else
       return _BasicBlocks0;
   }
-  BasicBlock<T, D>& getAllBasicBlock(int id) { return getAllBasicBlocks()[id]; }
-  const BasicBlock<T, D>& getAllBasicBlock(int id) const {
+  BasicBlock<T, D>& getAllBasicBlock(std::size_t id) { return getAllBasicBlocks()[id]; }
+  const BasicBlock<T, D>& getAllBasicBlock(std::size_t id) const {
     return getAllBasicBlocks()[id];
   }
   // get all old basic blocks
@@ -774,8 +773,8 @@ class BlockGeometryHelperBase : public BasicBlock<T, D> {
     else
       return _BasicBlocks1;
   }
-  BasicBlock<T, D>& getAllOldBasicBlock(int id) { return getAllOldBasicBlocks()[id]; }
-  const BasicBlock<T, D>& getAllOldBasicBlock(int id) const {
+  BasicBlock<T, D>& getAllOldBasicBlock(std::size_t id) { return getAllOldBasicBlocks()[id]; }
+  const BasicBlock<T, D>& getAllOldBasicBlock(std::size_t id) const {
     return getAllOldBasicBlocks()[id];
   }
 

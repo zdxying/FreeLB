@@ -261,6 +261,7 @@ struct TempConverter final : public AbstractConverter<T> {
   T cs2;
 
   BaseConverter<T> &BaseConv;
+
   T getLattice_RT() const override { return Lattice_RTT; }
   T getOMEGA() const override { return OMEGAT; }
   T getLattice_gbeta() const override { return Lattice_gbetaT; }
@@ -278,7 +279,7 @@ struct TempConverter final : public AbstractConverter<T> {
   T getLatticeDTemp(T dT_phys) { return dT_phys / Conv_dT; }
   T getPhysDTemp(T Lattice_dT) { return Lattice_dT * Conv_dT; }
   TempConverter(T cs2_, BaseConverter<T> &baseconv, T init)
-      : cs2(cs2_), TInit(init), BaseConv(baseconv) {}
+      : TInit(init), cs2(cs2_), BaseConv(baseconv) {}
   /*--------------------Converters--------------------*/
   void Converter(T Tl_, T Th_, T TDiff_) {
     Tl = Tl_;
@@ -384,6 +385,7 @@ struct ConcConverter final : public AbstractConverter<T> {
   int TimeStepCoeff = 0;
 
   BaseConverter<T> &BaseConv;
+
   T getLattice_RT() const override { return Lattice_RTC; }
   T getOMEGA() const override { return OMEGAC; }
   T getLattice_gbeta() const override { return Lattice_gbetaC; }
@@ -401,7 +403,7 @@ struct ConcConverter final : public AbstractConverter<T> {
   T getPhysRho(T Lattice_Conc) const override { return Lattice_Conc * Conv_dC + Cl; }
 
   ConcConverter(T cs2_, BaseConverter<T> &baseconv, T init)
-      : cs2(cs2_), CInit(init), BaseConv(baseconv) {}
+      : CInit(init), cs2(cs2_), BaseConv(baseconv) {}
   /*--------------------Converters--------------------*/
   void Converter(T Cl_, T Ch_, T CDiff_) {
     Cl = Cl_;
@@ -443,6 +445,9 @@ struct ConcConverter final : public AbstractConverter<T> {
 
 template <typename T>
 struct PhaseDiagramConverter {
+  TempConverter<T> &TempConv;
+  ConcConverter<T> &ConcConv;
+
   T T_Melt;      // K
   T T_Eute;      // K
   T m_Liquidus;  //
@@ -454,13 +459,11 @@ struct PhaseDiagramConverter {
   T Lattice_m_Liq;
   T Lattice_m_Sol;
 
-  TempConverter<T> &TempConv;
-  ConcConverter<T> &ConcConv;
 
   PhaseDiagramConverter(TempConverter<T> &TempConv_, ConcConverter<T> &ConcConv_,
                         T t_melt, T t_eute, T m_solidus, T m_liquidus)
       : TempConv(TempConv_), ConcConv(ConcConv_), T_Melt(t_melt), T_Eute(t_eute),
-        m_Solidus(m_solidus), m_Liquidus(m_liquidus) {
+        m_Liquidus(m_liquidus), m_Solidus(m_solidus) {
     Lattice_T_Melt = TempConv.getLatticeRho(T_Melt);
     Lattice_T_Eute = TempConv.getLatticeRho(T_Eute);
     Lattice_m_Sol = getLatticePhaseDiagramSlope(m_Solidus);

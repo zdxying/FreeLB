@@ -229,7 +229,7 @@ class ScalarWriter : public AbstractWriter {
     // getVTKTypeString<datatype>(type);
     f << "<DataArray type=\"" << "Float32" << "\" Name=\"" << varname << "\" "
       << "NumberOfComponents=\"" << 1 << "\">\n";
-    for (int i = 0; i < Size; ++i) {
+    for (std::size_t i = 0; i < Size; ++i) {
       f << static_cast<float>(Array[i]) << " ";
     }
     f << "\n</DataArray>\n";
@@ -283,7 +283,7 @@ class VectorWriter : public AbstractWriter {
     // getVTKTypeString<datatype>(type);
     f << "<DataArray type=\"" << "Float32" << "\" Name=\"" << varname << "\" "
       << "NumberOfComponents=\"" << D << "\">\n";
-    for (int i = 0; i < Size; ++i) {
+    for (std::size_t i = 0; i < Size; ++i) {
       if constexpr (D == 2) {
         f << static_cast<float>(Array[i][0]) << " " << static_cast<float>(Array[i][1])
           << " ";
@@ -315,8 +315,8 @@ class VectorWriter : public AbstractWriter {
     // get data array for encoding
     datatype *data = new datatype[DSize];
     if constexpr (D == 2 || D == 3) {
-      int j = 0;
-      for (int i = 0; i < Size; ++i) {
+      std::size_t j = 0;
+      for (std::size_t i = 0; i < Size; ++i) {
         data[j] = Array[i][0];
         data[j + 1] = Array[i][1];
         if constexpr (D == 3) {
@@ -325,8 +325,8 @@ class VectorWriter : public AbstractWriter {
         j += D;
       }
     } else {
-      int j = 0;
-      for (int i = 0; i < Size; i += D) {
+      std::size_t j = 0;
+      for (std::size_t i = 0; i < Size; i += D) {
         for (unsigned int k = 0; k < D; ++k) {
           data[j + k] = Array[i][k];
         }
@@ -364,7 +364,7 @@ class VectorSOAWriter : public AbstractWriter {
     // getVTKTypeString<datatype>(type);
     f << "<DataArray type=\"" << "Float32" << "\" Name=\"" << varname << "\" "
       << "NumberOfComponents=\"" << D << "\">\n";
-    for (int i = 0; i < Size; ++i) {
+    for (std::size_t i = 0; i < Size; ++i) {
       for (unsigned int k = 0; k < D; ++k) {
         f << static_cast<float>(Field.template get<k>(i)) << " ";
       }
@@ -391,8 +391,8 @@ class VectorSOAWriter : public AbstractWriter {
 
     // get data array for encoding
     datatype *data = new datatype[DSize];
-    int j = 0;
-    for (int i = 0; i < Size; i += D) {
+    std::size_t j = 0;
+    for (std::size_t i = 0; i < Size; i += D) {
       for (unsigned int k = 0; k < D; ++k) {
         data[j + k] = Field.get(i, k);
       }
@@ -438,11 +438,11 @@ class vtiManager {
 
   // image info
   T VoxelSize;
+  // overlap
+  int _Overlap;
   Vector<T, Dim> _Min;
   // _Ext = Mesh - Vector<int, Dim>{1}
   Vector<int, Dim> _Ext;
-  // overlap
-  int _Overlap;
 
 #ifdef MPI_ENABLED
   int _rank;

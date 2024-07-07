@@ -32,17 +32,16 @@ template <typename T>
 Geometry2D<T>::Geometry2D(int Nx, int Ny, const AABB<T, 2> &AABBs, T voxelSize,
                           const Vector<T, 2> &min, std::uint8_t AABBflag,
                           std::uint8_t voidflag)
-    : _Nx(Nx + 2),
+    : AABB<T, 2>(
+          min - Vector<T, 2>{voxelSize, voxelSize},
+          min + Vector<T, 2>{(Nx + 1) * voxelSize, (Ny + 1) * voxelSize}),
+      _Nx(Nx + 2),
       _Ny(Ny + 2),
       N((Nx + 2) * (Ny + 2)),
       _voxelSize(voxelSize),
-      AABB<T, 2>(
-          min - Vector<T, 2>{voxelSize, voxelSize},
-          min + Vector<T, 2>{(Nx + 1) * voxelSize, (Ny + 1) * voxelSize}),
-      GeometryFlag((Nx + 2) * (Ny + 2), voidflag),
-      Projection{1, Nx + 2},
       _AABBflag(AABBflag),
       _voidflag(voidflag),
+      GeometryFlag((Nx + 2) * (Ny + 2), voidflag),
       _MinCenter(min - Vector<T, 2>{voxelSize * T(0.5), voxelSize * T(0.5)}) {
   _Voxels.reserve(N);
   print();
@@ -79,8 +78,8 @@ void Geometry2D<T>::SetupBoundary(std::uint8_t AABBflag,
   for (int id = 0; id < N; ++id) {
     if (GeometryFlag.get(id) == AABBflag) {
       const Vector<T, 2> &voxel = _Voxels[id];
-      int count = 0;
-      for (int i = 1; i < LatSet::q; ++i) {
+      unsigned int count = 0;
+      for (unsigned int i = 1; i < LatSet::q; ++i) {
         Vector<T, 2> pt = voxel + LatSet::c[i] * _voxelSize;
         if (this->isInside(pt)) {
           int idx = LatSet::c[i] * Projection + id;

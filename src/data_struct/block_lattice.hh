@@ -40,12 +40,12 @@ void BlockLattice<T, LatSet, TypePack>::communicate() {
   // same level communication
   for (BlockLatComm<T, LatSet, TypePack>& comm : Communicators) {
     BlockLattice<T, LatSet, TypePack>* nBlockLat = comm.SendBlock;
-    int size = comm.getRecvs().size();
-    for (int k = 1; k < LatSet::q; ++k) {
+    std::size_t size = comm.getRecvs().size();
+    for (unsigned int k = 1; k < LatSet::q; ++k) {
       const CyclicArray<T>& nPopsk =
         nBlockLat->template getField<POP<T, LatSet::q>>().getField(k);
       CyclicArray<T>& Popsk = this->template getField<POP<T, LatSet::q>>().getField(k);
-      for (int i = 0; i < size; ++i) {
+      for (std::size_t i = 0; i < size; ++i) {
         std::size_t idrecv = comm.getRecvs()[i];
         std::size_t idsend = comm.getSends()[i];
         Popsk.set(idrecv, nPopsk[idsend]);
@@ -59,8 +59,7 @@ void BlockLattice<T, LatSet, TypePack>::avercommunicate() {
   // average communication, low level get from high level
   for (InterpBlockLatComm<T, LatSet, TypePack>& comm : AverageComm) {
     BlockLattice<T, LatSet, TypePack>* nBlockLat = comm.SendBlock;
-    int size = comm.getRecvs().size();
-    constexpr T weight = comm.Comm->getUniformWeight();
+    std::size_t size = comm.getRecvs().size();
     const T OmegaF = nBlockLat->getOmega();
     GenericArray<T>& nRhoF = nBlockLat->template getField<GenericRho>().getField(0);
     GenericArray<Vector<T, LatSet::d>>& nUF =
@@ -91,7 +90,7 @@ void BlockLattice<T, LatSet, TypePack>::interpcommunicate() {
   // interp communication, high level get from low level
   for (InterpBlockLatComm<T, LatSet, TypePack>& comm : InterpComm) {
     BlockLattice<T, LatSet, TypePack>* nBlockLat = comm.SendBlock;
-    int size = comm.getRecvs().size();
+    std::size_t size = comm.getRecvs().size();
     const T OmegaC = nBlockLat->getOmega();
     GenericArray<T>& nRhoF = nBlockLat->template getField<GenericRho>().getField(0);
     GenericArray<Vector<T, LatSet::d>>& nUF =
@@ -177,7 +176,7 @@ void BlockLattice<T, LatSet, TypePack>::interpcommunicate() {
 
 template <typename T, typename LatSet, typename TypePack>
 void BlockLattice<T, LatSet, TypePack>::Stream() {
-  for (int i = 1; i < LatSet::q; ++i) {
+  for (unsigned int i = 1; i < LatSet::q; ++i) {
     this->template getField<POP<T, LatSet::q>>().getField(i).rotate(this->Delta_Index[i]);
   }
 }
@@ -304,7 +303,7 @@ template <typename T, typename LatSet, typename TypePack>
 void BlockLattice<T, LatSet, TypePack>::EnableToleranceRho(T rhores) {
   RhoRes = rhores;
   RhoOld.reserve(this->getN());
-  for (int i = 0; i < this->getN(); ++i)
+  for (std::size_t i = 0; i < this->getN(); ++i)
     RhoOld.push_back(this->template getField<GenericRho>().get(i));
 }
 
@@ -312,7 +311,7 @@ template <typename T, typename LatSet, typename TypePack>
 void BlockLattice<T, LatSet, TypePack>::EnableToleranceU(T ures) {
   URes = ures;
   UOld.reserve(this->getN());
-  for (int i = 0; i < this->getN(); ++i)
+  for (std::size_t i = 0; i < this->getN(); ++i)
     UOld.push_back(this->template getField<VELOCITY<T, LatSet::d>>().get(i));
 }
 
@@ -323,7 +322,7 @@ T BlockLattice<T, LatSet, TypePack>::getToleranceRho() {
 #ifdef SingleBlock_OMP
 #pragma omp parallel for num_threads(Thread_Num) schedule(static)
 #endif
-  for (int i = 0; i < this->getN(); ++i) {
+  for (std::size_t i = 0; i < this->getN(); ++i) {
     res = std::abs(this->template getField<GenericRho>().get(i) - RhoOld[i]);
     maxres = std::max(res, maxres);
     RhoOld[i] = this->template getField<GenericRho>().get(i);
@@ -338,7 +337,7 @@ T BlockLattice<T, LatSet, TypePack>::getToleranceU() {
 #ifdef SingleBlock_OMP
 #pragma omp parallel for num_threads(Thread_Num) schedule(static)
 #endif
-  for (int i = 0; i < this->getN(); ++i) {
+  for (std::size_t i = 0; i < this->getN(); ++i) {
     res0 =
       std::abs(this->template getField<VELOCITY<T, LatSet::d>>().get(i)[0] - UOld[i][0]);
     res1 =
@@ -376,7 +375,7 @@ T BlockLattice<T, LatSet, TypePack>::getTolRho(int shift) {
       }
     }
   } else if constexpr (LatSet::d == 3) {
-  int NxNy = this->getNx() * this->getNy();
+  std::size_t NxNy = this->getNx() * this->getNy();
 #ifdef SingleBlock_OMP
 #pragma omp parallel for num_threads(Thread_Num) schedule(static)
 #endif
@@ -417,7 +416,7 @@ T BlockLattice<T, LatSet, TypePack>::getTolU(int shift) {
       }
     }
   } else if constexpr (LatSet::d == 3) {
-    int NxNy = this->getNx() * this->getNy();
+    std::size_t NxNy = this->getNx() * this->getNy();
 #ifdef SingleBlock_OMP
 #pragma omp parallel for num_threads(Thread_Num) schedule(static)
 #endif
@@ -465,7 +464,7 @@ BlockLatticeManager<T, LatSet, TypePack>::BlockLatticeManager(
     });
   }
   // init block lattices
-  for (int i = 0; i < this->BlockGeo.getBlocks().size(); ++i) {
+  for (std::size_t i = 0; i < this->BlockGeo.getBlocks().size(); ++i) {
     BlockLats.emplace_back(this->BlockGeo.getBlock(i), Conv,
                            ExtractFieldPtrs<T, LatSet, TypePack>::getFieldPtrTuple(
                              i, this->Fields, this->FieldPtrs));
@@ -491,7 +490,7 @@ BlockLatticeManager<T, LatSet, TypePack>::BlockLatticeManager(
     });
   }
   // init block lattices
-  for (int i = 0; i < this->BlockGeo.getBlocks().size(); ++i) {
+  for (std::size_t i = 0; i < this->BlockGeo.getBlocks().size(); ++i) {
     BlockLats.emplace_back(this->BlockGeo.getBlock(i), Conv,
                            ExtractFieldPtrs<T, LatSet, TypePack>::getFieldPtrTuple(
                              i, this->Fields, this->FieldPtrs));
@@ -505,7 +504,7 @@ BlockLatticeManager<T, LatSet, TypePack>::BlockLatticeManager(
 template <typename T, typename LatSet, typename TypePack>
 void BlockLatticeManager<T, LatSet, TypePack>::Init() {
   BlockLats.clear();
-  for (int i = 0; i < this->BlockGeo.getBlocks().size(); ++i) {
+  for (std::size_t i = 0; i < this->BlockGeo.getBlocks().size(); ++i) {
     BlockLats.emplace_back(this->BlockGeo.getBlock(i), Conv,
                            ExtractFieldPtrs<T, LatSet, TypePack>::getFieldPtrTuple(
                              i, this->Fields, this->FieldPtrs));
@@ -532,7 +531,7 @@ void BlockLatticeManager<T, LatSet, TypePack>::Init(
       }
     });
   BlockLats.clear();
-  for (int i = 0; i < this->BlockGeo.getBlocks().size(); ++i) {
+  for (std::size_t i = 0; i < this->BlockGeo.getBlocks().size(); ++i) {
     BlockLats.emplace_back(this->BlockGeo.getBlock(i), Conv,
                            ExtractFieldPtrs<T, LatSet, TypePack>::getFieldPtrTuple(
                              i, this->Fields, this->FieldPtrs));
@@ -602,7 +601,7 @@ void BlockLatticeManager<T, LatSet, TypePack>::ApplyCellDynamics(
 #ifndef SingleBlock_OMP
 #pragma omp parallel for num_threads(Thread_Num)
 #endif
-  for (int i = 0; i < BlockLats.size(); ++i) {
+  for (std::size_t i = 0; i < BlockLats.size(); ++i) {
     const int deLevel = static_cast<int>(getMaxLevel() - BlockLats[i].getLevel());
     if (count % (static_cast<int>(pow(2, deLevel))) == 0) {
       BlockLats[i]
@@ -619,7 +618,7 @@ void BlockLatticeManager<T, LatSet, TypePack>::ApplyCellDynamics(
 #ifndef SingleBlock_OMP
 #pragma omp parallel for num_threads(Thread_Num)
 #endif
-  for (int i = 0; i < BlockLats.size(); ++i) {
+  for (std::size_t i = 0; i < BlockLats.size(); ++i) {
       BlockLats[i].template ApplyCellDynamics<CELLDYNAMICS, typename FieldType::array_type>(
           BFM.getBlockField(i).getField(0));
   }
@@ -631,7 +630,7 @@ void BlockLatticeManager<T, LatSet, TypePack>::ApplyCellDynamics(std::int64_t co
 #ifndef SingleBlock_OMP
 #pragma omp parallel for num_threads(Thread_Num)
 #endif
-  for (int i = 0; i < BlockLats.size(); ++i) {
+  for (std::size_t i = 0; i < BlockLats.size(); ++i) {
     const int deLevel = static_cast<int>(getMaxLevel() - BlockLats[i].getLevel());
     if (count % (static_cast<int>(pow(2, deLevel))) == 0) {
       BlockLats[i].template ApplyCellDynamics<CELLDYNAMICS>();
@@ -645,7 +644,7 @@ void BlockLatticeManager<T, LatSet, TypePack>::ApplyCellDynamics() {
 #ifndef SingleBlock_OMP
 #pragma omp parallel for num_threads(Thread_Num)
 #endif
-  for (int i = 0; i < BlockLats.size(); ++i) {
+  for (std::size_t i = 0; i < BlockLats.size(); ++i) {
       BlockLats[i].template ApplyCellDynamics<CELLDYNAMICS>();
   }
 }
@@ -657,7 +656,7 @@ void BlockLatticeManager<T, LatSet, TypePack>::ApplyCellDynamics(
 #ifndef SingleBlock_OMP
 #pragma omp parallel for num_threads(Thread_Num)
 #endif
-  for (int i = 0; i < BlockLats.size(); ++i) {
+  for (std::size_t i = 0; i < BlockLats.size(); ++i) {
     const int deLevel = static_cast<int>(getMaxLevel() - BlockLats[i].getLevel());
     if (count % (static_cast<int>(pow(2, deLevel))) == 0) {
       BlockLats[i].template ApplyCellDynamics<CELLDYNAMICS>(blockids.getvector(i));
@@ -672,7 +671,7 @@ void BlockLatticeManager<T, LatSet, TypePack>::ApplyCellDynamics(
 #ifndef SingleBlock_OMP
 #pragma omp parallel for num_threads(Thread_Num)
 #endif
-  for (int i = 0; i < BlockLats.size(); ++i) {
+  for (std::size_t i = 0; i < BlockLats.size(); ++i) {
       BlockLats[i].template ApplyCellDynamics<CELLDYNAMICS>(blockids.getvector(i));
   }
 }
@@ -684,7 +683,7 @@ void BlockLatticeManager<T, LatSet, TypePack>::ApplyDynamics(
 #ifndef SingleBlock_OMP
 #pragma omp parallel for num_threads(Thread_Num)
 #endif
-  for (int i = 0; i < BlockLats.size(); ++i) {
+  for (std::size_t i = 0; i < BlockLats.size(); ++i) {
     const int deLevel = static_cast<int>(getMaxLevel() - BlockLats[i].getLevel());
     if (count % (static_cast<int>(pow(2, deLevel))) == 0) {
       BlockLats[i].template ApplyDynamics<DYNAMICS, elementType>(blockids.getvector(i));
@@ -699,7 +698,7 @@ void BlockLatticeManager<T, LatSet, TypePack>::ApplyDynamics(
 #ifndef SingleBlock_OMP
 #pragma omp parallel for num_threads(Thread_Num)
 #endif
-  for (int i = 0; i < BlockLats.size(); ++i) {
+  for (std::size_t i = 0; i < BlockLats.size(); ++i) {
       BlockLats[i].template ApplyDynamics<DYNAMICS, elementType>(blockids.getvector(i));
   }
 }
@@ -711,7 +710,7 @@ void BlockLatticeManager<T, LatSet, TypePack>::ApplyInnerCellDynamics(
 #ifndef SingleBlock_OMP
 #pragma omp parallel for num_threads(Thread_Num)
 #endif
-  for (int i = 0; i < BlockLats.size(); ++i) {
+  for (std::size_t i = 0; i < BlockLats.size(); ++i) {
     const int deLevel = static_cast<int>(getMaxLevel() - BlockLats[i].getLevel());
     if (count % (static_cast<int>(pow(2, deLevel))) == 0) {
       BlockLats[i]
@@ -728,7 +727,7 @@ const BlockFieldManager<FieldType, T, LatSet::d>& BFM) {
 #ifndef SingleBlock_OMP
 #pragma omp parallel for num_threads(Thread_Num)
 #endif
-  for (int i = 0; i < BlockLats.size(); ++i) {
+  for (std::size_t i = 0; i < BlockLats.size(); ++i) {
       BlockLats[i].template ApplyInnerCellDynamics<CELLDYNAMICS, typename FieldType::array_type>(
           BFM.getBlockField(i).getField(0));
   }
@@ -741,7 +740,7 @@ void BlockLatticeManager<T, LatSet, TypePack>::ApplyInnerCellDynamics(
 #ifndef SingleBlock_OMP
 #pragma omp parallel for num_threads(Thread_Num)
 #endif
-  for (int i = 0; i < BlockLats.size(); ++i) {
+  for (std::size_t i = 0; i < BlockLats.size(); ++i) {
     const int deLevel = static_cast<int>(getMaxLevel() - BlockLats[i].getLevel());
     if (count % (static_cast<int>(pow(2, deLevel))) == 0) {
       BlockLats[i].template ApplyInnerCellDynamics<CELLDYNAMICS>();
@@ -755,7 +754,7 @@ void BlockLatticeManager<T, LatSet, TypePack>::ApplyInnerCellDynamics() {
 #ifndef SingleBlock_OMP
 #pragma omp parallel for num_threads(Thread_Num)
 #endif
-  for (int i = 0; i < BlockLats.size(); ++i) {
+  for (std::size_t i = 0; i < BlockLats.size(); ++i) {
       BlockLats[i].template ApplyInnerCellDynamics<CELLDYNAMICS>();
   }
 }
@@ -778,7 +777,7 @@ void BlockLatticeManager<T, LatSet, TypePack>::MPIAverComm(std::int64_t count) {
 
         const T OmegaF = BLat.getOmega();
 
-        for (int i = 0; i < MPIComm.Senders.size(); ++i) {
+        for (std::size_t i = 0; i < MPIComm.Senders.size(); ++i) {
           const std::vector<InterpSource<LatSet::d>>& sendcells =
             MPIComm.Senders[i].SendCells;
 
@@ -831,7 +830,7 @@ void BlockLatticeManager<T, LatSet, TypePack>::MPIAverComm(std::int64_t count) {
           }
         }
         // non-blocking send pop buffer
-        for (int i = 0; i < MPIComm.Senders.size(); ++i) {
+        for (std::size_t i = 0; i < MPIComm.Senders.size(); ++i) {
           MPI_Request request;
           std::vector<T>& popbuffer = this->template getField<POP<T, LatSet::q>>()
                                         .getBlockField(ifield)
@@ -871,7 +870,7 @@ void BlockLatticeManager<T, LatSet, TypePack>::MPIInterpComm(std::int64_t count)
 
         const T OmegaC = BLat.getOmega();
 
-        for (int i = 0; i < MPIComm.Senders.size(); ++i) {
+        for (std::size_t i = 0; i < MPIComm.Senders.size(); ++i) {
           const std::vector<InterpSource<LatSet::d>>& sendcells =
             MPIComm.Senders[i].SendCells;
 
@@ -925,7 +924,7 @@ void BlockLatticeManager<T, LatSet, TypePack>::MPIInterpComm(std::int64_t count)
           }
         }
         // non-blocking send pop buffer
-        for (int i = 0; i < MPIComm.Senders.size(); ++i) {
+        for (std::size_t i = 0; i < MPIComm.Senders.size(); ++i) {
           MPI_Request request;
           std::vector<T>& popbuffer = this->template getField<POP<T, LatSet::q>>()
                                         .getBlockField(ifield)
@@ -1063,7 +1062,7 @@ void DynamicBlockLatticeHelper2D<T, LatSet, TypePack>::ComputeGradNorm2() {
 #ifndef SingleBlock_OMP
 #pragma omp parallel for num_threads(Thread_Num)
 #endif
-  for (int icell = 0; icell < BlockGeoHelper.getBlockCells().size(); ++icell) {
+  for (std::size_t icell = 0; icell < BlockGeoHelper.getBlockCells().size(); ++icell) {
     // rho field
     GenericArray<T>& GradNorm2 = _GradNorm2s[icell].getField(0);
 
@@ -1103,11 +1102,11 @@ void DynamicBlockLatticeHelper2D<T, LatSet, TypePack>::ComputeGradNorm2() {
 
 template <typename T, typename LatSet, typename TypePack>
 void DynamicBlockLatticeHelper2D<T, LatSet, TypePack>::UpdateMaxGradNorm2() {
-  for (int i = 0; i < _GradNorm2s.size(); ++i) {
+  for (std::size_t i = 0; i < _GradNorm2s.size(); ++i) {
     GenericArray<T>& GradNorm2A = _GradNorm2s[i].getField(0);
     // get max of gradnorm2
     T maxGradNorm2 = T(0);
-    for (int id = 0; id < GradNorm2A.size(); ++id) {
+    for (std::size_t id = 0; id < GradNorm2A.size(); ++id) {
       if (GradNorm2A[id] > maxGradNorm2) maxGradNorm2 = GradNorm2A[id];
     }
     _MaxGradNorm2s[i] = maxGradNorm2;
@@ -1178,9 +1177,8 @@ void DynamicBlockLatticeHelper2D<T, LatSet, TypePack>::PopFieldInit() {
 #ifndef SingleBlock_OMP
 #pragma omp parallel for num_threads(Thread_Num)
 #endif
-  for (int inewblock = 0;
-       inewblock <
-       BlockLatMan.template getField<POP<T, LatSet::q>>().getBlockFields().size();
+  for (std::size_t inewblock = 0;
+       inewblock < BlockLatMan.template getField<POP<T, LatSet::q>>().getBlockFields().size();
        ++inewblock) {
     auto& PopsField =
       BlockLatMan.template getField<POP<T, LatSet::q>>().getBlockField(inewblock);
@@ -1194,7 +1192,7 @@ void DynamicBlockLatticeHelper2D<T, LatSet, TypePack>::PopFieldInit() {
     std::uint8_t Level = newblock.getLevel();
     // find overlapped old block field
     for (int iblock = 0; iblock < BlockGeo.getBlockNum(); ++iblock) {
-      const BasicBlock<T, 2>& baseblock = BlockGeoHelper.getAllOldBasicBlock(iblock);
+      const BasicBlock<T, 2>& baseblock = BlockGeoHelper.getAllOldBasicBlock(static_cast<std::size_t>(iblock));
       int overlap = (baseblock.getLevel() != std::uint8_t(0)) ? 2 : 1;
       const BasicBlock<T, 2>& block = baseblock.getExtBlock(overlap);
       if (isOverlapped(newbaseblock, baseblock)) {

@@ -19,14 +19,13 @@
  *
  */
 
+// lattice Boltzmann method coupled with cellular automata(CA) for 2D solidification
+
 #include "ca/zhu_stefanescu2d.h"
 #include "ca/zhu_stefanescu2d.hh"
 #include "freelb.h"
 #include "freelb.hh"
 #include "lbm/buoyancy.h"
-// Known bugs: Segmentation fault may occur, but running rhe executable again
-// may resolve this without re-compile
-//  this may be caused by parallel
 
 // int Total_Macro_Step = 0;
 using T = FLOAT;

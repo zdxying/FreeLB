@@ -21,7 +21,7 @@
 // cavblock2dmpi.cpp
 
 // Lid-driven cavity flow 2d
-// this is a benchmark for the freeLB library
+
 
 // the top wall is set with a constant velocity,
 // while the other walls are set with a no-slip boundary condition
@@ -52,7 +52,6 @@ int BlockCellNx;
 T rho_ref;    // g/mm^3
 T Dyna_Visc;  // Pa·s Dynamic viscosity of the liquid
 T Kine_Visc;  // mm^2/s kinematic viscosity of the liquid
-T Ra;         // Rayleigh number
 // init conditions
 Vector<T, 2> U_Ini;  // mm/s
 T U_Max;

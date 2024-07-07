@@ -91,8 +91,7 @@ class Cylinder final : public AABB<T, 3> {
 template <typename T>
 class Geometry3D : public AABB<T, 3> {
  private:
-  // mesh data
-  std::vector<Vector<T, 3>> _Voxels;
+
   // mesh param
   int _Nx;
   int _Ny;
@@ -100,13 +99,17 @@ class Geometry3D : public AABB<T, 3> {
   int N;
   // it is recommended to set voxelSize = 1.
   T _voxelSize;
+
+  std::uint8_t _AABBflag;
+  std::uint8_t _voidflag;
+
+  FlagField GeometryFlag;
+
   // facilitate getting index in a cubic array
   // _idx (1, Nx, Nx * Ny)
   //      (i, j, k)
   // id = i + j * Nx + k * Nx * Ny
-  Vector<int, 3> Projection;
-
-  FlagField GeometryFlag;
+  Vector<int, 3> Projection{1, _Nx + 2, (_Nx + 2) * (_Ny + 2)};
   // neighbor cell direction
   /*
   neighbor rules
@@ -123,10 +126,6 @@ class Geometry3D : public AABB<T, 3> {
   //     {0, 1, 1},  {0, -1, 1},  {0, -1, -1},  {0, 1, -1},  // 7-18
   //     {1, 1, 1},  {-1, 1, 1},  {-1, -1, 1},  {1, -1, 1},
   //     {1, 1, -1}, {-1, 1, -1}, {-1, -1, -1}, {1, -1, -1}};  // 19-26
-
-  std::uint8_t _AABBflag;
-  std::uint8_t _voidflag;
-
   // facilitate getting index in a cubic array
   // {0, 1, -1, Nx, -Nx, Nx * Ny, -Nx * Ny, 
   //  1 + Nx, -1 - Nx, 1 + Nx*Ny, -1 - Nx*Ny, Nx + Nx*Ny, -Nx - Nx*Ny,
@@ -139,6 +138,9 @@ class Geometry3D : public AABB<T, 3> {
       1-_Nx, -1+_Nx, 1-_Nx*_Ny, -1+_Nx*_Ny, _Nx-_Nx*_Ny, -_Nx+_Nx*_Ny, 
       1+_Nx+_Nx*_Ny, -1-_Nx-_Nx*_Ny, 1+_Nx-_Nx*_Ny, -1-_Nx+_Nx*_Ny, 
       1-_Nx+_Nx*_Ny, -1+_Nx-_Nx*_Ny, -1+_Nx+_Nx*_Ny, 1-_Nx-_Nx*_Ny};
+  
+  // mesh data
+  std::vector<Vector<T, 3>> _Voxels;
 
  public:
   // constructors

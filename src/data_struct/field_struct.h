@@ -98,27 +98,27 @@ class BlockField : public FieldType {
 
  public:
   BlockField() = default;
-  BlockField(Block<FloatType, Dim>& block) : _Block(block), FieldType(block.getN()) {
+  BlockField(Block<FloatType, Dim>& block) : FieldType(block.getN()), _Block(block) {
     MPIBufferInit();
   }
   BlockField(Block<FloatType, Dim>& block, datatype initvalue)
-      : _Block(block), FieldType(block.getN(), initvalue) {
+      : FieldType(block.getN(), initvalue), _Block(block) {
     MPIBufferInit();
   }
   // copy constructor
-  BlockField(const BlockField& blockF) : _Block(blockF._Block), FieldType(blockF) {
+  BlockField(const BlockField& blockF) : FieldType(blockF), _Block(blockF._Block) {
     MPIBufferInit();
   }
   // move constructor
   BlockField(BlockField&& blockF) noexcept
-      : _Block(blockF._Block), FieldType(std::move(blockF)) {
+      : FieldType(std::move(blockF)), _Block(blockF._Block) {
     MPIBufferInit();
   }
   // copy assignment operator
   BlockField& operator=(const BlockField& blockF) {
     if (this != &blockF) {
-      _Block = blockF._Block;
       FieldType::operator=(blockF);
+      _Block = blockF._Block;
       MPIBufferInit();
     }
     return *this;
@@ -126,8 +126,8 @@ class BlockField : public FieldType {
   // move assignment operator
   BlockField& operator=(BlockField&& blockF) noexcept {
     if (this != &blockF) {
-      _Block = blockF._Block;
       FieldType::operator=(std::move(blockF));
+      _Block = blockF._Block;
       MPIBufferInit();
     }
     return *this;
@@ -159,7 +159,7 @@ class BlockField : public FieldType {
     for (BlockFieldComm<FieldType, FloatType, Dim>& comm : Comms) {
       BlockField<FieldType, FloatType, Dim>* nblockF = comm.BlockF;
       std::size_t size = comm.getRecvs().size();
-      for (int iArr = 0; iArr < nblockF->Size(); ++iArr) {
+      for (unsigned int iArr = 0; iArr < nblockF->Size(); ++iArr) {
         const auto& nArray = nblockF->getField(iArr);
         auto& Array = this->getField(iArr);
         for (std::size_t id = 0; id < size; ++id) {
@@ -172,7 +172,7 @@ class BlockField : public FieldType {
     for (InterpBlockFieldComm<FieldType, FloatType, Dim>& comm : AverComms) {
       BlockField<FieldType, FloatType, Dim>* nblockF = comm.BlockF;
       std::size_t size = comm.getRecvs().size();
-      for (int iArr = 0; iArr < FieldType::Size(); ++iArr) {
+      for (unsigned int iArr = 0; iArr < FieldType::Size(); ++iArr) {
         const auto& nArray = nblockF->getField(iArr);
         auto& Array = FieldType::getField(iArr);
         for (std::size_t id = 0; id < size; ++id) {
@@ -194,7 +194,7 @@ class BlockField : public FieldType {
     for (InterpBlockFieldComm<FieldType, FloatType, Dim>& comm : InterpComms) {
       BlockField<FieldType, FloatType, Dim>* nblockF = comm.BlockF;
       std::size_t size = comm.getRecvs().size();
-      for (int iArr = 0; iArr < FieldType::Size(); ++iArr) {
+      for (unsigned int iArr = 0; iArr < FieldType::Size(); ++iArr) {
         const auto& nArray = nblockF->getField(iArr);
         auto& Array = FieldType::getField(iArr);
         const auto& sends = comm.getSends();
@@ -246,7 +246,7 @@ class BlockField : public FieldType {
   void mpiNormalSend(std::vector<MPI_Request>& SendRequests) {
     const MPIBlockComm& MPIComm = _Block.getMPIBlockComm();
     // add to send buffer
-    for (int i = 0; i < MPIComm.Senders.size(); ++i) {
+    for (std::size_t i = 0; i < MPIComm.Senders.size(); ++i) {
       std::vector<datatype>& buffer = MPIBuffer.SendBuffers[i];
       const std::vector<std::size_t>& sends = MPIComm.Senders[i].SendCells;
       std::size_t bufidx = 0;
@@ -259,7 +259,7 @@ class BlockField : public FieldType {
       }
     }
     // non-blocking send
-    for (int i = 0; i < MPIComm.Senders.size(); ++i) {
+    for (std::size_t i = 0; i < MPIComm.Senders.size(); ++i) {
       MPI_Request request;
       std::vector<datatype>& buffer = MPIBuffer.SendBuffers[i];
       mpi().iSend(buffer.data(), buffer.size(), MPIComm.Senders[i].RecvRank, &request,
@@ -271,7 +271,7 @@ class BlockField : public FieldType {
   void mpiNormalRecv(std::vector<MPI_Request>& RecvRequests) {
     const MPIBlockComm& MPIComm = _Block.getMPIBlockComm();
     // non-blocking recv
-    for (int i = 0; i < MPIComm.Recvers.size(); ++i) {
+    for (std::size_t i = 0; i < MPIComm.Recvers.size(); ++i) {
       MPI_Request request;
       std::vector<datatype>& buffer = MPIBuffer.RecvBuffers[i];
       mpi().iRecv(buffer.data(), buffer.size(), MPIComm.Recvers[i].SendRank, &request,
@@ -283,7 +283,7 @@ class BlockField : public FieldType {
   void mpiNormalSet(int& reqidx, std::vector<MPI_Request>& RecvRequests) {
     const MPIBlockComm& MPIComm = _Block.getMPIBlockComm();
     // wait and set field data
-    for (int i = 0; i < MPIComm.Recvers.size(); ++i) {
+    for (std::size_t i = 0; i < MPIComm.Recvers.size(); ++i) {
       MPI_Wait(&RecvRequests[i + reqidx], MPI_STATUS_IGNORE);
       const std::vector<datatype>& buffer = MPIBuffer.RecvBuffers[i];
       const std::vector<std::size_t>& recvs = MPIComm.Recvers[i].RecvCells;
@@ -303,7 +303,7 @@ class BlockField : public FieldType {
   void mpiAverSend(std::vector<MPI_Request>& SendRequests) {
     const MPIInterpBlockComm<FloatType, Dim>& MPIComm = _Block.getMPIAverBlockComm();
     // add to send buffer
-    for (int i = 0; i < MPIComm.Senders.size(); ++i) {
+    for (std::size_t i = 0; i < MPIComm.Senders.size(); ++i) {
       std::vector<datatype>& buffer = MPIAverBuffer.SendBuffers[i];
       const std::vector<InterpSource<Dim>>& sendcells = MPIComm.Senders[i].SendCells;
       constexpr FloatType weight = InterpBlockComm<FloatType, Dim>::getUniformWeight();
@@ -317,7 +317,7 @@ class BlockField : public FieldType {
       }
     }
     // non-blocking send
-    for (int i = 0; i < MPIComm.Senders.size(); ++i) {
+    for (std::size_t i = 0; i < MPIComm.Senders.size(); ++i) {
       MPI_Request request;
       std::vector<datatype>& buffer = MPIAverBuffer.SendBuffers[i];
       mpi().iSend(buffer.data(), buffer.size(), MPIComm.Senders[i].RecvRank, &request,
@@ -329,7 +329,7 @@ class BlockField : public FieldType {
   void mpiAverRecv(std::vector<MPI_Request>& RecvRequests) {
     const MPIInterpBlockComm<FloatType, Dim>& MPIComm = _Block.getMPIAverBlockComm();
     // non-blocking recv
-    for (int i = 0; i < MPIComm.Recvers.size(); ++i) {
+    for (std::size_t i = 0; i < MPIComm.Recvers.size(); ++i) {
       MPI_Request request;
       std::vector<datatype>& buffer = MPIAverBuffer.RecvBuffers[i];
       mpi().iRecv(buffer.data(), buffer.size(), MPIComm.Recvers[i].SendRank, &request,
@@ -341,7 +341,7 @@ class BlockField : public FieldType {
   void mpiAverSet(int& reqidx, std::vector<MPI_Request>& RecvRequests) {
     const MPIInterpBlockComm<FloatType, Dim>& MPIComm = _Block.getMPIAverBlockComm();
     // wait and set field data
-    for (int i = 0; i < MPIComm.Recvers.size(); ++i) {
+    for (std::size_t i = 0; i < MPIComm.Recvers.size(); ++i) {
       MPI_Wait(&RecvRequests[i + reqidx], MPI_STATUS_IGNORE);
       const std::vector<datatype>& buffer = MPIAverBuffer.RecvBuffers[i];
       const std::vector<std::size_t>& recvcells = MPIComm.Recvers[i].RecvCells;
@@ -374,7 +374,7 @@ class BlockField : public FieldType {
       }
     }
     // non-blocking send
-    for (int i = 0; i < MPIComm.Senders.size(); ++i) {
+    for (std::size_t i = 0; i < MPIComm.Senders.size(); ++i) {
       MPI_Request request;
       std::vector<datatype>& buffer = MPIInterpBuffer.SendBuffers[i];
       mpi().iSend(buffer.data(), buffer.size(), MPIComm.Senders[i].RecvRank, &request,
@@ -386,7 +386,7 @@ class BlockField : public FieldType {
   void mpiIntpRecv(std::vector<MPI_Request>& RecvRequests) {
     const MPIInterpBlockComm<FloatType, Dim>& MPIComm = _Block.getMPIInterpBlockComm();
     // non-blocking recv
-    for (int i = 0; i < MPIComm.Recvers.size(); ++i) {
+    for (std::size_t i = 0; i < MPIComm.Recvers.size(); ++i) {
       MPI_Request request;
       std::vector<datatype>& buffer = MPIInterpBuffer.RecvBuffers[i];
       mpi().iRecv(buffer.data(), buffer.size(), MPIComm.Recvers[i].SendRank, &request,
@@ -398,7 +398,7 @@ class BlockField : public FieldType {
   void mpiIntpSet(int& reqidx, std::vector<MPI_Request>& RecvRequests) {
     const MPIInterpBlockComm<FloatType, Dim>& MPIComm = _Block.getMPIInterpBlockComm();
     // wait and set field data
-    for (int i = 0; i < MPIComm.Recvers.size(); ++i) {
+    for (std::size_t i = 0; i < MPIComm.Recvers.size(); ++i) {
       MPI_Wait(&RecvRequests[i + reqidx], MPI_STATUS_IGNORE);
       const std::vector<datatype>& buffer = MPIInterpBuffer.RecvBuffers[i];
       const std::vector<std::size_t>& recvcells = MPIComm.Recvers[i].RecvCells;
@@ -623,7 +623,7 @@ class BlockFieldManager {
     }
     // copy from old field to new field
 #pragma omp parallel for num_threads(Thread_Num)
-    for (int inewblock = 0; inewblock < NewFields.size(); ++inewblock) {
+    for (std::size_t inewblock = 0; inewblock < NewFields.size(); ++inewblock) {
       BlockField<FieldType, FloatType, Dim>& NewField = NewFields[inewblock];
       // newbaseblock could be accessed either from GeoHelper or _BlockGeo
       const BasicBlock<FloatType, Dim>& newbaseblock =
@@ -631,7 +631,7 @@ class BlockFieldManager {
       const BasicBlock<FloatType, Dim>& newblock = NewField.getBlock();
       std::uint8_t Level = newblock.getLevel();
       // find overlapped old block field
-      for (int iblock = 0; iblock < GeoHelper.getAllOldBasicBlocks().size(); ++iblock) {
+      for (std::size_t iblock = 0; iblock < GeoHelper.getAllOldBasicBlocks().size(); ++iblock) {
         // oldbaseblock could be accessed only from GeoHelper
         const BasicBlock<FloatType, Dim>& baseblock =
           GeoHelper.getAllOldBasicBlock(iblock);
@@ -661,7 +661,7 @@ class BlockFieldManager {
     std::vector<BlockField<FieldType, FloatType, Dim>>& NewFields) {
     // copy from old field to new field
 #pragma omp parallel for num_threads(Thread_Num)
-    for (int inewblock = 0; inewblock < NewFields.size(); ++inewblock) {
+    for (std::size_t inewblock = 0; inewblock < NewFields.size(); ++inewblock) {
       BlockField<FieldType, FloatType, Dim>& NewField = NewFields[inewblock];
       // newbaseblock could be accessed either from GeoHelper or _BlockGeo
       const BasicBlock<FloatType, Dim>& newbaseblock =
@@ -669,7 +669,7 @@ class BlockFieldManager {
       const BasicBlock<FloatType, Dim>& newblock = NewField.getBlock();
       std::uint8_t Level = newblock.getLevel();
       // find overlapped old block field
-      for (int iblock = 0; iblock < GeoHelper.getAllOldBasicBlocks().size(); ++iblock) {
+      for (std::size_t iblock = 0; iblock < GeoHelper.getAllOldBasicBlocks().size(); ++iblock) {
         // oldbaseblock could be accessed only from GeoHelper
         const BasicBlock<FloatType, Dim>& baseblock =
           GeoHelper.getAllOldBasicBlock(iblock);

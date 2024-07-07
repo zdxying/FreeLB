@@ -20,7 +20,6 @@
 
 // couette2d.cpp
 // Couette flow 2d
-// this is a benchmark for the freeLB library
 
 // the top wall is set with a constant velocity with Bounce-Back-Moving-Wall
 // the inlet and outlet are set with a Periodic boundary condition

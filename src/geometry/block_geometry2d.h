@@ -265,8 +265,8 @@ class BlockGeometryHelper2D : public BasicBlock<T, 2> {
     else
       return _BasicBlocks0;
   }
-  BasicBlock<T, 2>& getAllBasicBlock(int id) { return getAllBasicBlocks()[id]; }
-  const BasicBlock<T, 2>& getAllBasicBlock(int id) const {
+  BasicBlock<T, 2>& getAllBasicBlock(std::size_t id) { return getAllBasicBlocks()[id]; }
+  const BasicBlock<T, 2>& getAllBasicBlock(std::size_t id) const {
     return getAllBasicBlocks()[id];
   }
   // get all old basic blocks
@@ -276,8 +276,8 @@ class BlockGeometryHelper2D : public BasicBlock<T, 2> {
     else
       return _BasicBlocks1;
   }
-  BasicBlock<T, 2>& getAllOldBasicBlock(int id) { return getAllOldBasicBlocks()[id]; }
-  const BasicBlock<T, 2>& getAllOldBasicBlock(int id) const {
+  BasicBlock<T, 2>& getAllOldBasicBlock(std::size_t id) { return getAllOldBasicBlocks()[id]; }
+  const BasicBlock<T, 2>& getAllOldBasicBlock(std::size_t id) const {
     return getAllOldBasicBlocks()[id];
   }
 

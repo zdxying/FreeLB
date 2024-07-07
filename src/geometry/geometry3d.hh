@@ -57,18 +57,17 @@ template <typename T>
 Geometry3D<T>::Geometry3D(int Nx, int Ny, int Nz, const AABB<T, 3>& AABBs,
                           T voxelSize, const Vector<T, 3>& min,
                           std::uint8_t AABBflag, std::uint8_t voidflag)
-    : _Nx(Nx + 2),
+    :AABB<T, 3>(min - voxelSize,
+                 min + Vector<T, 3>{(Nx + 1) * voxelSize, (Ny + 1) * voxelSize,
+                                    (Nz + 1) * voxelSize}), 
+      _Nx(Nx + 2),
       _Ny(Ny + 2),
       _Nz(Nz + 2),
       N((Nx + 2) * (Ny + 2) * (Nz + 2)),
       _voxelSize(voxelSize),
-      AABB<T, 3>(min - voxelSize,
-                 min + Vector<T, 3>{(Nx + 1) * voxelSize, (Ny + 1) * voxelSize,
-                                    (Nz + 1) * voxelSize}),
-      GeometryFlag((Nx + 2) * (Ny + 2) * (Nz + 2), voidflag),
-      Projection{1, Nx + 2, (Nx + 2) * (Ny + 2)},
       _AABBflag(AABBflag),
-      _voidflag(voidflag) {
+      _voidflag(voidflag),
+      GeometryFlag((Nx + 2) * (Ny + 2) * (Nz + 2), voidflag) {
   _Voxels.reserve(N);
   print();
   // read from AABBs
@@ -157,8 +156,8 @@ void Geometry3D<T>::SetupBoundary(std::uint8_t AABBflag,
   for (int id = 0; id < N; ++id) {
     if (GeometryFlag.get(id) == AABBflag) {
       Vector<T, 3>& voxel = _Voxels[id];
-      int count = 0;
-      for (int i = 1; i < LatSet::q; ++i) {
+      unsigned int count = 0;
+      for (unsigned int i = 1; i < LatSet::q; ++i) {
         Vector<T, 3> pt = voxel + LatSet::c[i] * _voxelSize;
         if (this->isInside(pt)) {
           int idx = LatSet::c[i] * Projection + id;

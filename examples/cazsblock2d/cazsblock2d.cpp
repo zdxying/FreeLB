@@ -19,7 +19,7 @@
  */
 
 // cazsblock2d.cpp
-
+// lattice Boltzmann method coupled with cellular automata(CA) for 2D solidification with block structure
 
 #include "ca/zhu_stefanescu2d.h"
 #include "ca/zhu_stefanescu2d.hh"

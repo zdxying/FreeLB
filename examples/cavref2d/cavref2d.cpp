@@ -50,7 +50,6 @@ int BlockCellNx;
 T rho_ref;    // g/mm^3
 T Dyna_Visc;  // Pa·s Dynamic viscosity of the liquid
 T Kine_Visc;  // mm^2/s kinematic viscosity of the liquid
-T Ra;         // Rayleigh number
 // init conditions
 Vector<T, 2> U_Ini;  // mm/s
 T U_Max;
@@ -194,9 +193,9 @@ int main() {
   // task executor
   using TaskSelector = tmp::TaskSelector<TaskCollection, std::uint8_t, CELL>;
   // task: update rho and u
-  using RhoUTask = tmp::Key_TypePair<AABBFlag, moment::rhou<CELL>>;
-  using TaskCollectionRhoU = tmp::TupleWrapper<RhoUTask>;
-  using TaskSelectorRhoU = tmp::TaskSelector<TaskCollectionRhoU, std::uint8_t, CELL>;
+  // using RhoUTask = tmp::Key_TypePair<AABBFlag, moment::rhou<CELL>>;
+  // using TaskCollectionRhoU = tmp::TupleWrapper<RhoUTask>;
+  // using TaskSelectorRhoU = tmp::TaskSelector<TaskCollectionRhoU, std::uint8_t, CELL>;
 
   // writers
   vtmo::ScalarWriter RhoWriter("Rho", NSLattice.getField<RHO<T>>());

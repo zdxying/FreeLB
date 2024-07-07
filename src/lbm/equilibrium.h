@@ -58,14 +58,14 @@ struct Equilibrium {
 
   static void FirstOrder_Incompresible(std::array<T, LatSet::q> &feq,
                                        const Vector<T, LatSet::d> &u, T rho) {
-    for (int k = 0; k < LatSet::q; ++k) {
+    for (unsigned int k = 0; k < LatSet::q; ++k) {
       feq[k] = Order1_Incompresible(k, u, rho);
     }
   }
   static void SecondOrder(std::array<T, LatSet::q> &feq, const Vector<T, LatSet::d> &u,
                           T rho) {
     T u2 = u.getnorm2();
-    for (int k = 0; k < LatSet::q; ++k) {
+    for (unsigned int k = 0; k < LatSet::q; ++k) {
       feq[k] = Order2(k, u, rho, u2);
     }
   }

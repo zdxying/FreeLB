@@ -27,8 +27,9 @@
 template <typename T, typename LatSet>
 PopLattice<T, LatSet>::PopLattice(Geometry<T, LatSet::d>& geo, AbstractConverter<T>& conv,
                                       VectorFieldAOS<T, LatSet::d>& velocity, bool InitIdx)
-    : Geo(geo), Nx(geo.getNx()), Ny(geo.getNy()), Nz(geo.getNz()), Pops(geo.getVoxelsNum()),
-      Omega(conv.getOMEGA()), Velocity(velocity), RhoLattice<T>(conv, geo.getVoxelsNum()) {
+    : RhoLattice<T>(conv, geo.getVoxelsNum()), 
+      Nx(geo.getNx()), Ny(geo.getNy()), Nz(geo.getNz()), Geo(geo), Velocity(velocity), 
+      Pops(geo.getVoxelsNum()), Omega(conv.getOMEGA()) {
   _Omega = T(1) - Omega;
   fOmega = T(1) - T(0.5) * Omega;
   if constexpr (LatSet::d == 3) {
@@ -41,7 +42,7 @@ PopLattice<T, LatSet>::PopLattice(Geometry<T, LatSet::d>& geo, AbstractConverter
   Delta_Index = make_Array<int, LatSet::q>([&](int i) { return LatSet::c[i] * Projection; });
   N = Nx * Ny * Nz;
   // init populations
-  for (int i = 0; i < LatSet::q; ++i) {
+  for (unsigned int i = 0; i < LatSet::q; ++i) {
     Pops.getField(i).Init(this->Lattice_Rho_Init * LatSet::w[i]);
   }
   if (InitIdx) {
@@ -158,7 +159,6 @@ template <void (*GetFeq)(std::array<T, LatSet::q>&, const Vector<T, LatSet::d>&,
           typename ArrayType>
 void PopLattice<T, LatSet>::BGK_Source(const ArrayType& flagarr, std::uint8_t flag,
                                          const GenericArray<T>& source) {
-  T fOmega = T(1) - Omega * T(0.5);
 #pragma omp parallel for num_threads(Thread_Num) schedule(static)
   for (int id = 0; id < N; ++id) {
     if (util::isFlag(flagarr[id], flag)) {
@@ -171,7 +171,7 @@ void PopLattice<T, LatSet>::BGK_Source(const ArrayType& flagarr, std::uint8_t fl
 
 template <typename T, typename LatSet>
 void PopLattice<T, LatSet>::Stream() {
-  for (int i = 1; i < LatSet::q; ++i) {
+  for (unsigned int i = 1; i < LatSet::q; ++i) {
     Pops.getField(i).rotate(LatSet::c[i] * Projection);
   }
 }

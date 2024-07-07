@@ -51,7 +51,6 @@ int Thread_Num;
 // physical properties
 T rho_ref;    // g/mm^3
 T Kine_Visc;  // mm^2/s kinematic viscosity of the liquid
-T Ra;         // Rayleigh number
 // init conditions
 Vector<T, 3> U_Ini;  // mm/s
 T U_Max;
@@ -171,7 +170,7 @@ int main() {
   // bulk task
   using BulkTask = tmp::Key_TypePair<AABBFlag, collision::BGK_Feq_RhoU<equilibrium::SecondOrder<CELL>>>;
   // wall task
-  using WallTask = tmp::Key_TypePair<BouncebackFlag | BBMovingWallFlag, collision::BGK_Feq<equilibrium::SecondOrder<CELL>>>;
+  // using WallTask = tmp::Key_TypePair<BouncebackFlag | BBMovingWallFlag, collision::BGK_Feq<equilibrium::SecondOrder<CELL>>>;
   // BCs task as a collision process, if used, bcs will be handled in the collision process
   using BBTask = tmp::Key_TypePair<BouncebackFlag, collision::BounceBack<CELL>>;
   using BBMVTask = tmp::Key_TypePair<BBMovingWallFlag, collision::BounceBackMovingWall<CELL>>;

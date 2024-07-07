@@ -52,8 +52,6 @@ class Circle final : public AABB<T, 2> {
 template <typename T>
 class Geometry2D : public AABB<T, 2> {
  private:
-  // mesh data
-  std::vector<Vector<T, 2>> _Voxels;
   // mesh param
   int _Nx;
   int _Ny;
@@ -61,22 +59,24 @@ class Geometry2D : public AABB<T, 2> {
   int N;
   // it is recommended to set voxelSize = 1.
   T _voxelSize;
+
+  // flag and flag field
+  std::uint8_t _AABBflag;
+  std::uint8_t _voidflag;
+  FlagField GeometryFlag;
+
   // facilitate getting index in a cubic array
   // _idx (1, Nx)
   //      (i, j)
   // id = i + j * Nx
-  Vector<int, 2> Projection;
-
-  FlagField GeometryFlag;
-
-  std::uint8_t _AABBflag;
-  std::uint8_t _voidflag;
-
-  // facilitate getting index
+  Vector<int, 2> Projection{1, _Nx + 2};
   // {0, 1, _Nx, -1, -_Nx, 1 + _Nx, -1 + _Nx, -1 - _Nx, 1 - _Nx}
   std::array<int, 9> Delta_Index{0,       1,        _Nx,      -1,     -_Nx,
                                  1 + _Nx, -1 + _Nx, -1 - _Nx, 1 - _Nx};
+  
+  // mesh data
   Vector<T, 2> _MinCenter;
+  std::vector<Vector<T, 2>> _Voxels;
 
  public:
   // constructors

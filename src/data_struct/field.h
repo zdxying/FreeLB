@@ -349,7 +349,7 @@ class CyclicArray {
   using value_type = T;
 
   CyclicArray()
-      : count(0), data(nullptr), shift(0), remainder(0), lastOffset(0), start{} {}
+      : count(0), data(nullptr), shift(0), remainder(0), start{}, lastOffset(0) {}
   CyclicArray(std::size_t size)
       : count(size), data(new T[size]{}), shift(0), remainder(size), lastOffset(0) {
     std::fill(data, data + size, T{});
@@ -369,22 +369,22 @@ class CyclicArray {
   }
   // Move constructor
   CyclicArray(CyclicArray&& arr) noexcept
-      : count(0), data(nullptr), shift(0), remainder(0), lastOffset(0), start{} {
+      : count(0), data(nullptr), shift(0), remainder(0), start{}, lastOffset(0) {
     // Steal the data from 'arr'
     count = arr.count;
     data = arr.data;
     shift = arr.shift;
     remainder = arr.remainder;
-    lastOffset = arr.lastOffset;
     start = arr.start;
+    lastOffset = arr.lastOffset;
     refresh();
     // Reset 'arr'
     arr.count = 0;
     arr.data = nullptr;
     arr.shift = 0;
     arr.remainder = 0;
-    arr.lastOffset = 0;
     arr.start = {};
+    arr.lastOffset = 0;
   }
   // Copy assignment operator
   CyclicArray& operator=(const CyclicArray& arr) {
@@ -408,15 +408,15 @@ class CyclicArray {
     data = arr.data;
     shift = arr.shift;
     remainder = arr.remainder;
-    lastOffset = arr.lastOffset;
     start = arr.start;
+    lastOffset = arr.lastOffset;
     // Reset 'arr'
     arr.count = 0;
     arr.data = nullptr;
     arr.shift = 0;
     arr.remainder = 0;
-    arr.lastOffset = 0;
     arr.start = {};
+    arr.lastOffset = 0;
     refresh();
     return *this;
   }
@@ -467,10 +467,10 @@ class CyclicArray {
     std::ptrdiff_t prevIndex = i + lastOffset;
     if (prevIndex < 0) {
       prevIndex += count;
-    } else if (prevIndex >= count) {
+    } else if (prevIndex >= static_cast<std::ptrdiff_t>(count)) {
       prevIndex -= count;
     }
-    return (prevIndex > remainder ? start[1] : start[0])[prevIndex];
+    return (static_cast<std::size_t>(prevIndex) > remainder ? start[1] : start[0])[static_cast<std::size_t>(prevIndex)];
   }
 
   void refresh() {

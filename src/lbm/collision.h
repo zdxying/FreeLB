@@ -187,12 +187,12 @@ struct BounceBack {
   using LatSet = typename CELL::LatticeSet;
   using T = typename CELL::FloatType;
   using GenericRho = typename CELL::GenericRho;
-  static constexpr int startdir = LatSet::q % 2 == 0 ? 0 : 1;
+  static constexpr unsigned int startdir = LatSet::q % 2 == 0 ? 0 : 1;
 
   static void apply(CELL& cell) {
-    for (int i = startdir; i < LatSet::q; i += 2) {
+    for (unsigned int i = startdir; i < LatSet::q; i += 2) {
       T temp = cell[i];
-      int iopp = i + 1;
+      unsigned int iopp = i + 1;
       cell[i] = cell[iopp];
       cell[iopp] = temp;
     }
@@ -215,13 +215,13 @@ struct BounceBackMovingWall {
   using LatSet = typename CELL::LatticeSet;
   using T = typename CELL::FloatType;
   using GenericRho = typename CELL::GenericRho;
-  static constexpr int startdir = LatSet::q % 2 == 0 ? 0 : 1;
+  static constexpr unsigned int startdir = LatSet::q % 2 == 0 ? 0 : 1;
 
   static void apply(CELL& cell) {
     T rhox = 2 * LatSet::InvCs2 * cell.template get<GenericRho>();
-    for (int i = startdir; i < LatSet::q; i += 2) {
+    for (unsigned int i = startdir; i < LatSet::q; i += 2) {
       T temp = cell[i];
-      int iopp = i + 1;
+      unsigned int iopp = i + 1;
       T uc = cell.template get<VELOCITY<T, LatSet::d>>() * LatSet::c[i] * LatSet::w[i] * rhox;
       cell[i] = cell[iopp] + uc;
       cell[iopp] = temp - uc;
@@ -244,7 +244,7 @@ struct BGK {
     const T omega = cell.getOmega();
     const T _omega = cell.get_Omega();
 
-    for (int i = 0; i < LatSet::q; ++i) {
+    for (unsigned int i = 0; i < LatSet::q; ++i) {
       cell[i] = omega * feq[i] + _omega * cell[i];
     }
   }
@@ -276,7 +276,7 @@ struct BGK {
     const T _omega = cell.get_Omega();
     const T fomega = cell.getfOmega();
 
-    for (int i = 0; i < LatSet::q; ++i) {
+    for (unsigned int i = 0; i < LatSet::q; ++i) {
       cell[i] = omega * feq[i] + _omega * cell[i] + fomega * fi[i];
     }
   }
@@ -290,7 +290,7 @@ struct BGK {
     const T _omega = cell.get_Omega();
     const T fomega = cell.getfOmega();
 
-    for (int i = 0; i < LatSet::q; ++i) {
+    for (unsigned int i = 0; i < LatSet::q; ++i) {
       cell[i] = omega * feq[i] + _omega * cell[i] + fomega * S * LatSet::w[i];
     }
   }

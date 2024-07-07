@@ -24,8 +24,9 @@
 
 template <typename T>
 Block3D<T>::Block3D(const BasicBlock<T, 3> &baseblock, int olap)
-    : _BaseBlock(baseblock), _overlap(olap),
-      BasicBlock<T, 3>(baseblock.getExtBlock(olap)) {}
+    : BasicBlock<T, 3>(baseblock.getExtBlock(olap)), 
+    _BaseBlock(baseblock), _overlap(olap)
+       {}
 
 
 template <typename T>
@@ -49,7 +50,7 @@ void Block3D<T>::SetupBoundary(const AABB<T, 3> &block, FieldType &field,
       for (int x = _overlap; x < BasicBlock<T, 3>::Mesh[0] - _overlap; ++x) {
         const Vector<int, 3> locidx{x, y, z};
         const Vector<T, 3> vox = BasicBlock<T, 3>::getVoxel(locidx);
-        for (int i = 1; i < LatSet::q; ++i) {
+        for (unsigned int i = 1; i < LatSet::q; ++i) {
           const Vector<T, 3> nvox = vox + LatSet::c[i] * BasicBlock<T, 3>::VoxelSize;
           if (!block.isInside(nvox)) {
             TransFlag.set(BasicBlock<T, 3>::getIndex(locidx), true);
@@ -87,7 +88,7 @@ BlockGeometry3D<T>::BlockGeometry3D(int Nx, int Ny, int Nz, int blocknum,
 
 template <typename T>
 BlockGeometry3D<T>::BlockGeometry3D(BlockGeometryHelper3D<T> &GeoHelper)
-    : _BaseBlock(GeoHelper.getBaseBlock()), BasicBlock<T, 3>(GeoHelper),
+    : BasicBlock<T, 3>(GeoHelper), _BaseBlock(GeoHelper.getBaseBlock()), 
       _overlap(GeoHelper.getExt()), _MaxLevel(GeoHelper.getMaxLevel()) {
   // create blocks from GeoHelper
   for (BasicBlock<T, 3> *baseblock : GeoHelper.getBasicBlocks()) {
@@ -310,7 +311,7 @@ void BlockGeometry3D<T>::InitIntpComm() {
         Vector<T, 3> startF = intsec.getMin() - block.getMin();
         int startFx = static_cast<int>(std::round(startF[0] / Fvoxsize));
         int startFy = static_cast<int>(std::round(startF[1] / Fvoxsize));
-        int startFz = static_cast<int>(std::round(startF[2] / Fvoxsize));
+        // int startFz = static_cast<int>(std::round(startF[2] / Fvoxsize));
 
         std::size_t nXY = nblock->getNx() * nblock->getNy();
         for (int iz = 0; iz < CNz; ++iz) {
@@ -477,7 +478,7 @@ void BlockGeometry3D<T>::InitMPIComm(BlockGeometryHelper3D<T> &GeoHelper) {
       GeoHelper.getMPIBlockNbrs(block.getBlockId());
     for (const std::pair<int, int> &nbr : nbrs) {
       // check if 2 blocks are of the same level
-      const BasicBlock<T, 3> &nbaseblock = GeoHelper.getAllBasicBlock(nbr.second);
+      const BasicBlock<T, 3> &nbaseblock = GeoHelper.getAllBasicBlock(static_cast<std::size_t>(nbr.second));
       if (nbaseblock.getLevel() == blocklevel) {
         BasicBlock<T, 3> nbaseblock_ext1 = nbaseblock.getExtBlock(1);
         // init sender
@@ -508,7 +509,7 @@ void BlockGeometry3D<T>::InitMPIAverComm(BlockGeometryHelper3D<T> &GeoHelper) {
       GeoHelper.getMPIBlockNbrs(block.getBlockId());
     std::size_t XY = block.getNx() * block.getNy();
     for (const std::pair<int, int> &nbr : nbrs) {
-      const BasicBlock<T, 3> &nbaseblock = GeoHelper.getAllBasicBlock(nbr.second);
+      const BasicBlock<T, 3> &nbaseblock = GeoHelper.getAllBasicBlock(static_cast<std::size_t>(nbr.second));
       if (nbaseblock.getLevel() == blocklevel - 1) {
         BasicBlock<T, 3> nbaseblock_ext1 = nbaseblock.getExtBlock(1);
         // init sender
@@ -556,7 +557,7 @@ void BlockGeometry3D<T>::InitMPIAverComm(BlockGeometryHelper3D<T> &GeoHelper) {
         MPIBlockRecvStru &recver = MPIComm.Recvers.back();
         // vox size
         const T Cvoxsize = block.getVoxelSize();
-        const T Fvoxsize = nbaseblock.getVoxelSize();
+        // const T Fvoxsize = nbaseblock.getVoxelSize();
         // get intersection
         const AABB<T, 3> intsec = getIntersection(baseblock_ext1, nbaseblock);
         int CNx = static_cast<int>(std::round(intsec.getExtension()[0] / Cvoxsize));
@@ -596,12 +597,12 @@ void BlockGeometry3D<T>::InitMPIIntpComm(BlockGeometryHelper3D<T> &GeoHelper) {
     std::uint8_t blocklevel = block.getLevel();
     const BasicBlock<T, 3> &baseblock = block.getBaseBlock();
     // 2 layers of overlapped cells(counted from inside to outside)
-    BasicBlock<T, 3> baseblock_ext2 = baseblock.getExtBlock(2);
+    // BasicBlock<T, 3> baseblock_ext2 = baseblock.getExtBlock(2);
     std::vector<std::pair<int, int>> &nbrs =
       GeoHelper.getMPIBlockNbrs(block.getBlockId());
     std::size_t XY = block.getNx() * block.getNy();
     for (const std::pair<int, int> &nbr : nbrs) {
-      const BasicBlock<T, 3> &nbaseblock = GeoHelper.getAllBasicBlock(nbr.second);
+      const BasicBlock<T, 3> &nbaseblock = GeoHelper.getAllBasicBlock(static_cast<std::size_t>(nbr.second));
       if (nbaseblock.getLevel() == blocklevel + 1) {
         BasicBlock<T, 3> nbaseblock_ext2 = nbaseblock.getExtBlock(2);
         // init sender
@@ -609,7 +610,7 @@ void BlockGeometry3D<T>::InitMPIIntpComm(BlockGeometryHelper3D<T> &GeoHelper) {
         MPIInterpBlockSendStru<T, 3> &sender = MPIComm.Senders.back();
         // vox size
         const T Cvoxsize = block.getVoxelSize();
-        const T Fvoxsize = nbaseblock.getVoxelSize();
+        // const T Fvoxsize = nbaseblock.getVoxelSize();
         // init sender
         // get intersection
         const AABB<T, 3> intsec = getIntersection(baseblock, nbaseblock_ext2);
@@ -816,8 +817,8 @@ BlockGeometryHelper3D<T>::BlockGeometryHelper3D(int Nx, int Ny, int Nz,
         AABB<int, 3>(Vector<int, 3>{0}, Vector<int, 3>{Nx + 1, Ny + 1, Nz + 1})),
       _BaseBlock(voxelSize, AABBs,
                  AABB<int, 3>(Vector<int, 3>{1}, Vector<int, 3>{Nx, Ny, Nz})),
-      BlockCellLen(blockcelllen), Ext(ext), _MaxLevel(std::uint8_t(0)), _Exchanged(true),
-      _IndexExchanged(true), _LevelLimit(llimit) {
+      BlockCellLen(blockcelllen), Ext(ext), _LevelLimit(llimit), _MaxLevel(std::uint8_t(0)), 
+      _Exchanged(true), _IndexExchanged(true) {
   if (BlockCellLen < 4) {
     std::cerr << "BlockGeometryHelper3D<T>, BlockCellLen < 4" << std::endl;
   }
@@ -1031,7 +1032,7 @@ void BlockGeometryHelper3D<T>::AdaptiveOptimization(int OptProcNum, int MaxProcN
   std::vector<int> bestSchemesvec;
   T minStdDev = StdDevs[0];
   bestSchemesvec.push_back(minProcNum);
-  for (int i = 1; i < StdDevs.size(); ++i) {
+  for (std::size_t i = 1; i < StdDevs.size(); ++i) {
     if (StdDevs[i] < minStdDev) {
       minStdDev = StdDevs[i];
       bestSchemesvec.clear();
@@ -1080,15 +1081,15 @@ void BlockGeometryHelper3D<T>::Optimize(std::vector<BasicBlock<T, 3>> &Blocks,
   // iterate through all blocks
   typename std::vector<BasicBlock<T, 3>>::iterator it = Blocks.begin();
 
-  if (enforce && Blocks.size() < ProcessNum) {
+  if (enforce && Blocks.size() < static_cast<std::size_t>(ProcessNum)) {
     // sort blocks by number of points, large blocks first
     std::sort(Blocks.begin(), Blocks.end(),
               [](const BasicBlock<T, 3> &a, const BasicBlock<T, 3> &b) {
                 return a.getN() > b.getN();
               });
     // make size = ProcessNum
-    int count = Blocks.size();
-    while (count < ProcessNum && it != Blocks.end()) {
+    std::size_t count = Blocks.size();
+    while (count < static_cast<std::size_t>(ProcessNum) && it != Blocks.end()) {
       T ratio = std::round(static_cast<T>(it->getN()) / NumPerProcess);
       int part = static_cast<int>(ratio);
       if (ratio < 2) {
@@ -1116,7 +1117,7 @@ void BlockGeometryHelper3D<T>::Optimize(std::vector<BasicBlock<T, 3>> &Blocks,
   // insert new blocks
   Blocks.insert(Blocks.end(), NewBasicBlocks.begin(), NewBasicBlocks.end());
   // update block id
-  for (int i = 0; i < Blocks.size(); ++i) {
+  for (std::size_t i = 0; i < Blocks.size(); ++i) {
     Blocks[i].setBlockId(i);
   }
 }
@@ -1150,7 +1151,7 @@ void BlockGeometryHelper3D<T>::LoadBalancing(int ProcessNum) {
     for (int i = 0; i < ProcessNum; ++i) {
       std::size_t sum = 0;
       for (int id : BlockIndex[i]) {
-        sum += getAllBasicBlock(id).getN();
+        sum += getAllBasicBlock(static_cast<std::size_t>(id)).getN();
       }
       if (sum < minsum) {
         minsum = sum;
@@ -1167,9 +1168,9 @@ void BlockGeometryHelper3D<T>::LoadBalancing(int ProcessNum) {
   }
 #endif
   BlockIndexPtr.resize(BlockIndex.size());
-  for (int i = 0; i < BlockIndex.size(); ++i) {
+  for (std::size_t i = 0; i < BlockIndex.size(); ++i) {
     for (int id : BlockIndex[i]) {
-      BlockIndexPtr[i].push_back(&getAllBasicBlock(id));
+      BlockIndexPtr[i].push_back(&getAllBasicBlock(static_cast<std::size_t>(id)));
     }
   }
 
@@ -1179,12 +1180,12 @@ void BlockGeometryHelper3D<T>::LoadBalancing(int ProcessNum) {
   MPI_RANK(0)
   std::cout << "[LoadBalancing result]: " << "\n";
   std::cout << "Rank:     ";
-  for (int i = 0; i < BlockIndex.size(); ++i) {
+  for (std::size_t i = 0; i < BlockIndex.size(); ++i) {
     std::cout << i << " | ";
   }
   std::cout << std::endl;
   std::cout << "BlockNum: ";
-  for (int i = 0; i < BlockIndex.size(); ++i) {
+  for (std::size_t i = 0; i < BlockIndex.size(); ++i) {
     std::cout << BlockIndex[i].size() << " | ";
   }
   std::cout << std::endl;
@@ -1197,15 +1198,15 @@ template <typename T>
 void BlockGeometryHelper3D<T>::SetupMPINbrs() {
   _MPIBlockNbrs.clear();
   _MPIBlockNbrs.resize(getAllBasicBlocks().size(), std::vector<std::pair<int, int>>{});
-  for (int iRank = 0; iRank < getAllBlockIndices().size(); ++iRank) {
+  for (std::size_t iRank = 0; iRank < getAllBlockIndices().size(); ++iRank) {
     for (int blockid : getAllBlockIndices()[iRank]) {
       std::vector<std::pair<int, int>> &nbrsvec = _MPIBlockNbrs[blockid];
-      const BasicBlock<T, 3> block = getAllBasicBlock(blockid).getExtBlock(1);
+      const BasicBlock<T, 3> block = getAllBasicBlock(static_cast<std::size_t>(blockid)).getExtBlock(1);
       // for all blocks in all ranks except iRank
-      for (int nRank = 0; nRank < getAllBlockIndices().size(); ++nRank) {
+      for (std::size_t nRank = 0; nRank < getAllBlockIndices().size(); ++nRank) {
         if (nRank != iRank) {
           for (int nblockid : getAllBlockIndices()[nRank]) {
-            const BasicBlock<T, 3> nblock = getAllBasicBlock(nblockid).getExtBlock(1);
+            const BasicBlock<T, 3> nblock = getAllBasicBlock(static_cast<std::size_t>(nblockid)).getExtBlock(1);
             if (isOverlapped(block, nblock))
               nbrsvec.push_back(std::make_pair(nRank, nblockid));
           }

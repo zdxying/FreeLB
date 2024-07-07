@@ -32,13 +32,15 @@ class Buoyancy {
   // source lattice, e.g., thermal and solute lattice
   std::vector<RhoLattice<T> *> Source;
   VectorFieldAOS<T, LatSet::d> &Velocity;
-  ScalarField<T> Force;
+  
   // omega
   T Omega;
   // 1 - omega
   T _Omega;
   // 1 - omega/2
   T fOmega;
+
+  ScalarField<T> Force;
 
  public:
   Buoyancy(PopLattice<T, LatSet> &lat, VectorFieldAOS<T, LatSet::d> &velocity)

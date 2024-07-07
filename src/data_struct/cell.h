@@ -66,7 +66,7 @@ class PopCell final : public BasicPopCell<T, LatSet> {
   using FloatType = T;
   using LatticeSet = LatSet;
   PopCell(std::size_t id, PopLattice<T, LatSet>& lat)
-      : Id(id), Lat(lat), BasicPopCell<T, LatSet>(id, lat) {}
+      : BasicPopCell<T, LatSet>(id, lat), Id(id), Lat(lat) {}
 
   PopCell<T, LatSet> getNeighbor(int i) const { return Lat.getNeighbor(*this, i); }
   PopCell<T, LatSet> getNeighbor(const Vector<int, LatSet::d>& direction) const {

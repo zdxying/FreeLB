@@ -1,7 +1,7 @@
 // dambreak2d.cpp
 
 // Lid-driven cavity flow 2d
-// this is a benchmark for the freeLB library
+
 
 // the top wall is set with a constant velocity,
 // while the other walls are set with a no-slip boundary condition

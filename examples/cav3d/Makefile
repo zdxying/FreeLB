@@ -2,7 +2,7 @@
 TARGET = cav3d.exe
 ROOT := ../..
 
-FLAGS += -O3 -march=native -fopenmp
+FLAGS += -O3 -Wall -march=native -fopenmp
 # FLAGS += -march=native
 # FLAGS += -g
 FLAGS += -DFLOAT_TYPE=double

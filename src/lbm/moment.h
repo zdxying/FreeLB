@@ -408,14 +408,14 @@ struct Rho {
   // return rho
   static T get(const BasicPopCell<T, LatSet>& cell) {
     T rho = T(0);
-    for (int i = 0; i < LatSet::q; ++i) rho += cell[i];
+    for (unsigned int i = 0; i < LatSet::q; ++i) rho += cell[i];
     return rho;
   }
 
   // return rho with source
   static T get(const BasicPopCell<T, LatSet>& cell, const T source) {
     T rho = T(0);
-    for (int i = 0; i < LatSet::q; ++i) rho += cell[i];
+    for (unsigned int i = 0; i < LatSet::q; ++i) rho += cell[i];
     rho += source * T{0.5};
     return rho;
   }
@@ -423,13 +423,13 @@ struct Rho {
   // compute rho
   static void apply(const BasicPopCell<T, LatSet>& cell, T& rho) {
     rho = T(0);
-    for (int i = 0; i < LatSet::q; ++i) rho += cell[i];
+    for (unsigned int i = 0; i < LatSet::q; ++i) rho += cell[i];
   }
 
   // compute rho with source: C = sum(f) + q/2
   static void apply(const BasicPopCell<T, LatSet>& cell, T& rho, const T source) {
     rho = T(0);
-    for (int i = 0; i < LatSet::q; ++i) rho += cell[i];
+    for (unsigned int i = 0; i < LatSet::q; ++i) rho += cell[i];
     rho += source * T{0.5};
   }
 };
@@ -440,7 +440,7 @@ struct Velocity {
   static Vector<T, LatSet::d> get(const BasicPopCell<T, LatSet>& cell) {
     Vector<T, LatSet::d> u;
     T rho = T(0);
-    for (int i = 0; i < LatSet::q; ++i) {
+    for (unsigned int i = 0; i < LatSet::q; ++i) {
       rho += cell[i];
       u = u + LatSet::c[i] * cell[i];
     }
@@ -452,7 +452,7 @@ struct Velocity {
                                   const std::array<T, LatSet::q>& fi) {
     Vector<T, LatSet::d> u;
     T rho = T(0);
-    for (int i = 0; i < LatSet::q; ++i) {
+    for (unsigned int i = 0; i < LatSet::q; ++i) {
       rho += cell[i];
       u = u + (LatSet::c[i] * (cell[i] + T{0.5} * fi[i]));
     }
@@ -463,7 +463,7 @@ struct Velocity {
   static void apply(const BasicPopCell<T, LatSet>& cell, Vector<T, LatSet::d>& u) {
     u.clear();
     T rho = T(0);
-    for (int i = 0; i < LatSet::q; ++i) {
+    for (unsigned int i = 0; i < LatSet::q; ++i) {
       rho += cell[i];
       u = u + LatSet::c[i] * cell[i];
     }
@@ -475,7 +475,7 @@ struct Velocity {
                     const std::array<T, LatSet::q>& fi) {
     u.clear();
     T rho = T(0);
-    for (int i = 0; i < LatSet::q; ++i) {
+    for (unsigned int i = 0; i < LatSet::q; ++i) {
       rho += cell[i];
       u = u + (LatSet::c[i] * (cell[i] + T{0.5} * fi[i]));
     }
@@ -489,7 +489,7 @@ struct RhoVelocity {
   static void apply(const BasicPopCell<T, LatSet>& cell, T& rho, Vector<T, LatSet::d>& u) {
     rho = T(0);
     u.clear();
-    for (int i = 0; i < LatSet::q; ++i) {
+    for (unsigned int i = 0; i < LatSet::q; ++i) {
       rho += cell[i];
       u = u + LatSet::c[i] * cell[i];
     }

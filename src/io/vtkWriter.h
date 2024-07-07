@@ -55,7 +55,7 @@ class FlagWriter : public AbstractFieldWriter {
     std::stringstream ss;
     ss << "SCALARS " << varname << " int" << std::endl;
     ss << "LOOKUP_TABLE default" << std::endl;
-    for (int i = 0; i < Size; ++i) {
+    for (std::size_t i = 0; i < Size; ++i) {
       ss << static_cast<int>(Field[i]) << " ";
     }
     ss << std::endl;
@@ -76,7 +76,7 @@ class FieldFlagWriter : public AbstractFieldWriter {
     std::stringstream ss;
     ss << "SCALARS " << varname << " int" << std::endl;
     ss << "LOOKUP_TABLE default" << std::endl;
-    for (int i = 0; i < Size; ++i) {
+    for (std::size_t i = 0; i < Size; ++i) {
       ss << static_cast<int>(Field[i]) << " ";
     }
     ss << std::endl;
@@ -107,7 +107,7 @@ class ScalarWriter : public AbstractFieldWriter {
       exit(1);
     }
     ss << "LOOKUP_TABLE default" << std::endl;
-    for (int i = 0; i < Size; ++i) {
+    for (std::size_t i = 0; i < Size; ++i) {
       ss << Field[i] << " ";
     }
     ss << std::endl;
@@ -170,7 +170,7 @@ class PhysScalarWriter : public AbstractFieldWriter {
       exit(1);
     }
     ss << "LOOKUP_TABLE default" << std::endl;
-    for (int i = 0; i < Size; ++i) {
+    for (std::size_t i = 0; i < Size; ++i) {
       ss << Conv.getPhysRho(Field[i]) << " ";
     }
     ss << std::endl;
@@ -307,7 +307,7 @@ class PhysVelocityWriter_AOS : public AbstractFieldWriter {
       std::cout << "ERROR: FieldVectorWriter_AOS: unsupported type" << std::endl;
       exit(1);
     }
-    for (int i = 0; i < Size; ++i) {
+    for (std::size_t i = 0; i < Size; ++i) {
       if constexpr (D == 2) {
         ss << Conv.getPhysU(Field[i][0]) << " " << Conv.getPhysU(Field[i][1]) << " " << 0
            << " ";
@@ -515,20 +515,22 @@ class FieldVectorWriter : public AbstractFieldWriter {
 template <typename T, unsigned int D>
 class vtkStruPointsWriter {
  private:
+  std::string _dirname = "./vtkoutput";
+  std::string _filename;
+
   int _Nx;
   int _Ny;
   int _Nz;
   T VoxelSize;
+  
   Vector<T, D> _Min;
-  std::string _dirname = "./vtkoutput";
-  std::string _filename;
   // field data to write
   std::vector<AbstractFieldWriter *> _FieldWriters;
 
  public:
   vtkStruPointsWriter(std::string filename, Geometry<T, D> &geo)
-      : _filename(filename), VoxelSize(geo.getVoxelSize()), _Min(geo.getMin()),
-        _Nx(geo.getNx()), _Ny(geo.getNy()), _Nz(geo.getNz()) {}
+      : _filename(filename), _Nx(geo.getNx()), _Ny(geo.getNy()), _Nz(geo.getNz()),
+      VoxelSize(geo.getVoxelSize()), _Min(geo.getMin()){}
   vtkStruPointsWriter(std::string filename, T voxsize, Vector<T, D> Min, int Nx, int Ny,
                       int Nz = 1)
       : _filename(filename), VoxelSize(voxsize), _Min(Min), _Nx(Nx), _Ny(Ny), _Nz(Nz) {}

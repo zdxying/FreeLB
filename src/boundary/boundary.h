@@ -167,7 +167,8 @@ class BBLikeMovingBlockBdManager final : public AbstractBlockBoundary {
 
   void Init() {
     BdBlocks.clear();
-    for (int i = 0; i < LatMan.getBlockLats().size(); ++i) {
+    int size = static_cast<int>(LatMan.getBlockLats().size());
+    for (int i = 0; i < size; ++i) {
       BdBlocks.emplace_back(LatMan.getBlockLat(i), IDss[i],
                             BlockFManager.getBlockField(i).getField(0), voidFlag,
                             BdCellFlag);

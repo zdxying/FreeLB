@@ -2,7 +2,7 @@
 TARGET = cavblock3dmpi.exe
 ROOT := ../..
 
-FLAGS += -O3 -march=native
+FLAGS += -O3 -Wall -Wdisabled-optimization -Wno-unknown-pragmas -Wno-unused-local-typedefs -march=native
 # FLAGS += -O3 -march=native
 # FLAGS += -g -DMPI_DEBUG
 # FLAGS += -g

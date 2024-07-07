@@ -107,15 +107,15 @@ class vtmWriter {
     std::string fullName = _vtidirname + _filename + ".vtm";
     IF_MPI_RANK(0) { vtmHeader(fullName); }
 #ifdef MPI_ENABLED
-    int vtisize = _vtiwriters.size();
-    int totalvtisize;
+    std::size_t vtisize = _vtiwriters.size();
+    std::size_t totalvtisize;
     mpi().reduce(vtisize, totalvtisize, MPI_SUM);
     MPI_RANK(0)
-    for (int i = 0; i < totalvtisize; ++i) {
+    for (std::size_t i = 0; i < totalvtisize; ++i) {
       writevtm(fullName, getvtiFileName(i), i);
     }
 #else
-    for (int i = 0; i < _vtiwriters.size(); ++i) {
+    for (std::size_t i = 0; i < _vtiwriters.size(); ++i) {
       writevtm(fullName, getvtiFileName(i), i);
     }
 #endif
@@ -134,15 +134,15 @@ class vtmWriter {
     IF_MPI_RANK(0) { vtmHeader(fullName); }
     vtmHeader(fullName);
 #ifdef MPI_ENABLED
-    int vtisize = _vtiwriters.size();
-    int totalvtisize;
+    std::size_t vtisize = _vtiwriters.size();
+    std::size_t totalvtisize;
     mpi().reduce(vtisize, totalvtisize, MPI_SUM);
     MPI_RANK(0)
-    for (int i = 0; i < totalvtisize; ++i) {
+    for (std::size_t i = 0; i < totalvtisize; ++i) {
       writevtm(fullName, getvtiFileName(i, step), i);
     }
 #else
-    for (int i = 0; i < _vtiwriters.size(); ++i) {
+    for (std::size_t i = 0; i < _vtiwriters.size(); ++i) {
       writevtm(fullName, getvtiFileName(i, step), i);
     }
 #endif
@@ -361,15 +361,15 @@ class vtmWriter {
     std::string fullName = _vtidirname + _filename + ".vtm";
     IF_MPI_RANK(0) { vtmHeader(fullName); }
 #ifdef MPI_ENABLED
-    int vtisize = _vtiwriters.size();
-    int totalvtisize;
+    std::size_t vtisize = _vtiwriters.size();
+    std::size_t totalvtisize;
     mpi().reduce(vtisize, totalvtisize, MPI_SUM);
     MPI_RANK(0)
-    for (int i = 0; i < totalvtisize; ++i) {
+    for (std::size_t i = 0; i < totalvtisize; ++i) {
       writevtm(fullName, getvtiFileName(i), i);
     }
 #else
-    for (int i = 0; i < _vtiwriters.size(); ++i) {
+    for (std::size_t i = 0; i < _vtiwriters.size(); ++i) {
       writevtm(fullName, getvtiFileName(i), i);
     }
 #endif
@@ -388,15 +388,15 @@ class vtmWriter {
     IF_MPI_RANK(0) { vtmHeader(fullName); }
     vtmHeader(fullName);
 #ifdef MPI_ENABLED
-    int vtisize = _vtiwriters.size();
-    int totalvtisize;
+    std::size_t vtisize = _vtiwriters.size();
+    std::size_t totalvtisize;
     mpi().reduce(vtisize, totalvtisize, MPI_SUM);
     MPI_RANK(0)
-    for (int i = 0; i < totalvtisize; ++i) {
+    for (std::size_t i = 0; i < totalvtisize; ++i) {
       writevtm(fullName, getvtiFileName(i, step), i);
     }
 #else
-    for (int i = 0; i < _vtiwriters.size(); ++i) {
+    for (std::size_t i = 0; i < _vtiwriters.size(); ++i) {
       writevtm(fullName, getvtiFileName(i, step), i);
     }
 #endif

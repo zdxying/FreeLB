@@ -303,17 +303,20 @@ class BlockLatManagerCoupling {
 
   template <typename CELLDYNAMICS, typename BLOCKFIELDMANAGER>
   void ApplyCellDynamics(std::int64_t count, const BLOCKFIELDMANAGER& BFM) {
+    int size = static_cast<int>(BlockLatMan0.getBlockLats().size());
 #pragma omp parallel for num_threads(Thread_Num)
-    for (int i = 0; i < BlockLatMan0.getBlockLats().size(); ++i) {
+    for (int i = 0; i < size; ++i) {
       auto& blocklat0 = BlockLatMan0.getBlockLat(i);
       auto& blocklat1 = BlockLatMan1.getBlockLat(i);
       const int deLevel =
         static_cast<int>(BlockLatMan0.getMaxLevel() - blocklat0.getLevel());
       if (count % (static_cast<int>(pow(2, deLevel))) == 0) {
         const auto& flagArray = BFM.getBlockField(i).getField(0);
+        CELL0 cell0(0, blocklat0);
+        CELL1 cell1(0, blocklat1);
         for (std::size_t id = 0; id < blocklat0.getN(); ++id) {
-          CELL0 cell0(id, blocklat0);
-          CELL1 cell1(id, blocklat1);
+          cell0.setId(id);
+          cell1.setId(id);
           CELLDYNAMICS::Execute(flagArray[id], cell0, cell1);
         }
       }

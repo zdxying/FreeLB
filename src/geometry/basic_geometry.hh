@@ -257,7 +257,7 @@ template <typename T, unsigned int D>
 BasicBlock<T, D> BasicBlock<T, D>::getExtBlock(const Vector<int, D>& extension) const {
   const Vector<T, D> extension_t = extension * VoxelSize;
   Vector<int, D> extension_idx;
-  for (int i = 0; i < D; i++) {
+  for (unsigned int i = 0; i < D; i++) {
     extension_idx[i] = std::ceil(extension[i] / pow(2, _level));
   }
   const Vector<int, D> extmesh = Mesh + 2 * extension;
