@@ -302,17 +302,17 @@ void BlockLattice<T, LatSet, TypePack>::ApplyInnerCellDynamics() {
 template <typename T, typename LatSet, typename TypePack>
 void BlockLattice<T, LatSet, TypePack>::EnableToleranceRho(T rhores) {
   RhoRes = rhores;
-  RhoOld.reserve(this->getN());
+  RhoOld.Resize(this->getN());
   for (std::size_t i = 0; i < this->getN(); ++i)
-    RhoOld.push_back(this->template getField<GenericRho>().get(i));
+    RhoOld[i] = this->template getField<GenericRho>().get(i);
 }
 
 template <typename T, typename LatSet, typename TypePack>
 void BlockLattice<T, LatSet, TypePack>::EnableToleranceU(T ures) {
   URes = ures;
-  UOld.reserve(this->getN());
+  UOld.Resize(this->getN());
   for (std::size_t i = 0; i < this->getN(); ++i)
-    UOld.push_back(this->template getField<VELOCITY<T, LatSet::d>>().get(i));
+    UOld[i] = this->template getField<VELOCITY<T, LatSet::d>>().get(i);
 }
 
 template <typename T, typename LatSet, typename TypePack>
@@ -591,7 +591,7 @@ void BlockLatticeManager<T, LatSet, TypePack>::Stream(std::int64_t count) {
 
 template <typename T, typename LatSet, typename TypePack>
 void BlockLatticeManager<T, LatSet, TypePack>::Stream() {
-  for (auto& BLat : BlockLats) BLat.Stream();
+  for (auto& BLat : BlockLats) {BLat.Stream();}
 }
 
 template <typename T, typename LatSet, typename TypePack>

@@ -151,10 +151,10 @@ int main() {
   Geo1.setFlag(rightside, BouncebackFlag, rightFlag);
 
   vtkWriter::FieldFlagWriter<std::uint8_t> geo0flagwriter(
-    "flag0", Geo0.getGeoFlagField().getField().getdata(),
+    "flag0", Geo0.getGeoFlagField().getField().getdataPtr(),
     Geo0.getGeoFlagField().getField().size());
   vtkWriter::FieldFlagWriter<std::uint8_t> geo1flagwriter(
-    "flag1", Geo1.getGeoFlagField().getField().getdata(),
+    "flag1", Geo1.getGeoFlagField().getField().getdataPtr(),
     Geo1.getGeoFlagField().getField().size());
   vtkStruPointsWriter<T, LatSet0::d> GeoWriter("CavGeo", Geo0);
   GeoWriter.addtoWriteList(&geo0flagwriter, &geo1flagwriter);
@@ -196,13 +196,13 @@ int main() {
   Force.AddSource(&THLattice);
 
   vtkWriter::FieldScalarWriter<T> RhoWriter("rho",
-                                            NSLattice.getRhoField().getField().getdata(),
+                                            NSLattice.getRhoField().getField().getdataPtr(),
                                             NSLattice.getRhoField().getField().size());
   vtkWriter::FieldScalarWriter<T> TWriter("T",
-                                          THLattice.getRhoField().getField().getdata(),
+                                          THLattice.getRhoField().getField().getdataPtr(),
                                           THLattice.getRhoField().getField().size());
   vtkWriter::FieldVectorWriter_AOS<T, LatSet0::d> VelocityWriter(
-    "velocity", NSLattice.getVelocityField().getField().getdata(),
+    "velocity", NSLattice.getVelocityField().getField().getdataPtr(),
     NSLattice.getVelocityField().getField().size());
   vtkStruPointsWriter<T, LatSet0::d> NCWriter("FS", Geo0);
   NCWriter.addtoWriteList(&RhoWriter, &TWriter, &VelocityWriter);

@@ -137,7 +137,7 @@ int main() {
   Geo.setFlag(toplid, BouncebackFlag, BBMovingWallFlag);
 
   vtkWriter::FieldFlagWriter<std::uint8_t> flagwriter(
-    "flag", Geo.getGeoFlagField().getField().getdata(),
+    "flag", Geo.getGeoFlagField().getField().getdataPtr(),
     Geo.getGeoFlagField().getField().size());
   vtkStruPointsWriter<T, LatSet::d> GeoWriter("CavGeo", Geo);
   GeoWriter.addtoWriteList(&flagwriter);
@@ -169,10 +169,10 @@ int main() {
   Timer OutputTimer;
 
   vtkWriter::FieldScalarWriter<T> RhoWriter("rho",
-                                            NSLattice.getRhoField().getField().getdata(),
+                                            NSLattice.getRhoField().getField().getdataPtr(),
                                             NSLattice.getRhoField().getField().size());
   vtkWriter::FieldVectorWriter_AOS<T, LatSet::d> VelocityWriter(
-    "velocity", NSLattice.getVelocityField().getField().getdata(),
+    "velocity", NSLattice.getVelocityField().getField().getdataPtr(),
     NSLattice.getVelocityField().getField().size());
   vtkStruPointsWriter<T, LatSet::d> NSWriter("NS", Geo);
   NSWriter.addtoWriteList(&RhoWriter, &VelocityWriter);

@@ -81,9 +81,11 @@ class BlockLattice : public BlockLatticeBase<T, LatSet, TypePack> {
 
   // tolerance
   T RhoRes;
-  std::vector<T> RhoOld;
+  GenericArray<T> RhoOld;
   T URes;
-  std::vector<Vector<T, LatSet::d>> UOld;
+  GenericArray<Vector<T, LatSet::d>> UOld;
+
+
 
  public:
   template <typename... FIELDPTRS>

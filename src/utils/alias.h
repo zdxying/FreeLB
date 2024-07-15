@@ -109,6 +109,9 @@ class GenericArray;
 template <typename T>
 class CyclicArray;
 
+template <typename T>
+class StreamArray;
+
 
 template <typename T, unsigned int D>
 class Vector;
@@ -178,7 +181,8 @@ template <typename T>
 using SCALARCONSTFORCE = Data<T, SCALARCONSTFORCEBase>;
 
 template <typename T, unsigned int q>
-using POP = GenericField<CyclicArray<T>, POPBase<q>>;
+using POP = GenericField<StreamArray<T>, POPBase<q>>;
+// using POP = GenericField<CyclicArray<T>, POPBase<q>>;
 
 template <typename T>
 using RHOINIT = Data<T, RHOINITBase>;

@@ -133,6 +133,9 @@ class BlockField : public FieldType {
     return *this;
   }
 
+  FieldType& getFieldType() { return *this; }
+  const FieldType& getFieldType() const { return *this; }
+
 
   ~BlockField() = default;
 

@@ -127,7 +127,7 @@ int main() {
   Geo.setFlag(toplid, BouncebackFlag, BBMovingWallFlag);
 
   vtkWriter::FieldFlagWriter<std::uint8_t> flagwriter(
-    "flag", Geo.getGeoFlagField().getField().getdata(),
+    "flag", Geo.getGeoFlagField().getField().getdataPtr(),
     Geo.getGeoFlagField().getField().size());
   vtkStruPointsWriter<T, LatSet::d> GeoWriter("CavGeo", Geo);
   GeoWriter.addtoWriteList(&flagwriter);

@@ -47,12 +47,22 @@ PopLattice<T, LatSet>::PopLattice(Geometry<T, LatSet::d>& geo, AbstractConverter
   }
   if (InitIdx) {
     Index.reserve(N);
+    auto& flagarr = Geo.getGeoFlagField().getField();
     // init index
-    Geo.getGeoFlagField().getField().for_isNotflag(Geo.getVoidflag(),
-                                                   [this](int id) { Index.push_back(id); });
+    auto voidflag = Geo.getVoidflag();
+    int arrsize = static_cast<int>(flagarr.size());
+    for (int i = 0; i < arrsize; ++i) {
+      if (flagarr[i] != voidflag) {
+        Index.push_back(i);
+      }
+    }
     // init inner index
-    Geo.getGeoFlagField().getField().for_isflag(Geo.getAABBflag(),
-                                                [this](int id) { InnerIndex.push_back(id); });
+    auto aabbflag = Geo.getAABBflag();
+    for (int i = 0; i < arrsize; ++i) {
+      if (flagarr[i] == aabbflag) {
+        InnerIndex.push_back(i);
+      }
+    }
   }
 }
 template <typename T, typename LatSet>

@@ -20,7 +20,7 @@ int main() {
   geometry.SetupBoundary<LatSet>(1,2);
 
   vtkWriter::FieldFlagWriter<std::uint8_t> flagwriter(
-      "flag", geometry.getGeoFlagField().getField().getdata(),
+      "flag", geometry.getGeoFlagField().getField().getdataPtr(),
       geometry.getGeoFlagField().getField().size());
   vtkStruPointsWriter<T, LatSet::d> writer("Geometry", geometry);
   writer.addtoWriteList(&flagwriter);

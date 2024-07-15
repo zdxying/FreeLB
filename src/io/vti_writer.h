@@ -252,7 +252,7 @@ class ScalarWriter : public AbstractWriter {
     sizeEncoder.encode(&uintBinarySize, 1);
     // writes the data
     Base64Encoder<datatype> Encoder(fb, Size);
-    Encoder.encode(Array.getdata(), Size);
+    Encoder.encode(Array.getdataPtr(), Size);
     fb.close();
 
     std::ofstream ff(fName, std::ios::out | std::ios::app);
@@ -596,7 +596,7 @@ class ScalarWriter : public AbstractWriter {
     // writes the data
     Base64Encoder<datatype> Encoder(fb, Size);
     if (Overlap == 0) {
-      Encoder.encode(Array.getdata(), Size);
+      Encoder.encode(Array.getdataPtr(), Size);
     } else {
       Encoder.encode(data, Size);
       delete[] data;
@@ -667,7 +667,7 @@ class VectorWriter : public AbstractWriter {
     // writes the data
     Base64Encoder<datatype> Encoder(fb, arrDSize);
     if (Overlap == 0) {
-      Encoder.encode(Array.getdata()->data(), arrDSize);
+      Encoder.encode(Array.getdataPtr()->data(), arrDSize);
     } else {
       Encoder.encode(data->data(), arrDSize);
       delete[] data;

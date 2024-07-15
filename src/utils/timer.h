@@ -74,12 +74,13 @@ struct Timer : public Counter {
 
   void Print_MainLoopPerformance(std::size_t n) {
     MPI_RANK(0)
+    END_TIMER();
     std::int64_t count = this->operator()();  // this->operator()() or (*this)()
     double MLUPs = static_cast<double>(count) * static_cast<double>(n) /
                    GetDurationCount() / double(1000);
     std::cout << "[Main_Loop Performance]:"
               << "\n"
-              << "Time Elapsed:  " << GetTimeElapsed() << " s"
+              << "Time Elapsed:  " << GetTimeElapsed_Only() << " s"
               << "\n"
               << "Total Step:    " << count << "\n"
               << "Average_MLUPs: " << MLUPs << std::endl;

@@ -76,7 +76,7 @@ class FieldFlagWriter : public AbstractFieldWriter {
     std::stringstream ss;
     ss << "SCALARS " << varname << " int" << std::endl;
     ss << "LOOKUP_TABLE default" << std::endl;
-    for (std::size_t i = 0; i < Size; ++i) {
+    for (int i = 0; i < Size; ++i) {
       ss << static_cast<int>(Field[i]) << " ";
     }
     ss << std::endl;
