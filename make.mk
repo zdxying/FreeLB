@@ -6,14 +6,20 @@ else
     RM = rm -rf
 endif
 
-OUTPUT += output
+OUTPUT ?= vtkoutput
 
-SRCS = $(wildcard *.cpp)
-OBJS = $(SRCS:.cpp=.o)
-DEPS = $(SRCS:.cpp=.d)
-
-# if not specified, use g++ as default compiler
+# use g++ as default c++ compiler
 CXXC ?= g++
+
+ifeq ($(CXXC),nvcc)
+SRC_EXT = cu
+else
+SRC_EXT = cpp
+endif
+
+SRCS = $(wildcard *.${SRC_EXT})
+OBJS = $(SRCS:.$(SRC_EXT)=.o)
+DEPS = $(SRCS:.$(SRC_EXT)=.d)
 
 FLAGS += -std=c++17
 
@@ -21,9 +27,9 @@ FLAGS += -std=c++17
 LINKFLAGS := -L$(ROOT)/lib
 
 all: $(TARGET)
-	
+
 # ------------target----------------
-%.o: %.cpp
+%.o: %.$(SRC_EXT)
 	$(CXXC) $(FLAGS) -I$(ROOT)/src/ -c $< -o $@
 
 $(TARGET): $(OBJS)

@@ -35,7 +35,8 @@
 #include "freelb.hh"
 
 // int Total_Macro_Step = 0;
-using T = FLOAT;
+// using T = FLOAT;
+using T = float;
 using LatSet = D3Q19<T>;
 
 /*----------------------------------------------
@@ -120,7 +121,7 @@ int main() {
   BaseConverter<T> BaseConv(LatSet::cs2);
   BaseConv.ConvertFromRT(Cell_Len, RT, rho_ref, Ni * Cell_Len, U_Max, Kine_Visc);
   UnitConvManager<T> ConvManager(&BaseConv);
-  ConvManager.Check_and_Print();
+  // ConvManager.Check_and_Print();
 
   // ------------------ define geometry ------------------
   AABB<T, 3> cavity(Vector<T, 3>{},
@@ -215,6 +216,7 @@ int main() {
   while (MainLoopTimer() < MaxStep) {
 
     NSLattice.ApplyCellDynamics<NSTask>(FlagFM);
+    // NSLattice.ApplyCellDynamics<collision::BGK_Feq<equilibrium::SecondOrder<CELL>>>();
     // NSLattice.ApplyCellDynamics<collision::BGK_Feq_RhoU<equilibrium::SecondOrder<CELL>>>(BulkTaskIds);
     // NSLattice.ApplyCellDynamics<collision::BGK_Feq<equilibrium::SecondOrder<CELL>>>(WallTaskIds);
     // NSLattice.ApplyCellDynamics<collision::BounceBack<CELL>>(BBTaskIds);

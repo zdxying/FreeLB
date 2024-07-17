@@ -52,28 +52,49 @@ void readParam() {
 //   std::cout << std::endl;
 // }
 
+void set(StreamArray<T> &arr) {
+  for(int i = 0; i < arr.size(); i++) {
+    arr[i] = i+1;
+  }
+}
+
+void set(CyclicArray<T> &arr) {
+  for(int i = 0; i < arr.size(); i++) {
+    arr[i] = i+1;
+  }
+}
+
 int main() {
 
   
   readParam();
 
-  StreamArray<T> arr(N);
+  StreamArray<T> sarr(N, T{});
+  CyclicArray<T> carr(N, T{});
 
-  for(int i = 0; i < N; i++) {
-    arr[i] = i;
-  }
-  arr.copyToBack();
-  arr.setOffset(N/2);
+  int offset = int(std::sqrt(N));
+
+  sarr.copyToBack();
+  sarr.setOffset(offset);
 
   // std::cout << "----------------" << std::endl;
 
   Timer MainLoopTimer;
   MainLoopTimer.START_TIMER();
   for(int i = 0; i < rotatecount; i++) {
-    arr.rotate();
+    set(sarr);
+    sarr.rotate();
   }
   MainLoopTimer.END_TIMER();
-  std::cout << "rotate efficiency: " << MainLoopTimer.GetDurationCount_Only() <<  std::endl;
+  std::cout << "StreamArray efficiency: " << MainLoopTimer.GetDurationCount_Only() <<  std::endl;
+
+  MainLoopTimer.START_TIMER();
+  for(int i = 0; i < rotatecount; i++) {
+    set(carr);
+    carr.rotate(offset);
+  }
+  MainLoopTimer.END_TIMER();
+  std::cout << "CyclicArray efficiency: " << MainLoopTimer.GetDurationCount_Only() <<  std::endl;
 
   
 
