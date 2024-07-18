@@ -1,21 +1,21 @@
 /* This file is part of FreeLB
- * 
+ *
  * Copyright (C) 2024 Yuan Man
  * E-mail contact: ymmanyuan@outlook.com
  * The most recent progress of FreeLB will be updated at
  * <https://github.com/zdxying/FreeLB>
- * 
+ *
  * FreeLB is free software: you can redistribute it and/or modify it under the terms of
  * the GNU General Public License as published by the Free Software Foundation, either
  * version 3 of the License, or (at your option) any later version.
- * 
+ *
  * FreeLB is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
  * without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
  * PURPOSE. See the GNU General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU General Public License along with FreeLB. If
  * not, see <https://www.gnu.org/licenses/>.
- * 
+ *
  */
 
 #pragma once
@@ -45,6 +45,28 @@ extern int Thread_Num;
 using FLOAT = FLOAT_TYPE;
 #else
 using FLOAT = double;
+#endif
+
+// platform
+#ifdef __CUDACC__
+
+#define __any__ __device__ __host__
+#define __constexpr__ __constant__
+
+#include <thrust/device_vector.h>
+#include <thrust/host_vector.h>
+#include <thrust/tuple.h>
+
+
+#else
+
+#define __any__
+#define __constexpr__
+#define __global__
+#define __host__
+#define __device__
+
+
 #endif
 
 

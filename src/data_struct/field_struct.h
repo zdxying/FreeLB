@@ -1078,10 +1078,13 @@ class BlockFieldManagerCollection<T, LatSet, TypePack<Fields...>> {
  public:
   static constexpr std::size_t FieldNum = sizeof...(Fields);
 
-  BlockFieldManagerCollection() : fields(std::make_tuple(Fields()...)) {}
+  BlockFieldManagerCollection() 
+  : fields(std::make_tuple(Fields()...)) {}
+  // : fields(make_Tuple(Fields()...)) {}
   template <typename BLOCKGEOMETRY>
   BlockFieldManagerCollection(BLOCKGEOMETRY& blockgeo)
       : fields(std::make_tuple(BlockFieldManager<Fields, T, LatSet::d>(blockgeo)...)) {}
+      // : fields(make_Tuple(BlockFieldManager<Fields, T, LatSet::d>(blockgeo)...)) {}
 
   template <typename BLOCKGEOMETRY, typename... InitValues>
   BlockFieldManagerCollection(BLOCKGEOMETRY& blockgeo,
@@ -1093,16 +1096,19 @@ class BlockFieldManagerCollection<T, LatSet, TypePack<Fields...>> {
   template <typename FieldType>
   auto& getField() {
     return std::get<BlockFieldManager<FieldType, T, LatSet::d>>(fields);
+    // return fields.template get<BlockFieldManager<FieldType, T, LatSet::d>>();
   }
   template <typename FieldType>
   const auto& getField() const {
     return std::get<BlockFieldManager<FieldType, T, LatSet::d>>(fields);
+    // return fields.template get<BlockFieldManager<FieldType, T, LatSet::d>>();
   }
 
   auto& getFields() { return fields; }
   template <std::size_t... Is>
   auto get_ith(std::index_sequence<Is...>, int i) {
     return std::make_tuple(&(std::get<Is>(fields).getBlockField(i))...);
+    // return make_Tuple(&(fields.template get<Is>().getBlockField(i).getFieldType())...);
   }
   auto get_ith(int i) { return get_ith(std::make_index_sequence<FieldNum>(), i); }
 
@@ -1114,16 +1120,18 @@ class BlockFieldManagerCollection<T, LatSet, TypePack<Fields...>> {
   template <typename Func, std::size_t... Is>
   void forEachFieldImpl(Func&& func, std::index_sequence<Is...>) {
     (func(std::get<Is>(fields), std::integral_constant<std::size_t, Is>{}), ...);
+    // (func(fields.template get<Is>(), std::integral_constant<std::size_t, Is>{}), ...);
   }
 
  private:
-  std::tuple<BlockFieldManager<Fields, T, LatSet::d>...> fields;
+   std::tuple<BlockFieldManager<Fields, T, LatSet::d>...> fields;
+  // Tuple<BlockFieldManager<Fields, T, LatSet::d>...> fields;
 
   template <typename BLOCKGEOMETRY, typename... InitValues, std::size_t... Is>
   auto make_fields(BLOCKGEOMETRY& blockgeo, const std::tuple<InitValues...>& initvalues,
                    std::index_sequence<Is...>) {
-    return std::make_tuple(
-      BlockFieldManager<Fields, T, LatSet::d>(blockgeo, std::get<Is>(initvalues))...);
+    return std::make_tuple(BlockFieldManager<Fields, T, LatSet::d>(blockgeo, std::get<Is>(initvalues))...);
+    // return make_Tuple(BlockFieldManager<Fields, T, LatSet::d>(blockgeo, initvalues.template get<Is>())...);
   }
 };
 
@@ -1135,12 +1143,17 @@ class BlockFieldManagerPtrCollection<T, LatSet, TypePack<Fields...>> {
  public:
   static constexpr std::size_t FieldNum = sizeof...(Fields);
 
-  BlockFieldManagerPtrCollection() : fields() {}
+  BlockFieldManagerPtrCollection() : 
+  fields() {}
+  // fields(make_Tuple((BlockFieldManager<Fields, T, LatSet::d>*)nullptr...)) {}
   template <typename First, typename... Rest>
   BlockFieldManagerPtrCollection(First* first, Rest*... rest) : fields(first, rest...) {}
   ~BlockFieldManagerPtrCollection() = default;
 
-  void Init(Fields&... fieldrefs) { fields = std::make_tuple(&fieldrefs...); }
+  void Init(Fields&... fieldrefs) { 
+    fields = std::make_tuple(&fieldrefs...); 
+    // fields = make_Tuple(&fieldrefs...);
+  }
 
   template <typename FieldType>
   static constexpr unsigned int is_at_index() {
@@ -1151,15 +1164,18 @@ class BlockFieldManagerPtrCollection<T, LatSet, TypePack<Fields...>> {
   void addField(BlockFieldManager<FieldType, T, LatSet::d>& field) {
     // std::get<is_same_at_index<FieldType, Fields...>::value>(fields) = &field;
     std::get<BlockFieldManager<FieldType, T, LatSet::d>*>(fields) = &field;
+    // fields.template get<BlockFieldManager<FieldType, T, LatSet::d>*>() = &field;
   }
 
   template <typename FieldType>
   auto& getField() {
     return *(std::get<BlockFieldManager<FieldType, T, LatSet::d>*>(fields));
+    // return *(fields.template get<BlockFieldManager<FieldType, T, LatSet::d>*>());
   }
   template <typename FieldType>
   const auto& getField() const {
     return *(std::get<BlockFieldManager<FieldType, T, LatSet::d>*>(fields));
+    // return *(fields.template get<BlockFieldManager<FieldType, T, LatSet::d>*>());
   }
 
   auto& getFields() { return fields; }
@@ -1167,13 +1183,14 @@ class BlockFieldManagerPtrCollection<T, LatSet, TypePack<Fields...>> {
   template <std::size_t... Is>
   auto get_ith(std::index_sequence<Is...>, int i) {
     // return std::make_tuple(&(std::get<Is>(fields)->getBlockField(i))...);
-    return std::make_tuple(
-      (std::get<Is>(fields) ? &(std::get<Is>(fields)->getBlockField(i)) : nullptr)...);
+    return std::make_tuple((std::get<Is>(fields) ? &(std::get<Is>(fields)->getBlockField(i)) : nullptr)...);
+    // return make_Tuple((fields.template get<Is>() ? &(fields.template get<Is>()->getBlockField(i).getFieldType()) : nullptr)...);
   }
   auto get_ith(int i) { return get_ith(std::make_index_sequence<FieldNum>(), i); }
 
  private:
   std::tuple<BlockFieldManager<Fields, T, LatSet::d>*...> fields;
+  // Tuple<BlockFieldManager<Fields, T, LatSet::d>*...> fields;
 };
 
 template <typename T, typename LatSet, typename Pack>
@@ -1186,6 +1203,8 @@ struct ExtractFieldPtrs<T, LatSet,
     int i, BlockFieldManagerCollection<T, LatSet, TypePack<Fields...>>& BFMCol,
     BlockFieldManagerPtrCollection<T, LatSet, TypePack<FieldPtrs...>>& BFMPtrCol) {
     return std::tuple_cat(BFMCol.get_ith(i), BFMPtrCol.get_ith(i));
+    // return Tuple_cat(BFMCol.get_ith(i), BFMPtrCol.get_ith(i));
+
   }
 };
 

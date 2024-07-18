@@ -42,9 +42,9 @@ void BlockLattice<T, LatSet, TypePack>::communicate() {
     BlockLattice<T, LatSet, TypePack>* nBlockLat = comm.SendBlock;
     std::size_t size = comm.getRecvs().size();
     for (unsigned int k = 1; k < LatSet::q; ++k) {
-      const CyclicArray<T>& nPopsk =
+      const auto& nPopsk =
         nBlockLat->template getField<POP<T, LatSet::q>>().getField(k);
-      CyclicArray<T>& Popsk = this->template getField<POP<T, LatSet::q>>().getField(k);
+      auto& Popsk = this->template getField<POP<T, LatSet::q>>().getField(k);
       for (std::size_t i = 0; i < size; ++i) {
         std::size_t idrecv = comm.getRecvs()[i];
         std::size_t idsend = comm.getSends()[i];

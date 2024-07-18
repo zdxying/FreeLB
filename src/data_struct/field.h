@@ -28,6 +28,11 @@
 #include "utils/alias.h"
 #include "utils/util.h"
 
+#ifdef __CUDACC__
+// #include "utils/cuda_device.h"
+#include "data_struct/field_cuda.h"
+#endif
+
 
 // single data
 template <typename T, typename Base>
@@ -38,26 +43,99 @@ class Data {
   using array_type = Data<T, Base>;
   static constexpr bool isField = false;
 
+#ifdef __CUDACC__
+  using cudev_array_type = cudev::Data<T, Base>;
+#endif
+
  private:
-  T _Data;
+  T _data;
+#ifdef __CUDACC__
+  T* dev_data;
+  cudev::Data<T, Base>* dev_Data;
+#endif
 
  public:
-  Data() : _Data{} {}
+  Data() : _data{} { InitDeviceData(); }
   // argument size will not be used
-  Data(std::size_t size) : _Data{} {}
-  Data(std::size_t size, T initialValue) : _Data(initialValue) {}
-  ~Data() = default;
+  Data(std::size_t size) : Data() {}
+  Data(std::size_t size, T initialValue) : _data(initialValue) { InitDeviceData(); }
+  // Copy constructor
+  Data(const Data& data) : _data(data._data) {
+#ifdef __CUDACC__
+    dev_data = cuda_malloc<T>(1);
+    device_to_device(dev_data, data.dev_data, 1);
+    constructInDevice();
+#endif
+  }
+  // Move constructor
+  Data(Data&& data) noexcept : _data(std::move(data._data)) {
+    data._data = T{};
+#ifdef __CUDACC__
+    dev_data = data.dev_data;
+    data.dev_data = nullptr;
+    constructInDevice();
+#endif
+  }
+  // Copy assignment operator
+  Data& operator=(const Data& data) {
+    if (&data == this) return *this;
+    _data = data._data;
+#ifdef __CUDACC__
+    device_to_device(dev_data, data.dev_data, 1);
+#endif
+    return *this;
+  }
+  // Move assignment operator
+  Data& operator=(Data&& data) noexcept {
+    if (&data == this) return *this;
+    _data = std::move(data._data);
+    data._data = T{};
+#ifdef __CUDACC__
+    dev_data = data.dev_data;
+    data.dev_data = nullptr;
+#endif
+    return *this;
+  }
+
+  ~Data() {
+#ifdef __CUDACC__
+    cuda_free(dev_data);
+    cuda_free(dev_Data);
+#endif
+  }
+
+  void InitDeviceData() {
+#ifdef __CUDACC__
+    dev_data = cuda_malloc<T>(1);
+    copyToDevice();
+    constructInDevice();
+#endif
+  }
+
+#ifdef __CUDACC__
+  void copyToDevice() { host_to_device(dev_data, &_data, 1); }
+  void copyToHost() { device_to_host(&_data, dev_data, 1); }
+  T* get_devptr() { return dev_data; }
+  cudev::Data<T, Base>* get_devObj() { return dev_Data; }
+  void constructInDevice() {
+    dev_Data = cuda_malloc<cudev::Data<T, Base>>(1);
+    // temp host object
+    cudev::Data<T, Base> temp(dev_data);
+    // copy to device
+    host_to_device(dev_Data, &temp, 1);
+  }
+#endif
 
   template <unsigned int i = 0>
   auto& get() {
-    return _Data;
+    return _data;
   }
   template <unsigned int i = 0>
   const auto& get() const {
-    return _Data;
+    return _data;
   }
-  auto& get(unsigned int i) { return _Data; }
-  const auto& get(unsigned int i) const { return _Data; }
+  auto& get(unsigned int i) { return _data; }
+  const auto& get(unsigned int i) const { return _data; }
 
   // argument i will not be used
   auto& getField(std::size_t i = 0) { return *this; }
@@ -65,13 +143,16 @@ class Data {
 
   // init
   void Init(T value = T{}) {
-    _Data = value;
+    _data = value;
+#ifdef __CUDACC__
+    copyToDevice();
+#endif
   }
   template <unsigned int i = 0>
   void SetField(T value) {
-    _Data = value;
+    _data = value;
   }
-  void SetField(int i, T value) { _Data = value; }
+  void SetField(int i, T value) { _data = value; }
 
   static constexpr unsigned int Size() { return 1; }
 };
@@ -86,30 +167,105 @@ class Array {
   using array_type = Array<T, Base>;
   static constexpr bool isField = false;
 
+#ifdef __CUDACC__
+  using cudev_array_type = cudev::Array<T, Base>;
+#endif
+
  private:
-  std::array<T, array_dim> _Data;
+  std::array<T, array_dim> _data;
+#ifdef __CUDACC__
+  T* dev_data;
+  cudev::Array<T, Base>* dev_Array;
+#endif
 
  public:
-  Array() : _Data{} {}
+  Array() : _data{} { InitDeviceData(); }
   // argument size will not be used
-  Array(std::size_t size) : _Data(make_array<T, array_dim>([&]() { return T{}; })) {}
+  Array(std::size_t size) : Array() {}
   Array(std::size_t size, T initialValue)
-      : _Data(make_array<T, array_dim>([&]() { return T{initialValue}; })) {}
-  ~Array() = default;
+      : _data(make_array<T, array_dim>([&]() { return T{initialValue}; })) {
+    InitDeviceData();
+  }
+  // Copy constructor
+  Array(const Array& arr) : _data(arr._data) {
+#ifdef __CUDACC__
+    dev_data = cuda_malloc<T>(array_dim);
+    device_to_device(dev_data, arr.dev_data, array_dim);
+    constructInDevice();
+#endif
+  }
+  // Move constructor
+  Array(Array&& arr) noexcept : _data(std::move(arr._data)) {
+    arr._data = {};
+#ifdef __CUDACC__
+    dev_data = arr.dev_data;
+    arr.dev_data = nullptr;
+    constructInDevice();
+#endif
+  }
+  // Copy assignment operator
+  Array& operator=(const Array& arr) {
+    if (&arr == this) return *this;
+    _data = arr._data;
+#ifdef __CUDACC__
+    device_to_device(dev_data, arr.dev_data, array_dim);
+#endif
+    return *this;
+  }
+  // Move assignment operator
+  Array& operator=(Array&& arr) noexcept {
+    if (&arr == this) return *this;
+    _data = std::move(arr._data);
+    arr._data = {};
+#ifdef __CUDACC__
+    dev_data = arr.dev_data;
+    arr.dev_data = nullptr;
+#endif
+    return *this;
+  }
+
+  ~Array() {
+#ifdef __CUDACC__
+    cuda_free(dev_data);
+    cuda_free(dev_Array);
+#endif
+  }
+
+  void InitDeviceData() {
+#ifdef __CUDACC__
+    dev_data = cuda_malloc<T>(array_dim);
+    copyToDevice();
+    constructInDevice();
+#endif
+  }
+
+#ifdef __CUDACC__
+  void copyToDevice() { host_to_device(dev_data, _data.data(), array_dim); }
+  void copyToHost() { device_to_host(_data.data(), dev_data, array_dim); }
+  T* get_devptr() { return dev_data; }
+  cudev::Array<T, Base>* get_devObj() { return dev_Array; }
+  void constructInDevice() {
+    dev_Array = cuda_malloc<cudev::Array<T, Base>>(1);
+    // temp host object
+    cudev::Array<T, Base> temp(dev_data);
+    // copy to device
+    host_to_device(dev_Array, &temp, 1);
+  }
+#endif
 
   template <unsigned int i = 0>
   auto& get() {
-    return _Data[i];
+    return _data[i];
   }
   template <unsigned int i = 0>
   const auto& get() const {
-    return _Data[i];
+    return _data[i];
   }
-  auto& get(unsigned int i) { return _Data[i]; }
-  const auto& get(unsigned int i) const { return _Data[i]; }
+  auto& get(unsigned int i) { return _data[i]; }
+  const auto& get(unsigned int i) const { return _data[i]; }
 
-  std::array<T, array_dim>& getArray() { return _Data; }
-  const std::array<T, array_dim>& getArray() const { return _Data; }
+  std::array<T, array_dim>& getArray() { return _data; }
+  const std::array<T, array_dim>& getArray() const { return _data; }
 
   // argument i will not be used
   auto& getField(std::size_t i = 0) { return *this; }
@@ -117,13 +273,17 @@ class Array {
 
   // init
   void Init(T value = T{}) {
-    for (unsigned int i = 0; i < array_dim; ++i) _Data[i] = value;
+    _data.fill(value);
+#ifdef __CUDACC__
+    copyToDevice();
+#endif
   }
+
   template <unsigned int i = 0>
   void SetField(T value) {
-    _Data[i] = value;
+    _data[i] = value;
   }
-  void SetField(int i, T value) { _Data[i] = value; }
+  void SetField(int i, T value) { _data[i] = value; }
 
   static constexpr unsigned int Size() { return array_dim; }
 };
@@ -133,26 +293,68 @@ class Array {
 template <typename T>
 class Genericvector {
  private:
-  // vector
   std::vector<T> data;
+#ifdef __CUDACC__
+  // remember to malloc enought memory on device,
+  // dynamic memory allocation on device is not suggested
+  T* dev_data;
+  std::size_t* dev_count;
+  cudev::Genericvector<T>* dev_Genericvector;
+#endif
 
  public:
   using value_type = T;
+  using array_type = Genericvector<T>;
+#ifdef __CUDACC__
+  using cudev_array_type = cudev::Genericvector<T>;
+#endif
 
   Genericvector() = default;
   Genericvector(std::size_t size) {
-    data.resize(size, T{});
+    data.resize(size);
+#ifdef __CUDACC__
+    InitDeviceData(size);
+#endif
   }
   Genericvector(std::size_t size, T InitValue) {
     data.resize(size, InitValue);
+#ifdef __CUDACC__
+    InitDeviceData(size);
+#endif
   }
   // Copy constructor
-  Genericvector(const Genericvector& arr) : data(arr.data) {}
+  Genericvector(const Genericvector& arr) : data(arr.data) {
+#ifdef __CUDACC__
+    dev_data = cuda_malloc<T>(data.size());
+    dev_count = cuda_malloc<std::size_t>(1);
+    std::size_t dev_count_temp = arr.get_devcount();
+    device_to_device(dev_data, arr.dev_data, dev_count_temp);
+    device_to_device(dev_count, &dev_count_temp, 1);
+    constructInDevice();
+#endif
+  }
   // Move constructor
-  Genericvector(Genericvector&& arr) noexcept : data(std::move(arr.data)) {}
+  Genericvector(Genericvector&& arr) noexcept : data(std::move(arr.data)) {
+#ifdef __CUDACC__
+    dev_data = arr.dev_data;
+    dev_count = arr.dev_count;
+    arr.dev_data = nullptr;
+    arr.dev_count = nullptr;
+    constructInDevice();
+#endif
+  }
   // Copy assignment operator
   Genericvector& operator=(const Genericvector& arr) {
     if (&arr == this) return *this;
+#ifdef __CUDACC__
+    if (data.size() != arr.get_devcount()) {
+      cuda_free(dev_data);
+      dev_data = cuda_malloc<T>(arr.get_devcount());
+    }
+    std::size_t dev_count_temp = arr.get_devcount();
+    device_to_device(dev_data, arr.dev_data, dev_count_temp);
+    device_to_device(dev_count, &dev_count_temp, 1);
+#endif
     data = arr.data;
     return *this;
   }
@@ -160,39 +362,76 @@ class Genericvector {
   Genericvector& operator=(Genericvector&& arr) noexcept {
     if (&arr == this) return *this;
     data = std::move(arr.data);
+#ifdef __CUDACC__
+    dev_data = arr.dev_data;
+    dev_count = arr.dev_count;
+    arr.dev_data = nullptr;
+    arr.dev_count = nullptr;
+#endif
     return *this;
   }
 
   ~Genericvector() = default;
 
-  void Init(T InitValue) { std::fill(data.begin(), data.end(), InitValue); }
+  void InitDeviceData(std::size_t size) {
+#ifdef __CUDACC__
+    dev_data = cuda_malloc<T>(size);
+    dev_count = cuda_malloc<std::size_t>(1);
+    copyToDevice();
+    constructInDevice();
+#endif
+  }
+
+#ifdef __CUDACC__
+  void copyToDevice() {
+    host_to_device(dev_data, data.data(), data.size());
+    std::size_t dev_count_temp = data.size();
+    host_to_device(dev_count, &dev_count_temp, 1);
+  }
+  void copyToHost() {
+    std::size_t dev_count_temp = get_devcount();
+    data.resize(dev_count_temp);
+    device_to_host(data.data(), dev_data, dev_count_temp);
+  }
+  T* get_devptr() { return dev_data; }
+  std::size_t get_devcount() const {
+    std::size_t temp;
+    device_to_host(&temp, dev_count, 1);
+    return temp;
+  }
+  cudev::Genericvector<T>* get_devObj() { return dev_Genericvector; }
+  void constructInDevice() {
+    dev_Genericvector = cuda_malloc<cudev::Genericvector<T>>(1);
+    // temp host object
+    cudev::Genericvector<T> temp(dev_data, dev_count);
+    // copy to device
+    host_to_device(dev_Genericvector, &temp, 1);
+  }
+#endif
+
+  void Init(T InitValue) {
+    std::fill(data.begin(), data.end(), InitValue);
+#ifdef __CUDACC__
+    copyToDevice();
+#endif
+  }
 
   void Resize(std::size_t size) {
+    if (size == data.size()) return;
     data.resize(size);
+#ifdef __CUDACC__
+    cuda_free(dev_data);
+    dev_data = cuda_malloc<T>(size);
+    copyToDevice();
+#endif
   }
 
   const T& operator[](std::size_t i) const { return data[i]; }
   T& operator[](std::size_t i) { return data[i]; }
 
-  // get underlying value from enum
-  template <typename U = T>
-  typename std::enable_if<std::is_enum<U>::value, std::underlying_type_t<U>&>::type
-  getUnderlying(std::size_t index) {
-    return reinterpret_cast<std::underlying_type_t<U>&>(data[index]);
-  }
-
-  template <typename U = T>
-  typename std::enable_if<std::is_enum<U>::value, const std::underlying_type_t<U>&>::type
-  getUnderlying(std::size_t index) const {
-    return reinterpret_cast<const std::underlying_type_t<U>&>(data[index]);
-  }
-
-  // return pointer to the data
-  T* getdata() { return data.data(); }
-  const T* getdata() const { return data.data(); }
   // return the pointer of ith element
-  T* getdataPtr(std::size_t i) { return data.data() + i; }
-  const T* getdataPtr(std::size_t i) const { return data.data() + i; }
+  T* getdataPtr(std::size_t i = 0) { return data.data() + i; }
+  const T* getdataPtr(std::size_t i = 0) const { return data.data() + i; }
   // return reference to the data
   std::vector<T>& getvector() { return data; }
   const std::vector<T>& getvector() const { return data; }
@@ -210,34 +449,75 @@ class GenericArray {
   std::size_t count;
   // base pointer to the data
   T* data;
+#ifdef __CUDACC__
+  std::size_t* dev_count;
+  // device pointer to the data
+  T* dev_data;
+  cudev::GenericArray<T>* dev_GenericArray;
+#endif
 
  public:
   using value_type = T;
+  using array_type = GenericArray<T>;
+#ifdef __CUDACC__
+  using cudev_array_type = cudev::GenericArray<T>;
+#endif
 
-  GenericArray() : count(0), data(nullptr) {}
+  GenericArray() : count(0), data(nullptr) {
+#ifdef __CUDACC__
+    dev_data = nullptr;
+    dev_count = nullptr;
+#endif
+  }
   GenericArray(std::size_t size) : count(size), data(new T[size]{}) {
     std::fill(data, data + size, T{});
+    InitDeviceData();
   }
   GenericArray(std::size_t size, T InitValue) : count(size), data(new T[size]{}) {
     std::fill(data, data + size, InitValue);
+    InitDeviceData();
   }
   // Copy constructor
   GenericArray(const GenericArray& arr) : count(arr.count), data(new T[arr.count]{}) {
     std::copy(arr.data, arr.data + count, data);
+#ifdef __CUDACC__
+    dev_data = cuda_malloc<T>(count);
+    dev_count = cuda_malloc<std::size_t>(1);
+    device_to_device(dev_data, arr.dev_data, arr.count);
+    device_to_device(dev_count, arr.dev_count, 1);
+    constructInDevice();
+#endif
   }
   // Move constructor
   GenericArray(GenericArray&& arr) noexcept : count(arr.count), data(arr.data) {
     // Reset 'arr'
     arr.count = 0;
     arr.data = nullptr;
+#ifdef __CUDACC__
+    dev_data = arr.dev_data;
+    dev_count = arr.dev_count;
+    arr.dev_data = nullptr;
+    arr.dev_count = nullptr;
+    constructInDevice();
+#endif
   }
   // Copy assignment operator
   GenericArray& operator=(const GenericArray& arr) {
     if (&arr == this) return *this;
-    delete[] data;
+    if (count != arr.count) {
+      delete[] data;
+      data = new T[arr.count]{};
+    }
+    std::copy(arr.data, arr.data + arr.count, data);
+#ifdef __CUDACC__
+    if (count != arr.count) {
+      cuda_free(dev_data);
+      dev_data = cuda_malloc<T>(arr.count);
+    }
+    device_to_device(dev_data, arr.dev_data, arr.count);
+    device_to_device(dev_count, arr.dev_count, 1);
+#endif
     count = arr.count;
-    data = new T[arr.count]{};
-    std::copy(arr.data, arr.data + count, data);
     return *this;
   }
   // Move assignment operator
@@ -250,64 +530,91 @@ class GenericArray {
     // Reset 'arr'
     arr.count = 0;
     arr.data = nullptr;
+#ifdef __CUDACC__
+    dev_data = arr.dev_data;
+    dev_count = arr.dev_count;
+    arr.dev_data = nullptr;
+    arr.dev_count = nullptr;
+#endif
     return *this;
   }
 
-  ~GenericArray() { delete[] data; }
+  ~GenericArray() {
+    delete[] data;
+#ifdef __CUDACC__
+    cuda_free(dev_data);
+    cuda_free(dev_count);
+    cuda_free(dev_GenericArray);
+#endif
+  }
 
-  void Init(T InitValue) { std::fill(data, data + count, InitValue); }
+  void InitDeviceData() {
+#ifdef __CUDACC__
+    dev_data = cuda_malloc<T>(count);
+    dev_count = cuda_malloc<std::size_t>(1);
+    copyToDevice();
+    constructInDevice();
+#endif
+  }
+
+#ifdef __CUDACC__
+
+  void copyToDevice() {
+    host_to_device(dev_data, data, count);
+    host_to_device(dev_count, &count, 1);
+  }
+  void copyToHost() {
+    device_to_host(data, dev_data, count);
+    device_to_host(&count, dev_count, 1);
+  }
+  T* get_devptr() { return dev_data; }
+  std::size_t get_devcount() const {
+    std::size_t temp;
+    device_to_host(&temp, dev_count, 1);
+    return temp;
+  }
+  cudev::GenericArray<T>* get_devObj() { return dev_GenericArray; }
+  void constructInDevice() {
+    dev_GenericArray = cuda_malloc<cudev::GenericArray<T>>(1);
+    // temp host object
+    cudev::GenericArray<T> temp(dev_count, dev_data);
+    // copy to device
+    host_to_device(dev_GenericArray, &temp, 1);
+  }
+
+#endif
+
+  void Init(T InitValue) {
+    std::fill(data, data + count, InitValue);
+#ifdef __CUDACC__
+    copyToDevice();
+#endif
+  }
 
   void Resize(std::size_t size) {
     if (size == count) return;
     delete[] data;
     data = new T[size]{};
     count = size;
+#ifdef __CUDACC__
+    cuda_free(dev_data);
+    dev_data = cuda_malloc<T>(count);
+    copyToDevice();
+#endif
   }
 
   const T& operator[](std::size_t i) const { return data[i]; }
   T& operator[](std::size_t i) { return data[i]; }
 
-  // get underlying value from enum
-  template <typename U = T>
-  typename std::enable_if<std::is_enum<U>::value, std::underlying_type_t<U>&>::type
-  getUnderlying(std::size_t index) {
-    return reinterpret_cast<std::underlying_type_t<U>&>(data[index]);
-  }
-
-  template <typename U = T>
-  typename std::enable_if<std::is_enum<U>::value, const std::underlying_type_t<U>&>::type
-  getUnderlying(std::size_t index) const {
-    return reinterpret_cast<const std::underlying_type_t<U>&>(data[index]);
-  }
-
-  // return pointer to the data
-  T* getdata() { return data; }
-  const T* getdata() const { return data; }
-  // return the pointer of ith element
-  T* getdataPtr(std::size_t i) { return data + i; }
-  const T* getdataPtr(std::size_t i) const { return data + i; }
-
-  template <typename Func>
-  void for_isflag(T flag, Func func) {
-    for (std::size_t i = 0; i < count; ++i) {
-      if (data[i] == flag) {
-        func(i);
-      }
-    }
-  }
-  template <typename Func>
-  void for_isNotflag(T flag, Func func) {
-    for (std::size_t i = 0; i < count; ++i) {
-      if (data[i] != flag) {
-        func(i);
-      }
-    }
-  }
+  // return pointer to ith element
+  T* getdataPtr(std::size_t i = 0) { return data + i; }
+  const T* getdataPtr(std::size_t i = 0) const { return data + i; }
 
   inline void set(std::size_t i, T value) { data[i] = value; }
 
   std::size_t size() const { return count; }
 };
+
 
 // Kummerländer A, Dorn M, Frank M, Krause MJ. Implicit propagation of directly
 // addressed grids in lattice Boltzmann methods. Concurrency Computat Pract
@@ -330,6 +637,10 @@ class CyclicArray {
 
  public:
   using value_type = T;
+  using array_type = CyclicArray<T>;
+#ifdef __CUDACC__
+  using cudev_array_type = cudev::CyclicArray<T>;
+#endif
 
   CyclicArray()
       : count(0), data(nullptr), shift(0), remainder(0), start{}, lastOffset(0) {}
@@ -433,14 +744,12 @@ class CyclicArray {
     (i > remainder ? start[1] : start[0])[i] = value;
   }
   std::size_t size() const { return count; }
-  T* getdata() { return data; }
-  const T* getdata() const { return data; }
   // return the pointer of ith element
-  T* getdataPtr(std::size_t i) {
+  T* getdataPtr(std::size_t i = 0) {
     return i > remainder ? start[1] + i : start[0] + i;
     // return &((i > remainder ? start[1] : start[0])[i]);
   }
-  const T* getdataPtr(std::size_t i) const {
+  const T* getdataPtr(std::size_t i = 0) const {
     return i > remainder ? start[1] + i : start[0] + i;
     // return &((i > remainder ? start[1] : start[0])[i]);
   }
@@ -453,7 +762,9 @@ class CyclicArray {
     } else if (prevIndex >= static_cast<std::ptrdiff_t>(count)) {
       prevIndex -= count;
     }
-    return (static_cast<std::size_t>(prevIndex) > remainder ? start[1] : start[0])[static_cast<std::size_t>(prevIndex)];
+    return (static_cast<std::size_t>(prevIndex) > remainder
+              ? start[1]
+              : start[0])[static_cast<std::size_t>(prevIndex)];
   }
 
   void refresh() {
@@ -461,11 +772,15 @@ class CyclicArray {
     T* const base = data;
     if (shift >= 0) {
       remainder = n - shift - 1;
+      // base - remainder - 1 + n
       start[0] = base + shift;
+      // base - remainder - 1
       start[1] = base - (n - shift);
     } else {
       remainder = -shift - 1;
+      // base - remainder - 1 + n
       start[0] = base + (n + shift);
+      // base - remainder - 1
       start[1] = base + shift;
     }
   }
@@ -501,20 +816,43 @@ class StreamArray {
   // facilitate the access of data before the last shift(rotate)
   std::ptrdiff_t Offset;
 
+#ifdef __CUDACC__
+  std::size_t* dev_count;
+  // device pointer to the data
+  T* dev_data;
+  T* dev_start;
+  std::ptrdiff_t* dev_shift;
+  std::ptrdiff_t* dev_Offset;
+  cudev::StreamArray<T>* dev_StreamArray;
+#endif
+
  public:
   using value_type = T;
-  using devptr_type = T;
+  using array_type = StreamArray<T>;
+#ifdef __CUDACC__
+  using cudev_array_type = cudev::StreamArray<T>;
+#endif
 
-  StreamArray() : count(0), data(nullptr), shift(0), start(nullptr), Offset(0) {}
+  StreamArray() : count(0), data(nullptr), shift(0), start(nullptr), Offset(0) {
+#ifdef __CUDACC__
+    dev_count = nullptr;
+    dev_data = nullptr;
+    dev_start = nullptr;
+    dev_shift = nullptr;
+    dev_Offset = nullptr;
+#endif
+  }
   StreamArray(std::size_t size)
       : count(size), data(new T[2 * size]{}), shift(0), Offset(0) {
     std::fill(data, data + 2 * size, T{});
     set_start();
+    InitDeviceData();
   }
   StreamArray(std::size_t size, T InitValue)
       : count(size), data(new T[2 * size]{}), shift(0), Offset(0) {
     std::fill(data, data + 2 * size, InitValue);
     set_start();
+    InitDeviceData();
   }
   // Copy constructor
   StreamArray(const StreamArray& arr)
@@ -522,34 +860,71 @@ class StreamArray {
         Offset(arr.Offset) {
     std::copy(arr.data, arr.data + 2 * count, data);
     set_start();
+#ifdef __CUDACC__
+    dev_count = cuda_malloc<std::size_t>(1);
+    dev_data = cuda_malloc<T>(2 * count);
+    dev_start = cuda_malloc<T>(1);
+    dev_shift = cuda_malloc<std::ptrdiff_t>(1);
+    dev_Offset = cuda_malloc<std::ptrdiff_t>(1);
+    device_to_device(dev_count, arr.dev_count, 1);
+    device_to_device(dev_data, arr.dev_data, 2 * count);
+    device_to_device(dev_start, arr.dev_start, 1);
+    device_to_device(dev_shift, arr.dev_shift, 1);
+    device_to_device(dev_Offset, arr.dev_Offset, 1);
+    constructInDevice();
+#endif
   }
   // Move constructor
   StreamArray(StreamArray&& arr) noexcept
       : count(0), data(nullptr), shift(0), start(nullptr), Offset(0) {
-    // Steal the data from 'arr'
     count = arr.count;
     data = arr.data;
     shift = arr.shift;
     start = arr.start;
     Offset = arr.Offset;
     set_start();
-    // Reset 'arr'
     arr.count = 0;
     arr.data = nullptr;
     arr.shift = 0;
     arr.start = nullptr;
     arr.Offset = 0;
+#ifdef __CUDACC__
+    dev_count = arr.dev_count;
+    dev_data = arr.dev_data;
+    dev_start = arr.dev_start;
+    dev_shift = arr.dev_shift;
+    dev_Offset = arr.dev_Offset;
+    arr.dev_count = nullptr;
+    arr.dev_data = nullptr;
+    arr.dev_start = nullptr;
+    arr.dev_shift = nullptr;
+    arr.dev_Offset = nullptr;
+    constructInDevice();
+#endif
   }
   // Copy assignment operator
   StreamArray& operator=(const StreamArray& arr) {
     if (&arr == this) return *this;
-    delete[] data;
-    count = arr.count;
-    data = new T[2 * arr.count]{};
-    std::copy(arr.data, arr.data + 2 * count, data);
+    if (count != arr.count) {
+      delete[] data;
+      data = new T[2 * arr.count]{};
+    }
+    std::copy(arr.data, arr.data + 2 * arr.count, data);
     shift = arr.shift;
     Offset = arr.Offset;
     set_start();
+#ifdef __CUDACC__
+    if (count != arr.count) {
+      cuda_free(dev_data);
+      dev_data = cuda_malloc<T>(2 * arr.count);
+    }
+    device_to_device(dev_count, arr.dev_count, 1);
+    device_to_device(dev_data, arr.dev_data, 2 * arr.count);
+    device_to_device(dev_start, arr.dev_start, 1);
+    device_to_device(dev_shift, arr.dev_shift, 1);
+    device_to_device(dev_Offset, arr.dev_Offset, 1);
+#endif
+    count = arr.count;
     return *this;
   }
   // Move assignment operator
@@ -569,15 +944,92 @@ class StreamArray {
     arr.start = nullptr;
     arr.Offset = 0;
     set_start();
+#ifdef __CUDACC__
+    dev_count = arr.dev_count;
+    dev_data = arr.dev_data;
+    dev_start = arr.dev_start;
+    dev_shift = arr.dev_shift;
+    dev_Offset = arr.dev_Offset;
+    arr.dev_count = nullptr;
+    arr.dev_data = nullptr;
+    arr.dev_start = nullptr;
+    arr.dev_shift = nullptr;
+    arr.dev_Offset = nullptr;
+#endif
     return *this;
   }
+
+  ~StreamArray() {
+    delete[] data;
+#ifdef __CUDACC__
+    cuda_free(dev_count);
+    cuda_free(dev_data);
+    cuda_free(dev_start);
+    cuda_free(dev_shift);
+    cuda_free(dev_Offset);
+    cuda_free(dev_StreamArray);
+#endif
+  }
+
+  void InitDeviceData() {
+#ifdef __CUDACC__
+    dev_count = cuda_malloc<std::size_t>(1);
+    dev_data = cuda_malloc<T>(2 * count);
+    dev_start = cuda_malloc<T>(1);
+    dev_shift = cuda_malloc<std::ptrdiff_t>(1);
+    dev_Offset = cuda_malloc<std::ptrdiff_t>(1);
+    copyToDevice();
+    constructInDevice();
+#endif
+  }
+
+#ifdef __CUDACC__
+
+  void copyToDevice() {
+    host_to_device(dev_count, &count, 1);
+    host_to_device(dev_data, data, 2 * count);
+    host_to_device(dev_shift, &shift, 1);
+    host_to_device(dev_Offset, &Offset, 1);
+  }
+  // do not copy start pointer
+  void copyToHost() {
+    device_to_host(&count, dev_count, 1);
+    device_to_host(data, dev_data, 2 * count);
+    device_to_host(&shift, dev_shift, 1);
+    device_to_host(&Offset, dev_Offset, 1);
+    set_start();
+  }
+  T* get_devptr() { return dev_data; }
+  std::size_t get_devcount() const {
+    std::size_t temp;
+    device_to_host(&temp, dev_count, 1);
+    return temp;
+  }
+  cudev::StreamArray<T>* get_devObj() { return dev_StreamArray; }
+  void constructInDevice() {
+    dev_StreamArray = cuda_malloc<cudev::StreamArray<T>>(1);
+    // temp host object
+    cudev::StreamArray<T> temp(dev_count, dev_data, dev_shift, dev_start, dev_Offset);
+    // copy to device
+    host_to_device(dev_StreamArray, &temp, 1);
+  }
+
+#endif
 
   void Init(T InitValue, int offset = 0) {
     std::fill(data, data + 2 * count, InitValue);
     Offset = offset;
+#ifdef __CUDACC__
+    copyToDevice();
+#endif
   }
 
-  void setOffset(int offset) { Offset = offset; }
+  void setOffset(int offset) {
+    Offset = offset;
+#ifdef __CUDACC__
+    copyToDevice();
+#endif
+  }
 
   void Resize(std::size_t size) {
     if (size == count) return;
@@ -587,9 +1039,12 @@ class StreamArray {
     shift = 0;
     Offset = 0;
     set_start();
+#ifdef __CUDACC__
+    cuda_free(dev_data);
+    dev_data = cuda_malloc<T>(2 * count);
+    copyToDevice();
+#endif
   }
-
-  ~StreamArray() { delete[] data; }
 
 
   const T& operator[](std::size_t i) const { return start[i]; }
@@ -665,97 +1120,188 @@ class StreamArray {
       std::copy(base + count + startoffset, base + 2 * count, base + startoffset);
     }
   }
+#ifdef __CUDACC__
+  void dev_rotate() {
+    device_to_host(start, dev_start, 1);
+    device_to_host(&shift, dev_shift, 1);
+    const std::ptrdiff_t n = count;
+    shift -= Offset;
+    if (shift >= n) {
+      shift -= n;
+      dev_copyToFront(shift);
+    } else if (shift < 0) {
+      shift += n;
+      dev_copyToBack(shift);
+    }
+    set_start();
+    host_to_device(dev_start, start, 1);
+    host_to_device(dev_shift, &shift, 1);
+  }
+
+  void dev_copyToBack(std::ptrdiff_t endoffset = 0) {
+    endoffset = endoffset == 0 ? count : endoffset;
+    device_to_device(dev_data + count, dev_data, endoffset);
+  }
+  void dev_copyToFront(std::ptrdiff_t startoffset = 0) {
+    device_to_device(dev_data + startoffset, dev_data + count + startoffset,
+                     count - startoffset);
+  }
+  void rotate_dev() { Stream_kernel<<<1, 1>>>(dev_StreamArray); }
+#endif
 };
 
 
 template <typename ArrayType, unsigned int D>
 class GenericArrayField {
- private:
-  // field data
-  std::array<ArrayType, D> _Data;
-
  public:
   using array_type = ArrayType;
   using value_type = typename ArrayType::value_type;
   static constexpr unsigned int array_dim = D;
   static constexpr bool isField = true;
 
-  GenericArrayField() : _Data{} {}
+#ifdef __CUDACC__
+  using cudev_ArrayType = typename ArrayType::cudev_array_type;
+  using cudev_array_type = cudev::GenericArrayField<cudev_ArrayType, D>;
+#endif
+
+ private:
+  // field data
+  std::array<ArrayType, D> _data;
+#ifdef __CUDACC__
+  cudev::GenericArrayField<cudev_ArrayType, D>* dev_GenericArrayField;
+  cudev_ArrayType** dev_data;
+#endif
+
+ public:
+  GenericArrayField() : _data{} {}
   GenericArrayField(std::size_t size)
-      : _Data(make_array<ArrayType, D>([&]() { return ArrayType(size); })) {}
+      : _data(make_array<ArrayType, D>([&]() { return ArrayType(size); })) {
+    InitDeviceData();
+  }
   GenericArrayField(std::size_t size, value_type initialValue)
-      : _Data(make_array<ArrayType, D>([&]() { return ArrayType(size, initialValue); })) {
+      : _data(make_array<ArrayType, D>([&]() { return ArrayType(size, initialValue); })) {
+    InitDeviceData();
   }
   // Copy constructor
-  GenericArrayField(const GenericArrayField& genF) : _Data{} {
-    for (unsigned int i = 0; i < D; ++i) _Data[i] = genF._Data[i];
+  GenericArrayField(const GenericArrayField& genF) : _data{} {
+    for (unsigned int i = 0; i < D; ++i) _data[i] = genF._data[i];
+#ifdef __CUDACC__
+    dev_data = cuda_malloc<cudev_ArrayType*>(D);
+    dev_GenericArrayField = cuda_malloc<cudev::GenericArrayField<cudev_ArrayType, D>>(1);
+    device_to_device(dev_data, genF.dev_data, D);
+    constructInDevice();
+#endif
   }
   // Move constructor
   GenericArrayField(GenericArrayField&& genF) noexcept {
     // manually moving each element of the array
     for (unsigned int i = 0; i < D; ++i) {
-      _Data[i] = std::move(genF._Data[i]);
+      _data[i] = std::move(genF._data[i]);
     }
-    // Reset moved-from _Data
-    genF._Data = {};
+    // Reset moved-from _data
+    genF._data = {};
+#ifdef __CUDACC__
+    dev_data = genF.dev_data;
+    genF.dev_data = nullptr;
+    constructInDevice();
+#endif
   }
   // Copy assignment operator
   GenericArrayField& operator=(const GenericArrayField& genF) {
     if (&genF == this) return *this;
-    for (unsigned int i = 0; i < D; ++i) _Data[i] = genF._Data[i];
+    for (unsigned int i = 0; i < D; ++i) _data[i] = genF._data[i];
+#ifdef __CUDACC__
+    device_to_device(dev_data, genF.dev_data, D);
+#endif
     return *this;
   }
   // Move assignment operator
   GenericArrayField& operator=(GenericArrayField&& genF) noexcept {
     if (&genF == this) return *this;
     for (unsigned int i = 0; i < D; ++i) {
-      _Data[i] = std::move(genF._Data[i]);
+      _data[i] = std::move(genF._data[i]);
     }
-    // Reset moved-from _Data
-    genF._Data = {};
+    // Reset moved-from _data
+    genF._data = {};
+#ifdef __CUDACC__
+    dev_data = genF.dev_data;
+    genF.dev_data = nullptr;
+#endif
     return *this;
   }
 
-  ~GenericArrayField() = default;
+  ~GenericArrayField() {
+#ifdef __CUDACC__
+    cuda_free(dev_data);
+    cuda_free(dev_GenericArrayField);
+#endif
+  }
 
-  ArrayType& getField(std::size_t i = 0) { return _Data[i]; }
-  const ArrayType& getField(std::size_t i = 0) const { return _Data[i]; }
-  // get<i>(id): return _Data[i][id];
+  void InitDeviceData() {
+#ifdef __CUDACC__
+    dev_data = cuda_malloc<cudev_ArrayType*>(D);
+    dev_GenericArrayField = cuda_malloc<cudev::GenericArrayField<cudev_ArrayType, D>>(1);
+    cudev_ArrayType* host_Data[D];
+    for (unsigned int i = 0; i < D; ++i) host_Data[i] = _data[i].get_devObj();
+    host_to_device(dev_data, host_Data, D);
+    constructInDevice();
+#endif
+  }
+
+#ifdef __CUDACC__
+  void copyToDevice() {
+    for (unsigned int i = 0; i < D; ++i) _data[i].copyToDevice();
+  }
+  void copyToHost() {
+    for (unsigned int i = 0; i < D; ++i) _data[i].copyToHost();
+  }
+  cudev_ArrayType** get_devptr() { return dev_data; }
+  cudev::GenericArrayField<cudev_ArrayType, D>* get_devObj() {
+    return dev_GenericArrayField;
+  }
+  void constructInDevice() {
+    dev_GenericArrayField = cuda_malloc<cudev::GenericArrayField<cudev_ArrayType, D>>(1);
+    // temp host object
+    cudev::GenericArrayField<cudev_ArrayType, D> temp(dev_data);
+    // copy to device
+    host_to_device(dev_GenericArrayField, &temp, 1);
+  }
+#endif
+
+  ArrayType& getField(std::size_t i = 0) { return _data[i]; }
+  const ArrayType& getField(std::size_t i = 0) const { return _data[i]; }
+
+  // get<i>(id): return _data[i][id];
   template <unsigned int i = 0>
   auto& get(std::size_t id) {
-    return _Data[i][id];
+    return _data[i][id];
   }
   template <unsigned int i = 0>
   const auto& get(std::size_t id) const {
-    return _Data[i][id];
+    return _data[i][id];
   }
-  auto& get(std::size_t id, unsigned int dir) { return _Data[dir][id]; }
-  const auto& get(std::size_t id, unsigned int dir) const { return _Data[dir][id]; }
+  auto& get(std::size_t id, unsigned int dir) { return _data[dir][id]; }
+  const auto& get(std::size_t id, unsigned int dir) const { return _data[dir][id]; }
+
   // get pointer to ith data in all arrays
-  std::array<value_type*, D> getArray(std::size_t id) {
+  std::array<value_type*, D> getArray(std::size_t id = 0) {
     std::array<value_type*, D> data{};
-    for (unsigned int i = 0; i < D; ++i) data[i] = _Data[i].getdataPtr(id);
-    return data;
-  }
-  // get all arrays
-  std::array<value_type*, D> getArray() {
-    std::array<value_type*, D> data{};
-    for (unsigned int i = 0; i < D; ++i) data[i] = _Data[i].getdata();
+    for (unsigned int i = 0; i < D; ++i) data[i] = _data[i].getdataPtr(id);
     return data;
   }
 
   template <unsigned int i = 0>
   void SetField(std::size_t id, value_type value) {
-    _Data[i].set(id, value);
+    _data[i].set(id, value);
   }
-  void SetField(int i, std::size_t id, value_type value) { _Data[i].set(id, value); }
+  void SetField(int i, std::size_t id, value_type value) { _data[i].set(id, value); }
   // resize each array/field
   void Resize(std::size_t size) {
-    for (unsigned int i = 0; i < D; ++i) _Data[i].Resize(size);
+    for (unsigned int i = 0; i < D; ++i) _data[i].Resize(size);
   }
   // init
   void Init(value_type value = value_type{}) {
-    for (unsigned int i = 0; i < D; ++i) _Data[i].Init(value);
+    for (unsigned int i = 0; i < D; ++i) _data[i].Init(value);
   }
 
   static constexpr unsigned int Size() { return D; }
@@ -768,12 +1314,37 @@ class GenericField : public GenericArrayField<ArrayType, Base::array_dim> {
   using array_type = ArrayType;
   using value_type = typename ArrayType::value_type;
 
+
+#ifdef __CUDACC__
+  using cudev_ArrayType = typename ArrayType::cudev_array_type;
+  using cudev_array_type = cudev::GenericField<cudev_ArrayType, Base>;
+  cudev::GenericField<cudev_ArrayType, Base>* dev_GenericField;
+#endif
+
   GenericField() = default;
-  GenericField(std::size_t size) : GenericArrayField<ArrayType, array_dim>(size) {}
+  GenericField(std::size_t size) : GenericArrayField<ArrayType, array_dim>(size) {
+#ifdef __CUDACC__
+    constructInDevice();
+#endif
+  }
   GenericField(std::size_t size, value_type initialValue)
-      : GenericArrayField<ArrayType, array_dim>(size, initialValue) {}
+      : GenericArrayField<ArrayType, array_dim>(size, initialValue) {
+#ifdef __CUDACC__
+    constructInDevice();
+#endif
+  }
 
   ~GenericField() = default;
+
+#ifdef __CUDACC__
+  void constructInDevice() {
+    dev_GenericField = cuda_malloc<cudev::GenericField<cudev_ArrayType, Base>>(1);
+    // temp host object
+    cudev::GenericField<cudev_ArrayType, Base> temp(this->get_devptr());
+    // copy to device
+    host_to_device(dev_GenericField, &temp, 1);
+  }
+#endif
 };
 
 template <typename T, unsigned int D>
@@ -984,9 +1555,9 @@ typename ArrayType::value_type getInterpolation(const ArrayType& Arr,
 
 template <typename FloatType, unsigned int Dim, typename ArrayType>
 void Interpolation(const ArrayType& Arr, const std::vector<InterpSource<Dim>>& srcs,
-                      std::size_t& srcidx,
-                      std::vector<typename ArrayType::value_type>& Buffer,
-                      std::size_t& Bufferidx) {
+                   std::size_t& srcidx,
+                   std::vector<typename ArrayType::value_type>& Buffer,
+                   std::size_t& Bufferidx) {
   if constexpr (Dim == 2) {
     Buffer[Bufferidx++] = getInterpolation<0, FloatType, Dim>(Arr, srcs[srcidx++]);
     Buffer[Bufferidx++] = getInterpolation<1, FloatType, Dim>(Arr, srcs[srcidx++]);
@@ -1005,23 +1576,35 @@ void Interpolation(const ArrayType& Arr, const std::vector<InterpSource<Dim>>& s
 }
 
 template <typename FloatType, unsigned int Dim, typename ArrayType>
-void Interpolation(ArrayType& Arr, const ArrayType& nArr, 
-const std::vector<InterpSource<Dim>>& sends,
-const std::vector<std::size_t>& recvs,
-std::size_t& sendidx, std::size_t& recvidx) {
+void Interpolation(ArrayType& Arr, const ArrayType& nArr,
+                   const std::vector<InterpSource<Dim>>& sends,
+                   const std::vector<std::size_t>& recvs, std::size_t& sendidx,
+                   std::size_t& recvidx) {
   if constexpr (Dim == 2) {
-    Arr.set(recvs[recvidx++], getInterpolation<0, FloatType, Dim>(nArr, sends[sendidx++]));
-    Arr.set(recvs[recvidx++], getInterpolation<1, FloatType, Dim>(nArr, sends[sendidx++]));
-    Arr.set(recvs[recvidx++], getInterpolation<2, FloatType, Dim>(nArr, sends[sendidx++]));
-    Arr.set(recvs[recvidx++], getInterpolation<3, FloatType, Dim>(nArr, sends[sendidx++]));
+    Arr.set(recvs[recvidx++],
+            getInterpolation<0, FloatType, Dim>(nArr, sends[sendidx++]));
+    Arr.set(recvs[recvidx++],
+            getInterpolation<1, FloatType, Dim>(nArr, sends[sendidx++]));
+    Arr.set(recvs[recvidx++],
+            getInterpolation<2, FloatType, Dim>(nArr, sends[sendidx++]));
+    Arr.set(recvs[recvidx++],
+            getInterpolation<3, FloatType, Dim>(nArr, sends[sendidx++]));
   } else if constexpr (Dim == 3) {
-    Arr.set(recvs[recvidx++], getInterpolation<0, FloatType, Dim>(nArr, sends[sendidx++]));
-    Arr.set(recvs[recvidx++], getInterpolation<1, FloatType, Dim>(nArr, sends[sendidx++]));
-    Arr.set(recvs[recvidx++], getInterpolation<2, FloatType, Dim>(nArr, sends[sendidx++]));
-    Arr.set(recvs[recvidx++], getInterpolation<3, FloatType, Dim>(nArr, sends[sendidx++]));
-    Arr.set(recvs[recvidx++], getInterpolation<4, FloatType, Dim>(nArr, sends[sendidx++]));
-    Arr.set(recvs[recvidx++], getInterpolation<5, FloatType, Dim>(nArr, sends[sendidx++]));
-    Arr.set(recvs[recvidx++], getInterpolation<6, FloatType, Dim>(nArr, sends[sendidx++]));
-    Arr.set(recvs[recvidx++], getInterpolation<7, FloatType, Dim>(nArr, sends[sendidx++]));
+    Arr.set(recvs[recvidx++],
+            getInterpolation<0, FloatType, Dim>(nArr, sends[sendidx++]));
+    Arr.set(recvs[recvidx++],
+            getInterpolation<1, FloatType, Dim>(nArr, sends[sendidx++]));
+    Arr.set(recvs[recvidx++],
+            getInterpolation<2, FloatType, Dim>(nArr, sends[sendidx++]));
+    Arr.set(recvs[recvidx++],
+            getInterpolation<3, FloatType, Dim>(nArr, sends[sendidx++]));
+    Arr.set(recvs[recvidx++],
+            getInterpolation<4, FloatType, Dim>(nArr, sends[sendidx++]));
+    Arr.set(recvs[recvidx++],
+            getInterpolation<5, FloatType, Dim>(nArr, sends[sendidx++]));
+    Arr.set(recvs[recvidx++],
+            getInterpolation<6, FloatType, Dim>(nArr, sends[sendidx++]));
+    Arr.set(recvs[recvidx++],
+            getInterpolation<7, FloatType, Dim>(nArr, sends[sendidx++]));
   }
 }

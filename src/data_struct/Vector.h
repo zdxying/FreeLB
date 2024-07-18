@@ -1,7 +1,8 @@
-/* This file is part of FreeLB, modified from OpenLB's vector.h, with the following copyright notice:
+/* This file is part of FreeLB, modified from OpenLB's vector.h, with the following
+ * copyright notice:
  *
  * // start of the original OpenLB's copyright notice
- * 
+ *
  * This file is part of the OpenLB library
  *
  *  Copyright (C) 2015 Asher Zarth, Mathias J. Krause, Albert Mink
@@ -9,25 +10,25 @@
  *  E-mail contact: info@openlb.net
  *  The most recent release of OpenLB can be downloaded at
  *  <http://www.openlb.net/>
- * 
+ *
  * // end of the original OpenLB's copyright notice
- * 
+ *
  * Copyright (C) 2024 Yuan Man
  * E-mail contact: ymmanyuan@outlook.com
  * The most recent progress of FreeLB will be updated at
  * <https://github.com/zdxying/FreeLB>
- * 
- * FreeLB is free software: you can redistribute it and/or modify it under the terms of the GNU
- * General Public License as published by the Free Software Foundation, either version 3 of the
- * License, or (at your option) any later version.
- * 
- * FreeLB is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the
- * implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public
- * License for more details.
- * 
- * You should have received a copy of the GNU General Public License along with FreeLB. If not, see
- * <https://www.gnu.org/licenses/>.
- * 
+ *
+ * FreeLB is free software: you can redistribute it and/or modify it under the terms of
+ * the GNU General Public License as published by the Free Software Foundation, either
+ * version 3 of the License, or (at your option) any later version.
+ *
+ * FreeLB is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
+ * without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
+ * PURPOSE. See the GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License along with FreeLB. If
+ * not, see <https://www.gnu.org/licenses/>.
+ *
  */
 
 // Vector.h
@@ -37,6 +38,8 @@
 #include <math.h>
 
 #include <array>
+
+#include "head.h"
 
 // the Vector here is not a container, but a mathematical vector
 // class Vector stores an array of type T with size D(2 or 3)

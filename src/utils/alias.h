@@ -27,6 +27,8 @@
 // size_t, uint8_t
 #include <cstdint>
 
+#include "head.h"
+
 template <unsigned int D>
 struct BasicInterp;
 using BasicInterp2D = BasicInterp<4>;
@@ -49,6 +51,45 @@ using InterpWeight3D = std::array<T, 8>;
 template <typename T, unsigned int D>
 using InterpWeight = std::conditional_t<D == 2, InterpWeight2D<T>, InterpWeight3D<T>>;
 
+namespace cudev {
+#ifdef __CUDACC__
+
+using InterpSource2D = thrust::tuple<std::size_t, std::size_t, std::size_t, std::size_t>;
+using InterpSource3D = thrust::tuple<std::size_t, std::size_t, std::size_t, std::size_t,
+                                     std::size_t, std::size_t, std::size_t, std::size_t>;
+template <unsigned int D>
+using InterpSource = std::conditional_t<D == 2, InterpSource2D, InterpSource3D>;
+
+template <typename T>
+using InterpWeight2D = thrust::tuple<T, T, T, T>;
+template <typename T>
+using InterpWeight3D = thrust::tuple<T, T, T, T, T, T, T, T>;
+template <typename T, unsigned int D>
+using InterpWeight = std::conditional_t<D == 2, InterpWeight2D<T>, InterpWeight3D<T>>;
+
+template <typename T, typename Base>
+class Data;
+
+template <typename T, typename Base>
+class Array;
+
+template <typename ArrayType, unsigned int D>
+class GenericArrayField;
+
+template <typename ArrayType, typename Base>
+class GenericField;
+
+template <typename T>
+class GenericArray;
+
+template <typename T>
+class CyclicArray;
+
+template <typename T>
+class StreamArray;
+
+#endif
+}  // namespace cudev
 
 // ---------geometry alias-----------
 template <typename T, unsigned int D>
@@ -132,7 +173,8 @@ template <typename T, unsigned int D>
 using VectorFieldSoA = GenericArrayField<GenericArray<T>, D>;
 
 template <typename T, unsigned int q>
-using PopulationField = GenericArrayField<CyclicArray<T>, q>;
+using PopulationField = GenericArrayField<StreamArray<T>, q>;
+// using PopulationField = GenericArrayField<CyclicArray<T>, q>;
 
 
 // specific field name for access by Cell interface, not alias

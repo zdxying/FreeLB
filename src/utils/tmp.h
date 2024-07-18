@@ -32,6 +32,135 @@ bool isFlag(std::uint8_t flag1, std::uint8_t flag2);
 bool isFlag(std::uint16_t flag1, std::uint16_t flag2);
 }  // namespace util
 
+template <typename Type, typename... Types>
+struct isOneOf {
+  static constexpr bool value = (std::is_same_v<Type, Types> || ...);
+};
+
+
+// fixed-size collection of heterogeneous values, simple implementation of tuple
+// Primary template for Tuple
+template <typename... Types>
+struct Tuple;
+
+// Specialization for Tuple with at least one type
+template <typename T, typename... Types>
+struct Tuple<T, Types...> {
+
+  using Head = T;
+  using Tail = Tuple<Types...>;
+  static constexpr std::size_t size = 1 + sizeof...(Types);
+
+  constexpr Tuple() = default;
+
+  __any__ constexpr Tuple(const T& head, const Types&... tail) : _head(head), _tail(tail...) {}
+
+  __any__ constexpr Tuple(T&& head, Types&&... tail)
+    : _head(std::forward<T>(head)), _tail(std::forward<Types>(tail)...) {}
+
+  template <typename... Ts, typename... Us>
+  __any__ constexpr Tuple(const Tuple<Ts...>& t1, const Tuple<Us...>& t2) : _head(t1._head), _tail(t1._tail, t2) {}
+
+  __any__ constexpr Tuple(const Tuple &other) : _head(other._head), _tail(other._tail) {}
+  __any__ constexpr Tuple(Tuple &&other) : _head(std::move(other._head)), _tail(std::move(other._tail)) {}
+  __any__ constexpr Tuple &operator=(const Tuple &other) {
+    _head = other._head;
+    _tail = other._tail;
+    return *this;
+  }
+  __any__ constexpr Tuple &operator=(Tuple &&other) {
+    _head = std::move(other._head);
+    _tail = std::move(other._tail);
+    return *this;
+  }
+
+  __any__ Tail& getTail() { return _tail; }
+  __any__ const Tail& getTail() const { return _tail; }
+
+  // get ith element
+  template <std::size_t N>
+  __any__ auto &get() {
+    if constexpr (N == 0) {
+      return _head;
+    } else {
+      return _tail.template get<N - 1>();
+    }
+  }
+  template <std::size_t N>
+  __any__ const auto &get() const {
+    if constexpr (N == 0) {
+      return _head;
+    } else {
+      return _tail.template get<N - 1>();
+    }
+  }
+
+  // get by type
+  template <typename U>
+  __any__ auto &get() {
+    static_assert(!isOneOf<T, Types...>::value, "[Tuple]: Duplicate type in Tuple");
+    if constexpr (std::is_same_v<T, U>) {
+      return _head;
+    } else {
+      return _tail.template get<U>();
+    }
+  }
+  template <typename U>
+  __any__ const auto &get() const {
+    static_assert(!isOneOf<T, Types...>::value, "[Tuple]: Duplicate type in Tuple");
+    if constexpr (std::is_same_v<T, U>) {
+      return _head;
+    } else {
+      return _tail.template get<U>();
+    }
+  }
+
+ private:
+  Head _head;
+  Tail _tail;
+};
+
+// Specialization for an empty Tuple
+template <>
+struct Tuple<> {
+  static constexpr std::size_t size = 0;
+
+  template <std::size_t N>
+  __any__ void get() const {
+    static_assert(N != N, "[Tuple]: Attempt to access element in an empty Tuple");
+  }
+
+  template <typename U>
+  __any__ void get() const {
+    static_assert(sizeof(U) == 0, "[Tuple]: Attempt to access element in an empty Tuple");
+  }
+};
+
+// helper function to create Tuple
+template <typename... Types>
+__any__ constexpr auto make_Tuple(Types... args) {
+  return Tuple<Types...>(args...);
+}
+// handle empty Tuple
+__any__ constexpr auto make_Tuple() {
+  return Tuple<>();
+}
+
+
+// helper function to merge 2 Tuple
+template <typename... Types1, typename... Types2>
+__any__ Tuple<Types1..., Types2...> Tuple_cat(Tuple<Types1...> t1, Tuple<Types2...> t2) {
+  return Tuple<Types1..., Types2...>(t1, t2);
+}
+// merge 3 Tuple
+template <typename... Types1, typename... Types2, typename... Types3>
+__any__ Tuple<Types1..., Types2..., Types3...> Tuple_cat(Tuple<Types1...> t1, Tuple<Types2...> t2,
+                                                 Tuple<Types3...> t3) {
+  return Tuple<Types1..., Types2..., Types3...>(t1, t2, t3);
+}
+
+
+
 namespace tmp {
 // a sequence of integers
 template <auto I, auto... Is>
@@ -219,11 +348,6 @@ struct isTypeInTuple<Type, TypePack<Parameter...>> {
   static constexpr bool value = (std::is_same_v<Type, Parameter> || ...);
 };
 
-template <typename Type, typename... Types>
-struct isOneOf {
-  static constexpr bool value = (std::is_same_v<Type, Types> || ...);
-};
-
 template <typename Type, typename First, typename... Rest>
 struct is_same_at_index {
   static constexpr unsigned int value =
@@ -289,62 +413,6 @@ ValuePack<Params1..., Params2..., Params3...> mergeValuePack(ValuePack<Params1..
                                                        pack3.values));
 }
 
-template <typename Pack>
-class FieldCollection;
-
-template <typename... Fields>
-class FieldCollection<TypePack<Fields...>> {
- public:
-  FieldCollection() : fields(std::make_tuple(Fields()...)) {}
-  FieldCollection(std::size_t size) : fields(std::make_tuple(Fields(size)...)) {}
-  ~FieldCollection() = default;
-
-  template <typename FieldType>
-  FieldType& getField() {
-    return std::get<FieldType>(fields);
-  }
-  template <typename FieldType>
-  const FieldType& getField() const {
-    return std::get<FieldType>(fields);
-  }
-
- private:
-  std::tuple<Fields...> fields;
-};
-
-template <typename Pack>
-class FieldPtrCollection;
-
-template <typename... Fields>
-class FieldPtrCollection<TypePack<Fields...>> {
- public:
-  FieldPtrCollection(Fields&... fieldrefs) : fields(&fieldrefs...) {}
-  FieldPtrCollection(std::tuple<Fields*...> fieldrefs) : fields(fieldrefs) {}
-  void Init(Fields&... fieldrefs) { fields = std::make_tuple(&fieldrefs...); }
-
-  template <typename FieldType>
-  FieldType& getField() {
-    return *(std::get<FieldType*>(fields));
-  }
-  template <typename FieldType>
-  const FieldType& getField() const {
-    return *(std::get<FieldType*>(fields));
-  }
-
-  // assign a field pointer to the ith position
-  // template <typename FieldType, unsigned int i>
-  // void addField(FieldType& field) {
-  //   std::get<i>(fields) = &field;
-  // }
-  template <typename FieldType>
-  void addField(FieldType& field) {
-    std::get<FieldType*>(fields) = &field;
-  }
-
- private:
-  std::tuple<Fields*...> fields;
-};
-
 
 template <typename T, typename Pack>
 struct GetGenericRhoType {
@@ -380,3 +448,46 @@ void unroll_for(Func &&f) {
   }
 }
 
+
+template <typename Pack>
+class FieldPtrCollection;
+
+template <typename... Fields>
+class FieldPtrCollection<TypePack<Fields...>> {
+ public:
+  FieldPtrCollection(Fields&... fieldrefs) : 
+  fields(&fieldrefs...) {}
+  FieldPtrCollection(std::tuple<Fields*...> fieldrefs) : 
+  fields(fieldrefs) {}
+
+  void Init(Fields&... fieldrefs) { 
+    fields = std::make_tuple(&fieldrefs...); 
+    // fields = make_Tuple(&fieldrefs...);
+  }
+
+  template <typename FieldType>
+  FieldType& getField() {
+    return *(std::get<FieldType*>(fields));
+    // return *(fields.template get<FieldType*>());
+  }
+  template <typename FieldType>
+  const FieldType& getField() const {
+    return *(std::get<FieldType*>(fields));
+    // return *(fields.template get<FieldType*>());
+  }
+
+  // assign a field pointer to the ith position
+  // template <typename FieldType, unsigned int i>
+  // void addField(FieldType& field) {
+  //   std::get<i>(fields) = &field;
+  // }
+  template <typename FieldType>
+  void addField(FieldType& field) {
+    std::get<FieldType*>(fields) = &field;
+    // fields.template get<FieldType*>() = &field;
+  }
+
+ private:
+  std::tuple<Fields*...> fields;
+  // Tuple<Fields*...> fields;
+};
