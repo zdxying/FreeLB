@@ -34,14 +34,14 @@ struct BasicInterp;
 using BasicInterp2D = BasicInterp<4>;
 using BasicInterp3D = BasicInterp<8>;
 template <unsigned int D>
-using InterpStruct = std::conditional_t<D == 2, BasicInterp2D, BasicInterp3D>;
+using IntpStruct = std::conditional_t<D == 2, BasicInterp2D, BasicInterp3D>;
 
 
-using InterpSource2D = std::array<std::size_t, 4>;
-using InterpSource3D = std::array<std::size_t, 8>;
+using IntpSource2D = std::array<std::size_t, 4>;
+using IntpSource3D = std::array<std::size_t, 8>;
 // std::array<std::size_t, 4/8>
 template <unsigned int D>
-using InterpSource = std::conditional_t<D == 2, InterpSource2D, InterpSource3D>;
+using IntpSource = std::conditional_t<D == 2, IntpSource2D, IntpSource3D>;
 
 template <typename T>
 using InterpWeight2D = std::array<T, 4>;
@@ -54,11 +54,11 @@ using InterpWeight = std::conditional_t<D == 2, InterpWeight2D<T>, InterpWeight3
 namespace cudev {
 #ifdef __CUDACC__
 
-using InterpSource2D = thrust::tuple<std::size_t, std::size_t, std::size_t, std::size_t>;
-using InterpSource3D = thrust::tuple<std::size_t, std::size_t, std::size_t, std::size_t,
+using IntpSource2D = thrust::tuple<std::size_t, std::size_t, std::size_t, std::size_t>;
+using IntpSource3D = thrust::tuple<std::size_t, std::size_t, std::size_t, std::size_t,
                                      std::size_t, std::size_t, std::size_t, std::size_t>;
 template <unsigned int D>
-using InterpSource = std::conditional_t<D == 2, InterpSource2D, InterpSource3D>;
+using IntpSource = std::conditional_t<D == 2, IntpSource2D, IntpSource3D>;
 
 template <typename T>
 using InterpWeight2D = thrust::tuple<T, T, T, T>;

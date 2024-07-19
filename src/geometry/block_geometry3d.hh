@@ -219,7 +219,7 @@ void BlockGeometry3D<T>::InitComm() {
 template <typename T>
 void BlockGeometry3D<T>::InitAverComm() {
   for (Block3D<T> &block : _Blocks) {
-    std::vector<InterpBlockComm<T, 3>> &Communicators = block.getAverageBlockComm();
+    std::vector<IntpBlockComm<T, 3>> &Communicators = block.getAverageBlockComm();
     Communicators.clear();
     // get the first layer of overlapped cells(counted from inside to outside)
     BasicBlock<T, 3> baseblock_ext1 = block.getBaseBlock().getExtBlock(1);
@@ -229,7 +229,7 @@ void BlockGeometry3D<T>::InitAverComm() {
       // find block of blocklevel+1
       if (nblock->getLevel() == blocklevel + 1) {
         Communicators.emplace_back(nblock);
-        InterpBlockComm<T, 3> &comm = Communicators.back();
+        IntpBlockComm<T, 3> &comm = Communicators.back();
         // vox size
         const T Cvoxsize = block.getVoxelSize();
         const T Fvoxsize = nblock->getVoxelSize();
@@ -268,7 +268,7 @@ void BlockGeometry3D<T>::InitAverComm() {
 
               comm.RecvCells.push_back(Cid);
               comm.SendCells.emplace_back(
-                InterpSource<3>{Fid0, Fid1, Fid2, Fid3, Fid4, Fid5, Fid6, Fid7});
+                IntpSource<3>{Fid0, Fid1, Fid2, Fid3, Fid4, Fid5, Fid6, Fid7});
             }
           }
         }
@@ -285,14 +285,14 @@ template <typename T>
 void BlockGeometry3D<T>::InitIntpComm() {
   for (Block3D<T> &block : _Blocks) {
     std::uint8_t blocklevel = block.getLevel();
-    std::vector<InterpBlockComm<T, 3>> &Communicators = block.getInterpBlockComm();
+    std::vector<IntpBlockComm<T, 3>> &Communicators = block.getIntpBlockComm();
     Communicators.clear();
     std::size_t XY = block.getNx() * block.getNy();
     for (Block3D<T> *nblock : block.getNeighbors()) {
       // find block of blocklevel-1
       if (nblock->getLevel() == blocklevel - 1) {
         Communicators.emplace_back(nblock);
-        InterpBlockComm<T, 3> &comm = Communicators.back();
+        IntpBlockComm<T, 3> &comm = Communicators.back();
         // vox size
         const T Cvoxsize = nblock->getVoxelSize();
         const T Fvoxsize = block.getVoxelSize();
@@ -365,16 +365,16 @@ void BlockGeometry3D<T>::InitIntpComm() {
               // 0
               comm.RecvCells.push_back(Fid);
               comm.SendCells.emplace_back(
-                InterpSource<3>{Cid0, Cid1, Cid2, Cid3, Cid4, Cid5, Cid6, Cid7});
+                IntpSource<3>{Cid0, Cid1, Cid2, Cid3, Cid4, Cid5, Cid6, Cid7});
 
               // 1
               comm.RecvCells.push_back(Fid_x);
-              comm.SendCells.emplace_back(InterpSource<3>{
+              comm.SendCells.emplace_back(IntpSource<3>{
                 Cid0_x, Cid1_x, Cid2_x, Cid3_x, Cid4_x, Cid5_x, Cid6_x, Cid7_x});
 
               // 2
               comm.RecvCells.push_back(Fid_y);
-              comm.SendCells.emplace_back(InterpSource<3>{
+              comm.SendCells.emplace_back(IntpSource<3>{
                 Cid0_y, Cid1_y, Cid2_y, Cid3_y, Cid4_y, Cid5_y, Cid6_y, Cid7_y});
 
               // 3
@@ -389,12 +389,12 @@ void BlockGeometry3D<T>::InitIntpComm() {
               std::size_t Fid_xy = Fid_y + 1;
 
               comm.RecvCells.push_back(Fid_xy);
-              comm.SendCells.emplace_back(InterpSource<3>{
+              comm.SendCells.emplace_back(IntpSource<3>{
                 Cid0_xy, Cid1_xy, Cid2_xy, Cid3_xy, Cid4_xy, Cid5_xy, Cid6_xy, Cid7_xy});
 
               // 4
               comm.RecvCells.push_back(Fid_z);
-              comm.SendCells.emplace_back(InterpSource<3>{
+              comm.SendCells.emplace_back(IntpSource<3>{
                 Cid0_z, Cid1_z, Cid2_z, Cid3_z, Cid4_z, Cid5_z, Cid6_z, Cid7_z});
 
               // 5
@@ -409,7 +409,7 @@ void BlockGeometry3D<T>::InitIntpComm() {
               std::size_t Fid_xz = Fid_z + XY;
 
               comm.RecvCells.push_back(Fid_xz);
-              comm.SendCells.emplace_back(InterpSource<3>{
+              comm.SendCells.emplace_back(IntpSource<3>{
                 Cid0_xz, Cid1_xz, Cid2_xz, Cid3_xz, Cid4_xz, Cid5_xz, Cid6_xz, Cid7_xz});
 
               // 6
@@ -424,7 +424,7 @@ void BlockGeometry3D<T>::InitIntpComm() {
               std::size_t Fid_yz = Fid_z + XY;
 
               comm.RecvCells.push_back(Fid_yz);
-              comm.SendCells.emplace_back(InterpSource<3>{
+              comm.SendCells.emplace_back(IntpSource<3>{
                 Cid0_yz, Cid1_yz, Cid2_yz, Cid3_yz, Cid4_yz, Cid5_yz, Cid6_yz, Cid7_yz});
 
               // 7
@@ -439,7 +439,7 @@ void BlockGeometry3D<T>::InitIntpComm() {
               std::size_t Fid_xyz = Fid_yz + 1;
 
               comm.RecvCells.push_back(Fid_xyz);
-              comm.SendCells.emplace_back(InterpSource<3>{Cid0_xyz, Cid1_xyz, Cid2_xyz,
+              comm.SendCells.emplace_back(IntpSource<3>{Cid0_xyz, Cid1_xyz, Cid2_xyz,
                                                           Cid3_xyz, Cid4_xyz, Cid5_xyz,
                                                           Cid6_xyz, Cid7_xyz});
             }
@@ -499,7 +499,7 @@ void BlockGeometry3D<T>::InitMPIComm(BlockGeometryHelper3D<T> &GeoHelper) {
 template <typename T>
 void BlockGeometry3D<T>::InitMPIAverComm(BlockGeometryHelper3D<T> &GeoHelper) {
   for (Block3D<T> &block : _Blocks) {
-    MPIInterpBlockComm<T, 3> &MPIComm = block.getMPIAverBlockComm();
+    MPIIntpBlockComm<T, 3> &MPIComm = block.getMPIAverBlockComm();
     MPIComm.clear();
     std::uint8_t blocklevel = block.getLevel();
     const BasicBlock<T, 3> &baseblock = block.getBaseBlock();
@@ -514,7 +514,7 @@ void BlockGeometry3D<T>::InitMPIAverComm(BlockGeometryHelper3D<T> &GeoHelper) {
         BasicBlock<T, 3> nbaseblock_ext1 = nbaseblock.getExtBlock(1);
         // init sender
         MPIComm.Senders.emplace_back(nbr.first, nbaseblock.getBlockId());
-        MPIInterpBlockSendStru<T, 3> &sender = MPIComm.Senders.back();
+        MPIIntpBlockSendStru<T, 3> &sender = MPIComm.Senders.back();
         // vox size
         const T Cvoxsize = nbaseblock.getVoxelSize();
         const T Fvoxsize = block.getVoxelSize();
@@ -546,7 +546,7 @@ void BlockGeometry3D<T>::InitMPIAverComm(BlockGeometryHelper3D<T> &GeoHelper) {
               std::size_t Fid7 = Fid6 + 1;
 
               sender.SendCells.emplace_back(
-                InterpSource<3>{Fid0, Fid1, Fid2, Fid3, Fid4, Fid5, Fid6, Fid7});
+                IntpSource<3>{Fid0, Fid1, Fid2, Fid3, Fid4, Fid5, Fid6, Fid7});
             }
           }
         }
@@ -592,7 +592,7 @@ void BlockGeometry3D<T>::InitMPIAverComm(BlockGeometryHelper3D<T> &GeoHelper) {
 template <typename T>
 void BlockGeometry3D<T>::InitMPIIntpComm(BlockGeometryHelper3D<T> &GeoHelper) {
   for (Block3D<T> &block : _Blocks) {
-    MPIInterpBlockComm<T, 3> &MPIComm = block.getMPIInterpBlockComm();
+    MPIIntpBlockComm<T, 3> &MPIComm = block.getMPIIntpBlockComm();
     MPIComm.clear();
     std::uint8_t blocklevel = block.getLevel();
     const BasicBlock<T, 3> &baseblock = block.getBaseBlock();
@@ -607,7 +607,7 @@ void BlockGeometry3D<T>::InitMPIIntpComm(BlockGeometryHelper3D<T> &GeoHelper) {
         BasicBlock<T, 3> nbaseblock_ext2 = nbaseblock.getExtBlock(2);
         // init sender
         MPIComm.Senders.emplace_back(nbr.first, nbaseblock.getBlockId());
-        MPIInterpBlockSendStru<T, 3> &sender = MPIComm.Senders.back();
+        MPIIntpBlockSendStru<T, 3> &sender = MPIComm.Senders.back();
         // vox size
         const T Cvoxsize = block.getVoxelSize();
         // const T Fvoxsize = nbaseblock.getVoxelSize();
@@ -671,14 +671,14 @@ void BlockGeometry3D<T>::InitMPIIntpComm(BlockGeometryHelper3D<T> &GeoHelper) {
 
               // 0
               sender.SendCells.emplace_back(
-                InterpSource<3>{Cid0, Cid1, Cid2, Cid3, Cid4, Cid5, Cid6, Cid7});
+                IntpSource<3>{Cid0, Cid1, Cid2, Cid3, Cid4, Cid5, Cid6, Cid7});
 
               // 1
-              sender.SendCells.emplace_back(InterpSource<3>{
+              sender.SendCells.emplace_back(IntpSource<3>{
                 Cid0_x, Cid1_x, Cid2_x, Cid3_x, Cid4_x, Cid5_x, Cid6_x, Cid7_x});
 
               // 2
-              sender.SendCells.emplace_back(InterpSource<3>{
+              sender.SendCells.emplace_back(IntpSource<3>{
                 Cid0_y, Cid1_y, Cid2_y, Cid3_y, Cid4_y, Cid5_y, Cid6_y, Cid7_y});
 
               // 3
@@ -691,11 +691,11 @@ void BlockGeometry3D<T>::InitMPIIntpComm(BlockGeometryHelper3D<T> &GeoHelper) {
               std::size_t Cid6_xy = Cid6_y + 1;
               std::size_t Cid7_xy = Cid7_y + 1;
 
-              sender.SendCells.emplace_back(InterpSource<3>{
+              sender.SendCells.emplace_back(IntpSource<3>{
                 Cid0_xy, Cid1_xy, Cid2_xy, Cid3_xy, Cid4_xy, Cid5_xy, Cid6_xy, Cid7_xy});
 
               // 4
-              sender.SendCells.emplace_back(InterpSource<3>{
+              sender.SendCells.emplace_back(IntpSource<3>{
                 Cid0_z, Cid1_z, Cid2_z, Cid3_z, Cid4_z, Cid5_z, Cid6_z, Cid7_z});
 
               // 5
@@ -708,7 +708,7 @@ void BlockGeometry3D<T>::InitMPIIntpComm(BlockGeometryHelper3D<T> &GeoHelper) {
               std::size_t Cid6_xz = Cid6_z + 1;
               std::size_t Cid7_xz = Cid7_z + 1;
 
-              sender.SendCells.emplace_back(InterpSource<3>{
+              sender.SendCells.emplace_back(IntpSource<3>{
                 Cid0_xz, Cid1_xz, Cid2_xz, Cid3_xz, Cid4_xz, Cid5_xz, Cid6_xz, Cid7_xz});
 
               // 6
@@ -721,7 +721,7 @@ void BlockGeometry3D<T>::InitMPIIntpComm(BlockGeometryHelper3D<T> &GeoHelper) {
               std::size_t Cid6_yz = Cid6_z + block.getNx();
               std::size_t Cid7_yz = Cid7_z + block.getNx();
 
-              sender.SendCells.emplace_back(InterpSource<3>{
+              sender.SendCells.emplace_back(IntpSource<3>{
                 Cid0_yz, Cid1_yz, Cid2_yz, Cid3_yz, Cid4_yz, Cid5_yz, Cid6_yz, Cid7_yz});
 
               // 7
@@ -734,7 +734,7 @@ void BlockGeometry3D<T>::InitMPIIntpComm(BlockGeometryHelper3D<T> &GeoHelper) {
               std::size_t Cid6_xyz = Cid6_yz + 1;
               std::size_t Cid7_xyz = Cid7_yz + 1;
 
-              sender.SendCells.emplace_back(InterpSource<3>{Cid0_xyz, Cid1_xyz, Cid2_xyz,
+              sender.SendCells.emplace_back(IntpSource<3>{Cid0_xyz, Cid1_xyz, Cid2_xyz,
                                                             Cid3_xyz, Cid4_xyz, Cid5_xyz,
                                                             Cid6_xyz, Cid7_xyz});
             }

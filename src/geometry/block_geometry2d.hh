@@ -213,7 +213,7 @@ void BlockGeometry2D<T>::InitComm() {
 template <typename T>
 void BlockGeometry2D<T>::InitAverComm() {
   for (Block2D<T> &block : _Blocks) {
-    std::vector<InterpBlockComm<T, 2>> &Communicators = block.getAverageBlockComm();
+    std::vector<IntpBlockComm<T, 2>> &Communicators = block.getAverageBlockComm();
     Communicators.clear();
     // get the first layer of overlapped cells(counted from inside to outside)
     BasicBlock<T, 2> baseblock_ext1 = block.getBaseBlock().getExtBlock(1);
@@ -222,7 +222,7 @@ void BlockGeometry2D<T>::InitAverComm() {
       // find block of blocklevel+1
       if (nblock->getLevel() == blocklevel + 1) {
         Communicators.emplace_back(nblock);
-        InterpBlockComm<T, 2> &comm = Communicators.back();
+        IntpBlockComm<T, 2> &comm = Communicators.back();
         // vox size
         const T Cvoxsize = block.getVoxelSize();
         const T Fvoxsize = nblock->getVoxelSize();
@@ -247,7 +247,7 @@ void BlockGeometry2D<T>::InitAverComm() {
             std::size_t Fid2 = Fid0 + nblock->getNx();
             std::size_t Fid3 = Fid2 + 1;
             comm.RecvCells.push_back(Cid);
-            comm.SendCells.emplace_back(InterpSource<2>{Fid0, Fid1, Fid2, Fid3});
+            comm.SendCells.emplace_back(IntpSource<2>{Fid0, Fid1, Fid2, Fid3});
           }
         }
       } else if (nblock->getLevel() > blocklevel + 1) {
@@ -263,13 +263,13 @@ template <typename T>
 void BlockGeometry2D<T>::InitIntpComm() {
   for (Block2D<T> &block : _Blocks) {
     std::uint8_t blocklevel = block.getLevel();
-    std::vector<InterpBlockComm<T, 2>> &Communicators = block.getInterpBlockComm();
+    std::vector<IntpBlockComm<T, 2>> &Communicators = block.getIntpBlockComm();
     Communicators.clear();
     for (Block2D<T> *nblock : block.getNeighbors()) {
       // find block of blocklevel-1
       if (nblock->getLevel() == blocklevel - 1) {
         Communicators.emplace_back(nblock);
-        InterpBlockComm<T, 2> &comm = Communicators.back();
+        IntpBlockComm<T, 2> &comm = Communicators.back();
         // vox size
         const T Cvoxsize = nblock->getVoxelSize();
         const T Fvoxsize = block.getVoxelSize();
@@ -303,7 +303,7 @@ void BlockGeometry2D<T>::InitIntpComm() {
 
             // 0
             comm.RecvCells.push_back(Fid);
-            comm.SendCells.emplace_back(InterpSource<2>{Cid0, Cid1, Cid2, Cid3});
+            comm.SendCells.emplace_back(IntpSource<2>{Cid0, Cid1, Cid2, Cid3});
             // comm.InterpWeights.emplace_back(
             //   InterpWeight<T, 2>{T(0.0625), T(0.1875), T(0.1875), T(0.5625)});
 
@@ -314,13 +314,13 @@ void BlockGeometry2D<T>::InitIntpComm() {
             Cid3 += 1;
             Fid += 1;
             comm.RecvCells.push_back(Fid);
-            comm.SendCells.emplace_back(InterpSource<2>{Cid0, Cid1, Cid2, Cid3});
+            comm.SendCells.emplace_back(IntpSource<2>{Cid0, Cid1, Cid2, Cid3});
             // comm.InterpWeights.emplace_back(
             //   InterpWeight<T, 2>{T(0.1875), T(0.0625), T(0.5625), T(0.1875)});
 
             // 2
             comm.RecvCells.push_back(Fid_);
-            comm.SendCells.emplace_back(InterpSource<2>{Cid0_, Cid1_, Cid2_, Cid3_});
+            comm.SendCells.emplace_back(IntpSource<2>{Cid0_, Cid1_, Cid2_, Cid3_});
             // comm.InterpWeights.emplace_back(
             //   InterpWeight<T, 2>{T(0.1875), T(0.5625), T(0.0625), T(0.1875)});
 
@@ -331,7 +331,7 @@ void BlockGeometry2D<T>::InitIntpComm() {
             Cid3_ += 1;
             Fid_ += 1;
             comm.RecvCells.push_back(Fid_);
-            comm.SendCells.emplace_back(InterpSource<2>{Cid0_, Cid1_, Cid2_, Cid3_});
+            comm.SendCells.emplace_back(IntpSource<2>{Cid0_, Cid1_, Cid2_, Cid3_});
             // comm.InterpWeights.emplace_back(
             //   InterpWeight<T, 2>{T(0.5625), T(0.1875), T(0.1875), T(0.0625)});
           }
@@ -390,7 +390,7 @@ void BlockGeometry2D<T>::InitMPIComm(BlockGeometryHelper2D<T> &GeoHelper) {
 template <typename T>
 void BlockGeometry2D<T>::InitMPIAverComm(BlockGeometryHelper2D<T> &GeoHelper) {
   for (Block2D<T> &block : _Blocks) {
-    MPIInterpBlockComm<T, 2> &MPIComm = block.getMPIAverBlockComm();
+    MPIIntpBlockComm<T, 2> &MPIComm = block.getMPIAverBlockComm();
     MPIComm.clear();
     std::uint8_t blocklevel = block.getLevel();
     const BasicBlock<T, 2> &baseblock = block.getBaseBlock();
@@ -404,7 +404,7 @@ void BlockGeometry2D<T>::InitMPIAverComm(BlockGeometryHelper2D<T> &GeoHelper) {
         BasicBlock<T, 2> nbaseblock_ext1 = nbaseblock.getExtBlock(1);
         // init sender
         MPIComm.Senders.emplace_back(nbr.first, nbaseblock.getBlockId());
-        MPIInterpBlockSendStru<T, 2> &sender = MPIComm.Senders.back();
+        MPIIntpBlockSendStru<T, 2> &sender = MPIComm.Senders.back();
         // vox size
         const T Cvoxsize = nbaseblock.getVoxelSize();
         const T Fvoxsize = block.getVoxelSize();
@@ -424,7 +424,7 @@ void BlockGeometry2D<T>::InitMPIAverComm(BlockGeometryHelper2D<T> &GeoHelper) {
             std::size_t Fid1 = Fid0 + 1;
             std::size_t Fid2 = Fid0 + block.getNx();
             std::size_t Fid3 = Fid2 + 1;
-            sender.SendCells.emplace_back(InterpSource<2>{Fid0, Fid1, Fid2, Fid3});
+            sender.SendCells.emplace_back(IntpSource<2>{Fid0, Fid1, Fid2, Fid3});
           }
         }
         block._NeedMPIComm = true;
@@ -463,7 +463,7 @@ void BlockGeometry2D<T>::InitMPIAverComm(BlockGeometryHelper2D<T> &GeoHelper) {
 template <typename T>
 void BlockGeometry2D<T>::InitMPIIntpComm(BlockGeometryHelper2D<T> &GeoHelper) {
   for (Block2D<T> &block : _Blocks) {
-    MPIInterpBlockComm<T, 2> &MPIComm = block.getMPIInterpBlockComm();
+    MPIIntpBlockComm<T, 2> &MPIComm = block.getMPIIntpBlockComm();
     MPIComm.clear();
     std::uint8_t blocklevel = block.getLevel();
     const BasicBlock<T, 2> &baseblock = block.getBaseBlock();
@@ -477,7 +477,7 @@ void BlockGeometry2D<T>::InitMPIIntpComm(BlockGeometryHelper2D<T> &GeoHelper) {
         BasicBlock<T, 2> nbaseblock_ext2 = nbaseblock.getExtBlock(2);
         // init sender
         MPIComm.Senders.emplace_back(nbr.first, nbaseblock.getBlockId());
-        MPIInterpBlockSendStru<T, 2> &sender = MPIComm.Senders.back();
+        MPIIntpBlockSendStru<T, 2> &sender = MPIComm.Senders.back();
         // vox size
         const T Cvoxsize = block.getVoxelSize();
         // const T Fvoxsize = nbaseblock.getVoxelSize();
@@ -505,24 +505,24 @@ void BlockGeometry2D<T>::InitMPIIntpComm(BlockGeometryHelper2D<T> &GeoHelper) {
             std::size_t Cid3_ = Cid3 + block.getNx();
 
             // 0
-            sender.SendCells.emplace_back(InterpSource<2>{Cid0, Cid1, Cid2, Cid3});
+            sender.SendCells.emplace_back(IntpSource<2>{Cid0, Cid1, Cid2, Cid3});
 
             // 1
             Cid0 += 1;
             Cid1 += 1;
             Cid2 += 1;
             Cid3 += 1;
-            sender.SendCells.emplace_back(InterpSource<2>{Cid0, Cid1, Cid2, Cid3});
+            sender.SendCells.emplace_back(IntpSource<2>{Cid0, Cid1, Cid2, Cid3});
 
             // 2
-            sender.SendCells.emplace_back(InterpSource<2>{Cid0_, Cid1_, Cid2_, Cid3_});
+            sender.SendCells.emplace_back(IntpSource<2>{Cid0_, Cid1_, Cid2_, Cid3_});
 
             // 3
             Cid0_ += 1;
             Cid1_ += 1;
             Cid2_ += 1;
             Cid3_ += 1;
-            sender.SendCells.emplace_back(InterpSource<2>{Cid0_, Cid1_, Cid2_, Cid3_});
+            sender.SendCells.emplace_back(IntpSource<2>{Cid0_, Cid1_, Cid2_, Cid3_});
           }
         }
         block._NeedMPIComm = true;
@@ -1000,13 +1000,13 @@ void BlockGeometryHelper2D<T>::Refine() {
 //     // getCellIdx() called from ext block
 //     Block2D<T> &block = _Blocks[i];
 //     std::uint8_t blocklevel = block.getLevel();
-//     std::vector<InterpBlockComm<T, 2>> &Communicators = block.getInterpBlockComm();
+//     std::vector<IntpBlockComm<T, 2>> &Communicators = block.getIntpBlockComm();
 //     Communicators.clear();
 //     for (Block2D<T> *nblock : block.getNeighbors()) {
 //       // find block of blocklevel-1
 //       if (nblock->getLevel() == blocklevel - 1) {
 //         Communicators.emplace_back(nblock);
-//         InterpBlockComm<T, 2> &comm = Communicators.back();
+//         IntpBlockComm<T, 2> &comm = Communicators.back();
 //         // init recv cells
 //         // high level block recv from lower using 2^(diff_level) layers of overlapped
 //         // cells
@@ -1044,7 +1044,7 @@ void BlockGeometryHelper2D<T>::Refine() {
 //           std::size_t id1 = nblock->getIndex(Vector<int, 2>{x + 1, y});
 //           std::size_t id2 = nblock->getIndex(Vector<int, 2>{x, y + 1});
 //           std::size_t id3 = nblock->getIndex(Vector<int, 2>{x + 1, y + 1});
-//           comm.SendCells.emplace_back(InterpSource<2>{id0, id1, id2, id3});
+//           comm.SendCells.emplace_back(IntpSource<2>{id0, id1, id2, id3});
 //           switch (scheme) {
 //             case 0: {
 //               comm.InterpWeights.emplace_back(
@@ -1082,13 +1082,13 @@ void BlockGeometryHelper2D<T>::Refine() {
 //     // get the first layer of overlapped cells(counted from inside to outside)
 //     BasicBlock<T, 2> baseblock_ext1 = block.getBaseBlock().getExtBlock(1);
 //     std::uint8_t blocklevel = block.getLevel();
-//     std::vector<InterpBlockComm<T, 2>> &Communicators = block.getAverageBlockComm();
+//     std::vector<IntpBlockComm<T, 2>> &Communicators = block.getAverageBlockComm();
 //     Communicators.clear();
 //     for (Block2D<T> *nblock : block.getNeighbors()) {
 //       // find block of blocklevel+1
 //       if (nblock->getLevel() == blocklevel + 1) {
 //         Communicators.emplace_back(nblock);
-//         InterpBlockComm<T, 2> &comm = Communicators.back();
+//         IntpBlockComm<T, 2> &comm = Communicators.back();
 //         // init recv cells
 //         // low level block only recv from higher using the first layer of overlapped
 //         cells block.getCellIdx(baseblock_ext1, nblock->getBaseBlock(), comm.RecvCells);
@@ -1112,7 +1112,7 @@ void BlockGeometryHelper2D<T>::Refine() {
 //           std::size_t id2 = nblock->getIndex(locidx2);
 //           Vector<int, 2> locidx3 = locidx0 + Vector<int, 2>{1, 1};
 //           std::size_t id3 = nblock->getIndex(locidx3);
-//           comm.SendCells.emplace_back(InterpSource<2>{id0, id1, id2, id3});
+//           comm.SendCells.emplace_back(IntpSource<2>{id0, id1, id2, id3});
 //         }
 //       } else if (nblock->getLevel() > blocklevel + 1) {
 //         std::cerr << "[BlockGeometry2D<T>::InitAverComm] Error: block level difference
@@ -1131,12 +1131,12 @@ void BlockGeometryHelper2D<T>::Refine() {
 //     Block2D<T> &block = _Blocks[i];
 //     BasicBlock<T, 2> baseblock_ext1 = block.getBaseBlock().getExtBlock(1);
 //     std::uint8_t blocklevel = block.getLevel();
-//     std::vector<InterpBlockComm<T, 2>> &Communicators = block.getAverageBlockComm();
+//     std::vector<IntpBlockComm<T, 2>> &Communicators = block.getAverageBlockComm();
 //     for (Block2D<T> *nblock : block.getNeighbors()) {
 //       // find block of blocklevel+1
 //       if (nblock->getLevel() == blocklevel + 1) {
 //         Communicators.emplace_back(nblock);
-//         InterpBlockComm<T, 2> &comm = Communicators.back();
+//         IntpBlockComm<T, 2> &comm = Communicators.back();
 //         // init recv cells
 //         // low level block only recv from higher using the first layer of overlapped
 //         cells block.getCellIdx(baseblock_ext1, nblock->getBaseBlock(), comm.RecvCells);
@@ -1156,13 +1156,13 @@ void BlockGeometryHelper2D<T>::Refine() {
 //           // vertical
 //           for (int id = 0; id < Sends.size(); id += 4) {
 //             comm.SendCells.emplace_back(
-//               InterpSource<2>{Sends[id], Sends[id + 1], Sends[id + 2], Sends[id + 3]});
+//               IntpSource<2>{Sends[id], Sends[id + 1], Sends[id + 2], Sends[id + 3]});
 //           }
 //         } else if (Align_dir[1] == 0) {
 //           // horizontal
 //           int halfsize = Sends.size() / 2;
 //           for (int id = 0; id < halfsize; id += 2) {
-//             comm.SendCells.emplace_back(InterpSource<2>{
+//             comm.SendCells.emplace_back(IntpSource<2>{
 //               Sends[id], Sends[id + 1], Sends[id + halfsize], Sends[id + halfsize +
 //               1]});
 //           }
@@ -1182,12 +1182,12 @@ void BlockGeometryHelper2D<T>::Refine() {
 //     // getCellIdx() called from ext block
 //     Block2D<T> &block = _Blocks[i];
 //     std::uint8_t blocklevel = block.getLevel();
-//     std::vector<InterpBlockComm<T, 2>> &Communicators = block.getInterpBlockComm();
+//     std::vector<IntpBlockComm<T, 2>> &Communicators = block.getIntpBlockComm();
 //     for (Block2D<T> *nblock : block.getNeighbors()) {
 //       // find block of blocklevel-1
 //       if (nblock->getLevel() == blocklevel - 1) {
 //         Communicators.emplace_back(nblock);
-//         InterpBlockComm<T, 2> &comm = Communicators.back();
+//         IntpBlockComm<T, 2> &comm = Communicators.back();
 //         // init recv cells
 //         block.getCellIdx(block.getAABB(), nblock->getBaseBlock().getAABB(),
 //         comm.RecvCells);
@@ -1250,13 +1250,13 @@ void BlockGeometryHelper2D<T>::Refine() {
 //             int id1 = nblock->getIndex(Vector<int, 2>{basex + 1, basey});
 //             int id2 = nblock->getIndex(Vector<int, 2>{basex, basey + 1});
 //             int id3 = nblock->getIndex(Vector<int, 2>{basex + 1, basey + 1});
-//             comm.SendCells.emplace_back(InterpSource<2>{id0, id1, id2, id3});
+//             comm.SendCells.emplace_back(IntpSource<2>{id0, id1, id2, id3});
 //             comm.InterpWeights.emplace_back(InterpWeight<T, 2>{T(1.25), T(0), T(0),
 //             T(-0.25)}); for (int j = 0; j < VSendCells.size() - 1; j += 2) {
-//               comm.SendCells.emplace_back(InterpSource<2>{id0, id1, id2, id3});
+//               comm.SendCells.emplace_back(IntpSource<2>{id0, id1, id2, id3});
 //               comm.InterpWeights.emplace_back(
 //                 InterpWeight<T, 2>{T(0.9375), T(0.3125), T(-0.1875), T(-0.0625)});
-//               comm.SendCells.emplace_back(InterpSource<2>{id0, id1, id2, id3});
+//               comm.SendCells.emplace_back(IntpSource<2>{id0, id1, id2, id3});
 //               comm.InterpWeights.emplace_back(
 //                 InterpWeight<T, 2>{T(0.3125), T(0.9375), T(-0.0625), T(-0.1875)});
 //               // update ids
@@ -1267,7 +1267,7 @@ void BlockGeometryHelper2D<T>::Refine() {
 //             }
 //             // last cell
 //             --id2;
-//             comm.SendCells.emplace_back(InterpSource<2>{id0, id1, id2, id3});
+//             comm.SendCells.emplace_back(IntpSource<2>{id0, id1, id2, id3});
 //             comm.InterpWeights.emplace_back(InterpWeight<T, 2>{T(1.25), T(0), T(-0.25),
 //             T(0)});
 //           } break;
@@ -1283,13 +1283,13 @@ void BlockGeometryHelper2D<T>::Refine() {
 //             int id1 = nblock->getIndex(Vector<int, 2>{basex + 1, basey});
 //             int id2 = nblock->getIndex(Vector<int, 2>{basex, basey + 1});
 //             int id3 = nblock->getIndex(Vector<int, 2>{basex + 1, basey + 1});
-//             comm.SendCells.emplace_back(InterpSource<2>{id0, id1, id2, id3});
+//             comm.SendCells.emplace_back(IntpSource<2>{id0, id1, id2, id3});
 //             comm.InterpWeights.emplace_back(InterpWeight<T, 2>{T(0), T(1.25), T(-0.25),
 //             T(0)}); for (int j = 0; j < VSendCells.size() - 1; j += 2) {
-//               comm.SendCells.emplace_back(InterpSource<2>{id0, id1, id2, id3});
+//               comm.SendCells.emplace_back(IntpSource<2>{id0, id1, id2, id3});
 //               comm.InterpWeights.emplace_back(
 //                 InterpWeight<T, 2>{T(-0.1875), T(0.9375), T(-0.0625), T(0.3125)});
-//               comm.SendCells.emplace_back(InterpSource<2>{id0, id1, id2, id3});
+//               comm.SendCells.emplace_back(IntpSource<2>{id0, id1, id2, id3});
 //               comm.InterpWeights.emplace_back(
 //                 InterpWeight<T, 2>{T(-0.0625), T(0.3125), T(-0.1875), T(0.9375)});
 //               // update ids
@@ -1300,7 +1300,7 @@ void BlockGeometryHelper2D<T>::Refine() {
 //             }
 //             // last cell
 //             id0 -= nblock->getNx();
-//             comm.SendCells.emplace_back(InterpSource<2>{id0, id1, id2, id3});
+//             comm.SendCells.emplace_back(IntpSource<2>{id0, id1, id2, id3});
 //             comm.InterpWeights.emplace_back(InterpWeight<T, 2>{T(-0.25), T(1.25), T(0),
 //             T(0)});
 //           } break;
@@ -1316,13 +1316,13 @@ void BlockGeometryHelper2D<T>::Refine() {
 //             int id1 = nblock->getIndex(Vector<int, 2>{basex + 1, basey});
 //             int id2 = nblock->getIndex(Vector<int, 2>{basex, basey + 1});
 //             int id3 = nblock->getIndex(Vector<int, 2>{basex + 1, basey + 1});
-//             comm.SendCells.emplace_back(InterpSource<2>{id0, id1, id2, id3});
+//             comm.SendCells.emplace_back(IntpSource<2>{id0, id1, id2, id3});
 //             comm.InterpWeights.emplace_back(InterpWeight<T, 2>{T(0), T(-0.25), T(1.25),
 //             T(0)}); for (int j = 0; j < VSendCells.size() - 1; j += 2) {
-//               comm.SendCells.emplace_back(InterpSource<2>{id0, id1, id2, id3});
+//               comm.SendCells.emplace_back(IntpSource<2>{id0, id1, id2, id3});
 //               comm.InterpWeights.emplace_back(
 //                 InterpWeight<T, 2>{T(-0.1875), T(-0.0625), T(0.9375), T(0.3125)});
-//               comm.SendCells.emplace_back(InterpSource<2>{id0, id1, id2, id3});
+//               comm.SendCells.emplace_back(IntpSource<2>{id0, id1, id2, id3});
 //               comm.InterpWeights.emplace_back(
 //                 InterpWeight<T, 2>{T(-0.0625), T(-0.1875), T(0.3125), T(0.9375)});
 //               // update ids
@@ -1333,7 +1333,7 @@ void BlockGeometryHelper2D<T>::Refine() {
 //             }
 //             // last cell
 //             --id0;
-//             comm.SendCells.emplace_back(InterpSource<2>{id0, id1, id2, id3});
+//             comm.SendCells.emplace_back(IntpSource<2>{id0, id1, id2, id3});
 //             comm.InterpWeights.emplace_back(InterpWeight<T, 2>{T(-0.25), T(0), T(1.25),
 //             T(0)});
 //           } break;
@@ -1349,13 +1349,13 @@ void BlockGeometryHelper2D<T>::Refine() {
 //             int id1 = nblock->getIndex(Vector<int, 2>{basex + 1, basey});
 //             int id2 = nblock->getIndex(Vector<int, 2>{basex, basey + 1});
 //             int id3 = nblock->getIndex(Vector<int, 2>{basex + 1, basey + 1});
-//             comm.SendCells.emplace_back(InterpSource<2>{id0, id1, id2, id3});
+//             comm.SendCells.emplace_back(IntpSource<2>{id0, id1, id2, id3});
 //             comm.InterpWeights.emplace_back(InterpWeight<T, 2>{T(1.25), T(0), T(-0.25),
 //             T(0)}); for (int j = 0; j < VSendCells.size() - 1; j += 2) {
-//               comm.SendCells.emplace_back(InterpSource<2>{id0, id1, id2, id3});
+//               comm.SendCells.emplace_back(IntpSource<2>{id0, id1, id2, id3});
 //               comm.InterpWeights.emplace_back(
 //                 InterpWeight<T, 2>{T(0.9375), T(-0.1875), T(0.3125), T(-0.0625)});
-//               comm.SendCells.emplace_back(InterpSource<2>{id0, id1, id2, id3});
+//               comm.SendCells.emplace_back(IntpSource<2>{id0, id1, id2, id3});
 //               comm.InterpWeights.emplace_back(
 //                 InterpWeight<T, 2>{T(0.3125), T(-0.0625), T(0.9375), T(-0.1875)});
 //               // update ids
@@ -1367,7 +1367,7 @@ void BlockGeometryHelper2D<T>::Refine() {
 //             // last cell
 //             id1 -= nblock->getNx();
 //             id2 -= nblock->getNx();
-//             comm.SendCells.emplace_back(InterpSource<2>{id0, id1, id2, id3});
+//             comm.SendCells.emplace_back(IntpSource<2>{id0, id1, id2, id3});
 //             comm.InterpWeights.emplace_back(InterpWeight<T, 2>{T(0), T(-0.25), T(1.25),
 //             T(0)});
 //           }

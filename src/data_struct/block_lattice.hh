@@ -57,7 +57,7 @@ void BlockLattice<T, LatSet, TypePack>::communicate() {
 template <typename T, typename LatSet, typename TypePack>
 void BlockLattice<T, LatSet, TypePack>::avercommunicate() {
   // average communication, low level get from high level
-  for (InterpBlockLatComm<T, LatSet, TypePack>& comm : AverageComm) {
+  for (IntpBlockLatComm<T, LatSet, TypePack>& comm : AverageComm) {
     BlockLattice<T, LatSet, TypePack>* nBlockLat = comm.SendBlock;
     std::size_t size = comm.getRecvs().size();
     const T OmegaF = nBlockLat->getOmega();
@@ -65,7 +65,7 @@ void BlockLattice<T, LatSet, TypePack>::avercommunicate() {
     GenericArray<Vector<T, LatSet::d>>& nUF =
       nBlockLat->template getField<VELOCITY<T, LatSet::d>>().getField(0);
     for (std::size_t i = 0; i < size; ++i) {
-      const InterpSource<LatSet::d>& sends = comm.getSends()[i];
+      const IntpSource<LatSet::d>& sends = comm.getSends()[i];
       // get averaged(interpolated) rho and u
       T averRho = getAverage<T, LatSet::d>(nRhoF, sends);
       Vector<T, LatSet::d> averU = getAverage<T, LatSet::d>(nUF, sends);
@@ -88,7 +88,7 @@ void BlockLattice<T, LatSet, TypePack>::avercommunicate() {
 template <typename T, typename LatSet, typename TypePack>
 void BlockLattice<T, LatSet, TypePack>::interpcommunicate() {
   // interp communication, high level get from low level
-  for (InterpBlockLatComm<T, LatSet, TypePack>& comm : InterpComm) {
+  for (IntpBlockLatComm<T, LatSet, TypePack>& comm : IntpComm) {
     BlockLattice<T, LatSet, TypePack>* nBlockLat = comm.SendBlock;
     std::size_t size = comm.getRecvs().size();
     const T OmegaC = nBlockLat->getOmega();
@@ -98,7 +98,7 @@ void BlockLattice<T, LatSet, TypePack>::interpcommunicate() {
     if constexpr (LatSet::d == 2) {
       for (std::size_t i = 0; i < size; i += 4) {
         {
-          const InterpSource<LatSet::d>& sends = comm.getSends()[i];
+          const IntpSource<LatSet::d>& sends = comm.getSends()[i];
           // get averaged(interpolated) rho and u
           T averRho = getInterpolation<0, T, LatSet::d>(nRhoF, sends);
           Vector<T, LatSet::d> averU = getInterpolation<0, T, LatSet::d>(nUF, sends);
@@ -116,7 +116,7 @@ void BlockLattice<T, LatSet, TypePack>::interpcommunicate() {
           }
         }
         {
-          const InterpSource<LatSet::d>& sends = comm.getSends()[i + 1];
+          const IntpSource<LatSet::d>& sends = comm.getSends()[i + 1];
           // get averaged(interpolated) rho and u
           T averRho = getInterpolation<1, T, LatSet::d>(nRhoF, sends);
           Vector<T, LatSet::d> averU = getInterpolation<1, T, LatSet::d>(nUF, sends);
@@ -134,7 +134,7 @@ void BlockLattice<T, LatSet, TypePack>::interpcommunicate() {
           }
         }
         {
-          const InterpSource<LatSet::d>& sends = comm.getSends()[i + 2];
+          const IntpSource<LatSet::d>& sends = comm.getSends()[i + 2];
           // get averaged(interpolated) rho and u
           T averRho = getInterpolation<2, T, LatSet::d>(nRhoF, sends);
           Vector<T, LatSet::d> averU = getInterpolation<2, T, LatSet::d>(nUF, sends);
@@ -152,7 +152,7 @@ void BlockLattice<T, LatSet, TypePack>::interpcommunicate() {
           }
         }
         {
-          const InterpSource<LatSet::d>& sends = comm.getSends()[i + 3];
+          const IntpSource<LatSet::d>& sends = comm.getSends()[i + 3];
           // get averaged(interpolated) rho and u
           T averRho = getInterpolation<3, T, LatSet::d>(nRhoF, sends);
           Vector<T, LatSet::d> averU = getInterpolation<3, T, LatSet::d>(nUF, sends);
@@ -559,10 +559,10 @@ template <typename T, typename LatSet, typename TypePack>
 void BlockLatticeManager<T, LatSet, TypePack>::InitAverComm() {
   for (auto& BlockLat : BlockLats) {
     Block<T, LatSet::d>& block = BlockLat.getGeo();
-    std::vector<InterpBlockLatComm<T, LatSet, ALLFIELDS>>& latcomm =
+    std::vector<IntpBlockLatComm<T, LatSet, ALLFIELDS>>& latcomm =
       BlockLat.getAverageComm();
     latcomm.clear();
-    for (InterpBlockComm<T, LatSet::d>& comm : block.getAverageBlockComm()) {
+    for (IntpBlockComm<T, LatSet::d>& comm : block.getAverageBlockComm()) {
       latcomm.emplace_back(&findBlockLat(comm.getSendId()), &comm);
     }
   }
@@ -572,10 +572,10 @@ template <typename T, typename LatSet, typename TypePack>
 void BlockLatticeManager<T, LatSet, TypePack>::InitIntpComm() {
   for (auto& BlockLat : BlockLats) {
     Block<T, LatSet::d>& block = BlockLat.getGeo();
-    std::vector<InterpBlockLatComm<T, LatSet, ALLFIELDS>>& latcomm =
-      BlockLat.getInterpComm();
+    std::vector<IntpBlockLatComm<T, LatSet, ALLFIELDS>>& latcomm =
+      BlockLat.getIntpComm();
     latcomm.clear();
-    for (InterpBlockComm<T, LatSet::d>& comm : block.getInterpBlockComm()) {
+    for (IntpBlockComm<T, LatSet::d>& comm : block.getIntpBlockComm()) {
       latcomm.emplace_back(&findBlockLat(comm.getSendId()), &comm);
     }
   }
@@ -772,13 +772,13 @@ void BlockLatticeManager<T, LatSet, TypePack>::MPIAverComm(std::int64_t count) {
     if (BLat.getLevel() != std::uint8_t(0)) {
       if ((count % (static_cast<int>(pow(2, deLevel))) == 0) &&
           BLat.getGeo()._NeedMPIComm) {
-        const MPIInterpBlockComm<T, LatSet::d>& MPIComm =
+        const MPIIntpBlockComm<T, LatSet::d>& MPIComm =
           BLat.getGeo().getMPIAverBlockComm();
 
         const T OmegaF = BLat.getOmega();
 
         for (std::size_t i = 0; i < MPIComm.Senders.size(); ++i) {
-          const std::vector<InterpSource<LatSet::d>>& sendcells =
+          const std::vector<IntpSource<LatSet::d>>& sendcells =
             MPIComm.Senders[i].SendCells;
 
           std::vector<T>& rhobuffer = this->template getField<GenericRho>()
@@ -802,7 +802,7 @@ void BlockLatticeManager<T, LatSet, TypePack>::MPIAverComm(std::int64_t count) {
                                  .getField(0);
 
           std::size_t bufidx = 0;
-          for (const InterpSource<LatSet::d>& sends : sendcells) {
+          for (const IntpSource<LatSet::d>& sends : sendcells) {
             rhobuffer[bufidx] = getAverage<T, LatSet::d>(RhoArray, sends);
             ubuffer[bufidx] = getAverage<T, LatSet::d>(UArray, sends);
             ++bufidx;
@@ -812,7 +812,7 @@ void BlockLatticeManager<T, LatSet, TypePack>::MPIAverComm(std::int64_t count) {
             const auto& PopArray =
               this->template getField<POP<T, LatSet::q>>().getBlockField(ifield).getField(
                 iArr);
-            for (const InterpSource<LatSet::d>& sends : sendcells) {
+            for (const IntpSource<LatSet::d>& sends : sendcells) {
               popbuffer[bufidx] = getAverage<T, LatSet::d>(PopArray, sends);
               ++bufidx;
             }
@@ -854,7 +854,7 @@ void BlockLatticeManager<T, LatSet, TypePack>::MPIAverComm(std::int64_t count) {
 }
 
 template <typename T, typename LatSet, typename TypePack>
-void BlockLatticeManager<T, LatSet, TypePack>::MPIInterpComm(std::int64_t count) {
+void BlockLatticeManager<T, LatSet, TypePack>::MPIIntpComm(std::int64_t count) {
   mpi().barrier();
   // pop conversion before communication
   std::vector<MPI_Request> SendRequestsPop;
@@ -865,27 +865,27 @@ void BlockLatticeManager<T, LatSet, TypePack>::MPIInterpComm(std::int64_t count)
     if (deLevel != -1) {
       if ((count % (static_cast<int>(pow(2, deLevel))) == 0) &&
           BLat.getGeo()._NeedMPIComm) {
-        const MPIInterpBlockComm<T, LatSet::d>& MPIComm =
-          BLat.getGeo().getMPIInterpBlockComm();
+        const MPIIntpBlockComm<T, LatSet::d>& MPIComm =
+          BLat.getGeo().getMPIIntpBlockComm();
 
         const T OmegaC = BLat.getOmega();
 
         for (std::size_t i = 0; i < MPIComm.Senders.size(); ++i) {
-          const std::vector<InterpSource<LatSet::d>>& sendcells =
+          const std::vector<IntpSource<LatSet::d>>& sendcells =
             MPIComm.Senders[i].SendCells;
 
           std::vector<T>& rhobuffer = this->template getField<GenericRho>()
                                         .getBlockField(ifield)
-                                        .getMPIInterpBuffer()
+                                        .getMPIIntpBuffer()
                                         .SendBuffers[i];
           std::vector<Vector<T, LatSet::d>>& ubuffer =
             this->template getField<VELOCITY<T, LatSet::d>>()
               .getBlockField(ifield)
-              .getMPIInterpBuffer()
+              .getMPIIntpBuffer()
               .SendBuffers[i];
           std::vector<T>& popbuffer = this->template getField<POP<T, LatSet::q>>()
                                         .getBlockField(ifield)
-                                        .getMPIInterpBuffer()
+                                        .getMPIIntpBuffer()
                                         .SendBuffers[i];
 
           const auto& RhoArray =
@@ -928,7 +928,7 @@ void BlockLatticeManager<T, LatSet, TypePack>::MPIInterpComm(std::int64_t count)
           MPI_Request request;
           std::vector<T>& popbuffer = this->template getField<POP<T, LatSet::q>>()
                                         .getBlockField(ifield)
-                                        .getMPIInterpBuffer()
+                                        .getMPIIntpBuffer()
                                         .SendBuffers[i];
           mpi().iSend(popbuffer.data(), popbuffer.size(), MPIComm.Senders[i].RecvRank,
                       &request, MPIComm.Senders[i].RecvBlockid);
@@ -945,7 +945,7 @@ void BlockLatticeManager<T, LatSet, TypePack>::MPIInterpComm(std::int64_t count)
   MPI_Waitall(SendRequestsPop.size(), SendRequestsPop.data(), MPI_STATUSES_IGNORE);
   // MPI_Waitall(RecvRequestsPop.size(), RecvRequestsPop.data(), MPI_STATUSES_IGNORE);
   // set
-  this->template getField<POP<T, LatSet::q>>().MPIInterpSet(count, RecvRequestsPop);
+  this->template getField<POP<T, LatSet::q>>().MPIIntpSet(count, RecvRequestsPop);
 }
 
 #endif
@@ -988,7 +988,7 @@ void BlockLatticeManager<T, LatSet, TypePack>::Communicate(std::int64_t count) {
   }
 
 #ifdef MPI_ENABLED
-  MPIInterpComm(count);
+  MPIIntpComm(count);
 #endif
 
   mpi().barrier();

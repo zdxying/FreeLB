@@ -30,7 +30,7 @@
 
 #ifdef __CUDACC__
 // #include "utils/cuda_device.h"
-#include "data_struct/field_cuda.h"
+#include "data_struct/cuda_field.h"
 #endif
 
 
@@ -1161,14 +1161,14 @@ class GenericArrayField {
 
 #ifdef __CUDACC__
   using cudev_ArrayType = typename ArrayType::cudev_array_type;
-  using cudev_array_type = cudev::GenericArrayField<cudev_ArrayType, D>;
+  using cudev_GenericArrayFieldType = cudev::GenericArrayField<cudev_ArrayType, D>;
 #endif
 
  private:
   // field data
   std::array<ArrayType, D> _data;
 #ifdef __CUDACC__
-  cudev::GenericArrayField<cudev_ArrayType, D>* dev_GenericArrayField;
+  cudev_GenericArrayFieldType* dev_GenericArrayField;
   cudev_ArrayType** dev_data;
 #endif
 
@@ -1187,7 +1187,6 @@ class GenericArrayField {
     for (unsigned int i = 0; i < D; ++i) _data[i] = genF._data[i];
 #ifdef __CUDACC__
     dev_data = cuda_malloc<cudev_ArrayType*>(D);
-    dev_GenericArrayField = cuda_malloc<cudev::GenericArrayField<cudev_ArrayType, D>>(1);
     device_to_device(dev_data, genF.dev_data, D);
     constructInDevice();
 #endif
@@ -1240,7 +1239,6 @@ class GenericArrayField {
   void InitDeviceData() {
 #ifdef __CUDACC__
     dev_data = cuda_malloc<cudev_ArrayType*>(D);
-    dev_GenericArrayField = cuda_malloc<cudev::GenericArrayField<cudev_ArrayType, D>>(1);
     cudev_ArrayType* host_Data[D];
     for (unsigned int i = 0; i < D; ++i) host_Data[i] = _data[i].get_devObj();
     host_to_device(dev_data, host_Data, D);
@@ -1256,13 +1254,11 @@ class GenericArrayField {
     for (unsigned int i = 0; i < D; ++i) _data[i].copyToHost();
   }
   cudev_ArrayType** get_devptr() { return dev_data; }
-  cudev::GenericArrayField<cudev_ArrayType, D>* get_devObj() {
-    return dev_GenericArrayField;
-  }
+  cudev_GenericArrayFieldType* get_devObj() { return dev_GenericArrayField; }
   void constructInDevice() {
-    dev_GenericArrayField = cuda_malloc<cudev::GenericArrayField<cudev_ArrayType, D>>(1);
+    dev_GenericArrayField = cuda_malloc<cudev_GenericArrayFieldType>(1);
     // temp host object
-    cudev::GenericArrayField<cudev_ArrayType, D> temp(dev_data);
+    cudev_GenericArrayFieldType temp(dev_data);
     // copy to device
     host_to_device(dev_GenericArrayField, &temp, 1);
   }
@@ -1317,33 +1313,34 @@ class GenericField : public GenericArrayField<ArrayType, Base::array_dim> {
 
 #ifdef __CUDACC__
   using cudev_ArrayType = typename ArrayType::cudev_array_type;
-  using cudev_array_type = cudev::GenericField<cudev_ArrayType, Base>;
-  cudev::GenericField<cudev_ArrayType, Base>* dev_GenericField;
+  using cudev_FieldType = cudev::GenericField<cudev_ArrayType, Base>;
+
+  cudev_FieldType* dev_GenericField;
 #endif
 
   GenericField() = default;
   GenericField(std::size_t size) : GenericArrayField<ArrayType, array_dim>(size) {
-#ifdef __CUDACC__
     constructInDevice();
-#endif
   }
   GenericField(std::size_t size, value_type initialValue)
       : GenericArrayField<ArrayType, array_dim>(size, initialValue) {
-#ifdef __CUDACC__
     constructInDevice();
-#endif
   }
 
   ~GenericField() = default;
 
-#ifdef __CUDACC__
+
   void constructInDevice() {
-    dev_GenericField = cuda_malloc<cudev::GenericField<cudev_ArrayType, Base>>(1);
+#ifdef __CUDACC__
+    dev_GenericField = cuda_malloc<cudev_FieldType>(1);
     // temp host object
-    cudev::GenericField<cudev_ArrayType, Base> temp(this->get_devptr());
+    cudev_FieldType temp(this->get_devptr());
     // copy to device
     host_to_device(dev_GenericField, &temp, 1);
+#endif
   }
+#ifdef __CUDACC__
+  cudev_FieldType* get_devObj() { return dev_GenericField; }
 #endif
 };
 
@@ -1514,7 +1511,7 @@ void FieldCopy2D(const FIELD& FromField, FIELD& ToField,
 
 template <typename FloatType, unsigned int Dim, typename ArrayType>
 typename ArrayType::value_type getAverage(const ArrayType& Arr,
-                                          const InterpSource<Dim>& src) {
+                                          const IntpSource<Dim>& src) {
   using datatype = typename ArrayType::value_type;
   datatype Aver = datatype{};
   if constexpr (Dim == 2) {
@@ -1528,33 +1525,33 @@ typename ArrayType::value_type getAverage(const ArrayType& Arr,
 }
 
 template <typename T, unsigned int D>
-struct InterpBlockComm;
+struct IntpBlockComm;
 
 template <unsigned int D, typename FloatType, unsigned int Dim, typename ArrayType>
 typename ArrayType::value_type getInterpolation(const ArrayType& Arr,
-                                                const InterpSource<Dim>& src) {
+                                                const IntpSource<Dim>& src) {
   using datatype = typename ArrayType::value_type;
   datatype Intp = datatype{};
   if constexpr (Dim == 2) {
-    Intp = Arr[src[0]] * InterpBlockComm<FloatType, Dim>::getIntpWeight()[D][0] +
-           Arr[src[1]] * InterpBlockComm<FloatType, Dim>::getIntpWeight()[D][1] +
-           Arr[src[2]] * InterpBlockComm<FloatType, Dim>::getIntpWeight()[D][2] +
-           Arr[src[3]] * InterpBlockComm<FloatType, Dim>::getIntpWeight()[D][3];
+    Intp = Arr[src[0]] * IntpBlockComm<FloatType, Dim>::getIntpWeight()[D][0] +
+           Arr[src[1]] * IntpBlockComm<FloatType, Dim>::getIntpWeight()[D][1] +
+           Arr[src[2]] * IntpBlockComm<FloatType, Dim>::getIntpWeight()[D][2] +
+           Arr[src[3]] * IntpBlockComm<FloatType, Dim>::getIntpWeight()[D][3];
   } else if constexpr (Dim == 3) {
-    Intp = Arr[src[0]] * InterpBlockComm<FloatType, Dim>::getIntpWeight()[D][0] +
-           Arr[src[1]] * InterpBlockComm<FloatType, Dim>::getIntpWeight()[D][1] +
-           Arr[src[2]] * InterpBlockComm<FloatType, Dim>::getIntpWeight()[D][2] +
-           Arr[src[3]] * InterpBlockComm<FloatType, Dim>::getIntpWeight()[D][3] +
-           Arr[src[4]] * InterpBlockComm<FloatType, Dim>::getIntpWeight()[D][4] +
-           Arr[src[5]] * InterpBlockComm<FloatType, Dim>::getIntpWeight()[D][5] +
-           Arr[src[6]] * InterpBlockComm<FloatType, Dim>::getIntpWeight()[D][6] +
-           Arr[src[7]] * InterpBlockComm<FloatType, Dim>::getIntpWeight()[D][7];
+    Intp = Arr[src[0]] * IntpBlockComm<FloatType, Dim>::getIntpWeight()[D][0] +
+           Arr[src[1]] * IntpBlockComm<FloatType, Dim>::getIntpWeight()[D][1] +
+           Arr[src[2]] * IntpBlockComm<FloatType, Dim>::getIntpWeight()[D][2] +
+           Arr[src[3]] * IntpBlockComm<FloatType, Dim>::getIntpWeight()[D][3] +
+           Arr[src[4]] * IntpBlockComm<FloatType, Dim>::getIntpWeight()[D][4] +
+           Arr[src[5]] * IntpBlockComm<FloatType, Dim>::getIntpWeight()[D][5] +
+           Arr[src[6]] * IntpBlockComm<FloatType, Dim>::getIntpWeight()[D][6] +
+           Arr[src[7]] * IntpBlockComm<FloatType, Dim>::getIntpWeight()[D][7];
   }
   return Intp;
 }
 
 template <typename FloatType, unsigned int Dim, typename ArrayType>
-void Interpolation(const ArrayType& Arr, const std::vector<InterpSource<Dim>>& srcs,
+void Interpolation(const ArrayType& Arr, const std::vector<IntpSource<Dim>>& srcs,
                    std::size_t& srcidx,
                    std::vector<typename ArrayType::value_type>& Buffer,
                    std::size_t& Bufferidx) {
@@ -1577,7 +1574,7 @@ void Interpolation(const ArrayType& Arr, const std::vector<InterpSource<Dim>>& s
 
 template <typename FloatType, unsigned int Dim, typename ArrayType>
 void Interpolation(ArrayType& Arr, const ArrayType& nArr,
-                   const std::vector<InterpSource<Dim>>& sends,
+                   const std::vector<IntpSource<Dim>>& sends,
                    const std::vector<std::size_t>& recvs, std::size_t& sendidx,
                    std::size_t& recvidx) {
   if constexpr (Dim == 2) {

@@ -7,7 +7,7 @@ FLAGS += -O3 -march=native
 # FLAGS += -g -DMPI_DEBUG
 # FLAGS += -g
 # FLAGS += -pg
-FLAGS += -DFLOAT_TYPE=double
+FLAGS += -DFLOAT_TYPE=float
 # FLAGS += -DMPI_ENABLED
 
 OUTPUT += vtkoutput

@@ -448,7 +448,8 @@ class GenericField : public GenericArrayField<ArrayType, Base::array_dim> {
   using array_type = ArrayType;
   using value_type = typename ArrayType::value_type;
 
-  __any__ GenericField(ArrayType** data) : GenericArrayField<ArrayType, array_dim>(data) {}
+  __any__ GenericField(ArrayType** data)
+      : GenericArrayField<ArrayType, array_dim>(data) {}
 };
 
 }  // namespace cudev

@@ -40,16 +40,16 @@ struct BlockLatComm {
 };
 
 template <typename T, typename LatSet, typename TypePack>
-struct InterpBlockLatComm {
+struct IntpBlockLatComm {
   BlockLattice<T, LatSet, TypePack>* SendBlock;
-  InterpBlockComm<T, LatSet::d>* Comm;
+  IntpBlockComm<T, LatSet::d>* Comm;
 
-  InterpBlockLatComm(BlockLattice<T, LatSet, TypePack>* sblock,
-                     InterpBlockComm<T, LatSet::d>* interpcomm)
+  IntpBlockLatComm(BlockLattice<T, LatSet, TypePack>* sblock,
+                     IntpBlockComm<T, LatSet::d>* interpcomm)
       : SendBlock(sblock), Comm(interpcomm) {}
 
   std::vector<std::size_t>& getRecvs() { return Comm->RecvCells; }
-  std::vector<InterpSource<LatSet::d>>& getSends() { return Comm->SendCells; }
+  std::vector<IntpSource<LatSet::d>>& getSends() { return Comm->SendCells; }
   // std::vector<InterpWeight<T, LatSet::d>>& getWeights() { return Comm->InterpWeights; }
 };
 
@@ -68,9 +68,9 @@ class BlockLattice : public BlockLatticeBase<T, LatSet, TypePack> {
   // conmmunicate with same level block
   std::vector<BlockLatComm<T, LatSet, TypePack>> Communicators;
   // average blocklat comm, get from higher level block
-  std::vector<InterpBlockLatComm<T, LatSet, TypePack>> AverageComm;
+  std::vector<IntpBlockLatComm<T, LatSet, TypePack>> AverageComm;
   // interp blocklat comm, get from lower level block
-  std::vector<InterpBlockLatComm<T, LatSet, TypePack>> InterpComm;
+  std::vector<IntpBlockLatComm<T, LatSet, TypePack>> IntpComm;
 
   // omega = 1 / tau
   T Omega;
@@ -103,11 +103,11 @@ class BlockLattice : public BlockLatticeBase<T, LatSet, TypePack> {
   std::vector<BlockLatComm<T, LatSet, TypePack>>& getCommunicators() {
     return Communicators;
   }
-  std::vector<InterpBlockLatComm<T, LatSet, TypePack>>& getAverageComm() {
+  std::vector<IntpBlockLatComm<T, LatSet, TypePack>>& getAverageComm() {
     return AverageComm;
   }
-  std::vector<InterpBlockLatComm<T, LatSet, TypePack>>& getInterpComm() {
-    return InterpComm;
+  std::vector<IntpBlockLatComm<T, LatSet, TypePack>>& getIntpComm() {
+    return IntpComm;
   }
 
   // normal communication, which can be done using normalcommunicate() in blockFM
@@ -280,7 +280,7 @@ class BlockLatticeManager : public BlockLatticeManagerBase<T, LatSet, TypePack> 
 
 #ifdef MPI_ENABLED
   void MPIAverComm(std::int64_t count);
-  void MPIInterpComm(std::int64_t count);
+  void MPIIntpComm(std::int64_t count);
 #endif
 
   void Communicate(std::int64_t count);

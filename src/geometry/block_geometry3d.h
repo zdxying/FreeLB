@@ -38,9 +38,9 @@ class Block3D : public BasicBlock<T, 3> {
   // conmmunicate with same level block
   std::vector<BlockComm<T, 3>> Communicators;
   // average block comm, get from higher level block
-  std::vector<InterpBlockComm<T, 3>> AverageComm;
+  std::vector<IntpBlockComm<T, 3>> AverageComm;
   // interp block comm, get from lower level block
-  std::vector<InterpBlockComm<T, 3>> InterpComm;
+  std::vector<IntpBlockComm<T, 3>> IntpComm;
 
   // overlap
   int _overlap;
@@ -50,9 +50,9 @@ class Block3D : public BasicBlock<T, 3> {
   // conmmunicate with same level block
   MPIBlockComm MPIComm;
   // average block comm, get from higher level block
-  MPIInterpBlockComm<T, 3> MPIAverComm;
+  MPIIntpBlockComm<T, 3> MPIAverComm;
   // interp block comm, get from lower level block
-  MPIInterpBlockComm<T, 3> MPIInterpComm;
+  MPIIntpBlockComm<T, 3> MPIIntpComm;
 #endif
 
  public:
@@ -81,9 +81,9 @@ class Block3D : public BasicBlock<T, 3> {
 
   std::vector<BlockComm<T, 3>>& getCommunicators() { return Communicators; }
 
-  std::vector<InterpBlockComm<T, 3>>& getInterpBlockComm() { return InterpComm; }
+  std::vector<IntpBlockComm<T, 3>>& getIntpBlockComm() { return IntpComm; }
 
-  std::vector<InterpBlockComm<T, 3>>& getAverageBlockComm() { return AverageComm; }
+  std::vector<IntpBlockComm<T, 3>>& getAverageBlockComm() { return AverageComm; }
 
 #ifdef MPI_ENABLED
   int getRank() const { return _Rank; }
@@ -92,11 +92,11 @@ class Block3D : public BasicBlock<T, 3> {
   MPIBlockComm& getMPIBlockComm() { return MPIComm; }
   const MPIBlockComm& getMPIBlockComm() const { return MPIComm; }
 
-  MPIInterpBlockComm<T, 3>& getMPIInterpBlockComm() { return MPIInterpComm; }
-  const MPIInterpBlockComm<T, 3>& getMPIInterpBlockComm() const { return MPIInterpComm; }
+  MPIIntpBlockComm<T, 3>& getMPIIntpBlockComm() { return MPIIntpComm; }
+  const MPIIntpBlockComm<T, 3>& getMPIIntpBlockComm() const { return MPIIntpComm; }
 
-  MPIInterpBlockComm<T, 3>& getMPIAverBlockComm() { return MPIAverComm; }
-  const MPIInterpBlockComm<T, 3>& getMPIAverBlockComm() const { return MPIAverComm; }
+  MPIIntpBlockComm<T, 3>& getMPIAverBlockComm() { return MPIAverComm; }
+  const MPIIntpBlockComm<T, 3>& getMPIAverBlockComm() const { return MPIAverComm; }
 
 #endif
 };

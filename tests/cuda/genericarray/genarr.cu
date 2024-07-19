@@ -6,7 +6,9 @@
 using T = FLOAT;
 
 std::size_t N = 10;
-
+std::size_t Ni = 10;
+std::size_t Nj = 10;
+std::size_t Nk = 10;
 
 // GenericArray
 template <typename T>
@@ -114,7 +116,12 @@ int main() {
   // std::cout << "sizeof(T) = " << sizeof(T) << std::endl;
   // std::cout << "sizeof(Vector<T, 3>) = " << sizeof(Vector<T, 3>) << std::endl;
 
-  VELOCITY<T, 3> v(N, Vector<T, 3>{T{1.}, T{2.}, T{3.}});
+  AABB<T, 3> cavity(Vector<T, 3>{}, Vector<T, 3>(T(Ni), T(Nj), T(Nk)));
+  BlockGeometry3D<T> Geo(Ni, Nj, Nk, 1, cavity, 1);
+  BlockFieldManager<VELOCITY<T, 3>, T, 3> vFM(Geo, Vector<T, 3>{T{1.}, T{2.}, T{3.}});
+  auto& v = vFM.getBlockField(0);
+
+  // VELOCITY<T, 3> v(N, Vector<T, 3>{T{1.}, T{2.}, T{3.}});
   std::cout << v.get(N-1)[0] << " " << v.get(N-1)[1] << " " << v.get(N-1)[2] << std::endl;
   addGenericField(v, Vector<T, 3>{T{1.}, T{2.}, T{3.}});
   v.copyToHost();
