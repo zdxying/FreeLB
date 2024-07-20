@@ -360,6 +360,20 @@ class StreamArray {
     *_shift = shift;
     _start = _data + shift;
   }
+  __device__ void rotate(std::ptrdiff_t offset) {
+    const std::ptrdiff_t n = *count;
+    std::ptrdiff_t shift = *_shift;
+    shift -= offset;
+    if (shift >= n) {
+      shift -= n;
+      copyToFront(shift);
+    } else if (shift < 0) {
+      shift += n;
+      copyToBack(shift);
+    }
+    *_shift = shift;
+    _start = _data + shift;
+  }
   __device__ void copyToBack(std::ptrdiff_t endoffset = 0) {
     T* const base = _data;
     endoffset = endoffset == 0 ? *count : endoffset;

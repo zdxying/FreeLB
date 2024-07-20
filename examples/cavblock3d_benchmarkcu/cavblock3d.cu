@@ -163,7 +163,7 @@ int main() {
   // lattice
   BlockLatticeManager<T, LatSet, FIELDS> NSLattice(Geo, InitValues, BaseConv);
   // NSLattice.EnableToleranceU();
-  T res = 1;
+  // T res = 1;
   // set initial value of field
   Vector<T, 3> LatU_Wall = BaseConv.getLatticeU(U_Wall);
   NSLattice.getField<VELOCITY<T, LatSet::d>>().forEach(
@@ -171,11 +171,11 @@ int main() {
     [&](auto& field, std::size_t id) { field.SetField(id, LatU_Wall); });
 
   // bcs
-  BBLikeFixedBlockBdManager<bounceback::normal<CELL>, BlockLatticeManager<T, LatSet, FIELDS>, BlockFieldManager<FLAG, T, 3>>
-    NS_BB("NS_BB", NSLattice, FlagFM, BouncebackFlag, VoidFlag);
-  BBLikeFixedBlockBdManager<bounceback::movingwall<CELL>, BlockLatticeManager<T, LatSet, FIELDS>, BlockFieldManager<FLAG, T, 3>>
-    NS_BBMW("NS_BBMW", NSLattice, FlagFM, BBMovingWallFlag, VoidFlag);
-  BlockBoundaryManager BM(&NS_BB, &NS_BBMW);
+  // BBLikeFixedBlockBdManager<bounceback::normal<CELL>, BlockLatticeManager<T, LatSet, FIELDS>, BlockFieldManager<FLAG, T, 3>>
+  //   NS_BB("NS_BB", NSLattice, FlagFM, BouncebackFlag, VoidFlag);
+  // BBLikeFixedBlockBdManager<bounceback::movingwall<CELL>, BlockLatticeManager<T, LatSet, FIELDS>, BlockFieldManager<FLAG, T, 3>>
+  //   NS_BBMW("NS_BBMW", NSLattice, FlagFM, BBMovingWallFlag, VoidFlag);
+  // BlockBoundaryManager BM(&NS_BB, &NS_BBMW);
 
   // define task/ dynamics:
   // bulk task
@@ -211,21 +211,25 @@ int main() {
   // NSWriter.WriteBinary(MainLoopTimer());
 
   for(int i = 0; i < 10; ++i){
-    NSLattice.ApplyCellDynamics<NSTask>(FlagFM);
-    NSLattice.Stream();
+    // NSLattice.ApplyCellDynamics<NSTask>(FlagFM);
+    NSLattice.CuDevApplyCellDynamics<NSTask>(FlagFM);
+    // NSLattice.Stream();
+    NSLattice.CuDevStream();
   }
 
   MainLoopTimer.START_TIMER();
   while (MainLoopTimer() < MaxStep) {
 
-    NSLattice.ApplyCellDynamics<NSTask>(FlagFM);
+    // NSLattice.ApplyCellDynamics<NSTask>(FlagFM);
+    NSLattice.CuDevApplyCellDynamics<NSTask>(FlagFM);
     // NSLattice.ApplyCellDynamics<collision::BGK_Feq<equilibrium::SecondOrder<CELL>>>();
     // NSLattice.ApplyCellDynamics<collision::BGK_Feq_RhoU<equilibrium::SecondOrder<CELL>>>(BulkTaskIds);
     // NSLattice.ApplyCellDynamics<collision::BGK_Feq<equilibrium::SecondOrder<CELL>>>(WallTaskIds);
     // NSLattice.ApplyCellDynamics<collision::BounceBack<CELL>>(BBTaskIds);
     // NSLattice.ApplyCellDynamics<collision::BounceBackMovingWall<CELL>>(BBMWTaskIds);
     
-    NSLattice.Stream();
+    // NSLattice.Stream();
+    NSLattice.CuDevStream();
 
     // BM.Apply(MainLoopTimer());
 

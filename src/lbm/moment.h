@@ -34,19 +34,19 @@ struct rho {
 
   using GenericRho = typename CELL::GenericRho;
 
-  static inline T get(CELL& cell) {
+  __any__ static inline T get(CELL& cell) {
     T rho_value{};
     for (unsigned int i = 0; i < LatSet::q; ++i) rho_value += cell[i];
     if constexpr (WriteToField) cell.template get<GenericRho>() = rho_value;
     return rho_value;
   }
-  static inline void apply(CELL& cell, T& rho_value) {
+  __any__ static inline void apply(CELL& cell, T& rho_value) {
     rho_value = T{};
     for (unsigned int i = 0; i < LatSet::q; ++i) rho_value += cell[i];
     if constexpr (WriteToField) cell.template get<GenericRho>() = rho_value;
   }
   // always write to field
-  static inline void apply(CELL& cell) {
+  __any__ static inline void apply(CELL& cell) {
     T& rho_value = cell.template get<GenericRho>();
     rho_value = T{};
     for (unsigned int i = 0; i < LatSet::q; ++i) rho_value += cell[i];
@@ -61,17 +61,17 @@ struct constrho {
 
   using GenericRho = typename CELL::GenericRho;
 
-  static inline T get(CELL& cell) {
+  __any__ static inline T get(CELL& cell) {
     T rho_value = cell.template get<CONSTRHOTYPE>();
     if constexpr (WriteToField) cell.template get<GenericRho>() = rho_value;
     return rho_value;
   }
-  static inline void apply(CELL& cell, T& rho_value) {
+  __any__ static inline void apply(CELL& cell, T& rho_value) {
     rho_value = cell.template get<CONSTRHOTYPE>();
     if constexpr (WriteToField) cell.template get<GenericRho>() = rho_value;
   }
   // always write to field
-  static inline void apply(CELL& cell) {
+  __any__ static inline void apply(CELL& cell) {
     cell.template get<GenericRho>() = cell.template get<CONSTRHOTYPE>();
   }
 };
@@ -86,7 +86,7 @@ struct sourceRho {
 
   using GenericRho = typename CELL::GenericRho;
 
-  static inline T get(CELL& cell, T source) {
+  __any__ static inline T get(CELL& cell, T source) {
     T rho_value{};
     for (unsigned int i = 0; i < LatSet::q; ++i) rho_value += cell[i];
     // fOmega: avoid lattice artifact
@@ -94,14 +94,14 @@ struct sourceRho {
     if constexpr (WriteToField) cell.template get<GenericRho>() = rho_value;
     return rho_value;
   }
-  static inline void apply(CELL& cell, T& rho_value, T source) {
+  __any__ static inline void apply(CELL& cell, T& rho_value, T source) {
     rho_value = T{};
     for (unsigned int i = 0; i < LatSet::q; ++i) rho_value += cell[i];
     rho_value += source * T{0.5};
     if constexpr (WriteToField) cell.template get<GenericRho>() = rho_value;
   }
   // always write to field
-  static inline void apply(CELL& cell, T source) {
+  __any__ static inline void apply(CELL& cell, T source) {
     T& rho_value = cell.template get<GenericRho>();
     rho_value = T{};
     for (unsigned int i = 0; i < LatSet::q; ++i) rho_value += cell[i];
@@ -115,7 +115,7 @@ struct u {
   using T = typename CELL::FloatType;
   using LatSet = typename CELL::LatticeSet;
 
-  static inline Vector<T, LatSet::d> get(CELL& cell) {
+  __any__ static inline Vector<T, LatSet::d> get(CELL& cell) {
     Vector<T, LatSet::d> u_value{};
     T rho_value{};
     for (unsigned int i = 0; i < LatSet::q; ++i) {
@@ -126,7 +126,7 @@ struct u {
     if constexpr (WriteToField) cell.template get<VELOCITY<T, LatSet::d>>() = u_value;
     return u_value;
   }
-  static inline void apply(CELL& cell, Vector<T, LatSet::d>& u_value) {
+  __any__ static inline void apply(CELL& cell, Vector<T, LatSet::d>& u_value) {
     u_value.clear();
     T rho_value{};
     for (unsigned int i = 0; i < LatSet::q; ++i) {
@@ -137,7 +137,7 @@ struct u {
     if constexpr (WriteToField) cell.template get<VELOCITY<T, LatSet::d>>() = u_value;
   }
   // always write to field
-  static inline void apply(CELL& cell) {
+  __any__ static inline void apply(CELL& cell) {
     Vector<T, LatSet::d>& u_value = cell.template get<VELOCITY<T, LatSet::d>>();
     T rho_value{};
     for (unsigned int i = 0; i < LatSet::q; ++i) {
@@ -154,17 +154,17 @@ struct constu {
   using T = typename CELL::FloatType;
   using LatSet = typename CELL::LatticeSet;
 
-  static inline Vector<T, LatSet::d> get(CELL& cell) {
+  __any__ static inline Vector<T, LatSet::d> get(CELL& cell) {
     Vector<T, LatSet::d> u_value = cell.template get<CONSTU<T, LatSet::d>>();
     if constexpr (WriteToField) cell.template get<VELOCITY<T, LatSet::d>>() = u_value;
     return u_value;
   }
-  static inline void apply(CELL& cell, Vector<T, LatSet::d>& u_value) {
+  __any__ static inline void apply(CELL& cell, Vector<T, LatSet::d>& u_value) {
     u_value = cell.template get<CONSTU<T, LatSet::d>>();
     if constexpr (WriteToField) cell.template get<VELOCITY<T, LatSet::d>>() = u_value;
   }
   // always write to field
-  static inline void apply(CELL& cell) {
+  __any__ static inline void apply(CELL& cell) {
     cell.template get<VELOCITY<T, LatSet::d>>() = cell.template get<CONSTU<T, LatSet::d>>();
   }
 };
@@ -176,7 +176,7 @@ struct forceU {
   using LatSet = typename CELL::LatticeSet;
   static constexpr unsigned int scalardir = dir >= 2 ? LatSet::d - 1 : dir;
 
-  static inline Vector<T, LatSet::d> get(CELL& cell,
+  __any__ static inline Vector<T, LatSet::d> get(CELL& cell,
                                          const Vector<T, LatSet::d>& f_alpha) {
     Vector<T, LatSet::d> u_value;
     T rho_value{};
@@ -189,7 +189,7 @@ struct forceU {
     if constexpr (WriteToField) cell.template get<VELOCITY<T, LatSet::d>>() = u_value;
     return u_value;
   }
-  static inline Vector<T, LatSet::d> get(CELL& cell, T f) {
+  __any__ static inline Vector<T, LatSet::d> get(CELL& cell, T f) {
     Vector<T, LatSet::d> u_value;
     T rho_value{};
     for (unsigned int i = 0; i < LatSet::q; ++i) {
@@ -201,7 +201,7 @@ struct forceU {
     if constexpr (WriteToField) cell.template get<VELOCITY<T, LatSet::d>>() = u_value;
     return u_value;
   }
-  static inline void apply(CELL& cell, Vector<T, LatSet::d>& u_value,
+  __any__ static inline void apply(CELL& cell, Vector<T, LatSet::d>& u_value,
                            const Vector<T, LatSet::d>& f_alpha) {
     u_value.clear();
     T rho_value{};
@@ -213,7 +213,7 @@ struct forceU {
     u_value /= rho_value;
     if constexpr (WriteToField) cell.template get<VELOCITY<T, LatSet::d>>() = u_value;
   }
-  static inline void apply(CELL& cell, Vector<T, LatSet::d>& u_value, T f) {
+  __any__ static inline void apply(CELL& cell, Vector<T, LatSet::d>& u_value, T f) {
     u_value.clear();
     T rho_value{};
     for (unsigned int i = 0; i < LatSet::q; ++i) {
@@ -225,7 +225,7 @@ struct forceU {
     if constexpr (WriteToField) cell.template get<VELOCITY<T, LatSet::d>>() = u_value;
   }
   // always write to field
-  static inline void apply(CELL& cell, const Vector<T, LatSet::d>& f_alpha) {
+  __any__ static inline void apply(CELL& cell, const Vector<T, LatSet::d>& f_alpha) {
     Vector<T, LatSet::d>& u_value = cell.template get<VELOCITY<T, LatSet::d>>();
     T rho_value{};
     for (unsigned int i = 0; i < LatSet::q; ++i) {
@@ -235,7 +235,7 @@ struct forceU {
     u_value += f_alpha * T{0.5};
     u_value /= rho_value;
   }
-  static inline void apply(CELL& cell, T f) {
+  __any__ static inline void apply(CELL& cell, T f) {
     Vector<T, LatSet::d>& u_value = cell.template get<VELOCITY<T, LatSet::d>>();
     T rho_value{};
     for (unsigned int i = 0; i < LatSet::q; ++i) {
@@ -255,7 +255,7 @@ struct rhou {
 
   using GenericRho = typename CELL::GenericRho;
 
-  static inline void apply(CELL& cell, T& rho_value, Vector<T, LatSet::d>& u_value) {
+  __any__ static inline void apply(CELL& cell, T& rho_value, Vector<T, LatSet::d>& u_value) {
     rho_value = T{};
     u_value.clear();
     for (unsigned int i = 0; i < LatSet::q; ++i) {
@@ -269,7 +269,7 @@ struct rhou {
     }
   }
   // will write to field regardless of WriteToField value
-  static inline void apply(CELL& cell) {
+  __any__ static inline void apply(CELL& cell) {
     T& rho_value = cell.template get<GenericRho>();
     Vector<T, LatSet::d>& u_value = cell.template get<VELOCITY<T, LatSet::d>>();
     rho_value = T{};
@@ -292,7 +292,7 @@ struct forceRhou {
 
   static constexpr unsigned int scalardir = dir >= 2 ? LatSet::d - 1 : dir;
 
-  static inline void apply(CELL& cell, const Vector<T, LatSet::d>& f_alpha, T& rho_value,
+  __any__ static inline void apply(CELL& cell, const Vector<T, LatSet::d>& f_alpha, T& rho_value,
                            Vector<T, LatSet::d>& u_value) {
     rho_value = T{};
     u_value.clear();
@@ -308,7 +308,7 @@ struct forceRhou {
     }
   }
   // for scalar force
-  static inline void apply(CELL& cell, T f, T& rho_value, Vector<T, LatSet::d>& u_value) {
+  __any__ static inline void apply(CELL& cell, T f, T& rho_value, Vector<T, LatSet::d>& u_value) {
     rho_value = T{};
     u_value.clear();
     for (unsigned int i = 0; i < LatSet::q; ++i) {
@@ -323,7 +323,7 @@ struct forceRhou {
     }
   }
   // always write to field
-  static inline void apply(CELL& cell, const Vector<T, LatSet::d>& f_alpha) {
+  __any__ static inline void apply(CELL& cell, const Vector<T, LatSet::d>& f_alpha) {
     T& rho_value = cell.template get<GenericRho>();
     Vector<T, LatSet::d>& u_value = cell.template get<VELOCITY<T, LatSet::d>>();
     rho_value = T{};
@@ -335,7 +335,7 @@ struct forceRhou {
     u_value += f_alpha * T{0.5};
     u_value /= rho_value;
   }
-  static inline void apply(CELL& cell, T f) {
+  __any__ static inline void apply(CELL& cell, T f) {
     T& rho_value = cell.template get<GenericRho>();
     Vector<T, LatSet::d>& u_value = cell.template get<VELOCITY<T, LatSet::d>>();
     rho_value = T{};
@@ -358,7 +358,7 @@ struct strainRate {
   // S_ab = (-3/(2*tau))*SUM_i(f_i^(1)*c_ia*c_ib)
   // f_i^(1) = f_i - f_i^eq
   // PI_ab^eq = SUM_i(f_i^eq*c_ia*c_ib) = rho*U_a*U_b + rho*Cs^2*delta_ab
-  static inline void get(CELL& cell,
+  __any__ static inline void get(CELL& cell,
                          std::array<T, util::SymmetricMatrixSize<LatSet::d>()>& tensor,
                          const T rho, const Vector<T, LatSet::d>& u) {
     unsigned int i{};
@@ -388,7 +388,7 @@ struct shearRateMag {
   using T = typename CELL::FloatType;
   using LatSet = typename CELL::LatticeSet;
   // \dot{gamma} = sqrt(2*trace(S^2)) = sqrt(2*SUM_{a,b}S_ab^2)
-  static inline T get(const std::array<T, util::SymmetricMatrixSize<LatSet::d>()>& tensor) {
+  __any__ static inline T get(const std::array<T, util::SymmetricMatrixSize<LatSet::d>()>& tensor) {
     T value{};
     unsigned int i{};
     for (unsigned int alpha = 0; alpha < LatSet::d; ++alpha) {

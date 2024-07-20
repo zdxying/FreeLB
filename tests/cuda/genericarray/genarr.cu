@@ -4,6 +4,7 @@
 #include "freelb.hh"
 
 using T = FLOAT;
+using LatSet = D3Q19<T>;
 
 std::size_t N = 10;
 std::size_t Ni = 10;
@@ -112,20 +113,52 @@ void addGenericField(GenericField<ArrayType, Base> &a, T value) {
   addGenericField_kernel<<<blockNum, blockSize>>>(a.get_devObj(), value);
 }
 
+// blocklattice
+template <typename T, typename LatSet, typename TypePack>
+__any__ void addBlockLatticeImp(cudev::BlockLattice<T, LatSet, TypePack> &a, std::size_t id, T value) {
+  auto& f = a.template getField<cudev::RHO<T>>();
+  f.get(id) += value;
+}
+template <typename T, typename LatSet, typename TypePack>
+__global__ void addBlockLattice_kernel(cudev::BlockLattice<T, LatSet, TypePack> *a, T value, std::size_t size) {
+  int idx = blockIdx.x * blockDim.x + threadIdx.x;
+  if (idx < size) {
+    addBlockLatticeImp(*a, idx, value);
+  }
+}
+template <typename T, typename LatSet, typename TypePack>
+void addBlockLattice(BlockLattice<T, LatSet, TypePack> &a, T value) {
+  const unsigned int blockSize = 32;
+  const unsigned int blockNum = (a.getN() + blockSize - 1) / blockSize;
+  addBlockLattice_kernel<<<blockNum, blockSize>>>(a.get_devObj(), value, a.getN());
+}
+
 int main() {
   // std::cout << "sizeof(T) = " << sizeof(T) << std::endl;
   // std::cout << "sizeof(Vector<T, 3>) = " << sizeof(Vector<T, 3>) << std::endl;
-
+  BaseConverter<T> BaseConv(LatSet::cs2);
+  BaseConv.SimplifiedConverterFromRT(Ni, T{1.}, T{1.});
   AABB<T, 3> cavity(Vector<T, 3>{}, Vector<T, 3>(T(Ni), T(Nj), T(Nk)));
   BlockGeometry3D<T> Geo(Ni, Nj, Nk, 1, cavity, 1);
-  BlockFieldManager<VELOCITY<T, 3>, T, 3> vFM(Geo, Vector<T, 3>{T{1.}, T{2.}, T{3.}});
-  auto& v = vFM.getBlockField(0);
+  // using FIELDS = TypePack<RHO<T>, VELOCITY<T, LatSet::d>, POP<T, LatSet::q>>;
+  // ValuePack InitValues(T{1.}, Vector<T, 3>{}, T{});
+  using FIELDS = TypePack<RHO<T>>;
+  ValuePack InitValues(T{1.});
+  BlockLatticeManager<T, LatSet, FIELDS> NSLattice(Geo, BaseConv);
 
+  auto& f = NSLattice.getBlockLat(0);
+  std::cout << f.template getField<RHO<T>>().get(0) << std::endl;
+  addBlockLattice(NSLattice.getBlockLat(0), T{1.});
+  f.template getField<RHO<T>>().copyToHost();
+  std::cout << f.template getField<RHO<T>>().get(0) << std::endl;
+
+  // BlockFieldManager<VELOCITY<T, 3>, T, 3> vFM(Geo, Vector<T, 3>{T{1.}, T{2.}, T{3.}});
+  // auto& v = vFM.getBlockField(0);
   // VELOCITY<T, 3> v(N, Vector<T, 3>{T{1.}, T{2.}, T{3.}});
-  std::cout << v.get(N-1)[0] << " " << v.get(N-1)[1] << " " << v.get(N-1)[2] << std::endl;
-  addGenericField(v, Vector<T, 3>{T{1.}, T{2.}, T{3.}});
-  v.copyToHost();
-  std::cout << v.get(N-1)[0] << " " << v.get(N-1)[1] << " " << v.get(N-1)[2] << std::endl;
+  // std::cout << v.get(N-1)[0] << " " << v.get(N-1)[1] << " " << v.get(N-1)[2] << std::endl;
+  // addGenericField(v, Vector<T, 3>{T{1.}, T{2.}, T{3.}});
+  // vFM.copyToHost();
+  // std::cout << v.get(N-1)[0] << " " << v.get(N-1)[1] << " " << v.get(N-1)[2] << std::endl;
 
   // RHO<T> v(N, T{1.});
   // CONSTRHO<T> v(1, T{1.});

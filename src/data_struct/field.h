@@ -99,8 +99,8 @@ class Data {
 
   ~Data() {
 #ifdef __CUDACC__
-    cuda_free(dev_data);
-    cuda_free(dev_Data);
+    if (dev_data) cuda_free(dev_data);
+    if (dev_Data) cuda_free(dev_Data);
 #endif
   }
 
@@ -226,8 +226,8 @@ class Array {
 
   ~Array() {
 #ifdef __CUDACC__
-    cuda_free(dev_data);
-    cuda_free(dev_Array);
+    if (dev_data) cuda_free(dev_data);
+    if (dev_Array) cuda_free(dev_Array);
 #endif
   }
 
@@ -309,7 +309,13 @@ class Genericvector {
   using cudev_array_type = cudev::Genericvector<T>;
 #endif
 
-  Genericvector() = default;
+  Genericvector() {
+#ifdef __CUDACC__
+    dev_data = nullptr;
+    dev_count = nullptr;
+    dev_Genericvector = nullptr;
+#endif
+  }
   Genericvector(std::size_t size) {
     data.resize(size);
 #ifdef __CUDACC__
@@ -371,7 +377,13 @@ class Genericvector {
     return *this;
   }
 
-  ~Genericvector() = default;
+  ~Genericvector() {
+#ifdef __CUDACC__
+    if (dev_data) cuda_free(dev_data);
+    if (dev_count) cuda_free(dev_count);
+    if (dev_Genericvector) cuda_free(dev_Genericvector);
+#endif
+  }
 
   void InitDeviceData(std::size_t size) {
 #ifdef __CUDACC__
@@ -467,6 +479,7 @@ class GenericArray {
 #ifdef __CUDACC__
     dev_data = nullptr;
     dev_count = nullptr;
+    dev_GenericArray = nullptr;
 #endif
   }
   GenericArray(std::size_t size) : count(size), data(new T[size]{}) {
@@ -542,9 +555,9 @@ class GenericArray {
   ~GenericArray() {
     delete[] data;
 #ifdef __CUDACC__
-    cuda_free(dev_data);
-    cuda_free(dev_count);
-    cuda_free(dev_GenericArray);
+    if (dev_data) cuda_free(dev_data);
+    if (dev_count) cuda_free(dev_count);
+    if (dev_GenericArray) cuda_free(dev_GenericArray);
 #endif
   }
 
@@ -962,12 +975,12 @@ class StreamArray {
   ~StreamArray() {
     delete[] data;
 #ifdef __CUDACC__
-    cuda_free(dev_count);
-    cuda_free(dev_data);
-    cuda_free(dev_start);
-    cuda_free(dev_shift);
-    cuda_free(dev_Offset);
-    cuda_free(dev_StreamArray);
+    if (dev_count) cuda_free(dev_count);
+    if (dev_data) cuda_free(dev_data);
+    if (dev_start) cuda_free(dev_start);
+    if (dev_shift) cuda_free(dev_shift);
+    if (dev_Offset) cuda_free(dev_Offset);
+    if (dev_StreamArray) cuda_free(dev_StreamArray);
 #endif
   }
 
@@ -1173,7 +1186,12 @@ class GenericArrayField {
 #endif
 
  public:
-  GenericArrayField() : _data{} {}
+  GenericArrayField() : _data{} {
+#ifdef __CUDACC__
+    dev_data = nullptr;
+    dev_GenericArrayField = nullptr;
+#endif
+  }
   GenericArrayField(std::size_t size)
       : _data(make_array<ArrayType, D>([&]() { return ArrayType(size); })) {
     InitDeviceData();
@@ -1231,8 +1249,8 @@ class GenericArrayField {
 
   ~GenericArrayField() {
 #ifdef __CUDACC__
-    cuda_free(dev_data);
-    cuda_free(dev_GenericArrayField);
+    if (dev_data) cuda_free(dev_data);
+    if (dev_GenericArrayField) cuda_free(dev_GenericArrayField);
 #endif
   }
 
@@ -1318,7 +1336,11 @@ class GenericField : public GenericArrayField<ArrayType, Base::array_dim> {
   cudev_FieldType* dev_GenericField;
 #endif
 
-  GenericField() = default;
+  GenericField() {
+#ifdef __CUDACC__
+    dev_GenericField = nullptr;
+#endif
+  }
   GenericField(std::size_t size) : GenericArrayField<ArrayType, array_dim>(size) {
     constructInDevice();
   }
@@ -1327,7 +1349,11 @@ class GenericField : public GenericArrayField<ArrayType, Base::array_dim> {
     constructInDevice();
   }
 
-  ~GenericField() = default;
+  ~GenericField() {
+#ifdef __CUDACC__
+    if (dev_GenericField) cuda_free(dev_GenericField);
+#endif
+  }
 
 
   void constructInDevice() {
@@ -1343,6 +1369,7 @@ class GenericField : public GenericArrayField<ArrayType, Base::array_dim> {
   cudev_FieldType* get_devObj() { return dev_GenericField; }
 #endif
 };
+
 
 template <typename T, unsigned int D>
 class BasicBlock;

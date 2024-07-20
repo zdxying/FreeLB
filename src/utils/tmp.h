@@ -60,6 +60,8 @@ struct Tuple<T, Types...> {
 
   template <typename... Ts, typename... Us>
   __any__ constexpr Tuple(const Tuple<Ts...>& t1, const Tuple<Us...>& t2) : _head(t1._head), _tail(t1._tail, t2) {}
+  template <typename... Ts>
+  __any__ constexpr Tuple(const Tuple<> &t1, const Tuple<Ts...>& t2) : _head(t2._head), _tail(t2._tail) {}
 
   __any__ constexpr Tuple(const Tuple &other) : _head(other._head), _tail(other._tail) {}
   __any__ constexpr Tuple(Tuple &&other) : _head(std::move(other._head)), _tail(std::move(other._tail)) {}
@@ -74,12 +76,12 @@ struct Tuple<T, Types...> {
     return *this;
   }
 
-  __any__ Tail& getTail() { return _tail; }
-  __any__ const Tail& getTail() const { return _tail; }
+  __any__ constexpr Tail& getTail() { return _tail; }
+  __any__ constexpr const Tail& getTail() const { return _tail; }
 
   // get ith element
   template <std::size_t N>
-  __any__ auto &get() {
+  __any__ constexpr auto &get() {
     if constexpr (N == 0) {
       return _head;
     } else {
@@ -87,7 +89,7 @@ struct Tuple<T, Types...> {
     }
   }
   template <std::size_t N>
-  __any__ const auto &get() const {
+  __any__ constexpr const auto &get() const {
     if constexpr (N == 0) {
       return _head;
     } else {
@@ -97,7 +99,7 @@ struct Tuple<T, Types...> {
 
   // get by type
   template <typename U>
-  __any__ auto &get() {
+  __any__ constexpr auto &get() {
     static_assert(!isOneOf<T, Types...>::value, "[Tuple]: Duplicate type in Tuple");
     if constexpr (std::is_same_v<T, U>) {
       return _head;
@@ -106,7 +108,7 @@ struct Tuple<T, Types...> {
     }
   }
   template <typename U>
-  __any__ const auto &get() const {
+  __any__ constexpr const auto &get() const {
     static_assert(!isOneOf<T, Types...>::value, "[Tuple]: Duplicate type in Tuple");
     if constexpr (std::is_same_v<T, U>) {
       return _head;
@@ -115,7 +117,6 @@ struct Tuple<T, Types...> {
     }
   }
 
- private:
   Head _head;
   Tail _tail;
 };
@@ -147,18 +148,21 @@ __any__ constexpr auto make_Tuple() {
 }
 
 
-// helper function to merge 2 Tuple
+// helper function to merge Tuple
+// Base case
+template<typename... Types>
+__any__ constexpr Tuple<Types...> Tuple_cat(Tuple<Types...> t) {
+  return t;
+}
 template <typename... Types1, typename... Types2>
-__any__ Tuple<Types1..., Types2...> Tuple_cat(Tuple<Types1...> t1, Tuple<Types2...> t2) {
+__any__ constexpr Tuple<Types1..., Types2...> Tuple_cat(Tuple<Types1...> t1, Tuple<Types2...> t2) {
   return Tuple<Types1..., Types2...>(t1, t2);
 }
-// merge 3 Tuple
-template <typename... Types1, typename... Types2, typename... Types3>
-__any__ Tuple<Types1..., Types2..., Types3...> Tuple_cat(Tuple<Types1...> t1, Tuple<Types2...> t2,
-                                                 Tuple<Types3...> t3) {
-  return Tuple<Types1..., Types2..., Types3...>(t1, t2, t3);
+template <typename... Types1, typename... Types2, typename... Types3, typename... Rest>
+__any__ constexpr Tuple<Types1..., Types2..., Types3...> Tuple_cat(Tuple<Types1...> t1, Tuple<Types2...> t2,
+                                                 Tuple<Types3...> t3, Rest... rest) {
+  return Tuple_cat(Tuple_cat(t1, t2), t3, rest...);
 }
-
 
 
 namespace tmp {
@@ -201,7 +205,7 @@ template <typename... Types>
 struct TupleWrapper {
  private:
   template <auto KeyValue, std::size_t I, std::size_t... Is>
-  static auto get_by_key(std::index_sequence<I, Is...>) {
+  __any__ static auto get_by_key(std::index_sequence<I, Is...>) {
     if constexpr (get_by_index<I>::key == KeyValue)
       return get_by_index<I>();
     else if constexpr (sizeof...(Is) > 0)
@@ -226,7 +230,7 @@ struct TupleWrapper {
 // helper struct to achieve if-else structure
 template <typename TUPLE, typename FlagType, typename CELL, typename KeySequence>
 struct SelectTask {
-  static void execute(FlagType flag, CELL &cell) {
+  __any__ static void execute(FlagType flag, CELL &cell) {
     if (util::isFlag(flag, KeySequence::first)) {
       TUPLE::template get<KeySequence::first>::type::apply(cell);
     } else if constexpr (KeySequence::rest_size > 0) {
@@ -237,7 +241,7 @@ struct SelectTask {
 
 template <typename TUPLE, typename FlagType, typename CELL>
 struct TaskSelector {
-  static void Execute(FlagType flag, CELL &cell) {
+  __any__ static void Execute(FlagType flag, CELL &cell) {
     SelectTask<TUPLE, FlagType, CELL, typename TUPLE::make_key_sequence>::execute(flag,
                                                                                   cell);
   }
@@ -247,7 +251,7 @@ struct TaskSelector {
 template <typename TUPLE, typename FlagType, typename CELL0, typename CELL1,
           typename KeySequence>
 struct SelectCoupledTask {
-  static void execute(FlagType flag, CELL0 &cell0, CELL1 &cell1) {
+  __any__ static void execute(FlagType flag, CELL0 &cell0, CELL1 &cell1) {
     if (util::isFlag(flag, KeySequence::first)) {
       TUPLE::template get<KeySequence::first>::type::apply(cell0, cell1);
     } else if constexpr (KeySequence::rest_size > 0) {
@@ -259,7 +263,7 @@ struct SelectCoupledTask {
 
 template <typename TUPLE, typename FlagType, typename CELL0, typename CELL1>
 struct CoupledTaskSelector {
-  static void Execute(FlagType flag, CELL0 &cell0, CELL1 &cell1) {
+  __any__ static void Execute(FlagType flag, CELL0 &cell0, CELL1 &cell1) {
     SelectCoupledTask<TUPLE, FlagType, CELL0, CELL1,
                       typename TUPLE::make_key_sequence>::execute(flag, cell0, cell1);
   }
@@ -271,7 +275,7 @@ struct CoupledTaskSelector {
 // TASK SELECTOR
 template <typename FlagType, typename CELL, typename FirstTask, typename... RestTasks>
 struct SelectTask {
-  static void execute(FlagType flag, CELL &cell) {
+  __any__ static void execute(FlagType flag, CELL &cell) {
     if (util::isFlag(flag, FirstTask::key)) {
       FirstTask::type::apply(cell);
     } else if constexpr (sizeof...(RestTasks) > 0) {
@@ -282,7 +286,7 @@ struct SelectTask {
 
 template <typename FlagType, typename CELL, typename FirstTask>
 struct SelectTask<FlagType, CELL, FirstTask>{
-  static void execute(FlagType flag, CELL &cell) {
+  __any__ static void execute(FlagType flag, CELL &cell) {
     if (util::isFlag(flag, FirstTask::key)) {
       FirstTask::type::apply(cell);
     }
@@ -291,7 +295,7 @@ struct SelectTask<FlagType, CELL, FirstTask>{
 
 template <typename FlagType, typename CELL, typename... Tasks>
 struct TaskSelector {
-  static void Execute(FlagType flag, CELL &cell) {
+  __any__ static void Execute(FlagType flag, CELL &cell) {
     SelectTask<FlagType, CELL, Tasks...>::execute(flag, cell);
   }
 };
@@ -299,7 +303,7 @@ struct TaskSelector {
 // COUPLED TASK SELECTOR
 template <typename FlagType, typename CELL0, typename CELL1, typename FirstTask, typename... RestTasks>
 struct SelectCoupledTask {
-  static void execute(FlagType flag, CELL0 &cell0, CELL1 &cell1) {
+  __any__ static void execute(FlagType flag, CELL0 &cell0, CELL1 &cell1) {
     if (util::isFlag(flag, FirstTask::key)) {
       FirstTask::type::apply(cell0, cell1);
     } else if constexpr (sizeof...(RestTasks) > 0) {
@@ -310,7 +314,7 @@ struct SelectCoupledTask {
 
 template <typename FlagType, typename CELL0, typename CELL1, typename FirstTask>
 struct SelectCoupledTask<FlagType, CELL0, CELL1, FirstTask>{
-  static void execute(FlagType flag, CELL0 &cell0, CELL1 &cell1) {
+  __any__ static void execute(FlagType flag, CELL0 &cell0, CELL1 &cell1) {
     if (util::isFlag(flag, FirstTask::key)) {
       FirstTask::type::apply(cell0, cell1);
     }
@@ -319,7 +323,7 @@ struct SelectCoupledTask<FlagType, CELL0, CELL1, FirstTask>{
 
 template <typename FlagType, typename CELL0, typename CELL1, typename... Tasks>
 struct CoupledTaskSelector {
-  static void Execute(FlagType flag, CELL0 &cell0, CELL1 &cell1) {
+  __any__ static void Execute(FlagType flag, CELL0 &cell0, CELL1 &cell1) {
     SelectCoupledTask<FlagType, CELL0, CELL1, Tasks...>::execute(flag, cell0, cell1);
   }
 };
@@ -327,12 +331,14 @@ struct CoupledTaskSelector {
 template <typename... Parameter>
 struct TypePack {
   using types = std::tuple<Parameter...>;
+  // using types = Tuple<Parameter...>;
   static constexpr std::size_t size = sizeof...(Parameter);
 };
 
 template <typename... Params1, typename... Params2>
 struct TypePack<TypePack<Params1...>, TypePack<Params2...>> {
   using types = std::tuple<Params1..., Params2...>;
+  // using types = Tuple<Params1..., Params2...>;
   static constexpr std::size_t size = sizeof...(Params1) + sizeof...(Params2);
 };
 
@@ -377,6 +383,15 @@ struct ExtractFieldPack<TypePack<Params1...>> {
   using mergedpack = TypePack<Params1...>;
 };
 
+// extract cudev field pack from TypePack
+template <typename Pack>
+struct ExtractCudevFieldPack;
+
+template <typename... Params1>
+struct ExtractCudevFieldPack<TypePack<Params1...>> {
+  using cudev_pack = TypePack<typename Params1::cudev_FieldType...>;
+};
+
 template <typename... Packs>
 struct MergeFieldPack;
 
@@ -394,9 +409,11 @@ struct MergeFieldPack<TypePack<Params1...>, TypePack<Params2...>, TypePack<Param
 template <typename... Parameter>
 struct ValuePack {
   std::tuple<Parameter...> values;
+  // Tuple<Parameter...> values;
 
   ValuePack(Parameter... value) : values(value...) {}
   ValuePack(const std::tuple<Parameter...>& value) : values(value) {}
+  // ValuePack(const Tuple<Parameter...>& value) : values(value) {}
 };
 
 // merge two ValuePack
@@ -404,13 +421,14 @@ template <typename... Params1, typename... Params2>
 ValuePack<Params1..., Params2...> mergeValuePack(ValuePack<Params1...> &pack1,
                                                  ValuePack<Params2...> &pack2) {
   return ValuePack<Params1..., Params2...>(std::tuple_cat(pack1.values, pack2.values));
+  // return ValuePack<Params1..., Params2...>(Tuple_cat(pack1.values, pack2.values));
 }
 template <typename... Params1, typename... Params2, typename... Params3>
 ValuePack<Params1..., Params2..., Params3...> mergeValuePack(ValuePack<Params1...> &pack1,
                                                              ValuePack<Params2...> &pack2,
                                                              ValuePack<Params3...> &pack3) {
-  return ValuePack<Params1..., Params2..., Params3...>(std::tuple_cat(pack1.values, pack2.values,
-                                                       pack3.values));
+  return ValuePack<Params1..., Params2..., Params3...>(std::tuple_cat(pack1.values, pack2.values, pack3.values));
+  // return ValuePack<Params1..., Params2..., Params3...>(Tuple_cat(pack1.values, pack2.values, pack3.values));
 }
 
 
@@ -439,6 +457,31 @@ struct FindGenericRhoType<T, TypePack<First>> {
     std::conditional_t<isOneOf<First, RHO<T>, TEMP<T>, CONC<T>>::value, First, void>;
 };
 
+namespace cudev{
+
+#ifdef __CUDACC__
+
+template <typename T, typename Pack>
+struct FindGenericRhoType;
+
+template <typename T, typename First, typename... Rest>
+struct FindGenericRhoType<T, TypePack<First, Rest...>> {
+  using type =
+    std::conditional_t<isOneOf<First, RHO<T>, TEMP<T>, CONC<T>>::value, First,
+                       typename FindGenericRhoType<T, TypePack<Rest...>>::type>;
+};
+
+template <typename T, typename First>
+struct FindGenericRhoType<T, TypePack<First>> {
+  using type =
+    std::conditional_t<isOneOf<First, RHO<T>, TEMP<T>, CONC<T>>::value, First, void>;
+};
+
+#endif
+
+}  // namespace cudev
+
+
 // unroll a for loop, use: unroll_for<x, y>([&](unsigned int i) { ... });
 template <unsigned int start, unsigned int end, typename Func>
 void unroll_for(Func &&f) {
@@ -447,47 +490,3 @@ void unroll_for(Func &&f) {
     unroll_for<start + 1, end>(std::forward<Func>(f));
   }
 }
-
-
-template <typename Pack>
-class FieldPtrCollection;
-
-template <typename... Fields>
-class FieldPtrCollection<TypePack<Fields...>> {
- public:
-  FieldPtrCollection(Fields&... fieldrefs) : 
-  fields(&fieldrefs...) {}
-  FieldPtrCollection(std::tuple<Fields*...> fieldrefs) : 
-  fields(fieldrefs) {}
-
-  void Init(Fields&... fieldrefs) { 
-    fields = std::make_tuple(&fieldrefs...); 
-    // fields = make_Tuple(&fieldrefs...);
-  }
-
-  template <typename FieldType>
-  FieldType& getField() {
-    return *(std::get<FieldType*>(fields));
-    // return *(fields.template get<FieldType*>());
-  }
-  template <typename FieldType>
-  const FieldType& getField() const {
-    return *(std::get<FieldType*>(fields));
-    // return *(fields.template get<FieldType*>());
-  }
-
-  // assign a field pointer to the ith position
-  // template <typename FieldType, unsigned int i>
-  // void addField(FieldType& field) {
-  //   std::get<i>(fields) = &field;
-  // }
-  template <typename FieldType>
-  void addField(FieldType& field) {
-    std::get<FieldType*>(fields) = &field;
-    // fields.template get<FieldType*>() = &field;
-  }
-
- private:
-  std::tuple<Fields*...> fields;
-  // Tuple<Fields*...> fields;
-};

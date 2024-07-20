@@ -45,7 +45,7 @@ struct IntpBlockLatComm {
   IntpBlockComm<T, LatSet::d>* Comm;
 
   IntpBlockLatComm(BlockLattice<T, LatSet, TypePack>* sblock,
-                     IntpBlockComm<T, LatSet::d>* interpcomm)
+                   IntpBlockComm<T, LatSet::d>* interpcomm)
       : SendBlock(sblock), Comm(interpcomm) {}
 
   std::vector<std::size_t>& getRecvs() { return Comm->RecvCells; }
@@ -62,6 +62,11 @@ class BlockLattice : public BlockLatticeBase<T, LatSet, TypePack> {
   using FloatType = T;
 
   using GenericRho = typename FindGenericRhoType<T, TypePack>::type;
+
+#ifdef __CUDACC__
+  using cudev_TypePack = typename ExtractCudevFieldPack<TypePack>::cudev_pack;
+  using cudev_BlockLattice = cudev::BlockLattice<T, LatSet, cudev_TypePack>;
+#endif
 
  protected:
   // --- lattice communication structure ---
@@ -85,12 +90,36 @@ class BlockLattice : public BlockLatticeBase<T, LatSet, TypePack> {
   T URes;
   GenericArray<Vector<T, LatSet::d>> UOld;
 
-
+#ifdef __CUDACC__
+  T* devOmega;
+  T* dev_Omega;
+  T* dev_fOmega;
+  cudev_BlockLattice* dev_BlockLat;
+#endif
 
  public:
   template <typename... FIELDPTRS>
   BlockLattice(Block<T, LatSet::d>& block, AbstractConverter<T>& conv,
                std::tuple<FIELDPTRS...> fieldptrs);
+
+#ifdef __CUDACC__
+  void InitDeviceData() {
+    devOmega = cuda_malloc<T>(1);
+    dev_Omega = cuda_malloc<T>(1);
+    dev_fOmega = cuda_malloc<T>(1);
+    host_to_device(devOmega, &Omega, 1);
+    host_to_device(dev_Omega, &_Omega, 1);
+    host_to_device(dev_fOmega, &fOmega, 1);
+    constructInDevice();
+  }
+  void constructInDevice() {
+    dev_BlockLat = cuda_malloc<cudev_BlockLattice>(1);
+    cudev_BlockLattice temp(this->dev_Delta_Index, this->dev_Fields, devOmega, dev_Omega,
+                            dev_fOmega);
+    host_to_device(dev_BlockLat, &temp, 1);
+  }
+  cudev_BlockLattice* get_devObj() { return dev_BlockLat; }
+#endif
 
   std::array<T*, LatSet::q> getPop(std::size_t id) {
     return this->template getField<POP<T, LatSet::q>>().getArray(id);
@@ -106,9 +135,7 @@ class BlockLattice : public BlockLatticeBase<T, LatSet, TypePack> {
   std::vector<IntpBlockLatComm<T, LatSet, TypePack>>& getAverageComm() {
     return AverageComm;
   }
-  std::vector<IntpBlockLatComm<T, LatSet, TypePack>>& getIntpComm() {
-    return IntpComm;
-  }
+  std::vector<IntpBlockLatComm<T, LatSet, TypePack>>& getIntpComm() { return IntpComm; }
 
   // normal communication, which can be done using normalcommunicate() in blockFM
   void communicate();
@@ -137,6 +164,15 @@ class BlockLattice : public BlockLatticeBase<T, LatSet, TypePack> {
   template <typename CELLDYNAMICS>
   void ApplyInnerCellDynamics();
 
+#ifdef __CUDACC__
+
+  void CuDevStream();
+
+  template <typename CELLDYNAMICS, typename ArrayType>
+  void CuDevApplyCellDynamics(ArrayType& flagarr);
+
+#endif
+
   // tolerance
   void EnableToleranceRho(T rhores = T(1e-5));
   void EnableToleranceU(T ures = T(1e-5));
@@ -146,6 +182,24 @@ class BlockLattice : public BlockLatticeBase<T, LatSet, TypePack> {
   T getTolRho(int shift = 1);
   T getTolU(int shift = 1);
 };
+
+#ifdef __CUDACC__
+
+template <typename T, typename LatSet, typename TypePack>
+__global__ void CuDevStreamKernel(cudev::BlockLattice<T, LatSet, TypePack>* blocklat) {
+  blocklat->Stream();
+}
+
+template <typename T, typename LatSet, typename TypePack, typename CELLDYNAMICS, typename ArrayType>
+__global__ void CuDevApplyCellDynamicsKernel(cudev::BlockLattice<T, LatSet, TypePack>* blocklat, ArrayType* flagarr, std::size_t N) {
+  std::size_t idx = blockIdx.x * blockDim.x + threadIdx.x;
+  if (idx < N) {
+    cudev::Cell<T, LatSet, TypePack> cell(idx, blocklat);
+    CELLDYNAMICS::Execute(flagarr->operator[](idx), cell);
+  }
+}
+
+#endif
 
 // block lattice manager
 template <typename T, typename LatSet, typename TypePack>
@@ -239,12 +293,14 @@ class BlockLatticeManager : public BlockLatticeManagerBase<T, LatSet, TypePack> 
   void ApplyCellDynamics();
 
   template <typename CELLDYNAMICS>
-  void ApplyCellDynamics(std::int64_t count, const GenericvectorManager<std::size_t>& blockids);
+  void ApplyCellDynamics(std::int64_t count,
+                         const GenericvectorManager<std::size_t>& blockids);
   template <typename CELLDYNAMICS>
   void ApplyCellDynamics(const GenericvectorManager<std::size_t>& blockids);
 
   template <typename DYNAMICS, typename elementType>
-  void ApplyDynamics(std::int64_t count, const GenericvectorManager<elementType>& blockids);
+  void ApplyDynamics(std::int64_t count,
+                     const GenericvectorManager<elementType>& blockids);
   template <typename DYNAMICS, typename elementType>
   void ApplyDynamics(const GenericvectorManager<elementType>& blockids);
 
@@ -259,6 +315,15 @@ class BlockLatticeManager : public BlockLatticeManagerBase<T, LatSet, TypePack> 
   void ApplyInnerCellDynamics(std::int64_t count);
   template <typename CELLDYNAMICS>
   void ApplyInnerCellDynamics();
+
+#ifdef __CUDACC__
+
+  void CuDevStream();
+
+  template <typename CELLDYNAMICS, typename FieldType>
+  void CuDevApplyCellDynamics(BlockFieldManager<FieldType, T, LatSet::d>& BFM);
+
+#endif
 
   template <typename Func>
   void ForEachBlockLattice(Func&& func) {

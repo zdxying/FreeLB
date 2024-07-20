@@ -47,34 +47,39 @@
 template <typename T, unsigned int D>
 class Vector {
  private:
-  // T _data[D];
-  std::array<T, D> _data;
+  T _data[D];
+  // std::array<T, D> _data;
 
  public:
   using value_type = T;
   static constexpr unsigned int vector_dim = D;
 
   // constructors
-  constexpr Vector() { _data.fill(T{}); }
-
-  constexpr Vector(T value) { _data.fill(value); }
+  // __any__ constexpr Vector() : _data{} {}
+  __any__ constexpr Vector() {
+    for (unsigned int i = 0; i < D; ++i) _data[i] = T{};
+  }
+  // __any__ constexpr Vector(T value) { _data.fill(value); }
+  __any__ constexpr Vector(T value) {
+    for (unsigned int i = 0; i < D; ++i) _data[i] = value;
+  }
 
   template <typename... Args>
-  constexpr Vector(Args... args) : _data{args...} {}
+  __any__ constexpr Vector(Args... args) : _data{args...} {}
   // Copy constructor
-  constexpr Vector(const Vector<T, D> &vec) {
+  __any__ constexpr Vector(const Vector<T, D> &vec) {
     for (unsigned int i = 0; i < D; ++i) {
       _data[i] = vec[i];
     }
   }
   // Move constructor
-  constexpr Vector(Vector<T, D> &&vec) {
+  __any__ constexpr Vector(Vector<T, D> &&vec) {
     for (unsigned int i = 0; i < D; ++i) {
       _data[i] = vec[i];
     }
   }
 
-  constexpr Vector(const T *array) {
+  __any__ constexpr Vector(const T *array) {
     for (unsigned int i = 0; i < D; ++i) {
       _data[i] = array[i];
     }
@@ -83,12 +88,12 @@ class Vector {
   ~Vector() = default;
 
   // return pointer of the first element
-  constexpr T *data() { return _data.data(); }
-  constexpr const T* data() const { return _data.data(); }
+  __any__ constexpr T *data() { return _data; }
+  __any__ constexpr const T *data() const { return _data; }
 
   // (mathematical) operation
   // return square of the norm of the vector
-  constexpr T getnorm2() const {
+  __any__ constexpr T getnorm2() const {
     T result = 0;
     for (unsigned int i = 0; i < D; ++i) {
       result += _data[i] * _data[i];
@@ -96,16 +101,16 @@ class Vector {
     return result;
   }
   // return norm of the vector
-  constexpr T getnorm() const { return sqrt(getnorm2()); }
+  __any__ constexpr T getnorm() const { return sqrt(getnorm2()); }
   // normalize the vector
-  void normalize() {
+  __any__ void normalize() {
     T norm = this->getnorm();
     for (unsigned int i = 0; i < D; ++i) {
       _data[i] /= norm;
     }
   }
   // get normalized vector
-  constexpr Vector<T, D> getnormalize() const {
+  __any__ constexpr Vector<T, D> getnormalize() const {
     Vector<T, D> result;
     T norm = this->getnorm();
     for (unsigned int i = 0; i < D; ++i) {
@@ -113,34 +118,34 @@ class Vector {
     }
     return result;
   }
-  void abs() {
+  __any__ void abs() {
     for (unsigned int i = 0; i < D; ++i) {
       _data[i] = std::abs(_data[i]);
     }
   }
-  constexpr Vector<T, D> getabs() const {
+  __any__ constexpr Vector<T, D> getabs() const {
     Vector<T, D> result;
     for (unsigned int i = 0; i < D; ++i) {
       result[i] = std::abs(_data[i]);
     }
     return result;
   }
-  void clear() { _data.fill(T(0)); }
+  __any__ void clear() { std::fill(_data, _data + D, T{}); }
 
   // operators
   // []: return reference of the i th element
-  constexpr T &operator[](unsigned int i) { return _data[i]; }
+  __any__ constexpr T &operator[](unsigned int i) { return _data[i]; }
   // []: return const reference of the i th element
-  constexpr const T &operator[](unsigned int i) const { return _data[i]; }
+  __any__ constexpr const T &operator[](unsigned int i) const { return _data[i]; }
   // Copy assignment operator
-  constexpr Vector &operator=(const Vector<T, D> &vec) {
+  __any__ constexpr Vector &operator=(const Vector<T, D> &vec) {
     for (unsigned int i = 0; i < D; ++i) {
       _data[i] = vec[i];
     }
     return *this;
   }
   // Move assignment operator
-  constexpr Vector &operator=(const Vector<T, D> &&vec) {
+  __any__ constexpr Vector &operator=(const Vector<T, D> &&vec) {
     for (unsigned int i = 0; i < D; ++i) {
       _data[i] = vec[i];
     }
@@ -151,7 +156,8 @@ class Vector {
 // operators
 // +: return type will be deduced by decltype(c++11)
 template <typename T, typename U, unsigned int D>
-constexpr Vector<decltype(T{} + U{}), D> operator+(const Vector<T, D> &a, const Vector<U, D> &b) {
+__any__ constexpr Vector<decltype(T{} + U{}), D> operator+(const Vector<T, D> &a,
+                                                           const Vector<U, D> &b) {
   Vector<decltype(T{} + U{}), D> result;
   for (unsigned int i = 0; i < D; ++i) {
     result[i] = a[i] + b[i];
@@ -159,23 +165,24 @@ constexpr Vector<decltype(T{} + U{}), D> operator+(const Vector<T, D> &a, const 
   return result;
 }
 template <typename T, typename U, unsigned int D>
-constexpr Vector<decltype(T{} + U{}), D> operator+(const Vector<T, D> &a, U b) {
+__any__ constexpr Vector<decltype(T{} + U{}), D> operator+(const Vector<T, D> &a, U b) {
   return a + Vector<U, D>(b);
 }
 template <typename T, typename U, unsigned int D>
-Vector<decltype(T{} + U{}), D> operator+(T a, const Vector<U, D> &b) {
+__any__ constexpr Vector<decltype(T{} + U{}), D> operator+(T a, const Vector<U, D> &b) {
   return Vector<T, D>(a) + b;
 }
 // +=: return type will be deduced by decltype(c++11)
 template <typename T, typename U, unsigned int D>
-constexpr Vector<decltype(T{} + U{}), D> &operator+=(Vector<T, D> &a, const Vector<U, D> &b) {
+__any__ constexpr Vector<decltype(T{} + U{}), D> &operator+=(Vector<T, D> &a,
+                                                             const Vector<U, D> &b) {
   for (unsigned int i = 0; i < D; ++i) {
     a[i] += b[i];
   }
   return a;
 }
 template <typename T, typename U, unsigned int D>
-constexpr Vector<decltype(T{} + U{}), D> &operator+=(Vector<T, D> &a, U b) {
+__any__ constexpr Vector<decltype(T{} + U{}), D> &operator+=(Vector<T, D> &a, U b) {
   for (unsigned int i = 0; i < D; ++i) {
     a[i] += b;
   }
@@ -183,7 +190,8 @@ constexpr Vector<decltype(T{} + U{}), D> &operator+=(Vector<T, D> &a, U b) {
 }
 // -: return type will be deduced by decltype(c++11)
 template <typename T, typename U, unsigned int D>
-constexpr Vector<decltype(T{} - U{}), D> operator-(const Vector<T, D> &a, const Vector<U, D> &b) {
+__any__ constexpr Vector<decltype(T{} - U{}), D> operator-(const Vector<T, D> &a,
+                                                           const Vector<U, D> &b) {
   Vector<decltype(T{} - U{}), D> result;
   for (unsigned int i = 0; i < D; ++i) {
     result[i] = a[i] - b[i];
@@ -191,16 +199,17 @@ constexpr Vector<decltype(T{} - U{}), D> operator-(const Vector<T, D> &a, const 
   return result;
 }
 template <typename T, typename U, unsigned int D>
-constexpr Vector<decltype(T{} - U{}), D> operator-(const Vector<T, D> &a, U b) {
+__any__ constexpr Vector<decltype(T{} - U{}), D> operator-(const Vector<T, D> &a, U b) {
   return a - Vector<U, D>(b);
 }
 template <typename T, typename U, unsigned int D>
-constexpr Vector<decltype(T{} - U{}), D> operator-(T a, const Vector<U, D> &b) {
+__any__ constexpr Vector<decltype(T{} - U{}), D> operator-(T a, const Vector<U, D> &b) {
   return Vector<T, D>(a) - b;
 }
 // -=: return type will be deduced by decltype(c++11)
 template <typename T, typename U, unsigned int D>
-constexpr Vector<decltype(T{} - U{}), D> &operator-=(Vector<T, D> &a, const Vector<U, D> &b) {
+__any__ constexpr Vector<decltype(T{} - U{}), D> &operator-=(Vector<T, D> &a,
+                                                             const Vector<U, D> &b) {
   for (unsigned int i = 0; i < D; ++i) {
     a[i] -= b[i];
   }
@@ -208,7 +217,8 @@ constexpr Vector<decltype(T{} - U{}), D> &operator-=(Vector<T, D> &a, const Vect
 }
 // *: inner(dot) product, return type will be deduced by decltype(c++11)
 template <typename T, typename U, unsigned int D>
-constexpr decltype(T{} * U{}) operator*(const Vector<T, D> &a, const Vector<U, D> &b) {
+__any__ constexpr decltype(T{} * U{}) operator*(const Vector<T, D> &a,
+                                                const Vector<U, D> &b) {
   decltype(T{} * U{}) result{};
   for (unsigned int i = 0; i < D; ++i) {
     result += a[i] * b[i];
@@ -218,7 +228,7 @@ constexpr decltype(T{} * U{}) operator*(const Vector<T, D> &a, const Vector<U, D
 // *: Vector multiplies a scalar, return type will be deduced by
 // decltype(c++11)
 template <typename T, typename U, unsigned int D>
-constexpr Vector<decltype(T{} * U{}), D> operator*(const Vector<T, D> &a, U b) {
+__any__ constexpr Vector<decltype(T{} * U{}), D> operator*(const Vector<T, D> &a, U b) {
   Vector<decltype(T{} * U{}), D> result;
   for (unsigned int i = 0; i < D; ++i) {
     result[i] = a[i] * b;
@@ -227,7 +237,7 @@ constexpr Vector<decltype(T{} * U{}), D> operator*(const Vector<T, D> &a, U b) {
 }
 // scalar multiplies a vector
 template <typename T, typename U, unsigned int D>
-constexpr Vector<decltype(T{} * U{}), D> operator*(T a, const Vector<U, D> &b) {
+__any__ constexpr Vector<decltype(T{} * U{}), D> operator*(T a, const Vector<U, D> &b) {
   Vector<decltype(T{} * U{}), D> result;
   for (unsigned int i = 0; i < D; ++i) {
     result[i] = a * b[i];
@@ -236,7 +246,7 @@ constexpr Vector<decltype(T{} * U{}), D> operator*(T a, const Vector<U, D> &b) {
 }
 // /: Vector divides a scalar, return type will be deduced by decltype(c++11)
 template <typename T, typename U, unsigned int D>
-constexpr Vector<decltype(T{} / U{}), D> operator/(const Vector<T, D> &a, U b) {
+__any__ constexpr Vector<decltype(T{} / U{}), D> operator/(const Vector<T, D> &a, U b) {
   Vector<decltype(T{} / U{}), D> result;
   for (unsigned int i = 0; i < D; ++i) {
     result[i] = a[i] / b;
@@ -245,7 +255,7 @@ constexpr Vector<decltype(T{} / U{}), D> operator/(const Vector<T, D> &a, U b) {
 }
 // /=: Vector divides a scalar, return type will be deduced by decltype(c++11)
 template <typename T, typename U, unsigned int D>
-constexpr Vector<decltype(T{} / U{}), D> &operator/=(Vector<T, D> &a, U b) {
+__any__ constexpr Vector<decltype(T{} / U{}), D> &operator/=(Vector<T, D> &a, U b) {
   for (unsigned int i = 0; i < D; ++i) {
     a[i] /= b;
   }
@@ -255,16 +265,17 @@ constexpr Vector<decltype(T{} / U{}), D> &operator/=(Vector<T, D> &a, U b) {
 // other mathematical operations
 // cross product 2D
 template <typename T, typename U>
-constexpr decltype(T{} * U{}) CrossProduct2(const Vector<T, 2> &a, const Vector<U, 2> &b) {
+__any__ constexpr decltype(T{} * U{}) CrossProduct2(const Vector<T, 2> &a,
+                                                    const Vector<U, 2> &b) {
   decltype(T{} * U{}) result = a[0] * b[1] - a[1] * b[0];
   return result;
 }
 // cross product 3D
 template <typename T, typename U>
-constexpr Vector<decltype(T{} * U{}), 3> CrossProduct3(const Vector<T, 3> &a,
-                                                       const Vector<U, 3> &b) {
-  Vector<decltype(T{} * U{}), 3> result(a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2],
-                                        a[0] * b[1] - a[1] * b[0]);
+__any__ constexpr Vector<decltype(T{} * U{}), 3> CrossProduct3(const Vector<T, 3> &a,
+                                                               const Vector<U, 3> &b) {
+  Vector<decltype(T{} * U{}), 3> result(
+    a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]);
   // result[0] = a[1] * b[2] - a[2] * b[1];
   // result[1] = a[2] * b[0] - a[0] * b[2];
   // result[2] = a[0] * b[1] - a[1] * b[0];
@@ -272,7 +283,7 @@ constexpr Vector<decltype(T{} * U{}), 3> CrossProduct3(const Vector<T, 3> &a,
 }
 
 template <typename T, typename U, unsigned int D>
-constexpr auto CrossProduct(const Vector<T, D> &a, const Vector<U, D> &b) {
+__any__ constexpr auto CrossProduct(const Vector<T, D> &a, const Vector<U, D> &b) {
   if constexpr (D == 2) {
     return CrossProduct2(a, b);
   } else {
@@ -282,7 +293,8 @@ constexpr auto CrossProduct(const Vector<T, D> &a, const Vector<U, D> &b) {
 
 // get square of distance between 2 vectors
 template <typename T, typename U, unsigned int D>
-constexpr decltype(T{} * U{}) GetDist2(const Vector<T, D> &a, const Vector<U, D> &b) {
+__any__ constexpr decltype(T{} * U{}) GetDist2(const Vector<T, D> &a,
+                                               const Vector<U, D> &b) {
   decltype(T{} * U{}) result{};
   for (unsigned int i = 0; i < D; ++i) {
     result += pow(a[i] - b[i], 2);
@@ -291,12 +303,13 @@ constexpr decltype(T{} * U{}) GetDist2(const Vector<T, D> &a, const Vector<U, D>
 }
 // get distance between 2 vectors
 template <typename T, typename U, unsigned int D>
-constexpr decltype(T{} * U{}) GetDist(const Vector<T, D> &a, const Vector<U, D> &b) {
+__any__ constexpr decltype(T{} * U{}) GetDist(const Vector<T, D> &a,
+                                              const Vector<U, D> &b) {
   return sqrt(GetDist2(a, b));
 }
 
 template <typename T, unsigned int D>
-constexpr Vector<T, D> getnormalized(const Vector<T, D> &a) {
+__any__ constexpr Vector<T, D> getnormalized(const Vector<T, D> &a) {
   Vector<T, D> result = a;
   T norm = a.getnorm();
   for (unsigned int i = 0; i < D; ++i) {
@@ -310,14 +323,16 @@ constexpr Vector<T, D> getnormalized(const Vector<T, D> &a) {
 // x' = (x - x0) * cos(theta) + (y - y0) * sin(theta)
 // y' = -(x - x0) * sin(theta) + (y - y0) * cos(theta)
 template <typename T>
-constexpr Vector<T, 2> getRLoc(const Vector<T, 2> &loc, const Vector<T, 2> &loc0, T theta = T(0)) {
+__any__ constexpr Vector<T, 2> getRLoc(const Vector<T, 2> &loc, const Vector<T, 2> &loc0,
+                                       T theta = T(0)) {
   T dx = loc[0] - loc0[0];
   T dy = loc[1] - loc0[1];
-  return Vector<T, 2>(dx * cos(theta) + dy * sin(theta), -dx * sin(theta) + dy * cos(theta));
+  return Vector<T, 2>(dx * cos(theta) + dy * sin(theta),
+                      -dx * sin(theta) + dy * cos(theta));
 }
 template <typename T>
-void getRLoc(const Vector<T, 2> &loc, const Vector<T, 2> &loc0, Vector<T, 2> &result,
-             T theta = T(0)) {
+__any__ void getRLoc(const Vector<T, 2> &loc, const Vector<T, 2> &loc0,
+                     Vector<T, 2> &result, T theta = T(0)) {
   T dx = loc[0] - loc0[0];
   T dy = loc[1] - loc0[1];
   result[0] = dx * cos(theta) + dy * sin(theta);
@@ -326,10 +341,13 @@ void getRLoc(const Vector<T, 2> &loc, const Vector<T, 2> &loc0, Vector<T, 2> &re
   //                     -dx * sin(theta) + dy * cos(theta));
 }
 template <typename T>
-constexpr Vector<T, 2> getGLoc(const Vector<T, 2> &loc, const Vector<T, 2> &glob0, T theta = T(0)) {
+__any__ constexpr Vector<T, 2> getGLoc(const Vector<T, 2> &loc, const Vector<T, 2> &glob0,
+                                       T theta = T(0)) {
   T dx = loc[0];
   T dy = loc[1];
-  return Vector<T, 2>(dx * cos(theta) - dy * sin(theta), dx * sin(theta) + dy * cos(theta)) + glob0;
+  return Vector<T, 2>(dx * cos(theta) - dy * sin(theta),
+                      dx * sin(theta) + dy * cos(theta)) +
+         glob0;
 }
 // template <typename T>
 // Vector<T, 2> getRLoc(T x, T y, const Vector<T, 2> &loc0, T theta) {
@@ -340,7 +358,7 @@ constexpr Vector<T, 2> getGLoc(const Vector<T, 2> &loc, const Vector<T, 2> &glob
 // }
 
 template <typename T>
-int getQuad2D(const Vector<T, 2> &a) {
+__any__ int getQuad2D(const Vector<T, 2> &a) {
   // 1 | 0
   // -----
   // 2 | 3

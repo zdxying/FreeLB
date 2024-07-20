@@ -254,3 +254,98 @@ class GenericCell {
   std::size_t getId() const { return Id; }
   std::size_t getNeighborId(int i) const { return Id + Lat.getDelta_Index()[i]; }
 };
+
+
+// gpu representation of cell interface
+namespace cudev {
+
+#ifdef __CUDACC__
+
+template <typename T, typename LatSet, typename TypePack>
+class BlockLattice;
+
+template <typename T, typename LatSet, typename TypePack>
+class BlockLatticeBase;
+
+template <typename T, typename LatSet, typename TypePack>
+class Cell {
+ protected:
+  // global cell index to access field data and distribution functions
+  std::size_t Id;
+  // reference to lattice
+  BlockLattice<T, LatSet, TypePack>* Lat;
+
+ public:
+  using FloatType = T;
+  using LatticeSet = LatSet;
+  using BLOCKLATTICE = BlockLattice<T, LatSet, TypePack>;
+  using GenericRho = typename BLOCKLATTICE::GenericRho;
+
+  __device__ Cell(std::size_t id, BlockLattice<T, LatSet, TypePack>* lat)
+      : Id(id), Lat(lat) {}
+
+  // get population
+  __device__ const T& operator[](int i) const { return Lat->template getField<POP<T, LatSet::q>>().getField(i)[Id]; }
+  __device__ T& operator[](int i) { return Lat->template getField<POP<T, LatSet::q>>().getField(i)[Id]; }
+
+  template <typename FieldType, unsigned int i = 0>
+  __device__ auto& get() {
+    if constexpr (FieldType::isField) {
+      return Lat->template getField<FieldType>().template get<i>(Id);
+    } else {
+      return Lat->template getField<FieldType>().template get<i>();
+    }
+  }
+  template <typename FieldType, unsigned int i = 0>
+  __device__ const auto& get() const {
+    if constexpr (FieldType::isField) {
+      return Lat->template getField<FieldType>().template get<i>(Id);
+    } else {
+      return Lat->template getField<FieldType>().template get<i>();
+    }
+  }
+  template <typename FieldType>
+  __device__ auto& get(unsigned int i) {
+    if constexpr (FieldType::isField) {
+      return Lat->template getField<FieldType>().get(Id, i);
+    } else {
+      return Lat->template getField<FieldType>().get(i);
+    }
+  }
+  template <typename FieldType>
+  __device__ const auto& get(unsigned int i) const {
+    if constexpr (FieldType::isField) {
+      return Lat->template getField<FieldType>().get(Id, i);
+    } else {
+      return Lat->template getField<FieldType>().get(i);
+    }
+  }
+
+  // template <typename FieldType>
+  // static constexpr bool hasField() {
+  //   return BLOCKLATTICE::template hasField<FieldType>();
+  // }
+
+  __device__ Cell<T, LatSet, TypePack> getNeighbor(int i) const {
+    return Cell<T, LatSet, TypePack>(Id + Lat->getDelta_Index()[i], Lat);
+  }
+  __device__ Cell<T, LatSet, TypePack> getNeighbor(const Vector<int, LatSet::d>& direction) const {
+    return Cell<T, LatSet, TypePack>(Id + direction * Lat->getProjection());
+  }
+
+  __device__ void setId(std::size_t id) { Id = id; }
+
+  __device__ std::size_t getId() const { return Id; }
+  __device__ std::size_t getNeighborId(int i) const { return Id + Lat->getDelta_Index()[i]; }
+
+  // get population before streaming
+  __device__ T& getPrevious(int i) const {
+    return Lat->template getField<POP<T, LatSet::q>>().getField(i).getPrevious(Id);
+  }
+  __device__ inline T getOmega() const { return Lat->getOmega(); }
+  __device__ inline T get_Omega() const { return Lat->get_Omega(); }
+  __device__ inline T getfOmega() const { return Lat->getfOmega(); }
+};
+
+#endif
+} // namespace cudev

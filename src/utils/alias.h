@@ -56,7 +56,7 @@ namespace cudev {
 
 using IntpSource2D = thrust::tuple<std::size_t, std::size_t, std::size_t, std::size_t>;
 using IntpSource3D = thrust::tuple<std::size_t, std::size_t, std::size_t, std::size_t,
-                                     std::size_t, std::size_t, std::size_t, std::size_t>;
+                                   std::size_t, std::size_t, std::size_t, std::size_t>;
 template <unsigned int D>
 using IntpSource = std::conditional_t<D == 2, IntpSource2D, IntpSource3D>;
 
@@ -66,27 +66,6 @@ template <typename T>
 using InterpWeight3D = thrust::tuple<T, T, T, T, T, T, T, T>;
 template <typename T, unsigned int D>
 using InterpWeight = std::conditional_t<D == 2, InterpWeight2D<T>, InterpWeight3D<T>>;
-
-template <typename T, typename Base>
-class Data;
-
-template <typename T, typename Base>
-class Array;
-
-template <typename ArrayType, unsigned int D>
-class GenericArrayField;
-
-template <typename ArrayType, typename Base>
-class GenericField;
-
-template <typename T>
-class GenericArray;
-
-template <typename T>
-class CyclicArray;
-
-template <typename T>
-class StreamArray;
 
 #endif
 }  // namespace cudev
@@ -152,6 +131,32 @@ class CyclicArray;
 
 template <typename T>
 class StreamArray;
+
+namespace cudev {
+#ifdef __CUDACC__
+template <typename T, typename Base>
+class Data;
+
+template <typename T, typename Base>
+class Array;
+
+template <typename ArrayType, unsigned int D>
+class GenericArrayField;
+
+template <typename ArrayType, typename Base>
+class GenericField;
+
+template <typename T>
+class GenericArray;
+
+template <typename T>
+class CyclicArray;
+
+template <typename T>
+class StreamArray;
+
+#endif
+}  // namespace cudev
 
 
 template <typename T, unsigned int D>
@@ -248,6 +253,51 @@ class BlockField;
 
 template <typename FieldType, typename FloatType, unsigned int Dim>
 class BlockFieldManager;
+
+namespace cudev {
+
+#ifdef __CUDACC__
+template <typename T>
+using RHO = GenericField<GenericArray<T>, RHOBase>;
+template <typename T>
+using TEMP = GenericField<GenericArray<T>, TEMPBase>;
+template <typename T>
+using CONC = GenericField<GenericArray<T>, CONCBase>;
+template <typename T, unsigned int D>
+using VELOCITY = GenericField<GenericArray<Vector<T, D>>, VELOCITYBase>;
+
+using FLAG = GenericField<GenericArray<std::uint8_t>, FLAGBase>;
+
+template <typename T, unsigned int D>
+using FORCE = GenericField<GenericArray<Vector<T, D>>, FORCEBase>;
+template <typename T>
+using SCALARFORCE = GenericField<GenericArray<T>, SCALARFORCEBase>;
+template <typename T, unsigned int D>
+using CONSTFORCE = Data<Vector<T, D>, CONSTFORCEBase>;
+template <typename T>
+using SCALARCONSTFORCE = Data<T, SCALARCONSTFORCEBase>;
+template <typename T, unsigned int q>
+using POP = GenericField<StreamArray<T>, POPBase<q>>;
+// using POP = GenericField<CyclicArray<T>, POPBase<q>>;
+template <typename T>
+using RHOINIT = Data<T, RHOINITBase>;
+template <typename T>
+using TEMPINIT = Data<T, TEMPINITBase>;
+template <typename T>
+using CONCINIT = Data<T, CONCINITBase>;
+
+template <typename T>
+using GBETA = Data<T, GBETABase>;
+
+template <typename T>
+using CONSTRHO = Data<T, CONSTRHOBase>;
+
+template <typename T, unsigned int D>
+using CONSTU = Data<Vector<T, D>, CONSTUBase>;
+
+#endif
+
+}  // namespace cudev
 
 
 namespace CA {

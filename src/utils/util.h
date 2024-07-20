@@ -54,6 +54,16 @@ template <typename T, unsigned D, typename F>
 std::array<T, D> make_Array(F &&f) {
   return make_Array_impl<T, D>(std::forward<F>(f), std::make_index_sequence<D>{});
 }
+
+template <typename T, unsigned D, typename F, std::size_t... INDICES>
+__any__ void make_PlainArray_impl(F &&f, std::index_sequence<INDICES...>) {
+  (f(INDICES), ...);
+}
+template <typename T, unsigned D, typename F>
+__any__ void make_PlainArray(F &&f) {
+  make_PlainArray_impl<T, D>(std::forward<F>(f), std::make_index_sequence<D>{});
+}
+
 // /// construct a std::array<T,D> where T is an object of class
 // template <typename T, unsigned D, typename F, std::size_t... INDICES>
 // std::array<T,D> make_array(F&& f, std::index_sequence<INDICES...>)

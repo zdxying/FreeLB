@@ -39,7 +39,7 @@ struct BGK_Feq_RhoU {
   using equilibriumscheme = EquilibriumScheme;
   using GenericRho = typename CELL::GenericRho;
 
-  static void apply(CELL& cell) {
+  __any__ static void apply(CELL& cell) {
     // update macroscopic variables
     T rho{};
     Vector<T, LatSet::d> u{};
@@ -68,7 +68,7 @@ struct BGK_Feq {
   using equilibriumscheme = EquilibriumScheme;
   using GenericRho = typename CELL::GenericRho;
 
-  static void apply(CELL& cell) {
+  __any__ static void apply(CELL& cell) {
     // equilibrium distribution function
     std::array<T, LatSet::q> feq{};
     EquilibriumScheme::apply(feq, cell);
@@ -94,7 +94,7 @@ struct BGKForce_Feq_RhoU {
   using equilibriumscheme = EquilibriumScheme;
   using GenericRho = typename CELL::GenericRho;
 
-  static void apply(CELL& cell) {
+  __any__ static void apply(CELL& cell) {
     // update macroscopic variables
     T rho{};
     Vector<T, LatSet::d> u{};
@@ -128,7 +128,7 @@ struct BGKForce_Feq {
   using equilibriumscheme = EquilibriumScheme;
   using GenericRho = typename CELL::GenericRho;
 
-  static void apply(CELL& cell) {
+  __any__ static void apply(CELL& cell) {
     // compute force term
     std::array<T, LatSet::q> fi{};
     ForceScheme::apply(cell, fi);
@@ -158,7 +158,7 @@ struct BGKSource_Feq_Rho {
   using equilibriumscheme = EquilibriumScheme;
   using GenericRho = typename CELL::GenericRho;
 
-  static void apply(CELL& cell) {
+  __any__ static void apply(CELL& cell) {
     // update macroscopic variables
     T rho{};
     const Vector<T, LatSet::d>& u = cell.template get<VELOCITY<T, LatSet::d>>();
@@ -189,7 +189,7 @@ struct BounceBack {
   using GenericRho = typename CELL::GenericRho;
   static constexpr unsigned int startdir = LatSet::q % 2 == 0 ? 0 : 1;
 
-  static void apply(CELL& cell) {
+  __any__ static void apply(CELL& cell) {
     for (unsigned int i = startdir; i < LatSet::q; i += 2) {
       T temp = cell[i];
       unsigned int iopp = i + 1;
@@ -217,7 +217,7 @@ struct BounceBackMovingWall {
   using GenericRho = typename CELL::GenericRho;
   static constexpr unsigned int startdir = LatSet::q % 2 == 0 ? 0 : 1;
 
-  static void apply(CELL& cell) {
+  __any__ static void apply(CELL& cell) {
     T rhox = 2 * LatSet::InvCs2 * cell.template get<GenericRho>();
     for (unsigned int i = startdir; i < LatSet::q; i += 2) {
       T temp = cell[i];
@@ -237,7 +237,7 @@ template <typename T, typename LatSet>
 struct BGK {
   // BGK collision operator
   template <void (*GetFeq)(std::array<T, LatSet::q>&, const Vector<T, LatSet::d>&, T)>
-  static void apply(PopCell<T, LatSet>& cell) {
+  __any__ static void apply(PopCell<T, LatSet>& cell) {
     std::array<T, LatSet::q> feq{};
     GetFeq(feq, cell.getVelocity(), cell.getRho());
 
@@ -251,7 +251,7 @@ struct BGK {
 
   // BGK collision operator with force
   // template <void (*GetFeq)(std::array<T, LatSet::q>&, const Vector<T, LatSet::d>&, T)>
-  // static void applyForce(PopCell<T, LatSet>& cell, const Vector<T, LatSet::d>& force) {
+  // __any__ static void applyForce(PopCell<T, LatSet>& cell, const Vector<T, LatSet::d>& force) {
   //   std::array<T, LatSet::q> feq{};
   //   GetFeq(feq, cell.getVelocity(), cell.getRho());
 
@@ -268,7 +268,7 @@ struct BGK {
   // }
 
   template <void (*GetFeq)(std::array<T, LatSet::q>&, const Vector<T, LatSet::d>&, T)>
-  static void applySource(PopCell<T, LatSet>& cell, const std::array<T, LatSet::q>& fi) {
+  __any__ static void applySource(PopCell<T, LatSet>& cell, const std::array<T, LatSet::q>& fi) {
     std::array<T, LatSet::q> feq{};
     GetFeq(feq, cell.getVelocity(), cell.getRho());
 
@@ -282,7 +282,7 @@ struct BGK {
   }
 
   template <void (*GetFeq)(std::array<T, LatSet::q>&, const Vector<T, LatSet::d>&, T)>
-  static void applySource(PopCell<T, LatSet>& cell, const T S) {
+  __any__ static void applySource(PopCell<T, LatSet>& cell, const T S) {
     std::array<T, LatSet::q> feq{};
     GetFeq(feq, cell.getVelocity(), cell.getRho());
 

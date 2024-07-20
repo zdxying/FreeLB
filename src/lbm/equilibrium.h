@@ -32,22 +32,22 @@ class Cell;
 // sum(feq_i) = rho, for both first and second order
 template <typename T, typename LatSet>
 struct Equilibrium {
-  static inline T Order1(int k, const Vector<T, LatSet::d> &u, T rho) {
+  __any__ static inline T Order1(int k, const Vector<T, LatSet::d> &u, T rho) {
     return LatSet::w[k] * rho * (T{1} + LatSet::InvCs2 * (u * LatSet::c[k]));
   }
 
-  static inline T Order1_Incompresible(int k, const Vector<T, LatSet::d> &u, T rho) {
+  __any__ static inline T Order1_Incompresible(int k, const Vector<T, LatSet::d> &u, T rho) {
     return LatSet::w[k] * (rho + LatSet::InvCs2 * (u * LatSet::c[k]));
   }
 
-  static inline T Order2(int k, const Vector<T, LatSet::d> &u, T rho, T u2) {
+  __any__ static inline T Order2(int k, const Vector<T, LatSet::d> &u, T rho, T u2) {
     T uc = u * LatSet::c[k];
     return LatSet::w[k] * rho *
            (T(1) + LatSet::InvCs2 * uc + uc * uc * T(0.5) * LatSet::InvCs4 -
             LatSet::InvCs2 * u2 * T(0.5));
   }
 
-  // static inline T Order2_Incompresible(int k, const Vector<T, LatSet::d> &u, T rho, T
+  // __any__ static inline T Order2_Incompresible(int k, const Vector<T, LatSet::d> &u, T rho, T
   // u2) {
   //   T uc = u * LatSet::c[k];
   //   return LatSet::w[k] * (rho + LatSet::InvCs2 * uc + uc * uc * T(0.5) *
@@ -56,13 +56,13 @@ struct Equilibrium {
   // }
 
 
-  static void FirstOrder_Incompresible(std::array<T, LatSet::q> &feq,
+  __any__ static void FirstOrder_Incompresible(std::array<T, LatSet::q> &feq,
                                        const Vector<T, LatSet::d> &u, T rho) {
     for (unsigned int k = 0; k < LatSet::q; ++k) {
       feq[k] = Order1_Incompresible(k, u, rho);
     }
   }
-  static void SecondOrder(std::array<T, LatSet::q> &feq, const Vector<T, LatSet::d> &u,
+  __any__ static void SecondOrder(std::array<T, LatSet::q> &feq, const Vector<T, LatSet::d> &u,
                           T rho) {
     T u2 = u.getnorm2();
     for (unsigned int k = 0; k < LatSet::q; ++k) {
@@ -81,14 +81,14 @@ struct SecondOrder {
 
   using GenericRho = typename CELL::GenericRho;
 
-  static inline T get(int k, const Vector<T, LatSet::d> &u, T rho, T u2) {
+  __any__ static inline T get(int k, const Vector<T, LatSet::d> &u, T rho, T u2) {
     const T uc = u * LatSet::c[k];
     return LatSet::w[k] * rho *
            (T{1} + LatSet::InvCs2 * uc + uc * uc * T{0.5} * LatSet::InvCs4 -
             LatSet::InvCs2 * u2 * T{0.5});
   }
 
-  static inline void apply(std::array<T, LatSet::q> &feq, T rho,
+  __any__ static inline void apply(std::array<T, LatSet::q> &feq, T rho,
                            const Vector<T, LatSet::d> &u) {
     const T u2 = u.getnorm2();
     for (unsigned int k = 0; k < LatSet::q; ++k) {
@@ -96,7 +96,7 @@ struct SecondOrder {
     }
   }
 
-  static inline void apply(std::array<T, LatSet::q> &feq, const CELL &cell) {
+  __any__ static inline void apply(std::array<T, LatSet::q> &feq, const CELL &cell) {
     const T rho = cell.template get<GenericRho>();
     const Vector<T, LatSet::d> &u = cell.template get<VELOCITY<T, LatSet::d>>();
     const T u2 = u.getnorm2();
@@ -114,18 +114,18 @@ struct FirstOrder {
 
   using GenericRho = typename CELL::GenericRho;
 
-  static inline T get(int k, const Vector<T, LatSet::d> &u, T rho) {
+  __any__ static inline T get(int k, const Vector<T, LatSet::d> &u, T rho) {
     return LatSet::w[k] * rho * (T{1} + LatSet::InvCs2 * (u * LatSet::c[k]));
   }
 
-  static inline void apply(std::array<T, LatSet::q> &feq, T rho,
+  __any__ static inline void apply(std::array<T, LatSet::q> &feq, T rho,
                            const Vector<T, LatSet::d> &u) {
     for (unsigned int k = 0; k < LatSet::q; ++k) {
       feq[k] = get(k, u, rho);
     }
   }
 
-  static inline void apply(std::array<T, LatSet::q> &feq, const CELL &cell) {
+  __any__ static inline void apply(std::array<T, LatSet::q> &feq, const CELL &cell) {
     const T rho = cell.template get<GenericRho>();
     const Vector<T, LatSet::d> &u = cell.template get<VELOCITY<T, LatSet::d>>();
     for (unsigned int k = 0; k < LatSet::q; ++k) {

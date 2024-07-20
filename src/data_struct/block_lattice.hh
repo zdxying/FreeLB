@@ -33,6 +33,9 @@ BlockLattice<T, LatSet, TypePack>::BlockLattice(Block<T, LatSet::d>& block,
       Omega(RefineConverter<T>::getOmegaF(conv.getOMEGA(), block.getLevel())) {
   _Omega = T{1} - Omega;
   fOmega = T{1} - T{0.5} * Omega;
+#ifdef __CUDACC__
+  InitDeviceData();
+#endif
 }
 
 template <typename T, typename LatSet, typename TypePack>
@@ -299,6 +302,25 @@ void BlockLattice<T, LatSet, TypePack>::ApplyInnerCellDynamics() {
   }
 }
 
+
+#ifdef __CUDACC__
+
+template <typename T, typename LatSet, typename TypePack>
+void BlockLattice<T, LatSet, TypePack>::CuDevStream() {
+  CuDevStreamKernel<<<1,1>>>(dev_BlockLat);
+}
+
+template <typename T, typename LatSet, typename TypePack>
+template <typename CELLDYNAMICS, typename ArrayType>
+void BlockLattice<T, LatSet, TypePack>::CuDevApplyCellDynamics(ArrayType& flagarr) {
+  const unsigned int blockSize = 32;
+  const unsigned int blockNum = (this->getN() + blockSize - 1) / blockSize;
+  CuDevApplyCellDynamicsKernel<T, LatSet, cudev_TypePack, CELLDYNAMICS, typename ArrayType::cudev_array_type><<<blockNum, blockSize>>>(dev_BlockLat, flagarr.get_devObj(), this->getN());
+}
+
+#endif
+
+
 template <typename T, typename LatSet, typename TypePack>
 void BlockLattice<T, LatSet, TypePack>::EnableToleranceRho(T rhores) {
   RhoRes = rhores;
@@ -525,9 +547,11 @@ void BlockLatticeManager<T, LatSet, TypePack>::Init(
       if constexpr (field.isField) {
         // field.InitAndComm(GeoHelper, std::get<index>(initvalues));
         field.InitAndComm(GeoHelper, std::get<int_const.value>(initvalues));
+        // field.InitAndComm(GeoHelper, initvalues.template get<int_const.value>());
       } else {
         // field.NonFieldInit(std::get<index>(initvalues));
         field.NonFieldInit(std::get<int_const.value>(initvalues));
+        // field.NonFieldInit(initvalues.template get<int_const.value>());
       }
     });
   BlockLats.clear();
@@ -758,6 +782,26 @@ void BlockLatticeManager<T, LatSet, TypePack>::ApplyInnerCellDynamics() {
       BlockLats[i].template ApplyInnerCellDynamics<CELLDYNAMICS>();
   }
 }
+
+#ifdef __CUDACC__
+
+template <typename T, typename LatSet, typename TypePack>
+void BlockLatticeManager<T, LatSet, TypePack>::CuDevStream(){
+  for (auto& BLat : BlockLats) {
+    BLat.CuDevStream();
+  }
+}
+
+template <typename T, typename LatSet, typename TypePack>
+template <typename CELLDYNAMICS, typename FieldType>
+void BlockLatticeManager<T, LatSet, TypePack>::CuDevApplyCellDynamics(BlockFieldManager<FieldType, T, LatSet::d>& BFM){
+  for (std::size_t i = 0; i < BlockLats.size(); ++i) {
+      BlockLats[i].template CuDevApplyCellDynamics<CELLDYNAMICS, typename FieldType::array_type>(
+          BFM.getBlockField(i).getField(0));
+  }
+}
+
+#endif
 
 #ifdef MPI_ENABLED
 template <typename T, typename LatSet, typename TypePack>
