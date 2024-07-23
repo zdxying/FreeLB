@@ -29,36 +29,36 @@
 template <typename T, typename LatSet>
 struct BounceBackLikeMethod {
   static inline void normal_bounceback(PopCell<T, LatSet> &cell, int k) {
-    cell[k] = cell.getPrevious(LatSet::opp[k]);
+    cell[k] = cell.getPrevious(latset::opp<LatSet>(k));
   }
   static inline void anti_bounceback_simplified(PopCell<T, LatSet> &cell, int k) {
-    cell[k] = 2 * cell.getRho() * LatSet::w[k] - cell.getPrevious(LatSet::opp[k]);
+    cell[k] = 2 * cell.getRho() * latset::w<LatSet>(k) - cell.getPrevious(latset::opp<LatSet>(k));
   }
   // however the velocity here is NOT Wall velocity but fluid velocity relative to wall
   // so you don't need to specify the wall velocity when calling this function
   static inline void movingwall_bounceback(PopCell<T, LatSet> &cell, int k) {
-    cell[k] = cell.getPrevious(LatSet::opp[k]) + 2 * LatSet::InvCs2 * LatSet::w[k] *
+    cell[k] = cell.getPrevious(latset::opp<LatSet>(k)) + 2 * LatSet::InvCs2 * latset::w<LatSet>(k) *
                                                    cell.getRho() *
-                                                   (cell.getVelocity() * LatSet::c[k]);
+                                                   (cell.getVelocity() * latset::c<LatSet>(k));
   }
   static inline void anti_bounceback_O1(PopCell<T, LatSet> &cell, int k) {
     cell[k] = 2 * Equilibrium<T, LatSet>::Order1(k, cell.getVelocity(), cell.getRho()) -
-              cell.getPrevious(LatSet::opp[k]);
+              cell.getPrevious(latset::opp<LatSet>(k));
   }
   static inline void anti_bounceback_O2(PopCell<T, LatSet> &cell, int k) {
     cell[k] = 2 * Equilibrium<T, LatSet>::Order2(k, cell.getVelocity(), cell.getRho(),
                                                  cell.getVelocity().getnorm2()) -
-              cell.getPrevious(LatSet::opp[k]);
+              cell.getPrevious(latset::opp<LatSet>(k));
   }
   static inline void anti_bounceback_pressure(PopCell<T, LatSet> &cell, int k) {
     // get the interpolated velocity
     const Vector<T, LatSet::d> uwall =
       cell.getVelocity() +
-      T(0.5) * (cell.getVelocity() - cell.getNeighbor(LatSet::opp[k]).getVelocity());
-    cell[k] = 2 * cell.getRho() * LatSet::w[k] *
-                (T(1) + pow((uwall * LatSet::c[k]), 2) * T(0.5) * LatSet::InvCs4 -
+      T(0.5) * (cell.getVelocity() - cell.getNeighbor(latset::opp<LatSet>(k)).getVelocity());
+    cell[k] = 2 * cell.getRho() * latset::w<LatSet>(k) *
+                (T(1) + pow((uwall * latset::c<LatSet>(k)), 2) * T(0.5) * LatSet::InvCs4 -
                  uwall.getnorm2() * T(0.5) * LatSet::InvCs2) -
-              cell.getPrevious(LatSet::opp[k]);
+              cell.getPrevious(latset::opp<LatSet>(k));
   }
 };
 
@@ -130,7 +130,7 @@ class BBLikeMovingBoundary final : public MovingBoundary<T, LatSet, flagType> {
       PopCell<T, LatSet> cell(id, this->Lat);
       for (unsigned int k = 1; k < LatSet::q; ++k) {
         if (util::isFlag(this->Field[this->Lat.getNbrId(id, k)], this->voidFlag)) {
-          BBLikemethod(cell, LatSet::opp[k]);
+          BBLikemethod(cell, latset::opp<LatSet>(k));
         }
       }
     }
@@ -171,7 +171,7 @@ struct normal {
   using LatSet = typename CELL::LatticeSet;
 
   static inline void apply(CELL &cell, unsigned int k) {
-    cell[k] = cell.getPrevious(LatSet::opp[k]);
+    cell[k] = cell.getPrevious(latset::opp<LatSet>(k));
   }
 };
 
@@ -182,8 +182,8 @@ struct anti_simple {
   using GenericRho = typename CELL::GenericRho;
 
   static inline void apply(CELL &cell, unsigned int k) {
-    cell[k] = 2 * cell.template get<GenericRho>() * LatSet::w[k] -
-              cell.getPrevious(LatSet::opp[k]);
+    cell[k] = 2 * cell.template get<GenericRho>() * latset::w<LatSet>(k) -
+              cell.getPrevious(latset::opp<LatSet>(k));
   }
 };
 template <typename CELL>
@@ -196,7 +196,7 @@ struct anti_O1 {
     cell[k] = 2 * equilibrium::FirstOrder<CELL>::get(
                     k, cell.template get<VELOCITY<T, LatSet::d>>(),
                     cell.template get<GenericRho>()) -
-              cell.getPrevious(LatSet::opp[k]);
+              cell.getPrevious(latset::opp<LatSet>(k));
   }
 };
 template <typename CELL>
@@ -210,7 +210,7 @@ struct anti_O2 {
                     k, cell.template get<VELOCITY<T, LatSet::d>>(),
                     cell.template get<GenericRho>(),
                     cell.template get<VELOCITY<T, LatSet::d>>().getnorm2()) -
-              cell.getPrevious(LatSet::opp[k]);
+              cell.getPrevious(latset::opp<LatSet>(k));
   }
 };
 template <typename CELL>
@@ -224,11 +224,11 @@ struct anti_pressure {
     const Vector<T, LatSet::d> uwall =
       cell.template get<VELOCITY<T, LatSet::d>>() +
       T{0.5} * (cell.template get<VELOCITY<T, LatSet::d>>() -
-                cell.getNeighbor(LatSet::opp[k]).template get<VELOCITY<T, LatSet::d>>());
-    cell[k] = 2 * cell.template get<GenericRho>() * LatSet::w[k] *
-                (T{1} + std::pow((uwall * LatSet::c[k]), 2) * T{0.5} * LatSet::InvCs4 -
+                cell.getNeighbor(latset::opp<LatSet>(k)).template get<VELOCITY<T, LatSet::d>>());
+    cell[k] = 2 * cell.template get<GenericRho>() * latset::w<LatSet>(k) *
+                (T{1} + std::pow((uwall * latset::c<LatSet>(k)), 2) * T{0.5} * LatSet::InvCs4 -
                  uwall.getnorm2() * T(0.5) * LatSet::InvCs2) -
-              cell.getPrevious(LatSet::opp[k]);
+              cell.getPrevious(latset::opp<LatSet>(k));
   }
 };
 
@@ -239,15 +239,15 @@ struct movingwall {
   using GenericRho = typename CELL::GenericRho;
 
   static inline void apply(CELL &cell, unsigned int k) {
-    cell[k] = cell.getPrevious(LatSet::opp[k]) +
-              2 * LatSet::InvCs2 * LatSet::w[k] * cell.template get<GenericRho>() *
-                (cell.template get<VELOCITY<T, LatSet::d>>() * LatSet::c[k]);
+    cell[k] = cell.getPrevious(latset::opp<LatSet>(k)) +
+              2 * LatSet::InvCs2 * latset::w<LatSet>(k) * cell.template get<GenericRho>() *
+                (cell.template get<VELOCITY<T, LatSet::d>>() * latset::c<LatSet>(k));
   }
   static inline void apply(CELL &cell, unsigned int k,
                            const Vector<T, LatSet::d> &wall_velocity) {
-    cell[k] = cell.getPrevious(LatSet::opp[k]) - 2 * LatSet::InvCs2 * LatSet::w[k] *
+    cell[k] = cell.getPrevious(latset::opp<LatSet>(k)) - 2 * LatSet::InvCs2 * latset::w<LatSet>(k) *
                                                    cell.template get<GenericRho>() *
-                                                   (wall_velocity * LatSet::c[k]);
+                                                   (wall_velocity * latset::c<LatSet>(k));
   }
 };
 

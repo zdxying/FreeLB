@@ -52,7 +52,7 @@ void Block2D<T>::SetupBoundary(const AABB<T, 2> &block, FieldType &field,
       const Vector<int, 2> locidx{x, y};
       const Vector<T, 2> vox = BasicBlock<T, 2>::getVoxel(locidx);
       for (unsigned int i = 1; i < LatSet::q; ++i) {
-        const Vector<T, 2> nvox = vox + LatSet::c[i] * BasicBlock<T, 2>::VoxelSize;
+        const Vector<T, 2> nvox = vox + latset::c<LatSet>(i) * BasicBlock<T, 2>::VoxelSize;
         if (!block.isInside(nvox)) {
           TransFlag.set(BasicBlock<T, 2>::getIndex(locidx), true);
           break;

@@ -30,10 +30,10 @@ struct direction {
     Clear();
     for (int k = 1; k < q; k++) {
       if (flags[Id + Nbr[k]] != -1) {
-        add_inflow(LatSet::opp[k]);
+        add_inflow(latset::opp<LatSet>(k));
       }
-      if (flags[Id + Nbr[k]] == -1 && flags[Id + Nbr[LatSet::opp[k]]] != -1) {
-        add_outflow(LatSet::opp[k]);
+      if (flags[Id + Nbr[k]] == -1 && flags[Id + Nbr[latset::opp<LatSet>(k)]] != -1) {
+        add_outflow(latset::opp<LatSet>(k));
       }
     }
   }
@@ -111,7 +111,7 @@ class BasicBoundary {
 template <typename T, typename LatSet>
 struct bounceback {
   static void apply(population<T, LatSet> &pop, int k) {
-    pop.f[k] = pop.fpostcol[LatSet::opp[k]];
+    pop.f[k] = pop.fpostcol[latset::opp<LatSet>(k)];
   }
 };
 
@@ -136,16 +136,16 @@ struct BounceBack final: public BasicBoundary<T, LatSet, LatStru>,
 
 template <typename T, typename LatSet>
 struct bouncebackmethod {
-  // pop.f[k] = pop.fpostcol[LatSet::opp[k]];
+  // pop.f[k] = pop.fpostcol[latset::opp<LatSet>(k)];
   // it is more recommended to use bounceback<T, LatSet>::apply
   static inline void normal_bounceback(population<T, LatSet> &pop, int k,
                                        const T *u) {
     normal_bounceback(pop, k);
   }
   static inline void normal_bounceback(population<T, LatSet> &pop, int k) {
-    pop.f[k] = pop.fpostcol[LatSet::opp[k]];
+    pop.f[k] = pop.fpostcol[latset::opp<LatSet>(k)];
   }
-  // pop.f[k] = 2 * rho * LatSet::w[k] - pop.fpostcol[LatSet::opp[k]];
+  // pop.f[k] = 2 * rho * latset::w<LatSet>(k) - pop.fpostcol[latset::opp<LatSet>(k)];
   // it is more recommended to use antibounceback<T, LatSet>::apply
   static inline void anti_bounceback_simplified(population<T, LatSet> &pop,
                                                 int k, const T *u) {
@@ -153,44 +153,44 @@ struct bouncebackmethod {
   }
   static inline void anti_bounceback_simplified(population<T, LatSet> &pop,
                                                 int k) {
-    pop.f[k] = 2 * pop.rho * LatSet::w[k] - pop.fpostcol[LatSet::opp[k]];
+    pop.f[k] = 2 * pop.rho * latset::w<LatSet>(k) - pop.fpostcol[latset::opp<LatSet>(k)];
   }
 
-  // pop.f[k] = pop.fpostcol[LatSet::opp[k]] + 2 * LatSet::w[k] * pop.rho * uc *
+  // pop.f[k] = pop.fpostcol[latset::opp<LatSet>(k)] + 2 * latset::w<LatSet>(k) * pop.rho * uc *
   // LatSet::InvCs2;
   // call: (pop[Id], Dir, Field.U[Id])
   static inline void movingwall_bounceback(population<T, LatSet> &pop, int k,
                                            const T *u) {
-    pop.f[k] = pop.fpostcol[LatSet::opp[k]] +
-               2 * LatSet::w[k] * pop.rho * Vect2D<T>::dot(u, LatSet::c[k]) *
+    pop.f[k] = pop.fpostcol[latset::opp<LatSet>(k)] +
+               2 * latset::w<LatSet>(k) * pop.rho * Vect2D<T>::dot(u, latset::c<LatSet>(k)) *
                    LatSet::InvCs2;
   }
-  // pop.f[k] = 2 * feq - pop.fpostcol[LatSet::opp[k]]; first order
+  // pop.f[k] = 2 * feq - pop.fpostcol[latset::opp<LatSet>(k)]; first order
   // call: (pop[Id], Dir, Field.U[Id])
   static inline void anti_bounceback_O1(population<T, LatSet> &pop, int k,
                                         const T *u) {
     pop.f[k] = 2 * Equilibrium<T, LatSet>::Order1(k, u, pop.rho) -
-               pop.fpostcol[LatSet::opp[k]];
+               pop.fpostcol[latset::opp<LatSet>(k)];
   }
-  // pop.f[k] = 2 * feq - pop.fpostcol[LatSet::opp[k]]; second order
+  // pop.f[k] = 2 * feq - pop.fpostcol[latset::opp<LatSet>(k)]; second order
   // call: (pop[Id], Dir, Field.U[Id])
   static inline void anti_bounceback_O2(population<T, LatSet> &pop, int k,
                                         const T *u) {
     pop.f[k] =
         2 * Equilibrium<T, LatSet>::Order2(k, u, pop.rho, Vect2D<T>::sqr(u)) -
-        pop.fpostcol[LatSet::opp[k]];
+        pop.fpostcol[latset::opp<LatSet>(k)];
   }
   // pressure boundary condition: anti bounceback scheme
-  // pop.f[k] = 2 * LatSet::w[k] * pop.rho * (1 + LatSet::InvCs2 *
+  // pop.f[k] = 2 * latset::w<LatSet>(k) * pop.rho * (1 + LatSet::InvCs2 *
   // LatSet::InvCs2 * uc * uc * T(0.5) - LatSet::InvCs2 * u2 * T(0.5))
   static inline void anti_bounceback_pressure(population<T, LatSet> &pop, int k,
                                               const T *u) {
     pop.f[k] =
-        2 * pop.rho * LatSet::w[k] *
+        2 * pop.rho * latset::w<LatSet>(k) *
             (T(1) +
-             pow(LatSet::InvCs2 * Vect2D<T>::dot(u, LatSet::c[k]), 2) * T(0.5) -
+             pow(LatSet::InvCs2 * Vect2D<T>::dot(u, latset::c<LatSet>(k)), 2) * T(0.5) -
              LatSet::InvCs2 * Vect2D<T>::sqr(u) * T(0.5)) -
-        pop.fpostcol[LatSet::opp[k]];
+        pop.fpostcol[latset::opp<LatSet>(k)];
   }
 };
 
@@ -222,7 +222,7 @@ template <typename T, typename LatSet>
 struct antibounceback {
   // simplified version when wall velocity is zero
   static void apply(population<T, LatSet> &pop, int k, T rho) {
-    pop.f[k] = 2 * rho * LatSet::w[k] - pop.fpostcol[LatSet::opp[k]];
+    pop.f[k] = 2 * rho * latset::w<LatSet>(k) - pop.fpostcol[latset::opp<LatSet>(k)];
   }
 };
 template <typename T, typename LatSet, typename LatStru>
@@ -247,8 +247,8 @@ struct AntiBounceBack final: public BasicBoundary<T, LatSet, LatStru>,
 template <typename T, typename LatSet>
 struct bouncebackmovingwall {
   static void apply(population<T, LatSet> &pop, int k, T uc) {
-    pop.f[k] = pop.fpostcol[LatSet::opp[k]] +
-               2 * LatSet::w[k] * pop.rho * uc * LatSet::InvCs2;
+    pop.f[k] = pop.fpostcol[latset::opp<LatSet>(k)] +
+               2 * latset::w<LatSet>(k) * pop.rho * uc * LatSet::InvCs2;
     // pop.f[i] = pop.fpostcol[opp9[i]] + 2 * w[i] * pop.rho *
     // (Lattice_U_Wall[0] * c[i][0] + Lattice_U_Wall[1] * c[i][1]) *
     // LatSet::InvCs2 / (1 - Lattice_U_Wall[0]);
@@ -270,7 +270,7 @@ struct BounceBackMovingWall final: public BasicBoundary<T, LatSet, LatStru>,
       Id = this->Cell_Dirs[i].Id;
       for (int k = 0; k < this->Cell_Dirs[i].outflow.size(); k++) {
         Dir = this->Cell_Dirs[i].outflow[k];
-        this->apply(pop[Id], Dir, Vect2D<T>::dot(Field.U[Id], LatSet::c[Dir]));
+        this->apply(pop[Id], Dir, Vect2D<T>::dot(Field.U[Id], latset::c<LatSet>(Dir)));
       }
     }
   }

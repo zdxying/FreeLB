@@ -196,7 +196,7 @@ class FreeSurface2DManager : public BlockLatticeManagerBase<T, LatSet, FSFIELDS<
       const auto& block = field.getBlock();
       if (util::isFlag(field.get(id), FSType::Fluid)) {
         for (int i = 1; i < LatSet::q; ++i) {
-          std::size_t idn = id + LatSet::c[i] * block.getProjection();
+          std::size_t idn = id + latset::c<LatSet>(i) * block.getProjection();
           if (util::isFlag(field.get(idn), FSType::Gas)) {
             util::removeFlag(FSType::Gas, util::underlyingRef(field.get(idn)));
             util::addFlag(FSType::Interface, util::underlyingRef(field.get(idn)));
@@ -250,7 +250,7 @@ struct FreeSurfaceHelper{
     const auto& block = field.getBlock();
     if (util::isFlag(field.get(id), FSType::Fluid)) {
       for (int i = 1; i < LatSet::q; ++i) {
-        std::size_t idn = id + LatSet::c[i] * block.getProjection();
+        std::size_t idn = id + latset::c<LatSet>(i) * block.getProjection();
         Vector<T, LatSet::d> loc_t = block.getLoc_t(idn);
         if (block.IsInside(loc_t)){
           if (util::isFlag(field.get(idn), FSType::Gas)) {
@@ -320,10 +320,10 @@ template <typename LatSet>
 constexpr std::array<int, LatSet::q> Parker_YoungsWeights() {
   return make_Array<int, LatSet::q>([&](unsigned int i) {
     int weight = 8;
-    if (LatSet::c[i][0] != 0) weight /= 2;
-    if (LatSet::c[i][1] != 0) weight /= 2;
+    if (latset::c<LatSet>(i)[0] != 0) weight /= 2;
+    if (latset::c<LatSet>(i)[1] != 0) weight /= 2;
     if constexpr (LatSet::d == 3) {
-      if (LatSet::c[i][2] != 0) weight /= 2;
+      if (latset::c<LatSet>(i)[2] != 0) weight /= 2;
     }
     return weight;
   });
@@ -336,7 +336,7 @@ void computeParker_YoungsNormal(CELL& cell, Vector<typename CELL::FloatType, CEL
   for (int i = 1; i < LatSet::q; ++i) {
     CELL celln = cell.getNeighbor(i);
     T clampedvof = getClampedVOF(celln);
-    normal -= Parker_YoungsWeights<LatSet>()[i] * LatSet::c[i] * clampedvof;
+    normal -= Parker_YoungsWeights<LatSet>()[i] * latset::c<LatSet>(i) * clampedvof;
   }
 }
 
@@ -591,8 +591,8 @@ typename CELL::FloatType ComputeCurvature2D(CELL& cell) {
 
     T cube_offset = calculateCubeOffset<T, LatSet>(fill_level, normal);
 
-    T x_pos = LatSet::c[iPop][0];
-    T y_pos = LatSet::c[iPop][1];
+    T x_pos = latset::c<LatSet>(iPop)[0];
+    T y_pos = latset::c<LatSet>(iPop)[1];
 
     // Rotation
     T rot_x_pos = x_pos * normal[1] - y_pos * normal[0];
@@ -732,9 +732,9 @@ typename CELL::FloatType ComputeCurvature3D(CELL& cell){
 
     T cube_offset = calculateCubeOffsetOpt<T, LatSet>(fill_level, normal);
 
-    int i = LatSet::c[iPop][0];
-    int j = LatSet::c[iPop][1];
-    int k = LatSet::c[iPop][2];
+    int i = latset::c<LatSet>(iPop)[0];
+    int j = latset::c<LatSet>(iPop)[1];
+    int k = latset::c<LatSet>(iPop)[2];
 
     std::array<T,3> pos{static_cast<T>(i),static_cast<T>(j),static_cast<T>(k)};
     std::array<T,3> r_pos{0.,0.,cube_offset - origin_offset};
@@ -865,7 +865,7 @@ struct MassTransfer {
 
       for (int k = 1; k < LatSet::q; ++k) {
         CELL celln = cell.getNeighbor(k);
-        int kopp = LatSet::opp[k];
+        int kopp = latset::opp<LatSet>(k);
 
         if (util::isFlag(celln.template get<STATE>(), FSType::Fluid)) {
           deltamass += cell[kopp] - celln[k];
@@ -925,9 +925,9 @@ struct MassTransfer {
         CELL celln = cell.getNeighbor(k);
         if (util::isFlag(celln.template get<STATE>(), FSType::Gas)) {
           // fiopp = feqiopp(rho_gas) + feqi(rho_gas) - fi(x+ei)
-          cell[LatSet::opp[k]] =
+          cell[latset::opp<LatSet>(k)] =
             equilibrium::SecondOrder<CELL>::get(k, u, rho_gas, u2) +
-            equilibrium::SecondOrder<CELL>::get(LatSet::opp[k], u, rho_gas, u2) 
+            equilibrium::SecondOrder<CELL>::get(latset::opp<LatSet>(k), u, rho_gas, u2) 
             - celln[k];
         }
       }

@@ -173,7 +173,7 @@ struct BGKSource_Feq_Rho {
     const T fomega = cell.getfOmega();
 
     for (unsigned int i = 0; i < LatSet::q; ++i) {
-      cell[i] = omega * feq[i] + _omega * cell[i] + fomega * source * LatSet::w[i];
+      cell[i] = omega * feq[i] + _omega * cell[i] + fomega * source * latset::w<LatSet>(i);
     }
   }
 };
@@ -201,9 +201,9 @@ struct BounceBack {
 };
 
   // static inline void apply(CELL &cell, unsigned int k) {
-  //   cell[k] = cell.getPrevious(LatSet::opp[k]) +
-  //             2 * LatSet::InvCs2 * LatSet::w[k] * cell.template get<GenericRho>() *
-  //               (cell.template get<VELOCITY<T, LatSet::d>>() * LatSet::c[k]);
+  //   cell[k] = cell.getPrevious(latset::opp<LatSet>(k)) +
+  //             2 * LatSet::InvCs2 * latset::w<LatSet>(k) * cell.template get<GenericRho>() *
+  //               (cell.template get<VELOCITY<T, LatSet::d>>() * latset::c<LatSet>(k));
   // }
 
 // full way bounce back with moving wall, could be regarded as a modified collision process
@@ -222,7 +222,7 @@ struct BounceBackMovingWall {
     for (unsigned int i = startdir; i < LatSet::q; i += 2) {
       T temp = cell[i];
       unsigned int iopp = i + 1;
-      T uc = cell.template get<VELOCITY<T, LatSet::d>>() * LatSet::c[i] * LatSet::w[i] * rhox;
+      T uc = cell.template get<VELOCITY<T, LatSet::d>>() * latset::c<LatSet>(i) * latset::w<LatSet>(i) * rhox;
       cell[i] = cell[iopp] + uc;
       cell[iopp] = temp - uc;
     }
@@ -291,7 +291,7 @@ struct BGK {
     const T fomega = cell.getfOmega();
 
     for (unsigned int i = 0; i < LatSet::q; ++i) {
-      cell[i] = omega * feq[i] + _omega * cell[i] + fomega * S * LatSet::w[i];
+      cell[i] = omega * feq[i] + _omega * cell[i] + fomega * S * latset::w<LatSet>(i);
     }
   }
 };

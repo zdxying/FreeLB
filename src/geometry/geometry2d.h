@@ -141,7 +141,7 @@ class Geometry2D : public AABB<T, 2> {
 
   template <typename LatSet>
   int getNeighborId(int id, int dir) const {
-    return id + LatSet::c[dir] * Projection;
+    return id + latset::c<LatSet>(dir) * Projection;
   }
   int getNbrId(int id, int dir) const { return id + Delta_Index[dir]; }
 

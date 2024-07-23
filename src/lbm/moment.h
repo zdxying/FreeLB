@@ -120,7 +120,7 @@ struct u {
     T rho_value{};
     for (unsigned int i = 0; i < LatSet::q; ++i) {
       rho_value += cell[i];
-      u_value += LatSet::c[i] * cell[i];
+      u_value += latset::c<LatSet>(i) * cell[i];
     }
     u_value /= rho_value;
     if constexpr (WriteToField) cell.template get<VELOCITY<T, LatSet::d>>() = u_value;
@@ -131,7 +131,7 @@ struct u {
     T rho_value{};
     for (unsigned int i = 0; i < LatSet::q; ++i) {
       rho_value += cell[i];
-      u_value += LatSet::c[i] * cell[i];
+      u_value += latset::c<LatSet>(i) * cell[i];
     }
     u_value /= rho_value;
     if constexpr (WriteToField) cell.template get<VELOCITY<T, LatSet::d>>() = u_value;
@@ -142,7 +142,7 @@ struct u {
     T rho_value{};
     for (unsigned int i = 0; i < LatSet::q; ++i) {
       rho_value += cell[i];
-      u_value += LatSet::c[i] * cell[i];
+      u_value += latset::c<LatSet>(i) * cell[i];
     }
     u_value /= rho_value;
   }
@@ -182,7 +182,7 @@ struct forceU {
     T rho_value{};
     for (unsigned int i = 0; i < LatSet::q; ++i) {
       rho_value += cell[i];
-      u_value += LatSet::c[i] * cell[i];
+      u_value += latset::c<LatSet>(i) * cell[i];
     }
     u_value += f_alpha * T{0.5};
     u_value /= rho_value;
@@ -194,7 +194,7 @@ struct forceU {
     T rho_value{};
     for (unsigned int i = 0; i < LatSet::q; ++i) {
       rho_value += cell[i];
-      u_value += LatSet::c[i] * cell[i];
+      u_value += latset::c<LatSet>(i) * cell[i];
     }
     u_value[scalardir] += f * T{0.5};
     u_value /= rho_value;
@@ -207,7 +207,7 @@ struct forceU {
     T rho_value{};
     for (unsigned int i = 0; i < LatSet::q; ++i) {
       rho_value += cell[i];
-      u_value += LatSet::c[i] * cell[i];
+      u_value += latset::c<LatSet>(i) * cell[i];
     }
     u_value += f_alpha * T{0.5};
     u_value /= rho_value;
@@ -218,7 +218,7 @@ struct forceU {
     T rho_value{};
     for (unsigned int i = 0; i < LatSet::q; ++i) {
       rho_value += cell[i];
-      u_value += LatSet::c[i] * cell[i];
+      u_value += latset::c<LatSet>(i) * cell[i];
     }
     u_value[scalardir] += f * T{0.5};
     u_value /= rho_value;
@@ -230,7 +230,7 @@ struct forceU {
     T rho_value{};
     for (unsigned int i = 0; i < LatSet::q; ++i) {
       rho_value += cell[i];
-      u_value += LatSet::c[i] * cell[i];
+      u_value += latset::c<LatSet>(i) * cell[i];
     }
     u_value += f_alpha * T{0.5};
     u_value /= rho_value;
@@ -240,7 +240,7 @@ struct forceU {
     T rho_value{};
     for (unsigned int i = 0; i < LatSet::q; ++i) {
       rho_value += cell[i];
-      u_value += LatSet::c[i] * cell[i];
+      u_value += latset::c<LatSet>(i) * cell[i];
     }
     u_value[scalardir] += f * T{0.5};
     u_value /= rho_value;
@@ -260,7 +260,7 @@ struct rhou {
     u_value.clear();
     for (unsigned int i = 0; i < LatSet::q; ++i) {
       rho_value += cell[i];
-      u_value += LatSet::c[i] * cell[i];
+      u_value += latset::c<LatSet>(i) * cell[i];
     }
     u_value /= rho_value;
     if constexpr (WriteToField) {
@@ -276,7 +276,7 @@ struct rhou {
     u_value.clear();
     for (unsigned int i = 0; i < LatSet::q; ++i) {
       rho_value += cell[i];
-      u_value += LatSet::c[i] * cell[i];
+      u_value += latset::c<LatSet>(i) * cell[i];
     }
     u_value /= rho_value;
   }
@@ -298,7 +298,7 @@ struct forceRhou {
     u_value.clear();
     for (unsigned int i = 0; i < LatSet::q; ++i) {
       rho_value += cell[i];
-      u_value += LatSet::c[i] * cell[i];
+      u_value += latset::c<LatSet>(i) * cell[i];
     }
     u_value += f_alpha * T{0.5};
     u_value /= rho_value;
@@ -313,7 +313,7 @@ struct forceRhou {
     u_value.clear();
     for (unsigned int i = 0; i < LatSet::q; ++i) {
       rho_value += cell[i];
-      u_value += LatSet::c[i] * cell[i];
+      u_value += latset::c<LatSet>(i) * cell[i];
     }
     u_value[scalardir] += f * T{0.5};
     u_value /= rho_value;
@@ -330,7 +330,7 @@ struct forceRhou {
     u_value.clear();
     for (unsigned int i = 0; i < LatSet::q; ++i) {
       rho_value += cell[i];
-      u_value += LatSet::c[i] * cell[i];
+      u_value += latset::c<LatSet>(i) * cell[i];
     }
     u_value += f_alpha * T{0.5};
     u_value /= rho_value;
@@ -342,7 +342,7 @@ struct forceRhou {
     u_value.clear();
     for (unsigned int i = 0; i < LatSet::q; ++i) {
       rho_value += cell[i];
-      u_value += LatSet::c[i] * cell[i];
+      u_value += latset::c<LatSet>(i) * cell[i];
     }
     u_value[scalardir] += f * T{0.5};
     u_value /= rho_value;
@@ -367,7 +367,7 @@ struct strainRate {
       for (unsigned int beta = alpha; beta < LatSet::d; ++beta) {
         T value{};
         for (unsigned int k = 0; k < LatSet::q; ++k) {
-          value += LatSet::c[k][alpha] * LatSet::c[k][beta] * cell[k];
+          value += latset::c<LatSet>(k)[alpha] * latset::c<LatSet>(k)[beta] * cell[k];
         }
         // remove the equilibrium part: PI_ab^eq
         value -= rho * u[alpha] * u[beta];
@@ -442,7 +442,7 @@ struct Velocity {
     T rho = T(0);
     for (unsigned int i = 0; i < LatSet::q; ++i) {
       rho += cell[i];
-      u = u + LatSet::c[i] * cell[i];
+      u = u + latset::c<LatSet>(i) * cell[i];
     }
     return u / rho;
   }
@@ -454,7 +454,7 @@ struct Velocity {
     T rho = T(0);
     for (unsigned int i = 0; i < LatSet::q; ++i) {
       rho += cell[i];
-      u = u + (LatSet::c[i] * (cell[i] + T{0.5} * fi[i]));
+      u = u + (latset::c<LatSet>(i) * (cell[i] + T{0.5} * fi[i]));
     }
     return u / rho;
   }
@@ -465,7 +465,7 @@ struct Velocity {
     T rho = T(0);
     for (unsigned int i = 0; i < LatSet::q; ++i) {
       rho += cell[i];
-      u = u + LatSet::c[i] * cell[i];
+      u = u + latset::c<LatSet>(i) * cell[i];
     }
     u = u / rho;
   }
@@ -477,7 +477,7 @@ struct Velocity {
     T rho = T(0);
     for (unsigned int i = 0; i < LatSet::q; ++i) {
       rho += cell[i];
-      u = u + (LatSet::c[i] * (cell[i] + T{0.5} * fi[i]));
+      u = u + (latset::c<LatSet>(i) * (cell[i] + T{0.5} * fi[i]));
     }
     u = u / rho;
   }
@@ -491,7 +491,7 @@ struct RhoVelocity {
     u.clear();
     for (unsigned int i = 0; i < LatSet::q; ++i) {
       rho += cell[i];
-      u = u + LatSet::c[i] * cell[i];
+      u = u + latset::c<LatSet>(i) * cell[i];
     }
     u = u / rho;
   }

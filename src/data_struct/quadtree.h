@@ -464,7 +464,7 @@ class QuadTree : public BasicTree<T, 2> {
 //   void Setup() {
 //     for (int i = 1; i < LatSet::q; ++i) {
 //       const Vector<T, 2> nbrcenter =
-//           this->_center + LatSet::c[i] * (T(2) * this->_radius);
+//           this->_center + latset::c<LatSet>(i) * (T(2) * this->_radius);
 //       if (_parent->_child[i]->isInside(nbrcenter)) {
 //         setNeighbor(_parent->_child[i], i);
 //       } else {

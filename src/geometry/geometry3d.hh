@@ -158,9 +158,9 @@ void Geometry3D<T>::SetupBoundary(std::uint8_t AABBflag,
       Vector<T, 3>& voxel = _Voxels[id];
       unsigned int count = 0;
       for (unsigned int i = 1; i < LatSet::q; ++i) {
-        Vector<T, 3> pt = voxel + LatSet::c[i] * _voxelSize;
+        Vector<T, 3> pt = voxel + latset::c<LatSet>(i) * _voxelSize;
         if (this->isInside(pt)) {
-          int idx = LatSet::c[i] * Projection + id;
+          int idx = latset::c<LatSet>(i) * Projection + id;
           if (GeometryFlag.get(idx) == AABBflag) count++;
         }
       }

@@ -80,9 +80,9 @@ void Geometry2D<T>::SetupBoundary(std::uint8_t AABBflag,
       const Vector<T, 2> &voxel = _Voxels[id];
       unsigned int count = 0;
       for (unsigned int i = 1; i < LatSet::q; ++i) {
-        Vector<T, 2> pt = voxel + LatSet::c[i] * _voxelSize;
+        Vector<T, 2> pt = voxel + latset::c<LatSet>(i) * _voxelSize;
         if (this->isInside(pt)) {
-          int idx = LatSet::c[i] * Projection + id;
+          int idx = latset::c<LatSet>(i) * Projection + id;
           if (GeometryFlag.get(idx) == AABBflag) count++;
         }
       }

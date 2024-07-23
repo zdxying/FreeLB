@@ -489,7 +489,7 @@ BlockLatticeManager<T, LatSet, TypePack>::BlockLatticeManager(
   if constexpr (this->template hasField<POP<T, LatSet::q>>()) {
     this->template getField<POP<T, LatSet::q>>().forEachField([&](auto& field) {
       for (unsigned int i = 0; i < LatSet::q; ++i) {
-        field.getField(i).Init(Conv.getLatRhoInit() * LatSet::w[i]);
+        field.getField(i).Init(Conv.getLatRhoInit() * latset::w<LatSet>(i));
       }
     });
   }
@@ -515,7 +515,7 @@ BlockLatticeManager<T, LatSet, TypePack>::BlockLatticeManager(
   if constexpr (this->template hasField<POP<T, LatSet::q>>()) {
     this->template getField<POP<T, LatSet::q>>().forEachField([&](auto& field) {
       for (unsigned int i = 0; i < LatSet::q; ++i) {
-        field.getField(i).Init(Conv.getLatRhoInit() * LatSet::w[i]);
+        field.getField(i).Init(Conv.getLatRhoInit() * latset::w<LatSet>(i));
       }
     });
   }

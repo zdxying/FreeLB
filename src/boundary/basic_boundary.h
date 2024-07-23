@@ -92,13 +92,13 @@ class FixedBoundary : public AbstractBoundary {
     // Attention: if voidFlag is 0, DO NOT use util::isFlag
     for (unsigned int k = 1; k < LatSet::q; ++k) {
       // if (Field[Lat.getNbrId(id, k)] == voidFlag &&
-      //     Field[Lat.getNbrId(id, LatSet::opp[k])] != voidFlag) {
-      //   fixedbdcell.outflows.push_back(LatSet::opp[k]);
+      //     Field[Lat.getNbrId(id, latset::opp<LatSet>(k))] != voidFlag) {
+      //   fixedbdcell.outflows.push_back(latset::opp<LatSet>(k));
       // }
 
       // using util::isFlag requires voidFlag to be non-zero
       if (util::isFlag(Field[Lat.getNbrId(id, k)], voidFlag)) {
-        fixedbdcell.outflows.push_back(LatSet::opp[k]);
+        fixedbdcell.outflows.push_back(latset::opp<LatSet>(k));
       }
     }
   }
@@ -198,11 +198,11 @@ class BlockFixedBoundary {
     // Attention: if voidFlag is 0, DO NOT use util::isFlag
     for (unsigned int k = 1; k < LatSet::q; ++k) {
       // if (util::isFlag(Field[Lat.getNbrId(id, k)], voidFlag) &&
-      //     !util::isFlag(Field[Lat.getNbrId(id, LatSet::opp[k])], voidFlag)) {
+      //     !util::isFlag(Field[Lat.getNbrId(id, latset::opp<LatSet>(k))], voidFlag)) {
 
       // using util::isFlag requires voidFlag to be non-zero
       if (util::isFlag(Field[Lat.getNbrId(id, k)], voidFlag)) {
-        fixedbdcell.outflows.push_back(LatSet::opp[k]);
+        fixedbdcell.outflows.push_back(latset::opp<LatSet>(k));
       }
     }
   }

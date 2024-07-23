@@ -124,7 +124,7 @@ class BlockLatticeBase {
   BlockLatticeBase(Block<T, LatSet::d>& block, std::tuple<FIELDPTRS...> fieldptrs)
       : BlockGeo(block), Fields(fieldptrs) {
     Delta_Index =
-      make_Array<int, LatSet::q>([&](int i) { return LatSet::c[i] * getProjection(); });
+      make_Array<int, LatSet::q>([&](int i) { return latset::c<LatSet>(i) * getProjection(); });
 #ifdef __CUDACC__
     InitDeviceData();
 #endif

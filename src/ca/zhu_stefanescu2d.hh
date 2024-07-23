@@ -43,7 +43,7 @@ ZhuStefanescu2D<T, LatSet>::ZhuStefanescu2D(ZSConverter<T> &convca, RhoLattice<T
       ExcessC(lbmns.getGeo().getVoxelsNum(), Vector<T, LatSet::q>{}),
       ExcessC_(lbmns.getGeo().getVoxelsNum(), T(0)) {
   Delta_Index =
-    make_Array<int, LatSet::q>([&](int i) { return LatSet::c[i] * Geo.getProjection(); });
+    make_Array<int, LatSet::q>([&](int i) { return latset::c<LatSet>(i) * Geo.getProjection(); });
   Interface.reserve(2 * (Ni + Nj));
   Setup(SiteId, num);
 }
@@ -206,13 +206,13 @@ void ZhuStefanescu2D<T, LatSet>::DistributeExcessC(int id, T excessC) {
     if (util::isFlag(State.get(idn), CAType::Fluid)) {
       nbrs.push_back(idn);
       dirs.push_back(i);
-      sum += LatSet::w[i];
+      sum += latset::w<LatSet>(i);
     }
   }
   T inv_sum = T(1) / sum;
   if (nbrs.size() == 0) return;
   for (std::size_t i = 0; i < nbrs.size(); i++) {
-    ExcessC.get(nbrs[i])[dirs[i]] = excessC * LatSet::w[dirs[i]] * inv_sum;
+    ExcessC.get(nbrs[i])[dirs[i]] = excessC * latset::w<LatSet>(dirs[i]) * inv_sum;
   }
 }
 
@@ -484,7 +484,7 @@ void BlockZhuStefanescu2D<T, LatSet>::DistributeExcessC() {
           std::size_t idn = id + this->Delta_Index[i];
           if (util::isFlag(this->template getField<STATE>().get(idn), CAType::Fluid)) {
             dirs.push_back(i);
-            sum += LatSet::w[i];
+            sum += latset::w<LatSet>(i);
           }
         }
         T inv_sum = T(1) / sum;
@@ -493,7 +493,7 @@ void BlockZhuStefanescu2D<T, LatSet>::DistributeExcessC() {
         for (int dir : dirs) {
           std::size_t idn = id + this->Delta_Index[dir];
           this->template getField<EXCESSC<T>>().get(idn) +=
-            this->template getField<PREEXCESSC<T>>().get(id) * LatSet::w[dir] * inv_sum;
+            this->template getField<PREEXCESSC<T>>().get(id) * latset::w<LatSet>(dir) * inv_sum;
         }
       }
       // reset preExcessC

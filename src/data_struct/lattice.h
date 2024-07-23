@@ -103,7 +103,7 @@ class PopLattice : public RhoLattice<T> {
                VectorFieldAOS<T, LatSet::d>& velocity, bool InitIdx = true);
 
   void InitPop(int Id, T rho) {
-    for (int i = 0; i < LatSet::q; ++i) Pops.getField(i)[Id] = rho * LatSet::w[i];
+    for (int i = 0; i < LatSet::q; ++i) Pops.getField(i)[Id] = rho * latset::w<LatSet>(i);
   }
   std::array<T*, LatSet::q> getPop(std::size_t id) { return Pops.getArray(id); }
 

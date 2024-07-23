@@ -35,11 +35,11 @@ inline void BasicBoundary<T, LatSet, LatStru>::SetCell_Dirs(int i, int *flags) {
   int Id = Cell_Dirs[i].Id;
   for (int k = 1; k < LatSet::q; k++) {
     if (flags[Id + Lattice.Nbr[k]] != -1) {
-      Cell_Dirs[i].add_inflow(LatSet::opp[k]);
+      Cell_Dirs[i].add_inflow(latset::opp<LatSet>(k));
     }
     if (flags[Id + Lattice.Nbr[k]] == -1 &&
-        flags[Id + Lattice.Nbr[LatSet::opp[k]]] != -1) {
-      Cell_Dirs[i].add_outflow(LatSet::opp[k]);
+        flags[Id + Lattice.Nbr[latset::opp<LatSet>(k)]] != -1) {
+      Cell_Dirs[i].add_outflow(latset::opp<LatSet>(k));
     }
   }
 }
@@ -52,11 +52,11 @@ void BasicBoundary<T, LatSet, LatStru>::SetCell_Dirs(int i,
   int Id = Cell_Dirs[i].Id;
   for (int k = 1; k < LatSet::q; k++) {
     if (Geo.getVoxel(Id + Lattice.Nbr[k]).getFlag() != -1) {
-      Cell_Dirs[i].add_inflow(LatSet::opp[k]);
+      Cell_Dirs[i].add_inflow(latset::opp<LatSet>(k));
     }
     if (Geo.getVoxel(Id + Lattice.Nbr[k]).getFlag() == -1 &&
-        Geo.getVoxel(Id + Lattice.Nbr[LatSet::opp[k]]).getFlag() != -1) {
-      Cell_Dirs[i].add_outflow(LatSet::opp[k]);
+        Geo.getVoxel(Id + Lattice.Nbr[latset::opp<LatSet>(k)]).getFlag() != -1) {
+      Cell_Dirs[i].add_outflow(latset::opp<LatSet>(k));
     }
   }
 }
@@ -147,7 +147,7 @@ void BasicBoundary<T, LatSet, LatStru>::Stream(population<T, LatSet> *pop) {
     pop[Id].f[0] = pop[Id].fpostcol[0];  // IMPROTANT!!!
     for (int k = 0; k < Cell_Dirs[i].inflow.size(); k++) {
       Dir = Cell_Dirs[i].inflow[k];
-      pop[Id].f[Dir] = pop[Id + Lattice.Nbr[LatSet::opp[Dir]]].fpostcol[Dir];
+      pop[Id].f[Dir] = pop[Id + Lattice.Nbr[latset::opp<LatSet>(Dir)]].fpostcol[Dir];
     }
   }
 }

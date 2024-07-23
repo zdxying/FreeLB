@@ -42,7 +42,7 @@ void FreeSurface2D<T, LatSet, TypePack>::MassTransfer() {
         for (int k = 1; k < LatSet::q; ++k) {
           std::size_t idn = id + this->Delta_Index[k];
           Cell<T, LatSet, TypePack> celln(idn, NS);
-          int kopp = LatSet::opp[k];
+          int kopp = latset::opp<LatSet>(k);
           if (util::isFlag(this->template getField<STATE>().get(idn), FSType::Fluid)) {
             deltamass += cell[kopp] - celln[k];
           } else if (util::isFlag(this->template getField<STATE>().get(idn), FSType::Interface)) {
@@ -101,9 +101,9 @@ void FreeSurface2D<T, LatSet, TypePack>::MassTransfer() {
           if (util::isFlag(this->template getField<STATE>().get(idn), FSType::Gas)) {
             Cell<T, LatSet, TypePack> celln(idn, NS);
             // fiopp = feqiopp(rho_gas) + feqi(rho_gas) - fi(x+ei)
-            cell[LatSet::opp[k]] =
+            cell[latset::opp<LatSet>(k)] =
               Equilibrium<T, LatSet>::Order2(k, u, rho_gas, u2) +
-              Equilibrium<T, LatSet>::Order2(LatSet::opp[k], u, rho_gas, u2) - celln[k];
+              Equilibrium<T, LatSet>::Order2(latset::opp<LatSet>(k), u, rho_gas, u2) - celln[k];
           }
         }
 

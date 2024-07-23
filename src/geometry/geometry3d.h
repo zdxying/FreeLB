@@ -213,8 +213,8 @@ class Geometry3D : public AABB<T, 3> {
 
   template <typename LatSet>
   int getNeighborId(int id, int dir) const {
-    return id + LatSet::c[dir][0] + LatSet::c[dir][1] * Projection[1] +
-           LatSet::c[dir][2] * Projection[2];
+    return id + latset::c<LatSet>(dir)[0] + latset::c<LatSet>(dir)[1] * Projection[1] +
+           latset::c<LatSet>(dir)[2] * Projection[2];
   }
   // {0, 1, -1, Nx, -Nx, Nx * Ny, -Nx * Ny, 
   //  1 + Nx, -1 - Nx, 1 + Nx*Ny, -1 - Nx*Ny, Nx + Nx*Ny, -Nx - Nx*Ny,

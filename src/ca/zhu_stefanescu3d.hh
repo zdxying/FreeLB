@@ -60,7 +60,7 @@ ZhuStefanescu3D<T, LatSet, RhoLatSet>::ZhuStefanescu3D(
       ExcessC_(lbmns.getGeo().getVoxelsNum(), T(0)),
       ExcessC(lbmns.getGeo().getVoxelsNum(), Vector<T, RhoLatSet::q>{}) {
   Delta_Index = make_Array<int, LatSet::q>(
-        [&](int i) { return LatSet::c[i] * Geo.getProjection(); });
+        [&](int i) { return latset::c<LatSet>(i) * Geo.getProjection(); });
         
   Interface.reserve(Ni * Nj * 2 + Ni * Nk * 2 + Nj * Nk * 2);
   // (cos(Ѱ) cos(Φ) - sin(Ѱ) cos(θ) sin(Φ) | sin(Ѱ) cos(θ) cos(Φ)

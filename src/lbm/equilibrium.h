@@ -34,24 +34,24 @@ class Cell;
 template <typename T, typename LatSet>
 struct Equilibrium {
   __any__ static inline T Order1(int k, const Vector<T, LatSet::d> &u, T rho) {
-    return LatSet::w[k] * rho * (T{1} + LatSet::InvCs2 * (u * LatSet::c[k]));
+    return latset::w<LatSet>(k) * rho * (T{1} + LatSet::InvCs2 * (u * latset::c<LatSet>(k)));
   }
 
   __any__ static inline T Order1_Incompresible(int k, const Vector<T, LatSet::d> &u, T rho) {
-    return LatSet::w[k] * (rho + LatSet::InvCs2 * (u * LatSet::c[k]));
+    return latset::w<LatSet>(k) * (rho + LatSet::InvCs2 * (u * latset::c<LatSet>(k)));
   }
 
   __any__ static inline T Order2(int k, const Vector<T, LatSet::d> &u, T rho, T u2) {
-    T uc = u * LatSet::c[k];
-    return LatSet::w[k] * rho *
+    T uc = u * latset::c<LatSet>(k);
+    return latset::w<LatSet>(k) * rho *
            (T(1) + LatSet::InvCs2 * uc + uc * uc * T(0.5) * LatSet::InvCs4 -
             LatSet::InvCs2 * u2 * T(0.5));
   }
 
   // __any__ static inline T Order2_Incompresible(int k, const Vector<T, LatSet::d> &u, T rho, T
   // u2) {
-  //   T uc = u * LatSet::c[k];
-  //   return LatSet::w[k] * (rho + LatSet::InvCs2 * uc + uc * uc * T(0.5) *
+  //   T uc = u * latset::c<LatSet>(k);
+  //   return latset::w<LatSet>(k) * (rho + LatSet::InvCs2 * uc + uc * uc * T(0.5) *
   //   LatSet::InvCs4 -
   //                          LatSet::InvCs2 * u2 * T(0.5));
   // }
@@ -83,8 +83,8 @@ struct SecondOrder {
   using GenericRho = typename CELL::GenericRho;
 
   __any__ static inline T get(int k, const Vector<T, LatSet::d> &u, T rho, T u2) {
-    const T uc = u * c<LatSet>(k);
-    return w<LatSet>(k) * rho *
+    const T uc = u * latset::c<LatSet>(k);
+    return latset::w<LatSet>(k) * rho *
            (T{1} + LatSet::InvCs2 * uc + uc * uc * T{0.5} * LatSet::InvCs4 -
             LatSet::InvCs2 * u2 * T{0.5});
   }
@@ -116,7 +116,7 @@ struct FirstOrder {
   using GenericRho = typename CELL::GenericRho;
 
   __any__ static inline T get(int k, const Vector<T, LatSet::d> &u, T rho) {
-    return LatSet::w[k] * rho * (T{1} + LatSet::InvCs2 * (u * LatSet::c[k]));
+    return latset::w<LatSet>(k) * rho * (T{1} + LatSet::InvCs2 * (u * latset::c<LatSet>(k)));
   }
 
   __any__ static inline void apply(std::array<T, LatSet::q> &feq, T rho,

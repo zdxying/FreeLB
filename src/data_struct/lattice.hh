@@ -39,11 +39,11 @@ PopLattice<T, LatSet>::PopLattice(Geometry<T, LatSet::d>& geo, AbstractConverter
     Projection = Vector<int, 2>(1, Nx);
     InnerIndex.reserve((Nx - 2) * (Ny - 2));
   }
-  Delta_Index = make_Array<int, LatSet::q>([&](int i) { return LatSet::c[i] * Projection; });
+  Delta_Index = make_Array<int, LatSet::q>([&](int i) { return latset::c<LatSet>(i) * Projection; });
   N = Nx * Ny * Nz;
   // init populations
   for (unsigned int i = 0; i < LatSet::q; ++i) {
-    Pops.getField(i).Init(this->Lattice_Rho_Init * LatSet::w[i]);
+    Pops.getField(i).Init(this->Lattice_Rho_Init * latset::w<LatSet>(i));
   }
   if (InitIdx) {
     Index.reserve(N);
@@ -182,7 +182,7 @@ void PopLattice<T, LatSet>::BGK_Source(const ArrayType& flagarr, std::uint8_t fl
 template <typename T, typename LatSet>
 void PopLattice<T, LatSet>::Stream() {
   for (unsigned int i = 1; i < LatSet::q; ++i) {
-    Pops.getField(i).rotate(LatSet::c[i] * Projection);
+    Pops.getField(i).rotate(latset::c<LatSet>(i) * Projection);
   }
 }
 

@@ -118,7 +118,7 @@ template <typename T, typename LatSet, typename TypePack>
 __any__ void addBlockLatticeImp(cudev::BlockLattice<T, LatSet, TypePack> &a, std::size_t id, T value) {
   auto& f = a.template getField<cudev::RHO<T>>();
   for (int i = 0; i < LatSet::q; ++i)
-  f.get(id) += value * (LatSet::c[i]*LatSet::c[i]);
+  f.get(id) += value * (latset::c<LatSet>(i)*latset::c<LatSet>(i));
 }
 template <typename T, typename LatSet, typename TypePack>
 __global__ void addBlockLattice_kernel(cudev::BlockLattice<T, LatSet, TypePack> *a, T value, std::size_t size) {
