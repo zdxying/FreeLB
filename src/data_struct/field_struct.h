@@ -163,7 +163,7 @@ class BlockField : public FieldType {
 
   ~BlockField() {
 #ifdef __CUDACC__
-    cuda_free(dev_BlockField);
+if (dev_BlockField) cuda_free(dev_BlockField);
 #endif
   }
 

@@ -23,7 +23,8 @@
 #pragma once
 // lattice boltzmann method implementations
 
-#include "data_struct/Vector.h"
+// #include "data_struct/Vector.h"
+#include "lbm/lattice_set.h"
 
 template <typename T, typename LatSet, typename TypePack>
 class Cell;
@@ -82,8 +83,8 @@ struct SecondOrder {
   using GenericRho = typename CELL::GenericRho;
 
   __any__ static inline T get(int k, const Vector<T, LatSet::d> &u, T rho, T u2) {
-    const T uc = u * LatSet::c[k];
-    return LatSet::w[k] * rho *
+    const T uc = u * c<LatSet>(k);
+    return w<LatSet>(k) * rho *
            (T{1} + LatSet::InvCs2 * uc + uc * uc * T{0.5} * LatSet::InvCs4 -
             LatSet::InvCs2 * u2 * T{0.5});
   }

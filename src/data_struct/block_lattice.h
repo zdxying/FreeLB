@@ -171,6 +171,9 @@ class BlockLattice : public BlockLatticeBase<T, LatSet, TypePack> {
   template <typename CELLDYNAMICS, typename ArrayType>
   void CuDevApplyCellDynamics(ArrayType& flagarr);
 
+  template <typename CELLDYNAMICS>
+  void CuDevApplyCellDynamics();
+
 #endif
 
   // tolerance
@@ -196,6 +199,15 @@ __global__ void CuDevApplyCellDynamicsKernel(cudev::BlockLattice<T, LatSet, Type
   if (idx < N) {
     cudev::Cell<T, LatSet, TypePack> cell(idx, blocklat);
     CELLDYNAMICS::Execute(flagarr->operator[](idx), cell);
+  }
+}
+
+template <typename T, typename LatSet, typename TypePack, typename CELLDYNAMICS>
+__global__ void CuDevApplyCellDynamicsKernel(cudev::BlockLattice<T, LatSet, TypePack>* blocklat, std::size_t N) {
+  std::size_t idx = blockIdx.x * blockDim.x + threadIdx.x;
+  if (idx < N) {
+    cudev::Cell<T, LatSet, TypePack> cell(idx, blocklat);
+    CELLDYNAMICS::apply(cell);
   }
 }
 
@@ -322,6 +334,9 @@ class BlockLatticeManager : public BlockLatticeManagerBase<T, LatSet, TypePack> 
 
   template <typename CELLDYNAMICS, typename FieldType>
   void CuDevApplyCellDynamics(BlockFieldManager<FieldType, T, LatSet::d>& BFM);
+
+  template <typename CELLDYNAMICS>
+  void CuDevApplyCellDynamics();
 
 #endif
 

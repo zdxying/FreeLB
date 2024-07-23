@@ -148,17 +148,18 @@ int main() {
   // GeoWriter.addWriterSet(FlagWriter);
   // GeoWriter.WriteBinary();
 
-  GenericvectorManager<std::size_t> BulkTaskIds(Geo.getBlockNum(), FlagFM, AABBFlag);
-  GenericvectorManager<std::size_t> WallTaskIds(Geo.getBlockNum(), FlagFM, BouncebackFlag | BBMovingWallFlag);
-  GenericvectorManager<std::size_t> BBTaskIds(Geo.getBlockNum(), FlagFM, BouncebackFlag );
-  GenericvectorManager<std::size_t> BBMWTaskIds(Geo.getBlockNum(), FlagFM, BBMovingWallFlag);
+  // GenericvectorManager<std::size_t> BulkTaskIds(Geo.getBlockNum(), FlagFM, AABBFlag);
+  // GenericvectorManager<std::size_t> WallTaskIds(Geo.getBlockNum(), FlagFM, BouncebackFlag | BBMovingWallFlag);
+  // GenericvectorManager<std::size_t> BBTaskIds(Geo.getBlockNum(), FlagFM, BouncebackFlag );
+  // GenericvectorManager<std::size_t> BBMWTaskIds(Geo.getBlockNum(), FlagFM, BBMovingWallFlag);
 
   // ------------------ define lattice ------------------
   using FIELDS = TypePack<RHO<T>, VELOCITY<T, LatSet::d>, POP<T, LatSet::q>>;
+  using cudevFIELDS = typename ExtractCudevFieldPack<FIELDS>::cudev_pack;
   // using FIELDREFS = TypePack<FLAG>;
   // using FIELDSPACK = TypePack<FIELDS, FIELDREFS>;
   // using CELL = Cell<T, LatSet, ExtractFieldPack<FIELDSPACK>::mergedpack>;
-  using CELL = Cell<T, LatSet, FIELDS>;
+  using CELL = cudev::Cell<T, LatSet, cudevFIELDS>;
   ValuePack InitValues(BaseConv.getLatRhoInit(), Vector<T, 3>{}, T{});
   // lattice
   BlockLatticeManager<T, LatSet, FIELDS> NSLattice(Geo, InitValues, BaseConv);
@@ -212,7 +213,8 @@ int main() {
 
   for(int i = 0; i < 10; ++i){
     // NSLattice.ApplyCellDynamics<NSTask>(FlagFM);
-    NSLattice.CuDevApplyCellDynamics<NSTask>(FlagFM);
+    // NSLattice.CuDevApplyCellDynamics<NSTask>(FlagFM);
+    // NSLattice.CuDevApplyCellDynamics<collision::BGK_Feq<equilibrium::SecondOrder<CELL>>>();
     // NSLattice.Stream();
     NSLattice.CuDevStream();
   }
@@ -221,7 +223,11 @@ int main() {
   while (MainLoopTimer() < MaxStep) {
 
     // NSLattice.ApplyCellDynamics<NSTask>(FlagFM);
-    NSLattice.CuDevApplyCellDynamics<NSTask>(FlagFM);
+    // NSLattice.CuDevApplyCellDynamics<NSTask>(FlagFM);
+    // NSLattice.CuDevApplyCellDynamics<collision::BounceBack<CELL>>();
+    
+    NSLattice.CuDevApplyCellDynamics<collision::BGK_Feq<equilibrium::SecondOrder<CELL>>>();
+    
     // NSLattice.ApplyCellDynamics<collision::BGK_Feq<equilibrium::SecondOrder<CELL>>>();
     // NSLattice.ApplyCellDynamics<collision::BGK_Feq_RhoU<equilibrium::SecondOrder<CELL>>>(BulkTaskIds);
     // NSLattice.ApplyCellDynamics<collision::BGK_Feq<equilibrium::SecondOrder<CELL>>>(WallTaskIds);
@@ -229,14 +235,14 @@ int main() {
     // NSLattice.ApplyCellDynamics<collision::BounceBackMovingWall<CELL>>(BBMWTaskIds);
     
     // NSLattice.Stream();
-    NSLattice.CuDevStream();
-
+    // NSLattice.CuDevStream();
     // BM.Apply(MainLoopTimer());
 
     // NSLattice.Communicate(MainLoopTimer());
 
     ++MainLoopTimer;
   }
+  cudaDeviceSynchronize();
   MainLoopTimer.END_TIMER();
 
   Printer::Print_BigBanner(std::string("Calculation Complete!"));

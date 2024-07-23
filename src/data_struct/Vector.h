@@ -130,7 +130,7 @@ class Vector {
     }
     return result;
   }
-  __any__ void clear() { std::fill(_data, _data + D, T{}); }
+  __any__ void clear() { for (unsigned int i = 0; i < D; ++i) _data[i] = T{}; }
 
   // operators
   // []: return reference of the i th element

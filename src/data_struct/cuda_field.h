@@ -41,6 +41,8 @@ class Data {
   static constexpr unsigned int array_dim = 1;
   using array_type = Data<T, Base>;
   static constexpr bool isField = false;
+  static constexpr bool isCuDevField = true;
+  using cudev_FieldType = Data<T, Base>;
 
  public:
   T* _data;
@@ -98,6 +100,8 @@ class Array {
   static constexpr unsigned int array_dim = Base::array_dim;
   using array_type = Array<T, Base>;
   static constexpr bool isField = false;
+  static constexpr bool isCuDevField = true;
+  using cudev_FieldType = Array<T, Base>;
 
  private:
   T* _data;
@@ -398,6 +402,8 @@ class GenericArrayField {
   using value_type = typename ArrayType::value_type;
   static constexpr unsigned int array_dim = D;
   static constexpr bool isField = true;
+  static constexpr bool isCuDevField = true;
+  using cudev_FieldType = GenericArrayField<ArrayType, D>;
 
  private:
   ArrayType** _data;
@@ -461,6 +467,7 @@ class GenericField : public GenericArrayField<ArrayType, Base::array_dim> {
   static constexpr unsigned int array_dim = Base::array_dim;
   using array_type = ArrayType;
   using value_type = typename ArrayType::value_type;
+  using cudev_FieldType = GenericField<ArrayType, Base>;
 
   __any__ GenericField(ArrayType** data)
       : GenericArrayField<ArrayType, array_dim>(data) {}

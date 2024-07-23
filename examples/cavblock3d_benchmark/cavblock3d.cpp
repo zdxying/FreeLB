@@ -217,7 +217,7 @@ int main() {
 
   MainLoopTimer.START_TIMER();
   while (MainLoopTimer() < MaxStep) {
-
+    // NSLattice.ApplyCellDynamics<collision::BounceBack<CELL>>();
     NSLattice.ApplyCellDynamics<NSTask>(FlagFM);
     // NSLattice.ApplyCellDynamics<collision::BGK_Feq<equilibrium::SecondOrder<CELL>>>();
     // NSLattice.ApplyCellDynamics<collision::BGK_Feq_RhoU<equilibrium::SecondOrder<CELL>>>(BulkTaskIds);

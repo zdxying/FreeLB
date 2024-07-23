@@ -143,9 +143,9 @@ class BlockLattice : public BlockLatticeBase<T, LatSet, TypePack> {
       : BlockLatticeBase<T, LatSet, TypePack>(delta_index, fields), Omega(omega),
         _Omega(_omega), fOmega(fomega) {}
 
-  __device__ inline T getOmega() const { return Omega; }
-  __device__ inline T get_Omega() const { return _Omega; }
-  __device__ inline T getfOmega() const { return fOmega; }
+  __device__ inline T getOmega() const { return *Omega; }
+  __device__ inline T get_Omega() const { return *_Omega; }
+  __device__ inline T getfOmega() const { return *fOmega; }
 
   __device__ void Stream() {
     for (unsigned int i = 1; i < LatSet::q; ++i) {

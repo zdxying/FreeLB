@@ -203,57 +203,6 @@ template <unsigned int q>
 struct POPBase : public FieldBase<q> {};
 
 
-template <typename T>
-using RHO = GenericField<GenericArray<T>, RHOBase>;
-template <typename T>
-using TEMP = GenericField<GenericArray<T>, TEMPBase>;
-template <typename T>
-using CONC = GenericField<GenericArray<T>, CONCBase>;
-
-template <typename T, unsigned int D>
-using VELOCITY = GenericField<GenericArray<Vector<T, D>>, VELOCITYBase>;
-
-using FLAG = GenericField<GenericArray<std::uint8_t>, FLAGBase>;
-
-template <typename T, unsigned int D>
-using FORCE = GenericField<GenericArray<Vector<T, D>>, FORCEBase>;
-
-template <typename T>
-using SCALARFORCE = GenericField<GenericArray<T>, SCALARFORCEBase>;
-
-template <typename T, unsigned int D>
-using CONSTFORCE = Data<Vector<T, D>, CONSTFORCEBase>;
-
-template <typename T>
-using SCALARCONSTFORCE = Data<T, SCALARCONSTFORCEBase>;
-
-template <typename T, unsigned int q>
-using POP = GenericField<StreamArray<T>, POPBase<q>>;
-// using POP = GenericField<CyclicArray<T>, POPBase<q>>;
-
-template <typename T>
-using RHOINIT = Data<T, RHOINITBase>;
-template <typename T>
-using TEMPINIT = Data<T, TEMPINITBase>;
-template <typename T>
-using CONCINIT = Data<T, CONCINITBase>;
-
-template <typename T>
-using GBETA = Data<T, GBETABase>;
-
-template <typename T>
-using CONSTRHO = Data<T, CONSTRHOBase>;
-
-template <typename T, unsigned int D>
-using CONSTU = Data<Vector<T, D>, CONSTUBase>;
-
-// ---------block field alias-----------
-template <typename FieldType, typename FloatType, unsigned int Dim>
-class BlockField;
-
-template <typename FieldType, typename FloatType, unsigned int Dim>
-class BlockFieldManager;
-
 namespace cudev {
 
 #ifdef __CUDACC__
@@ -298,6 +247,107 @@ using CONSTU = Data<Vector<T, D>, CONSTUBase>;
 #endif
 
 }  // namespace cudev
+
+
+// #ifdef __CUDA_ARCH__
+
+// template <typename T>
+// using RHO = cudev::RHO<T>;
+// template <typename T>
+// using TEMP = cudev::TEMP<T>;
+// template <typename T>
+// using CONC = cudev::CONC<T>;
+
+// template <typename T, unsigned int D>
+// using VELOCITY = cudev::VELOCITY<T,D>;
+
+// using FLAG = cudev::FLAG;
+
+// template <typename T, unsigned int D>
+// using FORCE = cudev::FORCE<T,D>;
+
+// template <typename T>
+// using SCALARFORCE = cudev::SCALARFORCE<T>;
+
+// template <typename T, unsigned int D>
+// using CONSTFORCE = cudev::CONSTFORCE<T,D>;
+
+// template <typename T>
+// using SCALARCONSTFORCE = cudev::SCALARCONSTFORCE<T>;
+
+// template <typename T, unsigned int q>
+// using POP = cudev::POP<T,q>;
+// // using POP = GenericField<CyclicArray<T>, POPBase<q>>;
+
+// template <typename T>
+// using RHOINIT = cudev::RHOINIT<T>;
+// template <typename T>
+// using TEMPINIT = cudev::TEMPINIT<T>;
+// template <typename T>
+// using CONCINIT = cudev::CONCINIT<T>;
+
+// template <typename T>
+// using GBETA = cudev::GBETA<T>;
+
+// template <typename T>
+// using CONSTRHO = cudev::CONSTRHO<T>;
+
+// template <typename T, unsigned int D>
+// using CONSTU = cudev::CONSTU<T,D>;
+
+// #else
+
+template <typename T>
+using RHO = GenericField<GenericArray<T>, RHOBase>;
+template <typename T>
+using TEMP = GenericField<GenericArray<T>, TEMPBase>;
+template <typename T>
+using CONC = GenericField<GenericArray<T>, CONCBase>;
+
+template <typename T, unsigned int D>
+using VELOCITY = GenericField<GenericArray<Vector<T, D>>, VELOCITYBase>;
+
+using FLAG = GenericField<GenericArray<std::uint8_t>, FLAGBase>;
+
+template <typename T, unsigned int D>
+using FORCE = GenericField<GenericArray<Vector<T, D>>, FORCEBase>;
+
+template <typename T>
+using SCALARFORCE = GenericField<GenericArray<T>, SCALARFORCEBase>;
+
+template <typename T, unsigned int D>
+using CONSTFORCE = Data<Vector<T, D>, CONSTFORCEBase>;
+
+template <typename T>
+using SCALARCONSTFORCE = Data<T, SCALARCONSTFORCEBase>;
+
+template <typename T, unsigned int q>
+using POP = GenericField<StreamArray<T>, POPBase<q>>;
+// using POP = GenericField<CyclicArray<T>, POPBase<q>>;
+
+template <typename T>
+using RHOINIT = Data<T, RHOINITBase>;
+template <typename T>
+using TEMPINIT = Data<T, TEMPINITBase>;
+template <typename T>
+using CONCINIT = Data<T, CONCINITBase>;
+
+template <typename T>
+using GBETA = Data<T, GBETABase>;
+
+template <typename T>
+using CONSTRHO = Data<T, CONSTRHOBase>;
+
+template <typename T, unsigned int D>
+using CONSTU = Data<Vector<T, D>, CONSTUBase>;
+
+// #endif
+// ---------block field alias-----------
+template <typename FieldType, typename FloatType, unsigned int Dim>
+class BlockField;
+
+template <typename FieldType, typename FloatType, unsigned int Dim>
+class BlockFieldManager;
 
 
 namespace CA {

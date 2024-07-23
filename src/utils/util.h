@@ -86,17 +86,18 @@ struct Fraction {
 
   constexpr Fraction(T num, T denum) : numerator(num), denominator(denum) {}
   constexpr Fraction(T num) : Fraction(num, 1) {}
-  constexpr Fraction() : Fraction(0, 0) {}
+  constexpr Fraction() : Fraction(0) {}
 
   // return result of numerator/denominator
   template <typename U = T>
-  constexpr U operator()() {
+  constexpr U operator()() const {
     if (U(denominator) == U(0)) {
       std::cout << "denominator is zero !" << std::endl;
       exit(-1);
     }
     return U(numerator) / U(denominator);
   }
+  
   void set(T num, T denum) {
     numerator = num;
     denominator = denum;

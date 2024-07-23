@@ -290,34 +290,38 @@ class Cell {
 
   template <typename FieldType, unsigned int i = 0>
   __device__ auto& get() {
-    if constexpr (FieldType::isField) {
-      return Lat->template getField<FieldType>().template get<i>(Id);
+    using cudev_FieldType = typename GetCuDevFieldType<FieldType>::type;
+    if constexpr (cudev_FieldType::isField) {
+      return Lat->template getField<cudev_FieldType>().template get<i>(Id);
     } else {
-      return Lat->template getField<FieldType>().template get<i>();
+      return Lat->template getField<cudev_FieldType>().template get<i>();
     }
   }
   template <typename FieldType, unsigned int i = 0>
   __device__ const auto& get() const {
-    if constexpr (FieldType::isField) {
-      return Lat->template getField<FieldType>().template get<i>(Id);
+    using cudev_FieldType = typename GetCuDevFieldType<FieldType>::type;
+    if constexpr (cudev_FieldType::isField) {
+      return Lat->template getField<cudev_FieldType>().template get<i>(Id);
     } else {
-      return Lat->template getField<FieldType>().template get<i>();
+      return Lat->template getField<cudev_FieldType>().template get<i>();
     }
   }
   template <typename FieldType>
   __device__ auto& get(unsigned int i) {
-    if constexpr (FieldType::isField) {
-      return Lat->template getField<FieldType>().get(Id, i);
+    using cudev_FieldType = typename GetCuDevFieldType<FieldType>::type;
+    if constexpr (cudev_FieldType::isField) {
+      return Lat->template getField<cudev_FieldType>().get(Id, i);
     } else {
-      return Lat->template getField<FieldType>().get(i);
+      return Lat->template getField<cudev_FieldType>().get(i);
     }
   }
   template <typename FieldType>
   __device__ const auto& get(unsigned int i) const {
-    if constexpr (FieldType::isField) {
-      return Lat->template getField<FieldType>().get(Id, i);
+    using cudev_FieldType = typename GetCuDevFieldType<FieldType>::type;
+    if constexpr (cudev_FieldType::isField) {
+      return Lat->template getField<cudev_FieldType>().get(Id, i);
     } else {
-      return Lat->template getField<FieldType>().get(i);
+      return Lat->template getField<cudev_FieldType>().get(i);
     }
   }
 

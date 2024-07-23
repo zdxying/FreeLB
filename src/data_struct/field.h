@@ -42,6 +42,7 @@ class Data {
   static constexpr unsigned int array_dim = 1;
   using array_type = Data<T, Base>;
   static constexpr bool isField = false;
+  static constexpr bool isCuDevField = false;
 
 #ifdef __CUDACC__
   using cudev_array_type = cudev::Data<T, Base>;
@@ -166,6 +167,7 @@ class Array {
   static constexpr unsigned int array_dim = Base::array_dim;
   using array_type = Array<T, Base>;
   static constexpr bool isField = false;
+  static constexpr bool isCuDevField = false;
 
 #ifdef __CUDACC__
   using cudev_array_type = cudev::Array<T, Base>;
@@ -1171,6 +1173,7 @@ class GenericArrayField {
   using value_type = typename ArrayType::value_type;
   static constexpr unsigned int array_dim = D;
   static constexpr bool isField = true;
+  static constexpr bool isCuDevField = false;
 
 #ifdef __CUDACC__
   using cudev_ArrayType = typename ArrayType::cudev_array_type;

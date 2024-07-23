@@ -481,6 +481,15 @@ struct FindGenericRhoType<T, TypePack<First>> {
 
 }  // namespace cudev
 
+#ifdef __CUDACC__
+
+template <typename FieldType>
+struct GetCuDevFieldType {
+  using type = std::conditional_t<FieldType::isCuDevField, FieldType, typename FieldType::cudev_FieldType>;
+};
+
+#endif
+
 
 // unroll a for loop, use: unroll_for<x, y>([&](unsigned int i) { ... });
 template <unsigned int start, unsigned int end, typename Func>

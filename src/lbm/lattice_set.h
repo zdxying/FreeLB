@@ -26,6 +26,50 @@
 #include "data_struct/Vector.h"
 #include "utils/util.h"
 
+
+namespace latset{
+
+  // lattice set for discrete velocity and weight
+  template <unsigned int D, unsigned int Q>
+  __constexpr__ Vector<int, D> c[Q] = {};
+
+  // we have to use Fraction here not template typename T 
+  // cause partial specialization of template variable is not allowed
+  template <unsigned int D, unsigned int Q>
+  __constexpr__ Fraction<> w[Q] = {};
+
+  template <unsigned int D, unsigned int Q>
+  __constexpr__ int opp[Q] = {};
+
+} // namespace latset
+
+
+template <unsigned int D, unsigned int Q>
+constexpr Vector<int, D> c(unsigned int i){
+  return latset::c<D,Q>[i];
+}
+
+template <typename T, unsigned int D, unsigned int Q>
+constexpr T w(unsigned int i){
+  return latset::w<D,Q>[i].template operator()<T>();
+}
+
+template <unsigned int D, unsigned int Q>
+constexpr int opp(unsigned int i){
+  return latset::opp<D,Q>[i];
+}
+
+
+template <typename LatSet>
+constexpr Vector<int, LatSet::d> c(unsigned int i){
+  return c<LatSet::d, LatSet::q>(i);
+}
+
+template <typename LatSet>
+constexpr typename LatSet::FloatType w(unsigned int i){
+  return w<typename LatSet::FloatType, LatSet::d, LatSet::q>(i);
+}
+
 // lattice set, including dimension, velocity, weight, and direction
 // basic lattice set, DdQq
 // lattice set: DdQq(e.g., D2Q9)
@@ -41,6 +85,7 @@ struct Basic_Lattice_Set {
 // D1Q3
 template <typename T>
 struct D1Q3 : public Basic_Lattice_Set<1, 3> {
+  using FloatType = T;
   static constexpr int c[q][d] = {{0}, {1}, {-1}};
   static constexpr T w[q] = {T(1) / T(3), T(1) / T(6), T(1) / T(6)};
   static constexpr T cs2 = T(1) / T(3);
@@ -122,6 +167,7 @@ struct D3Q15 : public Basic_Lattice_Set<3, 15> {
 // D3Q19
 template <typename T>
 struct D3Q19 : public Basic_Lattice_Set<3, 19> {
+  using FloatType = T;
   static constexpr Vector<int, 3> c[q] = {
       {0, 0, 0},   {1, 0, 0},  {-1, 0, 0},  {0, 1, 0},   {0, -1, 0},
       {0, 0, 1},   {0, 0, -1}, {1, 1, 0},   {-1, -1, 0}, {1, 0, 1},
@@ -138,6 +184,27 @@ struct D3Q19 : public Basic_Lattice_Set<3, 19> {
   static constexpr int opp[q] = {0, 2,  1,  4,  3,  6,  5,  8,  7, 10,
                                  9, 12, 11, 14, 13, 16, 15, 18, 17};
 };
+
+namespace latset{
+
+template <>
+__constexpr__ Vector<int, 3> c<3,19>[19] = {
+      {0, 0, 0},   {1, 0, 0},  {-1, 0, 0},  {0, 1, 0},   {0, -1, 0},
+      {0, 0, 1},   {0, 0, -1}, {1, 1, 0},   {-1, -1, 0}, {1, 0, 1},
+      {-1, 0, -1}, {0, 1, 1},  {0, -1, -1}, {1, -1, 0},  {-1, 1, 0},
+      {1, 0, -1},  {-1, 0, 1}, {0, 1, -1},  {0, -1, 1}};
+
+template <>
+__constexpr__ Fraction<> w<3,19>[19] = {{1,3}, 
+{1,18}, {1,18}, {1,18}, {1,18}, {1,18}, {1,18},
+{1,36}, {1,36}, {1,36}, {1,36}, {1,36}, {1,36}, 
+{1,36}, {1,36}, {1,36}, {1,36}, {1,36}, {1,36}};
+      
+template <>
+__constexpr__ int opp<3,19>[19]  = {0, 2,  1,  4,  3,  6,  5,  8,  7, 10,
+                                 9, 12, 11, 14, 13, 16, 15, 18, 17};
+
+} // namespace latset
 
 // D3Q27
 template <typename T>

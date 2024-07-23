@@ -51,7 +51,16 @@ using FLOAT = double;
 #ifdef __CUDACC__
 
 #define __any__ __device__ __host__
-#define __constexpr__ __constant__
+
+#ifdef __CUDA_ARCH__
+
+#define __constexpr__ __constant__ constexpr 
+
+#else
+
+#define __constexpr__ constexpr
+
+#endif
 
 #include <thrust/device_vector.h>
 #include <thrust/host_vector.h>
@@ -61,7 +70,7 @@ using FLOAT = double;
 #else
 
 #define __any__
-#define __constexpr__
+#define __constexpr__ constexpr
 #define __global__
 #define __host__
 #define __device__
