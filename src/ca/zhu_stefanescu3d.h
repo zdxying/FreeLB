@@ -26,6 +26,7 @@
 #include <atomic>
 
 #include "data_struct/field_struct.h"
+#include "data_struct/lattice.h"
 #include "ca/cazs.h"
 #include "lbm/lattice_set.h"
 #include "lbm/unit_converter.h"

@@ -28,28 +28,57 @@ namespace force {
 
 template <typename T, typename LatSet>
 struct ForcePop {
+  // unroll the for loop
+  template <std::size_t... Is>
+  __any__ static inline void compute_impl(std::array<T, LatSet::q> &Fi, const Vector<T, LatSet::d> &u, const Vector<T, LatSet::d> &F, std::index_sequence<Is...>) {
+    // Unpack the sequence and call `get` for each index at compile time
+    ((Fi[Is] = get<Is>(u, F)), ...);
+  }
+  // use template to enable compile-time evaluation of latset::c and latset::w
+  template <unsigned int i>
+  __any__ static inline T get(const Vector<T, LatSet::d> &u, const Vector<T, LatSet::d> &F) {
+    return latset::w<LatSet>(i) * F * ((latset::c<LatSet>(i) - u) * LatSet::InvCs2 + (latset::c<LatSet>(i) * u * LatSet::InvCs4) * latset::c<LatSet>(i));
+  }
+
+  template <unsigned int d, std::size_t... Is>
+  __any__ static inline void computescalar_impl(std::array<T, LatSet::q> &Fi, const Vector<T, LatSet::d> &u, const T F, std::index_sequence<Is...>) {
+    // Unpack the sequence and call `get` for each index at compile time
+    ((Fi[Is] = getscalar<d,Is>(u, F)), ...);
+  }
+  // use template to enable compile-time evaluation of latset::c and latset::w
+  template <unsigned int d, unsigned int i>
+  __any__ static inline T getscalar(const Vector<T, LatSet::d> &u, const T F) {
+    const T v1 = (latset::c<LatSet>(i)[d] - u[d]) * LatSet::InvCs2;
+    const T v2 = (latset::c<LatSet>(i) * u * LatSet::InvCs4) * latset::c<LatSet>(i)[d];
+    return latset::w<LatSet>(i) * F * (v1 + v2);
+  }
+
   // calculate discrete force
   // c * (c * u) * LatSet::InvCs4
   // Vector<T, LatSet::d> ccu = (latset::c<LatSet>(i) * u * LatSet::InvCs4) *
   // latset::c<LatSet>(i); (c - u) * LatSet::InvCs2 Vector<T, LatSet::d> c_u =
   // (latset::c<LatSet>(i) - u) * LatSet::InvCs2;
-  __any__ static inline void compute(std::array<T, LatSet::q> &Fi, const Vector<T, LatSet::d> &u,
-                             const Vector<T, LatSet::d> &F) {
+  __any__ static inline void compute(std::array<T, LatSet::q> &Fi, const Vector<T, LatSet::d> &u, const Vector<T, LatSet::d> &F) {
+#ifdef UNROLLFOR
+    compute_impl(Fi, u, F, std::make_index_sequence<LatSet::q>{});
+#else
     for (unsigned int i = 0; i < LatSet::q; ++i) {
-      Fi[i] = latset::w<LatSet>(i) * F *
-              ((latset::c<LatSet>(i) - u) * LatSet::InvCs2 +
-               (latset::c<LatSet>(i) * u * LatSet::InvCs4) * latset::c<LatSet>(i));
+      Fi[i] = latset::w<LatSet>(i) * F * ((latset::c<LatSet>(i) - u) * LatSet::InvCs2 + (latset::c<LatSet>(i) * u * LatSet::InvCs4) * latset::c<LatSet>(i));
     }
+#endif
   }
 
   template <unsigned int d>
-  __any__ static inline void computeScalar(std::array<T, LatSet::q> &Fi,
-                                   const Vector<T, LatSet::d> &u, const T F) {
+  __any__ static inline void computeScalar(std::array<T, LatSet::q> &Fi, const Vector<T, LatSet::d> &u, const T F) {
+#ifdef UNROLLFOR
+    computescalar_impl<d>(Fi, u, F, std::make_index_sequence<LatSet::q>{});
+#else
     for (unsigned int i = 0; i < LatSet::q; ++i) {
       const T v1 = (latset::c<LatSet>(i)[d] - u[d]) * LatSet::InvCs2;
       const T v2 = (latset::c<LatSet>(i) * u * LatSet::InvCs4) * latset::c<LatSet>(i)[d];
       Fi[i] = latset::w<LatSet>(i) * F * (v1 + v2);
     }
+#endif
   }
 };
 
@@ -72,6 +101,7 @@ struct Force {
   }
   __any__ static auto &getForce(CELL &cell) { return cell.template get<FORCE<T, LatSet::d>>(); }
 };
+
 template <typename CELL>
 struct ConstForce {
   using T = typename CELL::FloatType;
@@ -93,6 +123,7 @@ struct ConstForce {
     return cell.template get<CONSTFORCE<T, LatSet::d>>();
   }
 };
+
 template <typename CELL, unsigned int dir = 2>
 struct ScalarForce {
   using T = typename CELL::FloatType;
@@ -119,6 +150,7 @@ struct ScalarForce {
     return cell.template get<SCALARFORCE<T>>();
   }
 };
+
 template <typename CELL, unsigned int dir = 2>
 struct ScalarConstForce {
   using T = typename CELL::FloatType;

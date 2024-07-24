@@ -72,9 +72,101 @@
 
 namespace CA {
 
+namespace latsetdata {
+// lattice set for discrete velocity
+template <unsigned int D, unsigned int Q>
+__constexpr__ Vector<int, D> c[Q] = {};
+
+// lattice set for weight
+// we have to use Fraction here not template typename T
+// cause partial specialization of variable template is not allowed
+template <unsigned int D, unsigned int Q>
+__constexpr__ Fraction<> w[Q] = {};
+
+// lattice set for opposite direction
+template <unsigned int D, unsigned int Q>
+__constexpr__ int opp[Q] = {};
+
+
+// D2Q4
+template <>
+__constexpr__ Vector<int, 2> c<2, 4>[4] = {{0, -1}, {-1, 0}, {1, 0}, {0, 1}};
+
+template <>
+__constexpr__ Fraction<> w<2, 4>[4] = {{1, 4}, {1, 4}, {1, 4}, {1, 4}};
+
+template <>
+__constexpr__ int opp<2, 4>[4] = {3, 2, 1, 0};
+
+// D2Q8
+template <>
+__constexpr__ Vector<int, 2> c<2, 8>[8] = {{-1, -1}, {0, -1}, {1, -1}, {-1, 0},
+                                          {1, 0},   {-1, 1}, {0, 1},  {1, 1}};
+
+template <>
+__constexpr__ Fraction<> w<2, 8>[8] = {{1, 20}, {1, 5},  {1, 20}, {1, 5},
+                                     {1, 5},  {1, 20}, {1, 5},  {1, 20}};
+
+template <>
+__constexpr__ int opp<2, 8>[8] = {7, 6, 5, 4, 3, 2, 1, 0};
+
+
+}  // namespace latsetdata
+
+namespace latset{
+
+// lattice set functions
+template <unsigned int D, unsigned int Q>
+constexpr const Vector<int, D>& c(unsigned int i) {
+  return latsetdata::c<D, Q>[i];
+}
+
+template <typename T, unsigned int D, unsigned int Q>
+constexpr T w(unsigned int i) {
+  return latsetdata::w<D, Q>[i].template operator()<T>();
+}
+
+template <unsigned int D, unsigned int Q>
+constexpr int opp(unsigned int i) {
+  return latsetdata::opp<D, Q>[i];
+}
+
+// lattice set functions using LatSet template
+template <typename LatSet>
+constexpr const Vector<int, LatSet::d>& c(unsigned int i) {
+#ifdef __CUDA_ARCH__
+  return c<LatSet::d, LatSet::q>(i);
+#else
+  return LatSet::c[i];
+#endif
+}
+
+template <typename LatSet>
+constexpr typename LatSet::FloatType w(unsigned int i) {
+#ifdef __CUDA_ARCH__
+  return w<typename LatSet::FloatType, LatSet::d, LatSet::q>(i);
+#else
+  return LatSet::w[i];
+#endif
+}
+
+template <typename LatSet>
+constexpr int opp(unsigned int i) {
+#ifdef __CUDA_ARCH__
+  return opp<LatSet::d, LatSet::q>(i);
+#else
+  return LatSet::opp[i];
+#endif
+}
+
+}
+
 // D2Q4
 template <typename T>
 struct D2Q4 : public Basic_Lattice_Set<2, 4> {
+  static constexpr unsigned int d = 2;
+  static constexpr unsigned int q = 4;
+  using FloatType = T;
   static constexpr Vector<int, 2> c[q] = {{0, -1}, {-1, 0}, {1, 0}, {0, 1}};
   static constexpr T w[q] = {T(1) / T(4), T(1) / T(4), T(1) / T(4), T(1) / T(4)};
   static constexpr int opp[q] = {3, 2, 1, 0};
@@ -83,6 +175,9 @@ struct D2Q4 : public Basic_Lattice_Set<2, 4> {
 // D2Q8
 template <typename T>
 struct D2Q8 : public Basic_Lattice_Set<2, 8> {
+  static constexpr unsigned int d = 2;
+  static constexpr unsigned int q = 8;
+  using FloatType = T;
   static constexpr Vector<int, 2> c[q] = {{-1, -1}, {0, -1}, {1, -1}, {-1, 0},
                                           {1, 0},   {-1, 1}, {0, 1},  {1, 1}};
   static constexpr T w[q] = {T(1) / T(20), T(1) / T(5),  T(1) / T(20), T(1) / T(5),

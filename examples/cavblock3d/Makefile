@@ -10,6 +10,7 @@ FLAGS += -O3 -Wall -march=native -fopenmp
 FLAGS += -DFLOAT_TYPE=double
 
 # FLAGS += -DMPI_ENABLED
+# FLAGS += -DUNROLLFOR
 
 OUTPUT += vtkoutput
 

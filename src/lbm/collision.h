@@ -28,6 +28,46 @@
 
 namespace collision {
 
+template <unsigned int k, typename CELL>
+__any__ static inline void get(CELL& cell, const typename CELL::FloatType omega, const typename CELL::FloatType _omega, 
+const std::array<typename CELL::FloatType, CELL::LatticeSet::q>& feq) {
+  cell[k] = omega * feq[k] + _omega * cell[k];
+}
+template <typename CELL, std::size_t... Is>
+__any__ static inline void apply_impl(CELL& cell, const typename CELL::FloatType omega, const typename CELL::FloatType _omega, 
+const std::array<typename CELL::FloatType, CELL::LatticeSet::q>& feq, std::index_sequence<Is...>) {
+  (get<Is,CELL>(cell, omega, _omega, feq), ...);
+}
+
+template <unsigned int k, typename CELL>
+__any__ static inline void get(CELL& cell, 
+const typename CELL::FloatType omega, const typename CELL::FloatType _omega, const typename CELL::FloatType fomega, 
+const std::array<typename CELL::FloatType, CELL::LatticeSet::q>& feq, const std::array<typename CELL::FloatType, CELL::LatticeSet::q>& fi) {
+  cell[k] = omega * feq[k] + _omega * cell[k] + fomega * fi[k];
+}
+template <typename CELL, std::size_t... Is>
+__any__ static inline void apply_impl(CELL& cell, 
+const typename CELL::FloatType omega, const typename CELL::FloatType _omega, const typename CELL::FloatType fomega, 
+const std::array<typename CELL::FloatType, CELL::LatticeSet::q>& feq, const std::array<typename CELL::FloatType, CELL::LatticeSet::q>& fi, 
+std::index_sequence<Is...>) {
+  (get<Is,CELL>(cell, omega, _omega, fomega, feq, fi), ...);
+}
+
+template <unsigned int k, typename CELL>
+__any__ static inline void get(CELL& cell, 
+const typename CELL::FloatType omega, const typename CELL::FloatType _omega, const typename CELL::FloatType fomega, 
+const std::array<typename CELL::FloatType, CELL::LatticeSet::q>& feq, const typename CELL::FloatType s) {
+  cell[k] = omega * feq[k] + _omega * cell[k] + fomega * s * latset::w<typename CELL::LatticeSet>(k);
+}
+template <typename CELL, std::size_t... Is>
+__any__ static inline void apply_impl(CELL& cell, 
+const typename CELL::FloatType omega, const typename CELL::FloatType _omega, const typename CELL::FloatType fomega, 
+const std::array<typename CELL::FloatType, CELL::LatticeSet::q>& feq, const typename CELL::FloatType s, 
+std::index_sequence<Is...>) {
+  (get<Is,CELL>(cell, omega, _omega, fomega, feq, s), ...);
+}
+
+
 // a typical BGK collision process with:
 // macroscopic variables updated
 // equilibrium distribution function calculated
@@ -52,10 +92,15 @@ struct BGK_Feq_RhoU {
     // BGK collision
     const T omega = cell.getOmega();
     const T _omega = cell.get_Omega();
+#ifdef UNROLLFOR
+    apply_impl(cell, omega, _omega, feq, std::make_index_sequence<LatSet::q>{});
+#else
     for (unsigned int i = 0; i < LatSet::q; ++i) {
       cell[i] = omega * feq[i] + _omega * cell[i];
     }
+#endif
   }
+
 };
 
 // a typical BGK collision process with:
@@ -75,9 +120,13 @@ struct BGK_Feq {
     // BGK collision
     const T omega = cell.getOmega();
     const T _omega = cell.get_Omega();
+#ifdef UNROLLFOR
+    apply_impl(cell, omega, _omega, feq, std::make_index_sequence<LatSet::q>{});
+#else
     for (unsigned int i = 0; i < LatSet::q; ++i) {
       cell[i] = omega * feq[i] + _omega * cell[i];
     }
+#endif
   }
 };
 
@@ -111,9 +160,13 @@ struct BGKForce_Feq_RhoU {
     const T _omega = cell.get_Omega();
     const T fomega = cell.getfOmega();
 
+#ifdef UNROLLFOR
+    apply_impl(cell, omega, _omega, fomega, feq, fi, std::make_index_sequence<LatSet::q>{});
+#else
     for (unsigned int i = 0; i < LatSet::q; ++i) {
       cell[i] = omega * feq[i] + _omega * cell[i] + fomega * fi[i];
     }
+#endif
   }
 };
 
@@ -140,9 +193,13 @@ struct BGKForce_Feq {
     const T _omega = cell.get_Omega();
     const T fomega = cell.getfOmega();
 
+#ifdef UNROLLFOR
+    apply_impl(cell, omega, _omega, fomega, feq, fi, std::make_index_sequence<LatSet::q>{});
+#else
     for (unsigned int i = 0; i < LatSet::q; ++i) {
       cell[i] = omega * feq[i] + _omega * cell[i] + fomega * fi[i];
     }
+#endif
   }
 };
 
@@ -172,15 +229,18 @@ struct BGKSource_Feq_Rho {
     const T _omega = cell.get_Omega();
     const T fomega = cell.getfOmega();
 
+#ifdef UNROLLFOR
+    apply_impl(cell, omega, _omega, fomega, feq, source, std::make_index_sequence<LatSet::q>{});
+#else
     for (unsigned int i = 0; i < LatSet::q; ++i) {
       cell[i] = omega * feq[i] + _omega * cell[i] + fomega * source * latset::w<LatSet>(i);
     }
+#endif
   }
 };
 
 // full way bounce back, could be regarded as a mpdified collision process
 // swap the populations in the opposite direction
-// LatSet must have rest population(D2Q4 is not supported)
 template <typename CELLTYPE>
 struct BounceBack {
   using CELL = CELLTYPE;
@@ -191,8 +251,8 @@ struct BounceBack {
 
   __any__ static void apply(CELL& cell) {
     for (unsigned int i = startdir; i < LatSet::q; i += 2) {
-      T temp = cell[i];
-      unsigned int iopp = i + 1;
+      const T temp = cell[i];
+      const unsigned int iopp = i + 1;
       cell[i] = cell[iopp];
       cell[iopp] = temp;
     }
@@ -208,7 +268,6 @@ struct BounceBack {
 
 // full way bounce back with moving wall, could be regarded as a modified collision process
 // swap the populations in the opposite direction
-// LatSet must have rest population(D2Q4 is not supported)
 template <typename CELLTYPE>
 struct BounceBackMovingWall {
   using CELL = CELLTYPE;
@@ -218,11 +277,11 @@ struct BounceBackMovingWall {
   static constexpr unsigned int startdir = LatSet::q % 2 == 0 ? 0 : 1;
 
   __any__ static void apply(CELL& cell) {
-    T rhox = 2 * LatSet::InvCs2 * cell.template get<GenericRho>();
+    const T rhox = 2 * LatSet::InvCs2 * cell.template get<GenericRho>();
     for (unsigned int i = startdir; i < LatSet::q; i += 2) {
-      T temp = cell[i];
-      unsigned int iopp = i + 1;
-      T uc = cell.template get<VELOCITY<T, LatSet::d>>() * latset::c<LatSet>(i) * latset::w<LatSet>(i) * rhox;
+      const T temp = cell[i];
+      const unsigned int iopp = i + 1;
+      const T uc = cell.template get<VELOCITY<T, LatSet::d>>() * latset::c<LatSet>(i) * latset::w<LatSet>(i) * rhox;
       cell[i] = cell[iopp] + uc;
       cell[iopp] = temp - uc;
     }

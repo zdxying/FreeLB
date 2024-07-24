@@ -26,6 +26,28 @@
 
 namespace moment {
 
+template <unsigned int k, typename CELL>
+__any__ inline void get_rhou(CELL& cell, typename CELL::FloatType& rho_value, 
+Vector<typename CELL::FloatType, CELL::LatticeSet::d>& u_value) {
+  rho_value += cell[k];
+  u_value += latset::c<typename CELL::LatticeSet>(k) * cell[k];
+}
+template <typename CELL, std::size_t... Is>
+__any__ inline void apply_rhou_impl(CELL& cell, typename CELL::FloatType& rho_value, 
+Vector<typename CELL::FloatType, CELL::LatticeSet::d>& u_value, std::index_sequence<Is...>) {
+  (get_rhou<Is, CELL>(cell, rho_value, u_value), ...);
+}
+
+template <unsigned int k, typename CELL>
+__any__ inline void get_rho(CELL& cell, typename CELL::FloatType& rho_value) {
+  rho_value += cell[k];
+}
+template <typename CELL, std::size_t... Is>
+__any__ inline void apply_rho_impl(CELL& cell, typename CELL::FloatType& rho_value, std::index_sequence<Is...>) {
+  (get_rho<Is, CELL>(cell, rho_value), ...);
+}
+
+
 template <typename CELLTYPE, bool WriteToField = false>
 struct rho {
   using CELL = CELLTYPE;
@@ -36,20 +58,32 @@ struct rho {
 
   __any__ static inline T get(CELL& cell) {
     T rho_value{};
+#ifdef UNROLLFOR
+    apply_rho_impl(cell, rho_value, std::make_index_sequence<LatSet::q>());
+#else
     for (unsigned int i = 0; i < LatSet::q; ++i) rho_value += cell[i];
+#endif
     if constexpr (WriteToField) cell.template get<GenericRho>() = rho_value;
     return rho_value;
   }
   __any__ static inline void apply(CELL& cell, T& rho_value) {
     rho_value = T{};
+#ifdef UNROLLFOR
+    apply_rho_impl(cell, rho_value, std::make_index_sequence<LatSet::q>());
+#else
     for (unsigned int i = 0; i < LatSet::q; ++i) rho_value += cell[i];
+#endif
     if constexpr (WriteToField) cell.template get<GenericRho>() = rho_value;
   }
   // always write to field
   __any__ static inline void apply(CELL& cell) {
     T& rho_value = cell.template get<GenericRho>();
     rho_value = T{};
+#ifdef UNROLLFOR
+    apply_rho_impl(cell, rho_value, std::make_index_sequence<LatSet::q>());
+#else
     for (unsigned int i = 0; i < LatSet::q; ++i) rho_value += cell[i];
+#endif
   }
 };
 
@@ -88,7 +122,11 @@ struct sourceRho {
 
   __any__ static inline T get(CELL& cell, T source) {
     T rho_value{};
+#ifdef UNROLLFOR
+    apply_rho_impl(cell, rho_value, std::make_index_sequence<LatSet::q>());
+#else
     for (unsigned int i = 0; i < LatSet::q; ++i) rho_value += cell[i];
+#endif
     // fOmega: avoid lattice artifact
     rho_value += source * T{0.5};
     if constexpr (WriteToField) cell.template get<GenericRho>() = rho_value;
@@ -96,7 +134,11 @@ struct sourceRho {
   }
   __any__ static inline void apply(CELL& cell, T& rho_value, T source) {
     rho_value = T{};
+#ifdef UNROLLFOR
+    apply_rho_impl(cell, rho_value, std::make_index_sequence<LatSet::q>());
+#else
     for (unsigned int i = 0; i < LatSet::q; ++i) rho_value += cell[i];
+#endif
     rho_value += source * T{0.5};
     if constexpr (WriteToField) cell.template get<GenericRho>() = rho_value;
   }
@@ -104,7 +146,11 @@ struct sourceRho {
   __any__ static inline void apply(CELL& cell, T source) {
     T& rho_value = cell.template get<GenericRho>();
     rho_value = T{};
+#ifdef UNROLLFOR
+    apply_rho_impl(cell, rho_value, std::make_index_sequence<LatSet::q>());
+#else
     for (unsigned int i = 0; i < LatSet::q; ++i) rho_value += cell[i];
+#endif
     rho_value += source * T{0.5};
   }
 };
@@ -118,10 +164,14 @@ struct u {
   __any__ static inline Vector<T, LatSet::d> get(CELL& cell) {
     Vector<T, LatSet::d> u_value{};
     T rho_value{};
+#ifdef UNROLLFOR
+    apply_rhou_impl(cell, rho_value, u_value, std::make_index_sequence<LatSet::q>());
+#else
     for (unsigned int i = 0; i < LatSet::q; ++i) {
       rho_value += cell[i];
       u_value += latset::c<LatSet>(i) * cell[i];
     }
+#endif
     u_value /= rho_value;
     if constexpr (WriteToField) cell.template get<VELOCITY<T, LatSet::d>>() = u_value;
     return u_value;
@@ -129,10 +179,14 @@ struct u {
   __any__ static inline void apply(CELL& cell, Vector<T, LatSet::d>& u_value) {
     u_value.clear();
     T rho_value{};
+#ifdef UNROLLFOR
+    apply_rhou_impl(cell, rho_value, u_value, std::make_index_sequence<LatSet::q>());
+#else
     for (unsigned int i = 0; i < LatSet::q; ++i) {
       rho_value += cell[i];
       u_value += latset::c<LatSet>(i) * cell[i];
     }
+#endif
     u_value /= rho_value;
     if constexpr (WriteToField) cell.template get<VELOCITY<T, LatSet::d>>() = u_value;
   }
@@ -140,10 +194,14 @@ struct u {
   __any__ static inline void apply(CELL& cell) {
     Vector<T, LatSet::d>& u_value = cell.template get<VELOCITY<T, LatSet::d>>();
     T rho_value{};
+#ifdef UNROLLFOR
+    apply_rhou_impl(cell, rho_value, u_value, std::make_index_sequence<LatSet::q>());
+#else
     for (unsigned int i = 0; i < LatSet::q; ++i) {
       rho_value += cell[i];
       u_value += latset::c<LatSet>(i) * cell[i];
     }
+#endif
     u_value /= rho_value;
   }
 };
@@ -180,10 +238,14 @@ struct forceU {
                                          const Vector<T, LatSet::d>& f_alpha) {
     Vector<T, LatSet::d> u_value;
     T rho_value{};
+#ifdef UNROLLFOR
+    apply_rhou_impl(cell, rho_value, u_value, std::make_index_sequence<LatSet::q>());
+#else
     for (unsigned int i = 0; i < LatSet::q; ++i) {
       rho_value += cell[i];
       u_value += latset::c<LatSet>(i) * cell[i];
     }
+#endif
     u_value += f_alpha * T{0.5};
     u_value /= rho_value;
     if constexpr (WriteToField) cell.template get<VELOCITY<T, LatSet::d>>() = u_value;
@@ -192,10 +254,14 @@ struct forceU {
   __any__ static inline Vector<T, LatSet::d> get(CELL& cell, T f) {
     Vector<T, LatSet::d> u_value;
     T rho_value{};
+#ifdef UNROLLFOR
+    apply_rhou_impl(cell, rho_value, u_value, std::make_index_sequence<LatSet::q>());
+#else
     for (unsigned int i = 0; i < LatSet::q; ++i) {
       rho_value += cell[i];
       u_value += latset::c<LatSet>(i) * cell[i];
     }
+#endif
     u_value[scalardir] += f * T{0.5};
     u_value /= rho_value;
     if constexpr (WriteToField) cell.template get<VELOCITY<T, LatSet::d>>() = u_value;
@@ -205,10 +271,14 @@ struct forceU {
                            const Vector<T, LatSet::d>& f_alpha) {
     u_value.clear();
     T rho_value{};
+#ifdef UNROLLFOR
+    apply_rhou_impl(cell, rho_value, u_value, std::make_index_sequence<LatSet::q>());
+#else
     for (unsigned int i = 0; i < LatSet::q; ++i) {
       rho_value += cell[i];
       u_value += latset::c<LatSet>(i) * cell[i];
     }
+#endif
     u_value += f_alpha * T{0.5};
     u_value /= rho_value;
     if constexpr (WriteToField) cell.template get<VELOCITY<T, LatSet::d>>() = u_value;
@@ -216,10 +286,14 @@ struct forceU {
   __any__ static inline void apply(CELL& cell, Vector<T, LatSet::d>& u_value, T f) {
     u_value.clear();
     T rho_value{};
+#ifdef UNROLLFOR
+    apply_rhou_impl(cell, rho_value, u_value, std::make_index_sequence<LatSet::q>());
+#else
     for (unsigned int i = 0; i < LatSet::q; ++i) {
       rho_value += cell[i];
       u_value += latset::c<LatSet>(i) * cell[i];
     }
+#endif
     u_value[scalardir] += f * T{0.5};
     u_value /= rho_value;
     if constexpr (WriteToField) cell.template get<VELOCITY<T, LatSet::d>>() = u_value;
@@ -228,20 +302,28 @@ struct forceU {
   __any__ static inline void apply(CELL& cell, const Vector<T, LatSet::d>& f_alpha) {
     Vector<T, LatSet::d>& u_value = cell.template get<VELOCITY<T, LatSet::d>>();
     T rho_value{};
+#ifdef UNROLLFOR
+    apply_rhou_impl(cell, rho_value, u_value, std::make_index_sequence<LatSet::q>());
+#else
     for (unsigned int i = 0; i < LatSet::q; ++i) {
       rho_value += cell[i];
       u_value += latset::c<LatSet>(i) * cell[i];
     }
+#endif
     u_value += f_alpha * T{0.5};
     u_value /= rho_value;
   }
   __any__ static inline void apply(CELL& cell, T f) {
     Vector<T, LatSet::d>& u_value = cell.template get<VELOCITY<T, LatSet::d>>();
     T rho_value{};
+#ifdef UNROLLFOR
+    apply_rhou_impl(cell, rho_value, u_value, std::make_index_sequence<LatSet::q>());
+#else
     for (unsigned int i = 0; i < LatSet::q; ++i) {
       rho_value += cell[i];
       u_value += latset::c<LatSet>(i) * cell[i];
     }
+#endif
     u_value[scalardir] += f * T{0.5};
     u_value /= rho_value;
   }
@@ -255,13 +337,17 @@ struct rhou {
 
   using GenericRho = typename CELL::GenericRho;
 
-  __any__ static inline void apply(CELL& cell, T& rho_value, Vector<T, LatSet::d>& u_value) {
+  __any__ static void apply(CELL& cell, T& rho_value, Vector<T, LatSet::d>& u_value) {
     rho_value = T{};
     u_value.clear();
+// #ifdef UNROLLFOR
+//     apply_rhou_impl(cell, rho_value, u_value, std::make_index_sequence<LatSet::q>());
+// #else
     for (unsigned int i = 0; i < LatSet::q; ++i) {
       rho_value += cell[i];
       u_value += latset::c<LatSet>(i) * cell[i];
     }
+// #endif
     u_value /= rho_value;
     if constexpr (WriteToField) {
       cell.template get<GenericRho>() = rho_value;
@@ -269,17 +355,22 @@ struct rhou {
     }
   }
   // will write to field regardless of WriteToField value
-  __any__ static inline void apply(CELL& cell) {
+  __any__ static void apply(CELL& cell) {
     T& rho_value = cell.template get<GenericRho>();
     Vector<T, LatSet::d>& u_value = cell.template get<VELOCITY<T, LatSet::d>>();
     rho_value = T{};
     u_value.clear();
+#ifdef UNROLLFOR
+    apply_rhou_impl(cell, rho_value, u_value, std::make_index_sequence<LatSet::q>());
+#else
     for (unsigned int i = 0; i < LatSet::q; ++i) {
       rho_value += cell[i];
       u_value += latset::c<LatSet>(i) * cell[i];
     }
+#endif
     u_value /= rho_value;
   }
+
 };
 
 template <typename CELLTYPE, bool WriteToField = false, unsigned int dir = 2>
@@ -296,10 +387,14 @@ struct forceRhou {
                            Vector<T, LatSet::d>& u_value) {
     rho_value = T{};
     u_value.clear();
+#ifdef UNROLLFOR
+    apply_rhou_impl(cell, rho_value, u_value, std::make_index_sequence<LatSet::q>());
+#else
     for (unsigned int i = 0; i < LatSet::q; ++i) {
       rho_value += cell[i];
       u_value += latset::c<LatSet>(i) * cell[i];
     }
+#endif
     u_value += f_alpha * T{0.5};
     u_value /= rho_value;
     if constexpr (WriteToField) {
@@ -311,10 +406,14 @@ struct forceRhou {
   __any__ static inline void apply(CELL& cell, T f, T& rho_value, Vector<T, LatSet::d>& u_value) {
     rho_value = T{};
     u_value.clear();
+#ifdef UNROLLFOR
+    apply_rhou_impl(cell, rho_value, u_value, std::make_index_sequence<LatSet::q>());
+#else
     for (unsigned int i = 0; i < LatSet::q; ++i) {
       rho_value += cell[i];
       u_value += latset::c<LatSet>(i) * cell[i];
     }
+#endif
     u_value[scalardir] += f * T{0.5};
     u_value /= rho_value;
     if constexpr (WriteToField) {
@@ -328,10 +427,14 @@ struct forceRhou {
     Vector<T, LatSet::d>& u_value = cell.template get<VELOCITY<T, LatSet::d>>();
     rho_value = T{};
     u_value.clear();
+#ifdef UNROLLFOR
+    apply_rhou_impl(cell, rho_value, u_value, std::make_index_sequence<LatSet::q>());
+#else
     for (unsigned int i = 0; i < LatSet::q; ++i) {
       rho_value += cell[i];
       u_value += latset::c<LatSet>(i) * cell[i];
     }
+#endif
     u_value += f_alpha * T{0.5};
     u_value /= rho_value;
   }
@@ -340,10 +443,14 @@ struct forceRhou {
     Vector<T, LatSet::d>& u_value = cell.template get<VELOCITY<T, LatSet::d>>();
     rho_value = T{};
     u_value.clear();
+#ifdef UNROLLFOR
+    apply_rhou_impl(cell, rho_value, u_value, std::make_index_sequence<LatSet::q>());
+#else
     for (unsigned int i = 0; i < LatSet::q; ++i) {
       rho_value += cell[i];
       u_value += latset::c<LatSet>(i) * cell[i];
     }
+#endif
     u_value[scalardir] += f * T{0.5};
     u_value /= rho_value;
   }

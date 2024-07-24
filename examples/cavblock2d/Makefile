@@ -8,6 +8,7 @@ FLAGS += -O3 -Wall -march=native -fopenmp
 # FLAGS += -g
 # FLAGS += -pg
 FLAGS += -DFLOAT_TYPE=double
+# FLAGS += -DUNROLLFOR
 
 OUTPUT += vtkoutput
 
