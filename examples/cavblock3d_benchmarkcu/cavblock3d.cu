@@ -142,6 +142,8 @@ int main() {
   FlagFM.forEach(toplid, [&](FLAG& field, std::size_t id) {
     if (util::isFlag(field.get(id), BouncebackFlag)) field.SetField(id, BBMovingWallFlag);
   });
+  // do not forget to copy to device
+  FlagFM.copyToDevice();
 
   // vtmwriter::ScalarWriter FlagWriter("flag", FlagFM);
   // vtmwriter::vtmWriter<T, 3> GeoWriter("GeoFlag", Geo);
@@ -213,8 +215,7 @@ int main() {
 
   for(int i = 0; i < 10; ++i){
     // NSLattice.ApplyCellDynamics<NSTask>(FlagFM);
-    // NSLattice.CuDevApplyCellDynamics<NSTask>(FlagFM);
-    // NSLattice.CuDevApplyCellDynamics<collision::BGK_Feq<equilibrium::SecondOrder<CELL>>>();
+    NSLattice.CuDevApplyCellDynamics<NSTask>(FlagFM);
     // NSLattice.Stream();
     NSLattice.CuDevStream();
   }
@@ -223,21 +224,10 @@ int main() {
   while (MainLoopTimer() < MaxStep) {
 
     // NSLattice.ApplyCellDynamics<NSTask>(FlagFM);
-    // NSLattice.CuDevApplyCellDynamics<NSTask>(FlagFM);
-    // NSLattice.CuDevApplyCellDynamics<collision::BounceBack<CELL>>();
-    
-    NSLattice.CuDevApplyCellDynamics<collision::BGK_Feq<equilibrium::SecondOrder<CELL>>>();
-    
-    // NSLattice.ApplyCellDynamics<collision::BGK_Feq<equilibrium::SecondOrder<CELL>>>();
-    // NSLattice.ApplyCellDynamics<collision::BGK_Feq_RhoU<equilibrium::SecondOrder<CELL>>>(BulkTaskIds);
-    // NSLattice.ApplyCellDynamics<collision::BGK_Feq<equilibrium::SecondOrder<CELL>>>(WallTaskIds);
-    // NSLattice.ApplyCellDynamics<collision::BounceBack<CELL>>(BBTaskIds);
-    // NSLattice.ApplyCellDynamics<collision::BounceBackMovingWall<CELL>>(BBMWTaskIds);
-    
+    NSLattice.CuDevApplyCellDynamics<NSTask>(FlagFM);
     // NSLattice.Stream();
-    // NSLattice.CuDevStream();
+    NSLattice.CuDevStream();
     // BM.Apply(MainLoopTimer());
-
     // NSLattice.Communicate(MainLoopTimer());
 
     ++MainLoopTimer;

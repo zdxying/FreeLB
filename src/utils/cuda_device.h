@@ -27,6 +27,9 @@
 #include <iostream>
 #include <string>
 
+// number of threads per block
+#define THREADS_PER_BLOCK 32
+
 template <typename T, unsigned int D>
 class Vector;
 
@@ -66,7 +69,7 @@ __global__ void fillKernel(T* deviceData, T value, std::size_t size) {
 
 template <typename T>
 void cuda_fill(T* deviceData, std::size_t size, T value) {
-  const unsigned int blockSize = 32;
+  const unsigned int blockSize = THREADS_PER_BLOCK;
   const unsigned int blockNum = (size + blockSize - 1) / blockSize;
   fillKernel<<<blockNum, blockSize>>>(deviceData, value, size);
   cudaDeviceSynchronize();

@@ -18,6 +18,4 @@ FLAGS += -rdc=true
 
 OUTPUT += vtkoutput
 
-# CXXC := mpic++
-
 include $(ROOT)/make.mk

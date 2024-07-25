@@ -308,13 +308,13 @@ void BlockLattice<T, LatSet, TypePack>::ApplyInnerCellDynamics() {
 
 template <typename T, typename LatSet, typename TypePack>
 void BlockLattice<T, LatSet, TypePack>::CuDevStream() {
-  CuDevStreamKernel<<<1,1>>>(dev_BlockLat);
+  CuDevStreamKernel<<<1, LatSet::q>>>(dev_BlockLat);
 }
 
 template <typename T, typename LatSet, typename TypePack>
 template <typename CELLDYNAMICS, typename ArrayType>
 void BlockLattice<T, LatSet, TypePack>::CuDevApplyCellDynamics(ArrayType& flagarr) {
-  const unsigned int blockSize = 32;
+  const unsigned int blockSize = THREADS_PER_BLOCK;
   const unsigned int blockNum = (this->getN() + blockSize - 1) / blockSize;
   CuDevApplyCellDynamicsKernel<T, LatSet, cudev_TypePack, CELLDYNAMICS, typename ArrayType::cudev_array_type><<<blockNum, blockSize>>>(dev_BlockLat, flagarr.get_devObj(), this->getN());
 }
@@ -322,7 +322,7 @@ void BlockLattice<T, LatSet, TypePack>::CuDevApplyCellDynamics(ArrayType& flagar
 template <typename T, typename LatSet, typename TypePack>
 template <typename CELLDYNAMICS>
 void BlockLattice<T, LatSet, TypePack>::CuDevApplyCellDynamics() {
-  const unsigned int blockSize = 32;
+  const unsigned int blockSize = THREADS_PER_BLOCK;
   const unsigned int blockNum = (this->getN() + blockSize - 1) / blockSize;
   CuDevApplyCellDynamicsKernel<T, LatSet, cudev_TypePack, CELLDYNAMICS><<<blockNum, blockSize>>>(dev_BlockLat, this->getN());
 }

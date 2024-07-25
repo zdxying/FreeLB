@@ -25,7 +25,7 @@ __global__ void addGenericArray_kernel(cudev::GenericArray<T> *a, T value) {
 }
 template <typename T>
 void addGenericArray(GenericArray<T> &a, T value) {
-  const unsigned int blockSize = 32;
+  const unsigned int blockSize = THREADS_PER_BLOCK;
   const unsigned int blockNum = (a.size() + blockSize - 1) / blockSize;
   addGenericArray_kernel<<<blockNum, blockSize>>>(a.get_devObj(), value);
 }
@@ -58,7 +58,7 @@ __global__ void addvector_kernel(cudev::Genericvector<T> *a, T value) {
 }
 template <typename T>
 void addvector(Genericvector<T> &a, T value) {
-  const unsigned int blockSize = 32;
+  const unsigned int blockSize = THREADS_PER_BLOCK;
   const unsigned int blockNum = (a.size() + blockSize - 1) / blockSize;
   addvector_kernel<<<blockNum, blockSize>>>(a.get_devObj(), value);
 }
@@ -77,7 +77,7 @@ __global__ void addStreamArray_kernel(cudev::StreamArray<T> *a) {
 }
 template <typename T>
 void addStreamArray(StreamArray<T> &a) {
-  const unsigned int blockSize = 32;
+  const unsigned int blockSize = THREADS_PER_BLOCK;
   const unsigned int blockNum = (a.size() + blockSize - 1) / blockSize;
   addStreamArray_kernel<<<blockNum, blockSize>>>(a.get_devObj());
 }
@@ -108,7 +108,7 @@ __global__ void addGenericField_kernel(cudev::GenericField<ArrayType, Base> *a, 
 }
 template <typename ArrayType, typename T, typename Base>
 void addGenericField(GenericField<ArrayType, Base> &a, T value) {
-  const unsigned int blockSize = 32;
+  const unsigned int blockSize = THREADS_PER_BLOCK;
   const unsigned int blockNum = (a.getField().size() + blockSize - 1) / blockSize;
   addGenericField_kernel<<<blockNum, blockSize>>>(a.get_devObj(), value);
 }
@@ -129,7 +129,7 @@ __global__ void addBlockLattice_kernel(cudev::BlockLattice<T, LatSet, TypePack> 
 }
 template <typename T, typename LatSet, typename TypePack>
 void addBlockLattice(BlockLattice<T, LatSet, TypePack> &a, T value) {
-  const unsigned int blockSize = 32;
+  const unsigned int blockSize = THREADS_PER_BLOCK;
   const unsigned int blockNum = (a.getN() + blockSize - 1) / blockSize;
   addBlockLattice_kernel<<<blockNum, blockSize>>>(a.get_devObj(), value, a.getN());
 }

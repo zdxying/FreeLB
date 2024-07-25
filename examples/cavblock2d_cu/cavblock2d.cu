@@ -130,6 +130,7 @@ int main() {
   FlagFM.forEach(toplid, [&](FLAG& field, std::size_t id) {
     if (util::isFlag(field.get(id), BouncebackFlag)) field.SetField(id, BBMovingWallFlag);
   });
+  // do not forget to copy to device
   FlagFM.copyToDevice();
 
   // vtmwriter::ScalarWriter FlagWriter("flag", FlagFM);
@@ -202,7 +203,7 @@ int main() {
 
   Printer::Print_BigBanner(std::string("Start Calculation..."));
 
-  while (MainLoopTimer() < MaxStep) {
+  while (MainLoopTimer() < MaxStep && res > tol) {
 
     // NSLattice.ApplyCellDynamics<NSTask>(FlagFM);
     NSLattice.CuDevApplyCellDynamics<NSTask>(FlagFM);

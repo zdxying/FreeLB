@@ -190,7 +190,8 @@ class BlockLattice : public BlockLatticeBase<T, LatSet, TypePack> {
 
 template <typename T, typename LatSet, typename TypePack>
 __global__ void CuDevStreamKernel(cudev::BlockLattice<T, LatSet, TypePack>* blocklat) {
-  blocklat->Stream();
+  unsigned int id = blockIdx.x * blockDim.x + threadIdx.x;
+  blocklat->Stream(id);
 }
 
 template <typename T, typename LatSet, typename TypePack, typename CELLDYNAMICS, typename ArrayType>

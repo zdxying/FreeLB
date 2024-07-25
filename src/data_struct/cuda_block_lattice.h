@@ -148,11 +148,14 @@ class BlockLattice : public BlockLatticeBase<T, LatSet, TypePack> {
   __device__ inline T getfOmega() const { return *fOmega; }
 
   __device__ void Stream() {
-    auto &popfield = this->template getField<POP<T, LatSet::q>>();
+  auto &popfield = this->template getField<POP<T, LatSet::q>>();
     for (unsigned int i = 1; i < LatSet::q; ++i) {
       // this->template getField<POP<T, LatSet::q>>().getField(i).rotate(this->Delta_Index[i]);
       popfield.getField(i).rotate();
     }
+  }
+  __device__ void Stream(unsigned int i) {
+    this->template getField<POP<T, LatSet::q>>().getField(i).rotate();
   }
 
 };
