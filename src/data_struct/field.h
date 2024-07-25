@@ -612,9 +612,10 @@ class GenericArray {
     data = new T[size]{};
     count = size;
 #ifdef __CUDACC__
-    cuda_free(dev_data);
-    dev_data = cuda_malloc<T>(count);
-    copyToDevice();
+    if (dev_data) cuda_free(dev_data);
+    if (dev_count) cuda_free(dev_count);
+    if (dev_GenericArray) cuda_free(dev_GenericArray);
+    InitDeviceData();
 #endif
   }
 
@@ -1055,9 +1056,13 @@ class StreamArray {
     Offset = 0;
     set_start();
 #ifdef __CUDACC__
-    cuda_free(dev_data);
-    dev_data = cuda_malloc<T>(2 * count);
-    copyToDevice();
+    if (dev_count) cuda_free(dev_count);
+    if (dev_data) cuda_free(dev_data);
+    if (dev_start) cuda_free(dev_start);
+    if (dev_shift) cuda_free(dev_shift);
+    if (dev_Offset) cuda_free(dev_Offset);
+    if (dev_StreamArray) cuda_free(dev_StreamArray);
+    InitDeviceData();
 #endif
   }
 

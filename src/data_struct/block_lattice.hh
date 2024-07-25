@@ -180,7 +180,8 @@ void BlockLattice<T, LatSet, TypePack>::interpcommunicate() {
 template <typename T, typename LatSet, typename TypePack>
 void BlockLattice<T, LatSet, TypePack>::Stream() {
   for (unsigned int i = 1; i < LatSet::q; ++i) {
-    this->template getField<POP<T, LatSet::q>>().getField(i).rotate(this->Delta_Index[i]);
+    // this->template getField<POP<T, LatSet::q>>().getField(i).rotate(this->Delta_Index[i]);
+    this->template getField<POP<T, LatSet::q>>().getField(i).rotate();
   }
 }
 
@@ -486,18 +487,28 @@ BlockLatticeManager<T, LatSet, TypePack>::BlockLatticeManager(
   if constexpr (this->template hasField<GenericRho>()) {
     this->template getField<GenericRho>().Init(Conv.getLatRhoInit());
   }
-  if constexpr (this->template hasField<POP<T, LatSet::q>>()) {
-    this->template getField<POP<T, LatSet::q>>().forEachField([&](auto& field) {
-      for (unsigned int i = 0; i < LatSet::q; ++i) {
-        field.getField(i).Init(Conv.getLatRhoInit() * latset::w<LatSet>(i));
-      }
-    });
-  }
+
+  // if constexpr (this->template hasField<POP<T, LatSet::q>>()) {
+  //   this->template getField<POP<T, LatSet::q>>().forEachField([&](auto& field) {
+  //     for (unsigned int i = 0; i < LatSet::q; ++i) {
+  //       field.getField(i).Init(Conv.getLatRhoInit() * latset::w<LatSet>(i));
+  //     }
+  //   });
+  // }
+
   // init block lattices
   for (std::size_t i = 0; i < this->BlockGeo.getBlocks().size(); ++i) {
     BlockLats.emplace_back(this->BlockGeo.getBlock(i), Conv,
                            ExtractFieldPtrs<T, LatSet, TypePack>::getFieldPtrTuple(
                              i, this->Fields, this->FieldPtrs));
+  }
+  if constexpr (this->template hasField<POP<T, LatSet::q>>()) {
+    ForEachBlockLattice([&](auto& blocklat) {
+      auto& field = blocklat.template getField<POP<T, LatSet::q>>();
+      for (unsigned int i = 0; i < LatSet::q; ++i) {
+        field.getField(i).Init(Conv.getLatRhoInit() * latset::w<LatSet>(i), blocklat.getDelta_Index()[i]);
+      }
+    });
   }
   InitComm();
   InitAverComm();
@@ -512,18 +523,27 @@ BlockLatticeManager<T, LatSet, TypePack>::BlockLatticeManager(
     : BlockLatticeManagerBase<T, LatSet, TypePack>(blockgeo, initvalues, fieldptrs...),
       Conv(conv) {
   // init pop
-  if constexpr (this->template hasField<POP<T, LatSet::q>>()) {
-    this->template getField<POP<T, LatSet::q>>().forEachField([&](auto& field) {
-      for (unsigned int i = 0; i < LatSet::q; ++i) {
-        field.getField(i).Init(Conv.getLatRhoInit() * latset::w<LatSet>(i));
-      }
-    });
-  }
+  // if constexpr (this->template hasField<POP<T, LatSet::q>>()) {
+  //   this->template getField<POP<T, LatSet::q>>().forEachField([&](auto& field) {
+  //     for (unsigned int i = 0; i < LatSet::q; ++i) {
+  //       field.getField(i).Init(Conv.getLatRhoInit() * latset::w<LatSet>(i));
+  //     }
+  //   });
+  // }
+
   // init block lattices
   for (std::size_t i = 0; i < this->BlockGeo.getBlocks().size(); ++i) {
     BlockLats.emplace_back(this->BlockGeo.getBlock(i), Conv,
                            ExtractFieldPtrs<T, LatSet, TypePack>::getFieldPtrTuple(
                              i, this->Fields, this->FieldPtrs));
+  }
+  if constexpr (this->template hasField<POP<T, LatSet::q>>()) {
+    ForEachBlockLattice([&](auto& blocklat) {
+      auto& field = blocklat.template getField<POP<T, LatSet::q>>();
+      for (unsigned int i = 0; i < LatSet::q; ++i) {
+        field.getField(i).Init(Conv.getLatRhoInit() * latset::w<LatSet>(i), blocklat.getDelta_Index()[i]);
+      }
+    });
   }
   InitComm();
   InitAverComm();
