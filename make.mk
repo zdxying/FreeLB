@@ -25,6 +25,9 @@ FLAGS += -std=c++17
 
 # linker flags
 LINKFLAGS := -L$(ROOT)/lib
+ifeq ($(CXXC),nvcc)
+	LINKFLAGS += -lcuda
+endif
 
 all: $(TARGET)
 
@@ -33,7 +36,7 @@ all: $(TARGET)
 	$(CXXC) $(FLAGS) -I$(ROOT)/src/ -c $< -o $@
 
 $(TARGET): $(OBJS)
-	$(CXXC) $(FLAGS) -o $@ $^ 
+	$(CXXC) $(FLAGS) -o $@ $^ $(LINKFLAGS)
 # $(CXXC) $(FLAGS) -o $@ $^ $(LDFLAGS) -lname
 -include $(DEPS)
 #-------------clean----------------

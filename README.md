@@ -31,6 +31,24 @@ OpenMP is enabled through the code, MPI is available for most of methods and Cud
 
 If you have any suggestions, please contact the author by email: ymmanyuan@outlook.com
 
+## Build
+To build the code, you just need to run the following command in the root directory of the code:
+```bash
+cd ./examples/cavblock3d_benchmark
+make
+```
+The executable file will be generated in the same directory with .exe extension.
+
+
+## Benchmark
+The following table shows the performance of FreeLB in simulating the lid-driven cavity flow problem with D3Q19 lattice set on a 100x100x100 lattice grid(in million lattice updates per second, MLUPs).
+
+| Device | FP64 MLUPs | FP32 MLUPs
+| :----- | :---- | :---- |
+| 11th Gen Intel(R) Core(TM) i7-11800H @ 2.30GHz| 113 |  |
+| NVIDIA GeForce RTX 3060 Laptop GPU|  | 1500 |
+
+
 ## Dependencies
 - C++ compiler supporting C++17
 - GNU Make \

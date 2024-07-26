@@ -892,12 +892,8 @@ class StreamArray {
   }
   // Move constructor
   StreamArray(StreamArray&& arr) noexcept
-      : count(0), data(nullptr), shift(0), start(nullptr), Offset(0) {
-    count = arr.count;
-    data = arr.data;
-    shift = arr.shift;
-    start = arr.start;
-    Offset = arr.Offset;
+      : count(arr.count), data(arr.data), shift(arr.shift), start(arr.start),
+        Offset(arr.Offset) {
     set_start();
     arr.count = 0;
     arr.data = nullptr;
@@ -1168,6 +1164,371 @@ class StreamArray {
   }
   void rotate_dev() { Stream_kernel<<<1, 1>>>(dev_StreamArray); }
 #endif
+};
+
+
+// avoid explicit memory copying by memory mapping
+
+#include <sys/mman.h>
+#include <unistd.h>
+#include <fcntl.h>
+
+template <typename T>
+std::size_t getPageAlignedCount(std::size_t count) {
+  const std::size_t page_size = sysconf(_SC_PAGESIZE);
+  const std::size_t size = ((count * sizeof(T) - 1) / page_size + 1) * page_size;
+  const std::size_t PageAlignedCount = size / sizeof(T);
+  if (PageAlignedCount < count) {
+    std::cerr << "PageAlignedSize is smaller than count" << std::endl;
+    exit(1);
+  }
+  return PageAlignedCount;
+}
+
+template <typename T>
+class StreamMapArray {
+ private:
+  // number of elements
+  std::size_t count;
+  // base pointer to the data
+  T* data;
+  T* start;
+  // shift
+  std::ptrdiff_t shift;
+  // facilitate the access of data before the last shift(rotate)
+  std::ptrdiff_t Offset;
+
+  // memory mapping
+  std::uint8_t* map;
+  std::size_t map_count;
+  // size of the memory mapping
+  std::size_t map_size;
+
+#ifdef __CUDACC__
+  std::size_t* dev_count;
+  // device pointer to the data
+  // T* dev_data;
+  T* dev_start;
+  std::ptrdiff_t* dev_shift;
+  std::ptrdiff_t* dev_Offset;
+  cudev::StreamMapArray<T>* dev_StreamMapArray;
+
+  CUmemGenericAllocationHandle handle;
+  CUmemAllocationProp prop{};
+  CUmemAccessDesc access{};
+  CUdeviceptr ptr;
+
+  void setDevMap(){
+    const int device = get_cuda_device();
+
+    prop.type = CU_MEM_ALLOCATION_TYPE_PINNED;
+    prop.location.type = CU_MEM_LOCATION_TYPE_DEVICE;
+    prop.location.id = device;
+    cuMemAddressReserve(&ptr, 2 * map_size, 0, 0, 0);
+
+    // per-population handle until cuMemMap accepts non-zero offset
+    cuMemCreate(&handle,     map_size, &prop, 0);
+    cuMemMap(ptr,            map_size, 0, handle, 0);
+    cuMemMap(ptr + map_size, map_size, 0, handle, 0);
+
+    access.location.type = CU_MEM_LOCATION_TYPE_DEVICE;
+    access.location.id = device;
+    access.flags = CU_MEM_ACCESS_FLAGS_PROT_READWRITE;
+    cuMemSetAccess(ptr, 2 * map_size, &access, 1);
+
+    // dev_data = reinterpret_cast<T*>(ptr);
+  }
+
+#endif
+
+  void setMap() {
+#ifdef __CUDACC__
+    map_count = cudev::getPageAlignedCount<T>(count);
+#else
+    map_count = getPageAlignedCount<T>(count);
+#endif
+    map_size = map_count * sizeof(T);
+
+    std::string shm_path = "/flbtmp_XXXXXX";
+    const int shm_name = mkstemp(const_cast<char*>(shm_path.data()));
+    if (shm_name != -1) {
+      std::cerr << "mkstemp failed" << std::endl;
+    }
+    const int shm_file = shm_open(shm_path.c_str(), O_CREAT | O_RDWR | O_EXCL | O_CLOEXEC, S_IRUSR | S_IWUSR);
+    shm_unlink(shm_path.c_str());
+    if (ftruncate(shm_file, map_size) == -1) {
+      std::cerr << "ftruncate failed" << std::endl;
+      exit(1);
+    }
+    map = static_cast<std::uint8_t*>(mmap(NULL, 2 * map_size, PROT_NONE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0));
+    mmap(map , map_size, PROT_READ | PROT_WRITE, MAP_SHARED | MAP_FIXED, shm_file, 0);
+    mmap(map + map_size, map_size, PROT_READ | PROT_WRITE, MAP_SHARED | MAP_FIXED, shm_file, 0);
+    data = reinterpret_cast<T*>(map);
+    start = data + shift;
+
+    #ifdef __CUDACC__
+    setDevMap();
+    #endif
+  }
+  
+
+ public:
+  using value_type = T;
+  using array_type = StreamMapArray<T>;
+#ifdef __CUDACC__
+  using cudev_array_type = cudev::StreamMapArray<T>;
+#endif
+
+    StreamMapArray() : count(0), data(nullptr), start(nullptr), shift(0), Offset(0), map(nullptr), map_count(0), map_size(0) {
+#ifdef __CUDACC__
+    dev_count = nullptr;
+    dev_start = nullptr;
+    dev_shift = nullptr;
+    dev_Offset = nullptr;
+#endif
+  }
+  StreamMapArray(std::size_t size)
+      : count(size), shift(0), Offset(0) {
+    setMap();
+    InitDeviceData();
+  }
+  StreamMapArray(std::size_t size, T InitValue)
+      : count(size), shift(0), Offset(0) {
+    setMap();
+    std::fill(data, data + map_count, InitValue);
+    InitDeviceData();
+  }
+  // Copy constructor
+  StreamMapArray(const StreamMapArray& arr)
+      : count(arr.count), shift(arr.shift), Offset(arr.Offset) {
+    setMap();
+    std::copy(arr.data, arr.data + map_count, data);
+#ifdef __CUDACC__
+    dev_count = cuda_malloc<std::size_t>(1);
+    dev_start = cuda_malloc<T>(1);
+    dev_shift = cuda_malloc<std::ptrdiff_t>(1);
+    dev_Offset = cuda_malloc<std::ptrdiff_t>(1);
+    device_to_device(dev_count, arr.dev_count, 1);
+    device_to_device(dev_start, arr.dev_start, 1);
+    device_to_device(dev_shift, arr.dev_shift, 1);
+    device_to_device(dev_Offset, arr.dev_Offset, 1);
+    constructInDevice();
+#endif
+  }
+  // Move constructor
+  StreamMapArray(StreamMapArray&& arr) noexcept
+      : count(arr.count), data(arr.data), start(arr.start), shift(arr.shift), 
+        Offset(arr.Offset), map(arr.map), map_count(arr.map_count), map_size(arr.map_size) {
+    arr.count = 0;
+    arr.data = nullptr;
+    arr.shift = 0;
+    arr.start = nullptr;
+    arr.Offset = 0;
+    arr.map = nullptr;
+    arr.map_count = 0;
+    arr.map_size = 0;
+#ifdef __CUDACC__
+    dev_count = arr.dev_count;
+    dev_start = arr.dev_start;
+    dev_shift = arr.dev_shift;
+    dev_Offset = arr.dev_Offset;
+    arr.dev_count = nullptr;
+    arr.dev_start = nullptr;
+    arr.dev_shift = nullptr;
+    arr.dev_Offset = nullptr;
+    constructInDevice();
+#endif
+  }
+  // Copy assignment operator
+  StreamMapArray& operator=(const StreamMapArray& arr) {
+    if (&arr == this) return *this;
+    if (count != arr.count) {
+      munmap(map, 2 * map_size);
+      setMap();
+    }
+    std::copy(arr.data, arr.data + arr.count, data);
+    shift = arr.shift;
+    Offset = arr.Offset;
+#ifdef __CUDACC__
+    device_to_device(dev_count, arr.dev_count, 1);
+    device_to_device(dev_start, arr.dev_start, 1);
+    device_to_device(dev_shift, arr.dev_shift, 1);
+    device_to_device(dev_Offset, arr.dev_Offset, 1);
+#endif
+    count = arr.count;
+    return *this;
+  }
+  // Move assignment operator
+  StreamMapArray& operator=(StreamMapArray&& arr) noexcept {
+    if (&arr == this) return *this;
+    munmap(map, 2 * map_size);
+    count = arr.count;
+    data = arr.data;
+    shift = arr.shift;
+    start = arr.start;
+    Offset = arr.Offset;
+    map = arr.map;
+    map_count = arr.map_count;
+    map_size = arr.map_size;
+    // Reset 'arr'
+    arr.count = 0;
+    arr.data = nullptr;
+    arr.shift = 0;
+    arr.start = nullptr;
+    arr.Offset = 0;
+    arr.map = nullptr;
+    arr.map_count = 0;
+    arr.map_size = 0;
+#ifdef __CUDACC__
+    dev_count = arr.dev_count;
+    dev_start = arr.dev_start;
+    dev_shift = arr.dev_shift;
+    dev_Offset = arr.dev_Offset;
+    arr.dev_count = nullptr;
+    arr.dev_start = nullptr;
+    arr.dev_shift = nullptr;
+    arr.dev_Offset = nullptr;
+#endif
+    return *this;
+  }
+
+  ~StreamMapArray() {
+    munmap(map, 2 * map_size);
+#ifdef __CUDACC__
+    if (dev_count) cuda_free(dev_count);
+    if (dev_start) cuda_free(dev_start);
+    if (dev_shift) cuda_free(dev_shift);
+    if (dev_Offset) cuda_free(dev_Offset);
+    if (dev_StreamMapArray) cuda_free(dev_StreamMapArray);
+#endif
+  }
+
+  void InitDeviceData() {
+#ifdef __CUDACC__
+    dev_count = cuda_malloc<std::size_t>(1);
+    dev_start = cuda_malloc<T>(1);
+    dev_shift = cuda_malloc<std::ptrdiff_t>(1);
+    dev_Offset = cuda_malloc<std::ptrdiff_t>(1);
+    copyToDevice();
+    constructInDevice();
+#endif
+  }
+
+#ifdef __CUDACC__
+
+  void copyToDevice() {
+    host_to_device(dev_count, &map_count, 1);
+    host_to_device(dev_shift, &shift, 1);
+    host_to_device(dev_Offset, &Offset, 1);
+    host_to_device(reinterpret_cast<T*>(ptr) , data, 2 * map_count);
+  }
+  // do not copy start pointer
+  void copyToHost() {
+    device_to_host(&map_count, dev_count, 1);
+    device_to_host(&shift, dev_shift, 1);
+    device_to_host(&Offset, dev_Offset, 1);
+    device_to_host(data, reinterpret_cast<T*>(ptr), 2 * map_count);
+    set_start();
+  }
+  T* get_devptr() { return reinterpret_cast<T*>(ptr); }
+  std::size_t get_devcount() const {
+    std::size_t temp;
+    device_to_host(&temp, dev_count, 1);
+    return temp;
+  }
+  cudev::StreamMapArray<T>* get_devObj() { return dev_StreamMapArray; }
+  void constructInDevice() {
+    dev_StreamMapArray = cuda_malloc<cudev::StreamMapArray<T>>(1);
+    // temp host object
+    cudev::StreamMapArray<T> temp(dev_count, reinterpret_cast<T*>(ptr), dev_shift, dev_start, dev_Offset);
+    // copy to device
+    host_to_device(dev_StreamMapArray, &temp, 1);
+  }
+
+#endif
+
+  void Init(T InitValue, int offset = 0) {
+    std::fill(data, data + map_count, InitValue);
+    Offset = offset;
+#ifdef __CUDACC__
+    copyToDevice();
+#endif
+  }
+
+  void setOffset(int offset) {
+    Offset = offset;
+#ifdef __CUDACC__
+    copyToDevice();
+#endif
+  }
+
+  void Resize(std::size_t newcount) {
+    if (newcount == count) return;
+    munmap(map, 2 * map_size);
+    map_count = getPageAlignedCount<T>(newcount);
+    map_size = map_count * sizeof(T);
+    setMap();
+    count = newcount;
+    shift = 0;
+    Offset = 0;
+    set_start();
+#ifdef __CUDACC__
+    if (dev_count) cuda_free(dev_count);
+    if (dev_start) cuda_free(dev_start);
+    if (dev_shift) cuda_free(dev_shift);
+    if (dev_Offset) cuda_free(dev_Offset);
+    if (dev_StreamMapArray) cuda_free(dev_StreamMapArray);
+    InitDeviceData();
+#endif
+  }
+
+
+  const T& operator[](std::size_t i) const { return start[i]; }
+  T& operator[](std::size_t i) { return start[i]; }
+
+  inline void set(std::size_t i, T value) { start[i] = value; }
+  std::size_t size() const { return count; }
+  std::size_t mapsize() const { return map_count; }
+  // return the pointer of ith element
+  T* getdataPtr(std::size_t i = 0) { return start + i; }
+  const T* getdataPtr(std::size_t i = 0) const { return start + i; }
+
+  // get data before the last shift(rotate), used in bcs
+  T& getPrevious(std::size_t i) {
+    std::ptrdiff_t prevIndex = i + Offset;
+    if (prevIndex < 0) {
+      prevIndex += map_count;
+    } else if (prevIndex >= static_cast<std::ptrdiff_t>(map_count)) {
+      prevIndex -= map_count;
+    }
+    return start[static_cast<std::size_t>(prevIndex)];
+  }
+
+  // calc start pointer
+  void set_start() { start = data + shift; }
+  void rotate() {
+    const std::ptrdiff_t n = map_count;
+    shift -= Offset;
+    if (shift >= n) {
+      shift -= n;
+    } else if (shift < 0) {
+      shift += n;
+    }
+    set_start();
+  }
+  // compatible with code using cyclic array
+  void rotate(std::ptrdiff_t offset) {
+    const std::ptrdiff_t n = map_count;
+    Offset = offset;
+    shift -= offset;
+    if (shift >= n) {
+      shift -= n;
+    } else if (shift < 0) {
+      shift += n;
+    }
+    set_start();
+  }
+
 };
 
 

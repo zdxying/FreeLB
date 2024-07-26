@@ -44,26 +44,33 @@ void readParam() {
   rotatecount = param_reader.getValue<int>("Mesh", "rotatecount");
 }
 
-// void print(StreamArray<T> &arr) {
-//   for(int i = 0; i < arr.size(); i++) {
-//     std::cout << arr[i] << " ";
-//   }
-//   std::cout << std::endl;
-// }
+void print(StreamMapArray<T> &arr) {
+  for(int i = 0; i < arr.size(); i++) {
+    std::cout << arr[i] << " ";
+  }
+  std::cout << std::endl;
+}
 
-// void printprev(StreamArray<T> &arr) {
-//   for(int i = 0; i < arr.size(); i++) {
-//     std::cout << arr.getPrevious(i) << " ";
-//   }
-//   std::cout << std::endl;
-// }
+void printprev(StreamMapArray<T> &arr) {
+  for(int i = 0; i < arr.size(); i++) {
+    std::cout << arr.getPrevious(i) << " ";
+  }
+  std::cout << std::endl;
+}
 
 template <typename T, unsigned int q>
 using PopStreamField = GenericArrayField<StreamArray<T>, q>;
 template <typename T, unsigned int q>
+using PopStreamMapField = GenericArrayField<StreamMapArray<T>, q>;
+template <typename T, unsigned int q>
 using PopCyclicField = GenericArrayField<CyclicArray<T>, q>;
 
 void set(StreamArray<T>& arr) {
+  for (std::size_t i = 0; i < arr.size(); i++) {
+    arr[i] = i + 1;
+  }
+}
+void set(StreamMapArray<T>& arr) {
   for (std::size_t i = 0; i < arr.size(); i++) {
     arr[i] = i + 1;
   }
@@ -76,6 +83,12 @@ void set(CyclicArray<T>& arr) {
 
 template <typename T, unsigned int q>
 void Stream(PopStreamField<T, q>& Pop, const std::array<int, q>& Delta_Index) {
+  for (unsigned int k = 0; k < q; ++k) {
+    Pop.getField(k).rotate(Delta_Index[k]);
+  }
+}
+template <typename T, unsigned int q>
+void Stream(PopStreamMapField<T, q>& Pop, const std::array<int, q>& Delta_Index) {
   for (unsigned int k = 0; k < q; ++k) {
     Pop.getField(k).rotate(Delta_Index[k]);
   }
@@ -94,6 +107,12 @@ void set(PopStreamField<T, q>& Pop) {
   }
 }
 template <typename T, unsigned int q>
+void set(PopStreamMapField<T, q>& Pop) {
+  for (unsigned int k = 0; k < q; ++k) {
+    set(Pop.getField(k));
+  }
+}
+template <typename T, unsigned int q>
 void set(PopCyclicField<T, q>& Pop) {
   for (unsigned int k = 0; k < q; ++k) {
     set(Pop.getField(k));
@@ -103,6 +122,16 @@ void set(PopCyclicField<T, q>& Pop) {
 
 using LatSet0 = D2Q9<T>;
 using LatSet1 = D3Q19<T>;
+
+// int main() {
+//   StreamMapArray<T> arr(10);
+//   set(arr);
+//   print(arr);
+//   arr.rotate(1020);
+//   print(arr);
+//   return 0;
+// }
+
 
 int main() {
   readParam();
@@ -120,9 +149,12 @@ int main() {
 
 
   PopStreamField<T, LatSet0::q> PopS0(N0, T{});
+  PopStreamMapField<T, LatSet0::q> PopSM0(N0, T{});
   PopCyclicField<T, LatSet0::q> PopC0(N0, T{});
+
   PopStreamField<T, LatSet1::q> PopS1(N1, T{});
   PopCyclicField<T, LatSet1::q> PopC1(N1, T{});
+  PopStreamMapField<T, LatSet1::q> PopSM1(N1, T{});
 
   // std::cout << "----------------" << std::endl;
 
@@ -134,6 +166,15 @@ int main() {
   }
   MainLoopTimer.END_TIMER();
   std::cout << "StreamField2D efficiency: " << MainLoopTimer.GetDurationCount_Only()
+            << std::endl;
+  
+  MainLoopTimer.START_TIMER();
+  for (int i = 0; i < rotatecount; i++) {
+    set(PopSM0);
+    Stream<T, LatSet0::q>(PopSM0, Delta_Index0);
+  }
+  MainLoopTimer.END_TIMER();
+  std::cout << "StreamMapField2D efficiency: " << MainLoopTimer.GetDurationCount_Only()
             << std::endl;
 
   MainLoopTimer.START_TIMER();
@@ -149,6 +190,15 @@ int main() {
   for (int i = 0; i < rotatecount; i++) {
     set(PopS1);
     Stream<T, LatSet1::q>(PopS1, Delta_Index1);
+  }
+  MainLoopTimer.END_TIMER();
+  std::cout << "StreamField3D efficiency: " << MainLoopTimer.GetDurationCount_Only()
+            << std::endl;
+  
+  MainLoopTimer.START_TIMER();
+  for (int i = 0; i < rotatecount; i++) {
+    set(PopSM1);
+    Stream<T, LatSet1::q>(PopSM1, Delta_Index1);
   }
   MainLoopTimer.END_TIMER();
   std::cout << "StreamField3D efficiency: " << MainLoopTimer.GetDurationCount_Only()

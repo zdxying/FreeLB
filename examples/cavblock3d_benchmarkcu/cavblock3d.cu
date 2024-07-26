@@ -238,7 +238,6 @@ int main() {
   Printer::Print_BigBanner(std::string("Calculation Complete!"));
   MainLoopTimer.Print_MainLoopPerformance(Geo.getTotalCellNum());
   Printer::Print("Total PhysTime", BaseConv.getPhysTime(MainLoopTimer()));
-  // NSWriter.WriteBinary(MainLoopTimer());
   Printer::Endl();
 
   return 0;

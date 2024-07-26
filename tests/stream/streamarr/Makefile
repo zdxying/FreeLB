@@ -3,7 +3,7 @@ TARGET = streamarr.exe
 ROOT := ../../..
 
 FLAGS += -O3 -march=native
-# FLAGS += -O3 -fopenmp
+# FLAGS += -Wall -Wno-unknown-pragmas -Wno-unused-local-typedefs
 # FLAGS += -g -DMPI_DEBUG
 # FLAGS += -g
 # FLAGS += -pg

@@ -349,7 +349,6 @@ class StreamArray {
   }
 
   // experimental
-  __device__ void set_start() { _start = _data + *_shift; }
   __device__ void rotate() {
     const std::ptrdiff_t n = *count;
     std::ptrdiff_t shift = *_shift;
@@ -394,6 +393,99 @@ __global__ void Stream_kernel(cudev::StreamArray<T>* arr) {
   arr->rotate();
 }
 
+template <typename T>
+class StreamMapArray {
+ private:
+  // number of elements
+  std::size_t* count;
+  // base pointer to the data
+  T* _data;
+  // shift
+  std::ptrdiff_t* _shift;
+  T* _start;
+  // facilitate the access of data before the last shift(rotate)
+  std::ptrdiff_t* Offset;
+
+ public:
+  using value_type = T;
+
+  __device__ StreamMapArray()
+      : count(0), _data(nullptr), _shift(0), _start(nullptr), Offset(0) {}
+  __any__ StreamMapArray(std::size_t* size, T* data, std::ptrdiff_t* shift, T* start,
+                      std::ptrdiff_t* offset)
+      : count(size), _data(data), _shift(shift), _start(start), Offset(offset) {
+    _start = _data;
+  }
+  // Copy constructor
+  __device__ StreamMapArray(const StreamMapArray& arr)
+      : count(arr.count), _data(arr._data), _shift(arr._shift), _start(arr._start),
+        Offset(arr.Offset) {}
+  // Move constructor
+  __device__ StreamMapArray(StreamMapArray&& arr) noexcept
+      : count(arr.count), _data(arr._data), _shift(arr._shift), _start(arr._start),
+        Offset(arr.Offset) {}
+  // Copy assignment operator
+  __device__ StreamMapArray& operator=(const StreamMapArray& arr) {
+    if (&arr == this) return *this;
+    count = arr.count;
+    _data = arr._data;
+    _shift = arr._shift;
+    _start = arr._start;
+    Offset = arr.Offset;
+    return *this;
+  }
+  // Move assignment operator
+  __device__ StreamMapArray& operator=(StreamMapArray&& arr) noexcept {
+    if (&arr == this) return *this;
+    count = arr.count;
+    _data = arr._data;
+    _shift = arr._shift;
+    _start = arr._start;
+    Offset = arr.Offset;
+    return *this;
+  }
+
+  __device__ void setOffset(int offset) { *Offset = offset; }
+
+  __device__ const T& operator[](std::size_t i) const { return _start[i]; }
+  __device__ T& operator[](std::size_t i) { return _start[i]; }
+
+  __device__ inline void set(std::size_t i, T value) { _start[i] = value; }
+  __device__ std::size_t size() const { return *count; }
+  // return the pointer of ith element
+  __device__ T* getdataPtr(std::size_t i = 0) { return _start + i; }
+  __device__ const T* getdataPtr(std::size_t i = 0) const { return _start + i; }
+
+  // get data before the last shift(rotate), used in bcs
+  __device__ T& getPrevious(std::size_t i) {
+    std::ptrdiff_t prevIndex = i + *Offset;
+    if (prevIndex < 0) {
+      prevIndex += *count;
+    } else if (prevIndex >= static_cast<std::ptrdiff_t>(*count)) {
+      prevIndex -= *count;
+    }
+    return _start[static_cast<std::size_t>(prevIndex)];
+  }
+
+  // experimental
+  __device__ void rotate() {
+    const std::ptrdiff_t n = *count;
+    std::ptrdiff_t shift = *_shift;
+    shift -= *Offset;
+    if (shift >= n) {
+      shift -= n;
+    } else if (shift < 0) {
+      shift += n;
+    }
+    *_shift = shift;
+    _start = _data + shift;
+  }
+};
+
+template <typename T>
+__global__ void Stream_kernel(cudev::StreamMapArray<T>* arr) {
+  arr->rotate();
+}
 
 template <typename ArrayType, unsigned int D>
 class GenericArrayField {

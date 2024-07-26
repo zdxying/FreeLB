@@ -65,34 +65,32 @@ void addvector(Genericvector<T> &a, T value) {
 
 // StreamArray
 template <typename T>
-__any__ void addStreamArrayImp(cudev::StreamArray<T> &a, std::size_t id) {
+__any__ void addStreamArrayImp(cudev::StreamMapArray<T> &a, std::size_t id) {
   a[id] = id + 1;
 }
 template <typename T>
-__global__ void addStreamArray_kernel(cudev::StreamArray<T> *a) {
+__global__ void addStreamArray_kernel(cudev::StreamMapArray<T> *a) {
   int idx = blockIdx.x * blockDim.x + threadIdx.x;
-  if (idx < a->size()) {
-    addStreamArrayImp(*a, idx);
-  }
+  addStreamArrayImp(*a, idx);
 }
 template <typename T>
-void addStreamArray(StreamArray<T> &a) {
+void addStreamArray(StreamMapArray<T> &a) {
   const unsigned int blockSize = THREADS_PER_BLOCK;
   const unsigned int blockNum = (a.size() + blockSize - 1) / blockSize;
   addStreamArray_kernel<<<blockNum, blockSize>>>(a.get_devObj());
 }
 
-void set(StreamArray<T> &arr) {
+void set(StreamMapArray<T> &arr) {
   for(int i = 0; i < arr.size(); i++) {
     arr[i] = i;
   } 
 }
-// void print(StreamArray<T> &arr) {
-//   for(int i = 0; i < arr.size(); i++) {
-//     std::cout << arr[i] << " ";
-//   }
-//   std::cout << std::endl;
-// }
+void print(StreamMapArray<T> &arr) {
+  for(int i = 0; i < arr.size(); i++) {
+    std::cout << arr[i] << " ";
+  }
+  std::cout << std::endl;
+}
 
 // GenericField
 template <typename ArrayType, typename T, typename Base>
@@ -137,21 +135,22 @@ void addBlockLattice(BlockLattice<T, LatSet, TypePack> &a, T value) {
 int main() {
   // std::cout << "sizeof(T) = " << sizeof(T) << std::endl;
   // std::cout << "sizeof(Vector<T, 3>) = " << sizeof(Vector<T, 3>) << std::endl;
-  BaseConverter<T> BaseConv(LatSet::cs2);
-  BaseConv.SimplifiedConverterFromRT(Ni, T{1.}, T{1.});
-  AABB<T, 3> cavity(Vector<T, 3>{}, Vector<T, 3>(T(Ni), T(Nj), T(Nk)));
-  BlockGeometry3D<T> Geo(Ni, Nj, Nk, 1, cavity, 1);
-  // using FIELDS = TypePack<RHO<T>, VELOCITY<T, LatSet::d>, POP<T, LatSet::q>>;
-  // ValuePack InitValues(T{1.}, Vector<T, 3>{}, T{});
-  using FIELDS = TypePack<RHO<T>>;
-  ValuePack InitValues(T{1.});
-  BlockLatticeManager<T, LatSet, FIELDS> NSLattice(Geo, BaseConv);
 
-  auto& f = NSLattice.getBlockLat(0);
-  std::cout << f.template getField<RHO<T>>().get(0) << std::endl;
-  addBlockLattice(NSLattice.getBlockLat(0), T{1.});
-  f.template getField<RHO<T>>().copyToHost();
-  std::cout << f.template getField<RHO<T>>().get(0) << std::endl;
+  // BaseConverter<T> BaseConv(LatSet::cs2);
+  // BaseConv.SimplifiedConverterFromRT(Ni, T{1.}, T{1.});
+  // AABB<T, 3> cavity(Vector<T, 3>{}, Vector<T, 3>(T(Ni), T(Nj), T(Nk)));
+  // BlockGeometry3D<T> Geo(Ni, Nj, Nk, 1, cavity, 1);
+  // // using FIELDS = TypePack<RHO<T>, VELOCITY<T, LatSet::d>, POP<T, LatSet::q>>;
+  // // ValuePack InitValues(T{1.}, Vector<T, 3>{}, T{});
+  // using FIELDS = TypePack<RHO<T>>;
+  // ValuePack InitValues(T{1.});
+  // BlockLatticeManager<T, LatSet, FIELDS> NSLattice(Geo, BaseConv);
+
+  // auto& f = NSLattice.getBlockLat(0);
+  // std::cout << f.template getField<RHO<T>>().get(0) << std::endl;
+  // addBlockLattice(NSLattice.getBlockLat(0), T{1.});
+  // f.template getField<RHO<T>>().copyToHost();
+  // std::cout << f.template getField<RHO<T>>().get(0) << std::endl;
 
   // BlockFieldManager<VELOCITY<T, 3>, T, 3> vFM(Geo, Vector<T, 3>{T{1.}, T{2.}, T{3.}});
   // auto& v = vFM.getBlockField(0);
@@ -173,16 +172,17 @@ int main() {
   // v.copyToHost();
   // std::cout << v[N-1] << std::endl;
 
-  // StreamArray<T> sarr(100000, T{});
-  // int offset = int(std::sqrt(100000));
-  // sarr.setOffset(offset);
-  // set(sarr);
-  // sarr.copyToDevice();
-  // // print(sarr);
-  // addStreamArray(sarr, T{1.});
-  // sarr.dev_rotate();
-  // sarr.copyToHost();
-  // print(sarr);  
+  StreamMapArray<T> sarr(10, T{});
+  sarr.setOffset(-1);
+  set(sarr);
+  sarr.copyToDevice();
+  print(sarr);
+  addStreamArray(sarr);
+  sarr.copyToHost();
+  print(sarr);
+  Stream_kernel<<<1,1>>>(sarr.get_devObj());  
+  sarr.copyToHost();
+  print(sarr);  
   // Timer MainLoopTimer;
   // MainLoopTimer.START_TIMER();
   // for(int i = 0; i < 10000; ++i) {

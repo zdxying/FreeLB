@@ -4,8 +4,8 @@ ROOT := ../..
 
 CXXC := nvcc
 
-# FLAGS += -O3 
-FLAGS += -g
+FLAGS += -O3 
+# FLAGS += -g
 # FLAGS += -pg
 FLAGS += -DFLOAT_TYPE=float
 

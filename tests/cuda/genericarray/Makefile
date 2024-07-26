@@ -5,9 +5,9 @@ ROOT := ../../..
 CXXC := nvcc
 
 # FLAGS += -O3 -march=native
-FLAGS += -O3
+# FLAGS += -O3
 # FLAGS += -g -DMPI_DEBUG
-# FLAGS += -g
+FLAGS += -g
 # FLAGS += -pg
 FLAGS += -DFLOAT_TYPE=float
 # FLAGS += -DMPI_ENABLED
