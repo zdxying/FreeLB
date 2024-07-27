@@ -45,8 +45,9 @@ The following table shows the performance of FreeLB in simulating the lid-driven
 
 | Device | FP64 MLUPs | FP32 MLUPs
 | :----- | :---- | :---- |
-| i7-11800H       | 113 |      |
-| RTX 3060 Laptop |     | 1500 |
+| i7-11800H       | 150 |      |
+| i7-8750H        | 124 |      |
+| RTX 3060 Laptop |     | 1581 |
 
 
 ## Dependencies
