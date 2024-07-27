@@ -1344,18 +1344,19 @@ class StreamMapArray {
     if (&arr == this) return *this;
     if (count != arr.count) {
       munmap(map, 2 * map_size);
-      setMap();
     }
-    std::copy(arr.data, arr.data + arr.count, data);
+    count = arr.count;
     shift = arr.shift;
     Offset = arr.Offset;
+    setMap();
+    std::copy(arr.data, arr.data + arr.map_count, data);
 #ifdef __CUDACC__
     device_to_device(dev_count, arr.dev_count, 1);
     device_to_device(dev_start, arr.dev_start, 1);
     device_to_device(dev_shift, arr.dev_shift, 1);
     device_to_device(dev_Offset, arr.dev_Offset, 1);
 #endif
-    count = arr.count;
+
     return *this;
   }
   // Move assignment operator

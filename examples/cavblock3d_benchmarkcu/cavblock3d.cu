@@ -135,7 +135,7 @@ int main() {
   BlockGeometry3D<T> Geo(Ni, Nj, Nk, Block_Num, cavity, Cell_Len);
 
   // ------------------ define flag field ------------------
-  BlockFieldManager<FLAG, T, 3> FlagFM(Geo, VoidFlag);
+  BlockFieldManager<FLAG, T, LatSet::d> FlagFM(Geo, VoidFlag);
   FlagFM.forEach(cavity,
                  [&](FLAG& field, std::size_t id) { field.SetField(id, AABBFlag); });
   FlagFM.template SetupBoundary<LatSet>(cavity, BouncebackFlag);
@@ -162,7 +162,7 @@ int main() {
   // using FIELDSPACK = TypePack<FIELDS, FIELDREFS>;
   // using CELL = Cell<T, LatSet, ExtractFieldPack<FIELDSPACK>::mergedpack>;
   using CELL = cudev::Cell<T, LatSet, cudevFIELDS>;
-  ValuePack InitValues(BaseConv.getLatRhoInit(), Vector<T, 3>{}, T{});
+  ValuePack InitValues(BaseConv.getLatRhoInit(), Vector<T, LatSet::d>{}, T{});
   // lattice
   BlockLatticeManager<T, LatSet, FIELDS> NSLattice(Geo, InitValues, BaseConv);
   // NSLattice.EnableToleranceU();
@@ -201,12 +201,16 @@ int main() {
 
   // writers
   vtmwriter::ScalarWriter RhoWriter("Rho", NSLattice.getField<RHO<T>>());
-  vtmwriter::VectorWriter VecWriter("Velocity", NSLattice.getField<VELOCITY<T, 3>>());
+  vtmwriter::VectorWriter VecWriter("Velocity", NSLattice.getField<VELOCITY<T, LatSet::d>>());
   vtmwriter::vtmWriter<T, LatSet::d> NSWriter("cavblock3d", Geo);
   NSWriter.addWriterSet(RhoWriter, VecWriter);
 
   Printer::Print_BigBanner(std::string("Start Calculation..."));
   std::cout << "Total Cells: " << Geo.getTotalCellNum() << std::endl;
+
+  NSLattice.getField<POP<T, LatSet::q>>().copyToDevice();
+  NSLattice.getField<RHO<T>>().copyToDevice();
+  NSLattice.getField<VELOCITY<T, LatSet::d>>().copyToDevice();
 
   // count and timer
   Timer MainLoopTimer;
@@ -239,6 +243,12 @@ int main() {
   MainLoopTimer.Print_MainLoopPerformance(Geo.getTotalCellNum());
   Printer::Print("Total PhysTime", BaseConv.getPhysTime(MainLoopTimer()));
   Printer::Endl();
+
+  // NSLattice.CuDevApplyCellDynamics<TaskSelectorRhoU>(FlagFM);
+  // cudaDeviceSynchronize();
+  // NSLattice.getBlockLat(0).getField<RHO<T>>().copyToHost();
+  // NSLattice.getBlockLat(0).getField<VELOCITY<T, LatSet::d>>().copyToHost();
+  // NSWriter.WriteBinary(MainLoopTimer());
 
   return 0;
 }

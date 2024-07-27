@@ -238,6 +238,7 @@ int main() {
   Printer::Print_BigBanner(std::string("Calculation Complete!"));
   MainLoopTimer.Print_MainLoopPerformance(Geo.getTotalCellNum());
   Printer::Print("Total PhysTime", BaseConv.getPhysTime(MainLoopTimer()));
+  // NSLattice.ApplyCellDynamics<TaskSelectorRhoU>(FlagFM);
   // NSWriter.WriteBinary(MainLoopTimer());
   Printer::Endl();
 

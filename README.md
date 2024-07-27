@@ -41,12 +41,12 @@ The executable file will be generated in the same directory with .exe extension.
 
 
 ## Benchmark
-The following table shows the performance of FreeLB in simulating the lid-driven cavity flow problem with D3Q19 lattice set on a 100x100x100 lattice grid(in million lattice updates per second, MLUPs).
+The following table shows the performance of FreeLB in simulating the lid-driven cavity flow problem(/examples/cavblock3d_benchmark and /examples/cavblock3d_benchmarkcu) with D3Q19 lattice set on a 100x100x100 lattice grid(in million lattice updates per second, MLUPs).
 
 | Device | FP64 MLUPs | FP32 MLUPs
 | :----- | :---- | :---- |
-| 11th Gen Intel(R) Core(TM) i7-11800H @ 2.30GHz| 113 |  |
-| NVIDIA GeForce RTX 3060 Laptop GPU|  | 1500 |
+| i7-11800H       | 113 |      |
+| RTX 3060 Laptop |     | 1500 |
 
 
 ## Dependencies
