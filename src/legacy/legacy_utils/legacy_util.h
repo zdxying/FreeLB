@@ -53,7 +53,7 @@ struct Index2D {
   static inline int GetId(int i, int j, int Ni) { return j * Ni + i; }
 
   template <typename T, typename Func>
-  static inline void Traverse_Vector(const std::vector<T> &vec, Func func) {
+  static inline void Traverse_Vector(const std::vector<T> &vec, const Func& func) {
     for (int i = 0; i < vec.size(); i++) {
       func(vec[i]);
     }
@@ -65,7 +65,7 @@ struct Index2D {
   // if func is very small, and called frequently, it's recommended to inline
   // the code of func to the loop body, not to use this function
   template <typename Func>
-  static void Traverse_Bulk(int Ni, int Nj, int offset, Func func) {
+  static void Traverse_Bulk(int Ni, int Nj, int offset, const Func& func) {
     int id;
     if (offset == 0) {
       int N = Ni * Nj;
@@ -90,7 +90,7 @@ struct Index2D {
   // Traverse_Chunk_OMP instead
   // 2. if func is small, it's recommended to use Traverse_Bulk instead
   template <typename Func>
-  static void Traverse_Bulk_OMP(int Ni, int Nj, int offset, Func func) {
+  static void Traverse_Bulk_OMP(int Ni, int Nj, int offset, const Func& func) {
     int id;
 #pragma omp parallel for private(id) num_threads(Thread_Num)
     for (int j = offset; j < Nj - offset; j++) {
@@ -106,7 +106,7 @@ struct Index2D {
   // Traverse_Chunk_OMP(Ni, Nj, offset, [](int thn, int id){func(thn,id);});
   // note that explicitly specify the template parameter Func is not needed
   //   template <typename Func>
-  //   static void Traverse_Chunk_OMP(int Ni, int Nj, int offset, Func func) {
+  //   static void Traverse_Chunk_OMP(int Ni, int Nj, int offset, const Func& func) {
   //     int id, start, end, th_num, i, j;
   //     int chunk = (Nj - 2 * offset) / Thread_Num;
   // #pragma omp parallel private(id, start, end, th_num, i, j) \
@@ -132,7 +132,7 @@ struct Index2D {
   // if func is very small, it's recommended to inline the code of func to the
   // loop body, not to use this function
   template <typename Func>
-  static void Traverse_Peripheral(int Ni, int Nj, int offset, Func func) {
+  static void Traverse_Peripheral(int Ni, int Nj, int offset, const Func& func) {
     int id;
     // top and bottom boundary j = 0 + offset, Nj - 1 - offset
     for (int i = offset; i < Ni - offset; i++) {
@@ -160,7 +160,7 @@ struct Index2D {
   // Attention: omp enabled version may be less efficient than serilized
   // version
   template <typename Func>
-  static void Traverse_Peripheral_OMP(int Ni, int Nj, int offset, Func func) {
+  static void Traverse_Peripheral_OMP(int Ni, int Nj, int offset, const Func& func) {
     int id;
     // top and bottom boundary j = 0 + offset, Nj - 1 - offset
 #pragma omp parallel for private(id) num_threads(Thread_Num)

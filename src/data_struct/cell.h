@@ -337,7 +337,7 @@ class Cell {
     return Cell<T, LatSet, TypePack>(Id + direction * Lat->getProjection());
   }
 
-  __device__ void setId(std::size_t id) { Id = id; }
+  __device__ inline void setId(std::size_t id) { Id = id; }
 
   __device__ std::size_t getId() const { return Id; }
   __device__ std::size_t getNeighborId(int i) const { return Id + Lat->getDelta_Index()[i]; }

@@ -611,7 +611,7 @@ class BlockZhuStefanescu2DManager
   bool WillRefineBlockCells(BlockGeometryHelper2D<T>& GeoHelper) {
     const std::uint8_t LevelLimit = GeoHelper.getLevelLimit();
     bool willrefine = false;
-    std::vector<bool> hasSolid(GeoHelper.getBlockCells().size(), false);
+    std::vector<std::uint8_t> hasSolid(GeoHelper.getBlockCells().size(), std::uint8_t{});
 #pragma omp parallel for num_threads(Thread_Num)
     for (std::size_t icell = 0; icell < GeoHelper.getBlockCells().size(); ++icell) {
       // cell block
@@ -640,7 +640,7 @@ class BlockZhuStefanescu2DManager
                 std::size_t idblock =
                   (iy + blockstarty) * block.getNx() + ix + blockstartx;
                 if (util::isFlag(StateF[idblock], CAType::Solid)) {
-                  hasSolid[icell] = true;
+                  hasSolid[icell] = std::uint8_t(1);
                   // exit for loop
                   ix = Nx;
                   iy = Ny;

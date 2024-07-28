@@ -201,6 +201,13 @@ __global__ void CuDevApplyCellDynamicsKernel(cudev::BlockLattice<T, LatSet, Type
   CELLDYNAMICS::Execute(flagarr->operator[](idx), cell);
 }
 
+template <typename T, typename LatSet, typename TypePack, typename CELLDYNAMICS>
+__global__ void CuDevApplyCellDynamicsKernel(cudev::BlockLattice<T, LatSet, TypePack>* blocklat) {
+  std::size_t idx = blockIdx.x * blockDim.x + threadIdx.x;
+  cudev::Cell<T, LatSet, TypePack> cell(idx, blocklat);
+  CELLDYNAMICS::apply(cell);
+}
+
 // old version of unaligned memory
 template <typename T, typename LatSet, typename TypePack, typename CELLDYNAMICS, typename ArrayType>
 __global__ void CuDevApplyCellDynamicsKernel(cudev::BlockLattice<T, LatSet, TypePack>* blocklat, ArrayType* flagarr, std::size_t N) {

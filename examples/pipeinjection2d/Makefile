@@ -1,5 +1,5 @@
 
-TARGET = dambreak2d_intlat.exe
+TARGET = pipeinjection2d.exe
 ROOT := ../..
 
 FLAGS += -O3 -march=native -fopenmp

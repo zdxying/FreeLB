@@ -182,12 +182,12 @@ class Geometry3D : public AABB<T, 3> {
   // lambda function set flag
   // call: setFlag<LatSet>(AABBs, [](int id){func(id);});
   template <typename Func>
-  void forEachVoxel(const AABB<T, 3>& AABBs, Func func); 
+  void forEachVoxel(const AABB<T, 3>& AABBs, const Func& func); 
   template <typename Func>
   void forEachVoxel(const AABB<T, 3>& AABBs, std::uint8_t fromflag,
-                      Func func);
+                      const Func& func);
   template <typename Func>
-  void forEachVoxel(std::uint8_t fromflag, Func func);            
+  void forEachVoxel(std::uint8_t fromflag, const Func& func);            
   // print
   void print() {
     std::cout << "[VoxelGeometry3D]: "

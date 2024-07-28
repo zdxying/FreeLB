@@ -159,7 +159,7 @@ void Geometry2D<T>::setFlag(const AABB<T, 2> &AABBs, std::uint8_t fromflag,
 // lambda function
 template <typename T>
 template <typename Func>
-void Geometry2D<T>::forEachVoxel(const AABB<T, 2> &AABBs, Func func) {
+void Geometry2D<T>::forEachVoxel(const AABB<T, 2> &AABBs, const Func& func) {
   // get cuboid defined by AABBs
   Vector<T, 2> min = AABBs.getMin();
   Vector<T, 2> max = AABBs.getMax();
@@ -186,7 +186,7 @@ void Geometry2D<T>::forEachVoxel(const AABB<T, 2> &AABBs, Func func) {
 }
 template <typename T>
 template <typename Func>
-void Geometry2D<T>::forEachVoxelint(const AABB<int, 2> &AABBs, Func func) {
+void Geometry2D<T>::forEachVoxelint(const AABB<int, 2> &AABBs, const Func& func) {
   if constexpr (std::is_same<T, int>::value) {
     // get index of min and max
     Vector<int, 2> idx_min = AABBs.getMin();
@@ -211,7 +211,7 @@ void Geometry2D<T>::forEachVoxelint(const AABB<int, 2> &AABBs, Func func) {
 template <typename T>
 template <typename Func>
 void Geometry2D<T>::forEachVoxel(const AABB<T, 2> &AABBs, std::uint8_t fromflag,
-                                 Func func) {
+                                 const Func& func) {
   // get cuboid defined by AABBs
   Vector<T, 2> min = AABBs.getMin();
   Vector<T, 2> max = AABBs.getMax();
@@ -238,7 +238,7 @@ void Geometry2D<T>::forEachVoxel(const AABB<T, 2> &AABBs, std::uint8_t fromflag,
 }
 template <typename T>
 template <typename Func>
-void Geometry2D<T>::forEachVoxel(std::uint8_t fromflag, Func func) {
+void Geometry2D<T>::forEachVoxel(std::uint8_t fromflag, const Func& func) {
   for (int id = 0; id < N; ++id) {
     if (GeometryFlag.get(id) == fromflag) {
       func(id);

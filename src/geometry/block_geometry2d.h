@@ -77,6 +77,9 @@ class Block2D : public BasicBlock<T, 2> {
   template <typename FieldType, typename LatSet>
   void SetupBoundary(const AABB<T, 2>& block, FieldType& field,
                      typename FieldType::value_type bdvalue);
+  template <typename FieldType, typename LatSet>
+  void SetupBoundary(FieldType& field, typename FieldType::value_type fromvalue,
+  typename FieldType::value_type voidvalue, typename FieldType::value_type bdvalue);
 
   std::vector<Block2D<T>*>& getNeighbors() { return _Neighbors; }
   const Block2D<T>& getNeighbor(int id) const { return *_Neighbors[id]; }
@@ -333,7 +336,7 @@ class BlockGeometryHelper2D : public BasicBlock<T, 2> {
   // create block from BlockCells, this should be called after refinement
   void CreateBlocks();
   // tag neighbor refine cells
-  void TagRefineLayer(std::vector<bool>& refine, bool& refined);
+  void TagRefineLayer(std::vector<std::uint8_t>& refine, bool& refined);
   // check refine cell status
   void CheckRefine();
   // perform refine
@@ -341,7 +344,7 @@ class BlockGeometryHelper2D : public BasicBlock<T, 2> {
 
   // lambda function for each cell block
   template <typename Func>
-  void forEachBlockCell(Func func);
+  void forEachBlockCell(const Func& func);
 
   // optimal procNum usually set to actual procNum,
   // MaxProcNum usually set to x * optProcNum

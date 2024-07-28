@@ -995,7 +995,7 @@ void BlockGeometryHelper3D<T>::CreateBlocks(int blocknum) {
 
 template <typename T>
 template <typename Func>
-void BlockGeometryHelper3D<T>::forEachBlockCell(Func func) {
+void BlockGeometryHelper3D<T>::forEachBlockCell(const Func& func) {
   for (BasicBlock<T, 3> &block : _BlockCells) {
     func(block);
   }
@@ -1219,7 +1219,7 @@ void BlockGeometryHelper3D<T>::SetupMPINbrs() {
 #endif
 
 template <typename T>
-void BlockGeometryHelper3D<T>::TagRefineLayer(std::vector<bool> &refine, bool &refined) {
+void BlockGeometryHelper3D<T>::TagRefineLayer(std::vector<std::uint8_t> &refine, bool &refined) {
   UpdateMaxLevel();
   // refine one additional layer if has neighbor with lower level
   // tag cells to be refined
@@ -1229,7 +1229,7 @@ void BlockGeometryHelper3D<T>::TagRefineLayer(std::vector<bool> &refine, bool &r
       for (int celly = 1; celly < CellsNy - 1; ++celly) {
         for (int cellx = 1; cellx < CellsNx - 1; ++cellx) {
           int cellid = celly * CellsNx + cellx + cellz * XY;
-          if (refine[cellid]) {
+          if (static_cast<bool>(refine[cellid])) {
             if (_BlockCells[cellid].getLevel() == level) {
               for (int delta : Delta_Cellidx) {
                 int ncellid = cellid + delta;

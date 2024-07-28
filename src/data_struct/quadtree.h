@@ -178,7 +178,7 @@ class QuadTree : public BasicTree<T, 2> {
 
   // lambda functions
   template <typename Func>
-  void forEachLeaf(Func func) {
+  void forEachLeaf(const Func& func) {
     if (_isLeaf) {
       func(this);
     } else {

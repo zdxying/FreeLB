@@ -262,7 +262,7 @@ void Geometry3D<T>::setFlag(const AABB<T, 3>& AABBs, const StlReader<T>& reader,
 
 template <typename T>
 template <typename Func>
-void Geometry3D<T>::forEachVoxel(const AABB<T, 3>& AABBs, Func func) {
+void Geometry3D<T>::forEachVoxel(const AABB<T, 3>& AABBs, const Func& func) {
   // get cuboid defined by AABBs
   Vector<T, 3> min = AABBs.getMin();
   Vector<T, 3> max = AABBs.getMax();
@@ -297,7 +297,7 @@ void Geometry3D<T>::forEachVoxel(const AABB<T, 3>& AABBs, Func func) {
 template <typename T>
 template <typename Func>
 void Geometry3D<T>::forEachVoxel(const AABB<T, 3>& AABBs, std::uint8_t fromflag,
-                                 Func func) {
+                                 const Func& func) {
   // get cuboid defined by AABBs
   Vector<T, 3> min = AABBs.getMin();
   Vector<T, 3> max = AABBs.getMax();
@@ -331,7 +331,7 @@ void Geometry3D<T>::forEachVoxel(const AABB<T, 3>& AABBs, std::uint8_t fromflag,
 
 template <typename T>
 template <typename Func>
-void Geometry3D<T>::forEachVoxel(std::uint8_t fromflag, Func func) {
+void Geometry3D<T>::forEachVoxel(std::uint8_t fromflag, const Func& func) {
   for (int id = 0; id < N; ++id) {
     if (GeometryFlag.get(id) == fromflag) {
       func(id);

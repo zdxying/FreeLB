@@ -32,6 +32,7 @@ using LatSet = D2Q9<T>;
 -----------------------------------------------*/
 int Ni;
 int Nj;
+int pipewidth;
 T Cell_Len;
 T RT;
 int Thread_Num;
@@ -75,6 +76,7 @@ void readParam() {
 
   Ni = param_reader.getValue<int>("Mesh", "Ni");
   Nj = param_reader.getValue<int>("Mesh", "Nj");
+  pipewidth = param_reader.getValue<int>("Mesh", "pipewidth");
   Cell_Len = param_reader.getValue<T>("Mesh", "Cell_Len");
   // physical properties
   rho_ref = param_reader.getValue<T>("Physical_Property", "rho_ref");
@@ -132,17 +134,17 @@ int main() {
 
   // define geometry
   AABB<T, 2> cavity(Vector<T, 2>{}, Vector<T, 2>(T(Ni * Cell_Len), T(Nj * Cell_Len)));
-  AABB<T, LatSet::d> left(Vector<T, LatSet::d>{},
-                          Vector<T, LatSet::d>(T(1), T(Nj - 1) * Cell_Len));
-  AABB<T, 2> fluid(Vector<T, 2>{},
-                   Vector<T, 2>(T(int(Ni / 2) * Cell_Len), T(int(Nj / 2) * Cell_Len)));
+  AABB<T, LatSet::d> topleft(Vector<T, LatSet::d>{T{}, T(pipewidth)}, Vector<T, LatSet::d>(T(Ni * Cell_Len - pipewidth), T(Nj * Cell_Len)));
+  AABB<T, LatSet::d> left(Vector<T, LatSet::d>{}, Vector<T, LatSet::d>(T(1), T(Nj - 1) * Cell_Len));
+  AABB<T, 2> fluid(Vector<T, 2>{}, Vector<T, 2>(T(int(Ni / 2) * Cell_Len), T(int(Nj / 2) * Cell_Len)));
   BlockGeometry2D<T> Geo(Ni, Nj, Thread_Num, cavity, Cell_Len);
 
   // ------------------ define flag field ------------------
   BlockFieldManager<FLAG, T, LatSet::d> FlagFM(Geo, VoidFlag);
-  FlagFM.forEach(cavity,
-                 [&](auto& field, std::size_t id) { field.SetField(id, AABBFlag); });
-  FlagFM.template SetupBoundary<LatSet>(cavity, BouncebackFlag);
+  FlagFM.forEach(cavity, [&](auto& field, std::size_t id) { field.SetField(id, AABBFlag); });
+  FlagFM.forEach(topleft, [&](auto& field, std::size_t id) { field.SetField(id, VoidFlag); });
+  // FlagFM.template SetupBoundary<LatSet>(cavity, BouncebackFlag);
+  FlagFM.template SetupBoundary<LatSet>(AABBFlag, VoidFlag, BouncebackFlag);
   FlagFM.forEach(left, [&](FLAG& field, std::size_t id) {
     if (util::isFlag(field.get(id), BouncebackFlag)) field.SetField(id, InletFlag);
   });

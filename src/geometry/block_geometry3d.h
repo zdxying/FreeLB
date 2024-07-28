@@ -330,7 +330,7 @@ class BlockGeometryHelper3D : public BasicBlock<T, 3> {
   // create block using normal divide method, like CreateBlocks() in BlockGeometry3D
   void CreateBlocks(int blocknum);
   // tag neighbor refine cells
-  void TagRefineLayer(std::vector<bool>& refine, bool& refined);
+  void TagRefineLayer(std::vector<std::uint8_t>& refine, bool& refined);
   // check refine cell status
   void CheckRefine();
   // perform refine
@@ -338,7 +338,7 @@ class BlockGeometryHelper3D : public BasicBlock<T, 3> {
 
   // lambda function for each cell block
   template <typename Func>
-  void forEachBlockCell(Func func);
+  void forEachBlockCell(const Func& func);
 
   // optimal procNum usually set to actual procNum,
   // MaxProcNum usually set to x * optProcNum

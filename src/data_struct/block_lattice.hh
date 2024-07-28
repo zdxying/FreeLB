@@ -325,7 +325,8 @@ template <typename CELLDYNAMICS>
 void BlockLattice<T, LatSet, TypePack>::CuDevApplyCellDynamics() {
   const unsigned int blockSize = THREADS_PER_BLOCK;
   const unsigned int blockNum = (this->getN() + blockSize - 1) / blockSize;
-  CuDevApplyCellDynamicsKernel<T, LatSet, cudev_TypePack, CELLDYNAMICS><<<blockNum, blockSize>>>(dev_BlockLat, this->getN());
+  CuDevApplyCellDynamicsKernel<T, LatSet, cudev_TypePack, CELLDYNAMICS><<<blockNum, blockSize>>>(dev_BlockLat);
+  // CuDevApplyCellDynamicsKernel<T, LatSet, cudev_TypePack, CELLDYNAMICS><<<blockNum, blockSize>>>(dev_BlockLat, this->getN());
 }
 
 #endif

@@ -404,7 +404,7 @@ void BasicBlock<T, D>::getLocIdxRange(const AABB<T, D>& AABBs, Vector<int, D>& i
 
 template <typename T, unsigned int D>
 template <typename Func>
-void BasicBlock<T, D>::forEach(Func func) {
+void BasicBlock<T, D>::forEach(const Func& func) {
   for (std::size_t id = 0; id < N; ++id) {
     func(id);
   }
@@ -412,7 +412,7 @@ void BasicBlock<T, D>::forEach(Func func) {
 
 template <typename T, unsigned int D>
 template <typename Func>
-void BasicBlock<T, D>::forEach(const AABB<T, D>& AABBs, Func func) {
+void BasicBlock<T, D>::forEach(const AABB<T, D>& AABBs, const Func& func) {
   Vector<int, D> idx_min;
   Vector<int, D> idx_max;
   getLocIdxRange(AABBs, idx_min, idx_max);
@@ -438,7 +438,7 @@ void BasicBlock<T, D>::forEach(const AABB<T, D>& AABBs, Func func) {
 template <typename T, unsigned int D>
 template <typename ArrayType, typename Func>
 void BasicBlock<T, D>::forEach(const AABB<T, D>& AABBs, const ArrayType& flag,
-                               std::uint8_t fromflag, Func func) {
+                               std::uint8_t fromflag, const Func& func) {
   Vector<int, D> idx_min;
   Vector<int, D> idx_max;
   getLocIdxRange(AABBs, idx_min, idx_max);
@@ -465,7 +465,7 @@ void BasicBlock<T, D>::forEach(const AABB<T, D>& AABBs, const ArrayType& flag,
 
 template <typename T, unsigned int D>
 template <typename ArrayType, typename Func>
-void BasicBlock<T, D>::forEach(const ArrayType& flag, std::uint8_t fromflag, Func func) {
+void BasicBlock<T, D>::forEach(const ArrayType& flag, std::uint8_t fromflag, const Func& func) {
   if constexpr (D == 2) {
     for (int j = 0; j < Mesh[1]; ++j) {
       for (int i = 0; i < Mesh[0]; ++i) {

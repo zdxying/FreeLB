@@ -66,6 +66,33 @@ void Block2D<T>::SetupBoundary(const AABB<T, 2> &block, FieldType &field,
   }
 }
 
+template <typename T>
+template <typename FieldType, typename LatSet>
+void Block2D<T>::SetupBoundary(FieldType &field, typename FieldType::value_type fromvalue,
+typename FieldType::value_type voidvalue, typename FieldType::value_type bdvalue) {
+  // temp flag field store the transition flag
+  GenericArray<bool> TransFlag(BasicBlock<T, 2>::N, false);
+
+  for (int y = _overlap; y < BasicBlock<T, 2>::Mesh[1] - _overlap; ++y) {
+    for (int x = _overlap; x < BasicBlock<T, 2>::Mesh[0] - _overlap; ++x) {
+      const std::size_t idx = x + y * BasicBlock<T, 2>::Mesh[0];
+      if (field.get(idx) == fromvalue) {
+        for (unsigned int i = 1; i < LatSet::q; ++i) {
+          const std::size_t nbridx = idx + latset::c<LatSet>(i) * BasicBlock<T, 2>::Projection;
+          if (field.get(nbridx) == voidvalue) {
+            TransFlag.set(idx, true);
+            break;
+          }
+        }
+      }
+    }
+  }
+
+  for (std::size_t id = 0; id < BasicBlock<T, 2>::N; ++id) {
+    if (TransFlag[id]) field.SetField(id, bdvalue);
+  }
+}
+
 // -----------blockgeometry2d----------------
 
 
@@ -710,7 +737,7 @@ void BlockGeometryHelper2D<T>::CreateBlocks() {
 
 template <typename T>
 template <typename Func>
-void BlockGeometryHelper2D<T>::forEachBlockCell(Func func) {
+void BlockGeometryHelper2D<T>::forEachBlockCell(const Func& func) {
   for (BasicBlock<T, 2> &block : _BlockCells) {
     func(block);
   }
@@ -933,7 +960,7 @@ void BlockGeometryHelper2D<T>::SetupMPINbrs() {
 #endif
 
 template <typename T>
-void BlockGeometryHelper2D<T>::TagRefineLayer(std::vector<bool> &refine, bool &refined) {
+void BlockGeometryHelper2D<T>::TagRefineLayer(std::vector<std::uint8_t> &refine, bool &refined) {
   UpdateMaxLevel();
   // refine one additional layer if has neighbor with lower level
   // tag cells to be refined
@@ -941,7 +968,7 @@ void BlockGeometryHelper2D<T>::TagRefineLayer(std::vector<bool> &refine, bool &r
     for (int celly = 1; celly < CellsNy - 1; ++celly) {
       for (int cellx = 1; cellx < CellsNx - 1; ++cellx) {
         int cellid = celly * CellsNx + cellx;
-        if (refine[cellid]) {
+        if (static_cast<bool>(refine[cellid])) {
           if (_BlockCells[cellid].getLevel() == level) {
             for (int delta : Delta_Cellidx) {
               int ncellid = cellid + delta;
