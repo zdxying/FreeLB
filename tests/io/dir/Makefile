@@ -15,4 +15,4 @@ FLAGS += -march=native
 # FLAGS        += -D_FLB_DEBUG
 # FLAGS        += -DFLOAT_TYPE=float
 OUTPUT += test test0 test1 test2
-include $(ROOT)/Makefile
+include $(ROOT)/make.mk

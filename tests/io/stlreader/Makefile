@@ -15,4 +15,4 @@ FLAGS        += -DFLOAT_TYPE=double
 
 OUTPUT += vtkoutput
 
-include $(ROOT)/Makefile
+include $(ROOT)/make.mk

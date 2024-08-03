@@ -160,7 +160,10 @@ void readParam(std::vector<T>& refThold, std::vector<T>& coaThold) {
 
   Cl = 0;
   Ch = (T_Melt - T_Eute) / m_Liquidus;
-
+#ifdef _OPENMP
+  // get max thread number
+  Thread_Num = omp_get_max_threads() > Thread_Num ? Thread_Num : omp_get_max_threads();
+#endif
 
   std::cout << "------------Simulation Parameters:-------------\n" << std::endl;
   std::cout << "[Simulation_Settings]:" << "TotalStep:         " << MaxStep << "\n"

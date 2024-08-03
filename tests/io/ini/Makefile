@@ -14,4 +14,4 @@ ROOT := ../../..
 # FLAGS        += -D_FLB_DEBUG
 # FLAGS        += -DFLOAT_TYPE=float
 
-include $(ROOT)/Makefile
+include $(ROOT)/make.mk
