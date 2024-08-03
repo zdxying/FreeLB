@@ -649,7 +649,7 @@ class CyclicArray {
   std::size_t remainder;
   std::array<T*, 2> start;
   // facilitate the access of data before the last shift(rotate)
-  std::ptrdiff_t lastOffset;
+  std::ptrdiff_t Offset;
 
  public:
   using value_type = T;
@@ -659,34 +659,34 @@ class CyclicArray {
 #endif
 
   CyclicArray()
-      : count(0), data(nullptr), shift(0), remainder(0), start{}, lastOffset(0) {}
+      : count(0), data(nullptr), shift(0), remainder(0), start{}, Offset(0) {}
   CyclicArray(std::size_t size)
-      : count(size), data(new T[size]{}), shift(0), remainder(size), lastOffset(0) {
+      : count(size), data(new T[size]{}), shift(0), remainder(size), Offset(0) {
     std::fill(data, data + size, T{});
     refresh();
   }
   CyclicArray(std::size_t size, T InitValue)
-      : count(size), data(new T[size]{}), shift(0), remainder(size), lastOffset(0) {
+      : count(size), data(new T[size]{}), shift(0), remainder(size), Offset(0) {
     std::fill(data, data + size, InitValue);
     refresh();
   }
   // Copy constructor
   CyclicArray(const CyclicArray& arr)
       : count(arr.count), data(new T[arr.count]{}), shift(arr.shift),
-        remainder(arr.remainder), lastOffset(arr.lastOffset) {
+        remainder(arr.remainder), Offset(arr.Offset) {
     std::copy(arr.data, arr.data + count, data);
     refresh();
   }
   // Move constructor
   CyclicArray(CyclicArray&& arr) noexcept
-      : count(0), data(nullptr), shift(0), remainder(0), start{}, lastOffset(0) {
+      : count(0), data(nullptr), shift(0), remainder(0), start{}, Offset(0) {
     // Steal the data from 'arr'
     count = arr.count;
     data = arr.data;
     shift = arr.shift;
     remainder = arr.remainder;
     start = arr.start;
-    lastOffset = arr.lastOffset;
+    Offset = arr.Offset;
     refresh();
     // Reset 'arr'
     arr.count = 0;
@@ -694,7 +694,7 @@ class CyclicArray {
     arr.shift = 0;
     arr.remainder = 0;
     arr.start = {};
-    arr.lastOffset = 0;
+    arr.Offset = 0;
   }
   // Copy assignment operator
   CyclicArray& operator=(const CyclicArray& arr) {
@@ -705,7 +705,7 @@ class CyclicArray {
     std::copy(arr.data, arr.data + count, data);
     shift = arr.shift;
     remainder = arr.remainder;
-    lastOffset = arr.lastOffset;
+    Offset = arr.Offset;
     refresh();
     return *this;
   }
@@ -719,19 +719,22 @@ class CyclicArray {
     shift = arr.shift;
     remainder = arr.remainder;
     start = arr.start;
-    lastOffset = arr.lastOffset;
+    Offset = arr.Offset;
     // Reset 'arr'
     arr.count = 0;
     arr.data = nullptr;
     arr.shift = 0;
     arr.remainder = 0;
     arr.start = {};
-    arr.lastOffset = 0;
+    arr.Offset = 0;
     refresh();
     return *this;
   }
 
-  void Init(T InitValue) { std::fill(data, data + count, InitValue); }
+  void Init(T InitValue, int offset = 0) { 
+    std::fill(data, data + count, InitValue); 
+    Offset = offset;
+  }
 
   void Resize(std::size_t size) {
     if (size == count) return;
@@ -740,7 +743,7 @@ class CyclicArray {
     count = size;
     shift = 0;
     remainder = size;
-    lastOffset = 0;
+    Offset = 0;
     refresh();
   }
 
@@ -772,7 +775,7 @@ class CyclicArray {
 
   // get data before the last shift(rotate), used in bcs
   T& getPrevious(std::size_t i) {
-    std::ptrdiff_t prevIndex = i + lastOffset;
+    std::ptrdiff_t prevIndex = i + Offset;
     if (prevIndex < 0) {
       prevIndex += count;
     } else if (prevIndex >= static_cast<std::ptrdiff_t>(count)) {
@@ -801,8 +804,19 @@ class CyclicArray {
     }
   }
 
+  void rotate() {
+    const std::ptrdiff_t n = count;
+    shift -= Offset;
+    if (shift >= n) {
+      shift -= n;
+    } else if (shift <= -n) {
+      shift += n;
+    }
+    refresh();
+  }
+
   void rotate(std::ptrdiff_t offset) {
-    lastOffset = offset;
+    Offset = offset;
     const std::ptrdiff_t n = count;
     shift -= offset;
     if (shift >= n) {

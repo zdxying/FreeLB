@@ -24,7 +24,7 @@ DEPS = $(SRCS:.$(SRC_EXT)=.d)
 FLAGS += -std=c++17
 
 # linker flags
-LINKFLAGS := -L$(ROOT)/lib
+LINKFLAGS := -L$(ROOT)/lib -lrt
 ifeq ($(CXXC),nvcc)
 	LINKFLAGS += -lcuda
 endif

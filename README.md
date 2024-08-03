@@ -43,11 +43,16 @@ The executable file will be generated in the same directory with .exe extension.
 ## Benchmark
 The following table shows the performance of FreeLB in simulating the lid-driven cavity flow problem(/examples/cavblock3d_benchmark and /examples/cavblock3d_benchmarkcu) with D3Q19 lattice set on a 100x100x100 lattice grid(in million lattice updates per second, MLUPs).
 
-| Device | FP64 MLUPs | FP32 MLUPs
+| Device | platform | FP32 MLUPs |
 | :----- | :---- | :---- |
-| i7-11800H       | 150 |      |
-| i7-8750H        | 124 |      |
-| RTX 3060 Laptop |     | 1581 |
+| i9-14900K       | Ubuntu 22.04      | 547 | 
+| E5-2699v4       | Ubuntu 20.04 WSL2 | 485 |
+| i7-11800H       | Ubuntu 22.04 WSL2 | 158 |
+| i7-8750H        | Ubuntu 22.04 WSL2 | 124 |
+| RTX 4080        | Ubuntu 22.04      | 2903 |
+| RTX 3060 Laptop | Ubuntu 22.04 WSL2 | 1581 |
+
+
 
 
 ## Dependencies
