@@ -561,6 +561,14 @@ void BlockLatticeManager<T, LatSet, TypePack>::Init() {
                            ExtractFieldPtrs<T, LatSet, TypePack>::getFieldPtrTuple(
                              i, this->Fields, this->FieldPtrs));
   }
+  if constexpr (this->template hasField<POP<T, LatSet::q>>()) {
+    ForEachBlockLattice([&](auto& blocklat) {
+      auto& field = blocklat.template getField<POP<T, LatSet::q>>();
+      for (unsigned int i = 0; i < LatSet::q; ++i) {
+        field.getField(i).setOffset(blocklat.getDelta_Index()[i]);
+      }
+    });
+  }
   InitComm();
   InitAverComm();
   InitIntpComm();
@@ -589,6 +597,14 @@ void BlockLatticeManager<T, LatSet, TypePack>::Init(
     BlockLats.emplace_back(this->BlockGeo.getBlock(i), Conv,
                            ExtractFieldPtrs<T, LatSet, TypePack>::getFieldPtrTuple(
                              i, this->Fields, this->FieldPtrs));
+  }
+  if constexpr (this->template hasField<POP<T, LatSet::q>>()) {
+    ForEachBlockLattice([&](auto& blocklat) {
+      auto& field = blocklat.template getField<POP<T, LatSet::q>>();
+      for (unsigned int i = 0; i < LatSet::q; ++i) {
+        field.getField(i).setOffset(blocklat.getDelta_Index()[i]);
+      }
+    });
   }
   InitComm();
   InitAverComm();

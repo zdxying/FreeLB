@@ -735,6 +735,7 @@ class CyclicArray {
     std::fill(data, data + count, InitValue); 
     Offset = offset;
   }
+  void setOffset(int offset) { Offset = offset; }
 
   void Resize(std::size_t size) {
     if (size == count) return;
