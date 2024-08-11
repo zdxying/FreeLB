@@ -8,6 +8,7 @@ FLAGS += -O3 -march=native -fopenmp
 # FLAGS += -g
 # FLAGS += -pg
 FLAGS += -DFLOAT_TYPE=double -DSingleBlock_OMP
+FLAGS += -D_UNROLLFOR
 # FLAGS += -DUNROLLFOR
 
 # FLAGS += -DMPI_ENABLED

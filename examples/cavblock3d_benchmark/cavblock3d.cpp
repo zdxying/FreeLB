@@ -148,10 +148,10 @@ int main() {
   // GeoWriter.addWriterSet(FlagWriter);
   // GeoWriter.WriteBinary();
 
-  GenericvectorManager<std::size_t> BulkTaskIds(Geo.getBlockNum(), FlagFM, AABBFlag);
-  GenericvectorManager<std::size_t> WallTaskIds(Geo.getBlockNum(), FlagFM, BouncebackFlag | BBMovingWallFlag);
-  GenericvectorManager<std::size_t> BBTaskIds(Geo.getBlockNum(), FlagFM, BouncebackFlag );
-  GenericvectorManager<std::size_t> BBMWTaskIds(Geo.getBlockNum(), FlagFM, BBMovingWallFlag);
+  // GenericvectorManager<std::size_t> BulkTaskIds(Geo.getBlockNum(), FlagFM, AABBFlag);
+  // GenericvectorManager<std::size_t> WallTaskIds(Geo.getBlockNum(), FlagFM, BouncebackFlag | BBMovingWallFlag);
+  // GenericvectorManager<std::size_t> BBTaskIds(Geo.getBlockNum(), FlagFM, BouncebackFlag );
+  // GenericvectorManager<std::size_t> BBMWTaskIds(Geo.getBlockNum(), FlagFM, BBMovingWallFlag);
 
   // ------------------ define lattice ------------------
   using FIELDS = TypePack<RHO<T>, VELOCITY<T, LatSet::d>, POP<T, LatSet::q>>;

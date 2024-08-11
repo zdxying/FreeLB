@@ -22,6 +22,6 @@
 
 // lbm dynamics
 #include "lbm/force.h"
-#include "lbm/equilibrium.h"
-#include "lbm/collision.h"
+#include "lbm/equilibrium.ur.h"
+#include "lbm/collision.ur.h"
 #include "lbm/powerlaw.h"

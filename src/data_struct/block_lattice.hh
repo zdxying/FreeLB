@@ -308,7 +308,7 @@ void BlockLattice<T, LatSet, TypePack>::ApplyInnerCellDynamics() {
 
 template <typename T, typename LatSet, typename TypePack>
 void BlockLattice<T, LatSet, TypePack>::CuDevStream() {
-  CuDevStreamKernel<<<1, LatSet::q>>>(dev_BlockLat);
+  CuDevStreamKernel<<<LatSet::q, 1>>>(dev_BlockLat);
 }
 
 template <typename T, typename LatSet, typename TypePack>
