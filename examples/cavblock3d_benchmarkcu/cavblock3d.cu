@@ -223,7 +223,7 @@ int main() {
     // NSLattice.Stream();
     NSLattice.CuDevStream();
   }
-
+  cudaDeviceSynchronize();
   MainLoopTimer.START_TIMER();
   while (MainLoopTimer() < MaxStep) {
 

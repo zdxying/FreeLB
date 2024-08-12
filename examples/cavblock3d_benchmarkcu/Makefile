@@ -4,7 +4,9 @@ ROOT := ../..
 
 CXXC := nvcc
 
-FLAGS += -O3 
+FLAGS += -Xptxas
+FLAGS += -O3
+# FLAGS += -use_fast_math
 # FLAGS += -g
 # FLAGS += -pg
 FLAGS += -DFLOAT_TYPE=float
