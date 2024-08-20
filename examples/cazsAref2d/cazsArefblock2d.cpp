@@ -21,6 +21,22 @@
 // cazsArefblock2d.cpp
 // lattice Boltzmann method coupled with cellular automata(CA) for 2D solidification with adaptive mesh refinement
 
+// 2024.08.18 
+// the normal CA model with multi-block is verified at this time. 
+// I got the correct and same result in both serial and parallel version in cazsblock2d.cpp
+// However, in this cazsArefblock2d.cpp, I got different result in serial and parallel version, 
+// it seems that the some code related with AMR causes this issue,
+// although the parallel version seems to be correct.
+// change Thread_Num(Block number) from 25 to 16 could make the result of the 2 version very close.
+
+// 2024.08.20
+// however, when i use the following simulation settings, the result is the same in both serial and parallel version.
+// [Mesh]
+// Ni = 100         
+// Nj = 100
+// Cell_Len = 10e-4
+// BlockCellNx = 10
+
 #include "ca/zhu_stefanescu2d.h"
 #include "ca/zhu_stefanescu2d.hh"
 #include "freelb.h"
@@ -398,7 +414,7 @@ int main() {
 
       OutputTimer.Print_InnerLoopPerformance(Geo.getTotalCellNum(), OutputStep);
       Printer::Print<std::size_t>("Interface", CA.getInterfaceNum());
-      Printer::Print<T>("Solid%", T(CA.getSolidCount()) * 100 / Geo.getTotalCellNum());
+      Printer::Print<T>("Solid%", CA.getSolidFraction() * 100 );
       Printer::Endl();
       MainWriter.WriteBinary(MainLoopTimer());
     }

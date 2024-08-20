@@ -294,8 +294,7 @@ BlockZhuStefanescu2D<T, LatSet>::BlockZhuStefanescu2D(Block2D<T> &geo,
     : BlockLatticeBase<T, LatSet, ALLFIELDS<T>>(geo, fieldptrs), ConvCA(convca),
       Theta(theta), delta(delta), 
       GT(convca.Lattice_GT_Coef * pow(2, int(geo.getLevel()))), m_l(convca.Lattice_m_Liq),
-      Part_Coef(convca.Part_Coef), _Part_Coef(T(1) - convca.Part_Coef),
-      SolidCount(std::size_t(0)) {
+      Part_Coef(convca.Part_Coef), _Part_Coef(T(1) - convca.Part_Coef) {
   Tl_eq = ConvCA.get_LatTliq(this->template getField<CONCINIT<T>>().get());
   Interface.reserve(4 * (this->getNx() + this->getNy()));
 }
@@ -458,7 +457,7 @@ void BlockZhuStefanescu2D<T, LatSet>::Grow() {
       this->template getField<CONC<T>>().get(id) =
         this->template getField<CSOLIDS<T>>().get(id);
       this->template getField<STATE>().SetField(id, CAType::Solid);
-      ++SolidCount;
+      // ++SolidCount;
     } else {
       this->template getField<FS<T>>().SetField(id, Fs_temp);
       this->template getField<CSOLIDS<T>>().get(id) +=

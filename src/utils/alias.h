@@ -184,9 +184,9 @@ template <typename T, unsigned int D>
 using VectorFieldSoA = GenericArrayField<GenericArray<T>, D>;
 
 template <typename T, unsigned int q>
-using PopulationField = GenericArrayField<StreamMapArray<T>, q>;
+// using PopulationField = GenericArrayField<StreamMapArray<T>, q>;
 // using PopulationField = GenericArrayField<StreamArray<T>, q>;
-// using PopulationField = GenericArrayField<CyclicArray<T>, q>;
+using PopulationField = GenericArrayField<CyclicArray<T>, q>;
 
 
 // specific field name for access by Cell interface, not alias
@@ -233,9 +233,9 @@ using CONSTFORCE = Data<Vector<T, D>, CONSTFORCEBase>;
 template <typename T>
 using SCALARCONSTFORCE = Data<T, SCALARCONSTFORCEBase>;
 template <typename T, unsigned int q>
-using POP = GenericField<StreamMapArray<T>, POPBase<q>>;
+// using POP = GenericField<StreamMapArray<T>, POPBase<q>>;
 // using POP = GenericField<StreamArray<T>, POPBase<q>>;
-// using POP = GenericField<CyclicArray<T>, POPBase<q>>;
+using POP = GenericField<CyclicArray<T>, POPBase<q>>;
 template <typename T>
 using RHOINIT = Data<T, RHOINITBase>;
 template <typename T>
@@ -330,9 +330,9 @@ template <typename T>
 using SCALARCONSTFORCE = Data<T, SCALARCONSTFORCEBase>;
 
 template <typename T, unsigned int q>
-using POP = GenericField<StreamMapArray<T>, POPBase<q>>;
+// using POP = GenericField<StreamMapArray<T>, POPBase<q>>;
 // using POP = GenericField<StreamArray<T>, POPBase<q>>;
-// using POP = GenericField<CyclicArray<T>, POPBase<q>>;
+using POP = GenericField<CyclicArray<T>, POPBase<q>>;
 
 template <typename T>
 using RHOINIT = Data<T, RHOINITBase>;

@@ -213,6 +213,22 @@ if (dev_BlockField) cuda_free(dev_BlockField);
       }
     }
   }
+  // experimental
+  void normaladdcommunicate() {
+    for (BlockFieldComm<FieldType, FloatType, Dim>& comm : Comms) {
+      BlockField<FieldType, FloatType, Dim>* nblockF = comm.BlockF;
+      std::size_t size = comm.getRecvs().size();
+      for (unsigned int iArr = 0; iArr < nblockF->Size(); ++iArr) {
+        const auto& nArray = nblockF->getField(iArr);
+        auto& Array = this->getField(iArr);
+        for (std::size_t id = 0; id < size; ++id) {
+          Array[comm.getRecv(id)] += nArray[comm.getSend(id)];
+          // Array.set(comm.getRecv(id), nArray[comm.getSend(id)]);
+        }
+      }
+    }
+  }
+  //
   void avercommunicate() {
     for (IntpBlockFieldComm<FieldType, FloatType, Dim>& comm : AverComms) {
       BlockField<FieldType, FloatType, Dim>* nblockF = comm.BlockF;
@@ -954,6 +970,12 @@ class BlockFieldManager {
 #pragma omp parallel for num_threads(Thread_Num)
     for (BlockField<FieldType, FloatType, Dim>& blockF : _Fields) {
       blockF.normalcommunicate();
+    }
+  }
+  void NormalAddCommunicate() {
+#pragma omp parallel for num_threads(Thread_Num)
+    for (BlockField<FieldType, FloatType, Dim>& blockF : _Fields) {
+      blockF.normaladdcommunicate();
     }
   }
   void AverCommunicate() {

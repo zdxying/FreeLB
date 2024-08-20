@@ -1272,9 +1272,6 @@ void DynamicBlockLatticeHelper2D<T, LatSet, TypePack>::PopFieldInit() {
   // BlockLatMan.template getField<POP<T, LatSet::q>>().Init(BlockGeoHelper);
   // now pops field data is transferred, but conversion of distribution function
   // between blocks of different refinement levels is not done yet
-#ifndef SingleBlock_OMP
-#pragma omp parallel for num_threads(Thread_Num)
-#endif
   for (std::size_t inewblock = 0;
        inewblock < BlockLatMan.template getField<POP<T, LatSet::q>>().getBlockFields().size();
        ++inewblock) {

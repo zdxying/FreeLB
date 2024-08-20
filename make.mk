@@ -24,7 +24,12 @@ DEPS = $(SRCS:.$(SRC_EXT)=.d)
 FLAGS += -std=c++17
 
 # linker flags
-LINKFLAGS := -L$(ROOT)/lib -lrt
+LINKFLAGS := -L$(ROOT)/lib -lrt 
+# use the following when compiling error: 
+# undefined reference to `tbb::detail::r1::execution_slot(tbb::detail::d1::execution_data const*)'
+# with -g -fopenmp flag
+# LINKFLAGS := -L$(ROOT)/lib -lrt -ltbb
+
 ifeq ($(CXXC),nvcc)
 	LINKFLAGS += -lcuda
 endif

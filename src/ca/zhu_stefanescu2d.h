@@ -388,7 +388,7 @@ class BlockZhuStefanescu2D : public BlockLatticeBase<T, LatSet, ALLFIELDS<T>> {
   // interface cells
   std::vector<std::size_t> Interface;
   // solid count
-  std::size_t SolidCount;
+  // std::size_t SolidCount;
 
 
 
@@ -399,7 +399,18 @@ class BlockZhuStefanescu2D : public BlockLatticeBase<T, LatSet, ALLFIELDS<T>> {
   ~BlockZhuStefanescu2D() {}
 
   std::uint8_t getLevel() const { return this->BlockGeo.getLevel(); }
-  std::size_t getSolidCount() const { return SolidCount; }
+  std::size_t getSolidCount() const { 
+    std::size_t SolidCount{};
+    for (int j = this->getOverlap(); j < this->getNy() - this->getOverlap(); ++j) {
+      for (int i = this->getOverlap(); i < this->getNx() - this->getOverlap(); ++i) {
+        std::size_t id = i + j * this->getNx();
+        if (util::isFlag(this->template getField<STATE>().get(id), CAType::Solid)) {
+          ++SolidCount;
+        }
+      }
+    }
+    return SolidCount; 
+  }
 
   // get field data
   std::vector<std::size_t>& getInterface() { return Interface; }
@@ -458,7 +469,7 @@ class BlockZhuStefanescu2DManager
   // composition, pre streamed excess C field
 
   // total solid count
-  std::size_t SolidCount;
+  // std::size_t SolidCount;
 
  public:
   template <typename INITVALUEPACK, typename... FIELDPTRTYPES>
@@ -466,7 +477,7 @@ class BlockZhuStefanescu2DManager
                               T theta, INITVALUEPACK& initvalues,
                               FIELDPTRTYPES*... fieldptrs)
       : BlockLatticeManagerBase<T, CALatSet, FIELDPACK<T>>(blockgeo, initvalues, fieldptrs...),
-        ConvCA(convca), Theta(theta), delta(delta_), SolidCount(std::size_t{}) {
+        ConvCA(convca), Theta(theta), delta(delta_){
     // create BlockZhuStefanescu2D
     for (int i = 0; i < this->BlockGeo.getBlockNum(); ++i) {
       BlockZS.emplace_back(this->BlockGeo.getBlock(i), ConvCA,
@@ -571,7 +582,7 @@ class BlockZhuStefanescu2DManager
     // Fs field
     this->template getField<FS<T>>().NormalCommunicate();
     // ExcessC field
-    this->template getField<EXCESSC<T>>().NormalCommunicate();
+    this->template getField<EXCESSC<T>>().NormalAddCommunicate();
     // ExcessC field post communication
 
     // Reversed Communicate should only apply to newly solidified cells's neighbors
@@ -601,11 +612,24 @@ class BlockZhuStefanescu2DManager
     return num;
   }
   std::size_t getSolidCount() {
-    SolidCount = 0;
+    std::size_t SolidCount{};
     for (auto& zs : BlockZS) {
       SolidCount += zs.getSolidCount();
     }
     return SolidCount;
+  }
+
+  T getSolidFraction() const {
+    std::size_t SolidCount{};
+    std::size_t EqCellCount{};
+  #pragma omp parallel for num_threads(Thread_Num) reduction(+ : SolidCount, EqCellCount)
+    for (auto& zs : BlockZS) {
+      unsigned int level = static_cast<unsigned int>(zs.getLevel());
+      unsigned int denominator = std::pow(2, level);
+      EqCellCount += static_cast<std::size_t>((zs.getNx()-2*zs.getOverlap())*(zs.getNy()-2*zs.getOverlap()) / denominator);
+      SolidCount += static_cast<std::size_t>(zs.getSolidCount() / denominator);
+    }
+    return static_cast<T>(SolidCount) / static_cast<T>(EqCellCount);
   }
 
   bool WillRefineBlockCells(BlockGeometryHelper2D<T>& GeoHelper) {
