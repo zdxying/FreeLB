@@ -131,6 +131,24 @@ BlockGeometry2D<T>::BlockGeometry2D(BlockGeometryHelper2D<T> &GeoHelper)
 }
 
 template <typename T>
+BlockGeometry2D<T>::BlockGeometry2D(const BlockReader2D<T>& blockreader) 
+    : BasicBlock<T, 2>(blockreader.getBasicBlock()), _BaseBlock(blockreader.getBaseBlock()), 
+      _overlap(1), _MaxLevel(blockreader.getMaxLevel()) {
+  // create blocks from Block Reader
+  for (const BasicBlock<T, 2> &baseblock : blockreader.getBlocks()) {
+    int overlap = (baseblock.getLevel() != std::uint8_t(0)) ? 2 : 1;
+    _Blocks.emplace_back(baseblock, overlap);
+  }
+  SetupNbrs();
+  InitAllComm();
+#ifdef MPI_ENABLED
+  InitAllMPIComm(GeoHelper);
+#else
+  PrintInfo();
+#endif
+}
+
+template <typename T>
 void BlockGeometry2D<T>::PrintInfo() const {
   std::cout << "[BlockGeometry2D]: "
             << "Total Cell Num: " << getTotalCellNum() << std::endl;

@@ -106,6 +106,24 @@ BlockGeometry3D<T>::BlockGeometry3D(BlockGeometryHelper3D<T> &GeoHelper)
 }
 
 template <typename T>
+BlockGeometry3D<T>::BlockGeometry3D(const BlockReader3D<T>& blockreader) 
+    : BasicBlock<T, 3>(blockreader.getBasicBlock()), _BaseBlock(blockreader.getBaseBlock()), 
+      _overlap(1), _MaxLevel(blockreader.getMaxLevel()) {
+  // create blocks from Block Reader
+  for (const BasicBlock<T, 3> &baseblock : blockreader.getBlocks()) {
+    int overlap = (baseblock.getLevel() != std::uint8_t(0)) ? 2 : 1;
+    _Blocks.emplace_back(baseblock, overlap);
+  }
+  SetupNbrs();
+  InitAllComm();
+#ifdef MPI_ENABLED
+  InitAllMPIComm(GeoHelper);
+#else
+  PrintInfo();
+#endif
+}
+
+template <typename T>
 void BlockGeometry3D<T>::PrintInfo() const {
   std::cout << "[BlockGeometry3D]: " << "Total Cell Num: " << getTotalCellNum()
             << std::endl;

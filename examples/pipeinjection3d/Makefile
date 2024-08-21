@@ -1,15 +1,14 @@
 
-TARGET = cavblock2d.exe
+TARGET = pipeinjection3d.exe
 ROOT := ../..
 
-FLAGS += -O3 -Wall -march=native -fopenmp
-# FLAGS += -O3 -fopenmp
+FLAGS += -O3 -march=native -fopenmp
 # FLAGS += -O3 -march=native
+# FLAGS += -march=native
+# FLAGS += -fopenmp
 # FLAGS += -g
-# FLAGS += -pg
 FLAGS += -DFLOAT_TYPE=double
 FLAGS += -D_UNROLLFOR
-# FLAGS += -DUNROLLFOR
 
 OUTPUT += vtkoutput
 

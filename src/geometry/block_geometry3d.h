@@ -25,6 +25,7 @@
 #include "geometry/basic_geometry.h"
 #include "parallel/communicator.h"
 #include "io/stlreader.h"
+#include "io/block_reader.h"
 
 template <typename T>
 class Block3D : public BasicBlock<T, 3> {
@@ -124,6 +125,7 @@ class BlockGeometry3D : public BasicBlock<T, 3> {
                   T voxelSize = T(1), int overlap = 1);
   // construct uniform/ refined blockgeometry from GeoHelper
   BlockGeometry3D(BlockGeometryHelper3D<T>& GeoHelper);
+  BlockGeometry3D(const BlockReader3D<T>& blockreader);
   ~BlockGeometry3D() = default;
 
   void PrintInfo() const;

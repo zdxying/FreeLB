@@ -29,6 +29,8 @@
 #include <sstream>
 #include <string>
 
+#include "utils/util.h"
+
 // Read an INI file into easy-to-access name/value pairs.
 // file example
 
@@ -52,15 +54,6 @@ key=value
 class iniReader {
  private:
   std::map<std::string, std::map<std::string, std::string>> iniContent;
-  // trim spaces from both ends of a string
-  std::string trim(const std::string& str) {
-    std::size_t first = str.find_first_not_of(' ');
-    if (std::string::npos == first) {
-      return str;
-    }
-    std::size_t last = str.find_last_not_of(' ');
-    return str.substr(first, (last - first + 1));
-  }
 
  public:
   iniReader(const std::string& filename) {
@@ -84,8 +77,8 @@ class iniReader {
         if (std::getline(is_line, key, '=')) {
           std::string value;
           if (std::getline(is_line, value)) {
-            key = trim(key);
-            value = trim(value);
+            key = util::trim(key);
+            value = util::trim(value);
             iniContent[section][key] = value;
           }
         }

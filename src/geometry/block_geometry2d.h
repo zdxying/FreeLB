@@ -24,6 +24,7 @@
 
 #include "geometry/basic_geometry.h"
 #include "parallel/communicator.h"
+#include "io/block_reader.h"
 
 // basic block 2d structure, BasicBlock stores the original AABB and index AABB(not
 // extended)
@@ -131,6 +132,8 @@ class BlockGeometry2D : public BasicBlock<T, 2> {
                   T voxelSize = T(1), int overlap = 1);
   // construct uniform/ refined blockgeometry from GeoHelper
   BlockGeometry2D(BlockGeometryHelper2D<T>& GeoHelper);
+  // TODO: construct from multiple basicblocks
+  BlockGeometry2D(const BlockReader2D<T>& blockreader);
   ~BlockGeometry2D() = default;
 
   void PrintInfo() const;
