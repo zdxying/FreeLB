@@ -66,6 +66,55 @@ void Block3D<T>::SetupBoundary(const AABB<T, 3> &block, FieldType &field,
   }
 }
 
+template <typename T>
+template <typename FieldType, typename LatSet>
+void Block3D<T>::SetupBoundary(FieldType &field, typename FieldType::value_type fromvalue,
+typename FieldType::value_type voidvalue, typename FieldType::value_type bdvalue) {
+  // temp flag field store the transition flag
+  GenericArray<bool> TransFlag(BasicBlock<T, 3>::N, false);
+
+  for (int z = _overlap; z < BasicBlock<T, 3>::Mesh[2] - _overlap; ++z) {
+    for (int y = _overlap; y < BasicBlock<T, 3>::Mesh[1] - _overlap; ++y) {
+      for (int x = _overlap; x < BasicBlock<T, 3>::Mesh[0] - _overlap; ++x) {
+        const std::size_t idx = x + y * BasicBlock<T, 3>::Projection[1] + z * BasicBlock<T, 3>::Projection[2];
+        if (field.get(idx) == fromvalue) {
+          for (unsigned int i = 1; i < LatSet::q; ++i) {
+            const std::size_t nbridx = idx + latset::c<LatSet>(i) * BasicBlock<T, 3>::Projection;
+            if (field.get(nbridx) == voidvalue) {
+              TransFlag.set(idx, true);
+              break;
+            }
+          }
+        }
+      }
+    }
+  }
+
+  for (std::size_t id = 0; id < BasicBlock<T, 3>::N; ++id) {
+    if (TransFlag[id]) field.SetField(id, bdvalue);
+  }
+}
+
+template <typename T>
+template <typename FieldType>
+void Block3D<T>::ReadOctree(Octree<T>* tree, FieldType& field, typename FieldType::value_type stlflag) {
+  for (int z = 0; z < BasicBlock<T, 3>::Mesh[2]; ++z) {
+    for (int y = 0; y < BasicBlock<T, 3>::Mesh[1]; ++y) {
+      for (int x = 0; x < BasicBlock<T, 3>::Mesh[0]; ++x) {
+        const Vector<int, 3> locidx{x, y, z};
+        const Vector<T, 3> vox = BasicBlock<T, 3>::getVoxel(locidx);
+        // get the node containing the voxel
+        Octree<T>* node = tree->find(vox);
+        if (node != nullptr) {
+          // check if it is a [leaf] node and if it is [inside]
+          if (node->isLeaf() && node->getInside())
+            field.SetField(BasicBlock<T, 3>::getIndex(locidx), stlflag);
+        }
+      }
+    }
+  }
+}
+
 // -----------blockgeometry3d----------------
 
 
@@ -116,9 +165,30 @@ BlockGeometry3D<T>::BlockGeometry3D(const BlockReader3D<T>& blockreader)
   }
   SetupNbrs();
   InitAllComm();
-#ifdef MPI_ENABLED
-  InitAllMPIComm(GeoHelper);
-#else
+#ifndef MPI_ENABLED
+  PrintInfo();
+#endif
+}
+
+template <typename T>
+BlockGeometry3D<T>::BlockGeometry3D(const StlReader<T>& reader, int blocknum) 
+    : BasicBlock<T, 3>(reader.getVoxelSize(), 
+        AABB<T, 3>(reader.getMesh().getMin() - reader.getVoxelSize(), reader.getMesh().getMax() + reader.getVoxelSize()),
+        AABB<int, 3>(Vector<int, 3>{0}, 
+                     Vector<int, 3>{int(reader.getMesh().getMax_Min()[0] / reader.getStlSize()) + 2, 
+                                    int(reader.getMesh().getMax_Min()[1] / reader.getStlSize()) + 2,
+                                    int(reader.getMesh().getMax_Min()[1] / reader.getStlSize()) + 2})),
+      _BaseBlock(reader.getVoxelSize(), 
+        AABB<T, 3>(reader.getMesh().getMin(), reader.getMesh().getMax()),
+        AABB<int, 3>(Vector<int, 3>{1}, 
+                     Vector<int, 3>{int(reader.getMesh().getMax_Min()[0] / reader.getStlSize()), 
+                                    int(reader.getMesh().getMax_Min()[1] / reader.getStlSize()),
+                                    int(reader.getMesh().getMax_Min()[1] / reader.getStlSize())})), 
+      _overlap(1), _MaxLevel(std::uint8_t(0)) {
+  CreateBlocks(blocknum);
+  SetupNbrs();
+  InitComm();
+#ifndef MPI_ENABLED
   PrintInfo();
 #endif
 }

@@ -132,7 +132,7 @@ class BlockGeometry2D : public BasicBlock<T, 2> {
                   T voxelSize = T(1), int overlap = 1);
   // construct uniform/ refined blockgeometry from GeoHelper
   BlockGeometry2D(BlockGeometryHelper2D<T>& GeoHelper);
-  // TODO: construct from multiple basicblocks
+  // construct blockgeometry from blockreader
   BlockGeometry2D(const BlockReader2D<T>& blockreader);
   ~BlockGeometry2D() = default;
 

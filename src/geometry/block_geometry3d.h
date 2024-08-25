@@ -76,6 +76,12 @@ class Block3D : public BasicBlock<T, 3> {
   template <typename FieldType, typename LatSet>
   void SetupBoundary(const AABB<T, 3>& block, FieldType& field,
                      typename FieldType::value_type bdvalue);
+  template <typename FieldType, typename LatSet>
+  void SetupBoundary(FieldType& field, typename FieldType::value_type fromvalue,
+  typename FieldType::value_type voidvalue, typename FieldType::value_type bdvalue);
+  
+  template <typename FieldType>
+  void ReadOctree(Octree<T>* tree, FieldType& field, typename FieldType::value_type stlflag);
 
   std::vector<Block3D<T>*>& getNeighbors() { return _Neighbors; }
   const Block3D<T>& getNeighbor(int id) const { return *_Neighbors[id]; }
@@ -125,7 +131,10 @@ class BlockGeometry3D : public BasicBlock<T, 3> {
                   T voxelSize = T(1), int overlap = 1);
   // construct uniform/ refined blockgeometry from GeoHelper
   BlockGeometry3D(BlockGeometryHelper3D<T>& GeoHelper);
+  // construct blockgeometry from blockreader
   BlockGeometry3D(const BlockReader3D<T>& blockreader);
+  // construct blockgeometry from stlreader
+  BlockGeometry3D(const StlReader<T>& reader, int blocknum);
   ~BlockGeometry3D() = default;
 
   void PrintInfo() const;

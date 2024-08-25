@@ -39,6 +39,9 @@ struct IntpBlockComm;
 template <typename FieldType, typename FloatType, unsigned int Dim>
 class BlockField;
 
+template <typename T>
+class Octree;
+
 template <typename FieldType, typename FloatType, unsigned int Dim>
 struct BlockFieldComm {
   BlockField<FieldType, FloatType, Dim>* BlockF;
@@ -826,6 +829,19 @@ class BlockFieldManager {
     for (Block<FloatType, Dim>& blockgeo : _BlockGeo.getBlocks()) {
       auto& field = _Fields[iblock];
       blockgeo.template SetupBoundary<FieldType, LatSet>(field, fromvalue, voidvalue, bdvalue);
+      ++iblock;
+    }
+    NormalCommunicate();
+#ifdef MPI_ENABLED
+    MPINormalCommunicate();
+#endif
+  }
+
+  void ReadOctree(Octree<FloatType>* tree, datatype stlflag) {
+    int iblock = 0;
+    for (Block<FloatType, Dim>& blockgeo : _BlockGeo.getBlocks()) {
+      auto& field = _Fields[iblock];
+      blockgeo.template ReadOctree<FieldType>(tree, field, stlflag);
       ++iblock;
     }
     NormalCommunicate();

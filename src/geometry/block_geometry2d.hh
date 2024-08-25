@@ -141,9 +141,7 @@ BlockGeometry2D<T>::BlockGeometry2D(const BlockReader2D<T>& blockreader)
   }
   SetupNbrs();
   InitAllComm();
-#ifdef MPI_ENABLED
-  InitAllMPIComm(GeoHelper);
-#else
+#ifndef MPI_ENABLED
   PrintInfo();
 #endif
 }
