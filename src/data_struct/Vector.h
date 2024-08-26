@@ -35,7 +35,8 @@
 
 #pragma once
 
-#include <math.h>
+// sin cos sqrt
+#include <cmath>
 
 #include <array>
 
@@ -101,7 +102,7 @@ class Vector {
     return result;
   }
   // return norm of the vector
-  __any__ constexpr T getnorm() const { return sqrt(getnorm2()); }
+  __any__ constexpr T getnorm() const { return std::sqrt(getnorm2()); }
   // normalize the vector
   __any__ void normalize() {
     T norm = this->getnorm();
@@ -297,7 +298,7 @@ __any__ constexpr decltype(T{} * U{}) GetDist2(const Vector<T, D> &a,
                                                const Vector<U, D> &b) {
   decltype(T{} * U{}) result{};
   for (unsigned int i = 0; i < D; ++i) {
-    result += pow(a[i] - b[i], 2);
+    result += std::pow(a[i] - b[i], 2);
   }
   return result;
 }
@@ -305,7 +306,7 @@ __any__ constexpr decltype(T{} * U{}) GetDist2(const Vector<T, D> &a,
 template <typename T, typename U, unsigned int D>
 __any__ constexpr decltype(T{} * U{}) GetDist(const Vector<T, D> &a,
                                               const Vector<U, D> &b) {
-  return sqrt(GetDist2(a, b));
+  return std::sqrt(GetDist2(a, b));
 }
 
 template <typename T, unsigned int D>
@@ -320,41 +321,41 @@ __any__ constexpr Vector<T, D> getnormalized(const Vector<T, D> &a) {
 
 // get relative location of (x, y) to (x0, y0) in a rotated
 // coordinate system，theta is the angle of rotation counterclockwise
-// x' = (x - x0) * cos(theta) + (y - y0) * sin(theta)
-// y' = -(x - x0) * sin(theta) + (y - y0) * cos(theta)
+// x' = (x - x0) * cos(theta) + (y - y0) * std::sin(theta)
+// y' = -(x - x0) * std::sin(theta) + (y - y0) * cos(theta)
 template <typename T>
 __any__ constexpr Vector<T, 2> getRLoc(const Vector<T, 2> &loc, const Vector<T, 2> &loc0,
                                        T theta = T(0)) {
   T dx = loc[0] - loc0[0];
   T dy = loc[1] - loc0[1];
-  return Vector<T, 2>(dx * cos(theta) + dy * sin(theta),
-                      -dx * sin(theta) + dy * cos(theta));
+  return Vector<T, 2>(dx * std::cos(theta) + dy * std::sin(theta),
+                      -dx * std::sin(theta) + dy * std::cos(theta));
 }
 template <typename T>
 __any__ void getRLoc(const Vector<T, 2> &loc, const Vector<T, 2> &loc0,
                      Vector<T, 2> &result, T theta = T(0)) {
   T dx = loc[0] - loc0[0];
   T dy = loc[1] - loc0[1];
-  result[0] = dx * cos(theta) + dy * sin(theta);
-  result[1] = -dx * sin(theta) + dy * cos(theta);
-  // return Vector<T, 2>(dx * cos(theta) + dy * sin(theta),
-  //                     -dx * sin(theta) + dy * cos(theta));
+  result[0] = dx * std::cos(theta) + dy * std::sin(theta);
+  result[1] = -dx * std::sin(theta) + dy * std::cos(theta);
+  // return Vector<T, 2>(dx * std::cos(theta) + dy * std::sin(theta),
+  //                     -dx * std::sin(theta) + dy * std::cos(theta));
 }
 template <typename T>
 __any__ constexpr Vector<T, 2> getGLoc(const Vector<T, 2> &loc, const Vector<T, 2> &glob0,
                                        T theta = T(0)) {
   T dx = loc[0];
   T dy = loc[1];
-  return Vector<T, 2>(dx * cos(theta) - dy * sin(theta),
-                      dx * sin(theta) + dy * cos(theta)) +
+  return Vector<T, 2>(dx * std::cos(theta) - dy * std::sin(theta),
+                      dx * std::sin(theta) + dy * std::cos(theta)) +
          glob0;
 }
 // template <typename T>
 // Vector<T, 2> getRLoc(T x, T y, const Vector<T, 2> &loc0, T theta) {
 //   T dx = x - loc0[0];
 //   T dy = y - loc0[1];
-//   return Vector<T, 2>(dx * cos(theta) + dy * sin(theta),
-//                       -dx * sin(theta) + dy * cos(theta));
+//   return Vector<T, 2>(dx * std::cos(theta) + dy * std::sin(theta),
+//                       -dx * std::sin(theta) + dy * std::cos(theta));
 // }
 
 template <typename T>

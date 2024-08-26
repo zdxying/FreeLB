@@ -21,7 +21,7 @@
 // utility functions
 #pragma once
 
-#include <math.h>
+#include <cmath>
 #include <omp.h>
 
 // copy
@@ -336,7 +336,7 @@ inline bool nearZero(T a) {
   if (a == T()) {
     return true;
   }
-  T EPSILON = std::numeric_limits<T>::epsilon();
+  constexpr T EPSILON = std::numeric_limits<T>::epsilon();
   if (a > -EPSILON && a < EPSILON) {
     return true;
   } else {

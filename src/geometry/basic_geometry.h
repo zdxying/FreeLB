@@ -29,9 +29,11 @@
 // uint8_t size_t
 #include <cstdint>
 // pow()
-#include <cmath>
+// #include <cmath>
 // std::max(), std::min()
 #include <algorithm>
+
+#include "data_struct/Vector.h"
 
 // axis-aligned bounding box (AABB) class
 // all the voxels in the computational domain are inside the AABB
@@ -130,7 +132,7 @@ static AABB<T, D> getIntersection(const AABB<T, D>& aabb0, const AABB<T, D>& aab
 template <typename T, typename U, unsigned int D>
 bool isOverlapped(const AABB<T, D>& aabb0, const AABB<U, D>& aabb1) {
   static_assert(D == 2 || D == 3, "Error: Dimension is not supported!");
-  const T eps = std::numeric_limits<T>::epsilon();
+  constexpr T eps = std::numeric_limits<T>::epsilon();
   if constexpr (D == 2) {
     return ((aabb0.getMin()[0] + eps) < aabb1.getMax()[0] &&
             (aabb0.getMin()[1] + eps) < aabb1.getMax()[1] &&
@@ -724,6 +726,10 @@ T ComputeStdDev(const std::vector<BasicBlock<T, D>> &Blocks) {
 
 using CellTagType = std::uint8_t;
 enum BlockCellTag : CellTagType { none = 1, refine = 2, coarsen = 4, solid = 8 };
+
+
+class MpiManager;
+MpiManager& mpi();
 
 template <typename T, unsigned int D>
 class BlockGeometryHelperBase : public BasicBlock<T, D> {

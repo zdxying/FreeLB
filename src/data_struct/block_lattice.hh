@@ -654,7 +654,7 @@ void BlockLatticeManager<T, LatSet, TypePack>::InitIntpComm() {
 template <typename T, typename LatSet, typename TypePack>
 void BlockLatticeManager<T, LatSet, TypePack>::Stream(std::int64_t count) {
   for (auto& BLat : BlockLats) {
-    if (count % (static_cast<int>(pow(2, int(getMaxLevel() - BLat.getLevel())))) == 0)
+    if (count % (static_cast<int>(std::pow(2, int(getMaxLevel() - BLat.getLevel())))) == 0)
       BLat.Stream();
   }
 }
@@ -673,7 +673,7 @@ void BlockLatticeManager<T, LatSet, TypePack>::ApplyCellDynamics(
 #endif
   for (std::size_t i = 0; i < BlockLats.size(); ++i) {
     const int deLevel = static_cast<int>(getMaxLevel() - BlockLats[i].getLevel());
-    if (count % (static_cast<int>(pow(2, deLevel))) == 0) {
+    if (count % (static_cast<int>(std::pow(2, deLevel))) == 0) {
       BlockLats[i]
         .template ApplyCellDynamics<CELLDYNAMICS, typename FieldType::array_type>(
           BFM.getBlockField(i).getField(0));
@@ -702,7 +702,7 @@ void BlockLatticeManager<T, LatSet, TypePack>::ApplyCellDynamics(std::int64_t co
 #endif
   for (std::size_t i = 0; i < BlockLats.size(); ++i) {
     const int deLevel = static_cast<int>(getMaxLevel() - BlockLats[i].getLevel());
-    if (count % (static_cast<int>(pow(2, deLevel))) == 0) {
+    if (count % (static_cast<int>(std::pow(2, deLevel))) == 0) {
       BlockLats[i].template ApplyCellDynamics<CELLDYNAMICS>();
     }
   }
@@ -728,7 +728,7 @@ void BlockLatticeManager<T, LatSet, TypePack>::ApplyCellDynamics(
 #endif
   for (std::size_t i = 0; i < BlockLats.size(); ++i) {
     const int deLevel = static_cast<int>(getMaxLevel() - BlockLats[i].getLevel());
-    if (count % (static_cast<int>(pow(2, deLevel))) == 0) {
+    if (count % (static_cast<int>(std::pow(2, deLevel))) == 0) {
       BlockLats[i].template ApplyCellDynamics<CELLDYNAMICS>(blockids.getvector(i));
     }
   }
@@ -755,7 +755,7 @@ void BlockLatticeManager<T, LatSet, TypePack>::ApplyDynamics(
 #endif
   for (std::size_t i = 0; i < BlockLats.size(); ++i) {
     const int deLevel = static_cast<int>(getMaxLevel() - BlockLats[i].getLevel());
-    if (count % (static_cast<int>(pow(2, deLevel))) == 0) {
+    if (count % (static_cast<int>(std::pow(2, deLevel))) == 0) {
       BlockLats[i].template ApplyDynamics<DYNAMICS, elementType>(blockids.getvector(i));
     }
   }
@@ -782,7 +782,7 @@ void BlockLatticeManager<T, LatSet, TypePack>::ApplyInnerCellDynamics(
 #endif
   for (std::size_t i = 0; i < BlockLats.size(); ++i) {
     const int deLevel = static_cast<int>(getMaxLevel() - BlockLats[i].getLevel());
-    if (count % (static_cast<int>(pow(2, deLevel))) == 0) {
+    if (count % (static_cast<int>(std::pow(2, deLevel))) == 0) {
       BlockLats[i]
         .template ApplyInnerCellDynamics<CELLDYNAMICS, typename FieldType::array_type>(
           BFM.getBlockField(i).getField(0));
@@ -812,7 +812,7 @@ void BlockLatticeManager<T, LatSet, TypePack>::ApplyInnerCellDynamics(
 #endif
   for (std::size_t i = 0; i < BlockLats.size(); ++i) {
     const int deLevel = static_cast<int>(getMaxLevel() - BlockLats[i].getLevel());
-    if (count % (static_cast<int>(pow(2, deLevel))) == 0) {
+    if (count % (static_cast<int>(std::pow(2, deLevel))) == 0) {
       BlockLats[i].template ApplyInnerCellDynamics<CELLDYNAMICS>();
     }
   }
@@ -868,7 +868,7 @@ void BlockLatticeManager<T, LatSet, TypePack>::MPIAverComm(std::int64_t count) {
     // send data to lower level, deLevel+1
     const int deLevel = static_cast<int>(getMaxLevel() - BLat.getLevel()) + 1;
     if (BLat.getLevel() != std::uint8_t(0)) {
-      if ((count % (static_cast<int>(pow(2, deLevel))) == 0) &&
+      if ((count % (static_cast<int>(std::pow(2, deLevel))) == 0) &&
           BLat.getGeo()._NeedMPIComm) {
         const MPIIntpBlockComm<T, LatSet::d>& MPIComm =
           BLat.getGeo().getMPIAverBlockComm();
@@ -961,7 +961,7 @@ void BlockLatticeManager<T, LatSet, TypePack>::MPIIntpComm(std::int64_t count) {
     // send data to higher level, deLevel-1
     const int deLevel = static_cast<int>(getMaxLevel() - BLat.getLevel()) - 1;
     if (deLevel != -1) {
-      if ((count % (static_cast<int>(pow(2, deLevel))) == 0) &&
+      if ((count % (static_cast<int>(std::pow(2, deLevel))) == 0) &&
           BLat.getGeo()._NeedMPIComm) {
         const MPIIntpBlockComm<T, LatSet::d>& MPIComm =
           BLat.getGeo().getMPIIntpBlockComm();
@@ -1055,7 +1055,7 @@ void BlockLatticeManager<T, LatSet, TypePack>::Communicate(std::int64_t count) {
 #pragma omp parallel for num_threads(Thread_Num)
 #endif
   for (auto& BLat : BlockLats) {
-    if (count % (static_cast<int>(pow(2, int(getMaxLevel() - BLat.getLevel())))) == 0)
+    if (count % (static_cast<int>(std::pow(2, int(getMaxLevel() - BLat.getLevel())))) == 0)
       BLat.communicate();
   }
 
@@ -1068,7 +1068,7 @@ void BlockLatticeManager<T, LatSet, TypePack>::Communicate(std::int64_t count) {
 #pragma omp parallel for num_threads(Thread_Num)
 #endif
   for (auto& BLat : BlockLats) {
-    if (count % (static_cast<int>(pow(2, int(getMaxLevel() - BLat.getLevel())))) == 0)
+    if (count % (static_cast<int>(std::pow(2, int(getMaxLevel() - BLat.getLevel())))) == 0)
       BLat.avercommunicate();
   }
 
@@ -1081,7 +1081,7 @@ void BlockLatticeManager<T, LatSet, TypePack>::Communicate(std::int64_t count) {
 #pragma omp parallel for num_threads(Thread_Num)
 #endif
   for (auto& BLat : BlockLats) {
-    if (count % (static_cast<int>(pow(2, int(getMaxLevel() - BLat.getLevel())))) == 0)
+    if (count % (static_cast<int>(std::pow(2, int(getMaxLevel() - BLat.getLevel())))) == 0)
       BLat.interpcommunicate();
   }
 

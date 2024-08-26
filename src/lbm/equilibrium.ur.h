@@ -41,10 +41,12 @@ template <typename T, typename TypePack>
 struct SecondOrder<CELL<T, D2Q9<T> ,TypePack>> {
   using LatSet = typename CELL<T, D2Q9<T> ,TypePack>::LatticeSet;
 	using CELLTYPE = CELL<T, D2Q9<T> ,TypePack>;
-  // __any__ static inline T get(int k, const Vector<T, LatSet::d> &u, T rho, T u2) {
-  //   const T uc = u * latset::c<LatSet>(k);
-  //   return latset::w<LatSet>(k) * rho * (T{1} + LatSet::InvCs2 * uc + uc * uc * T{0.5} * LatSet::InvCs4 - LatSet::InvCs2 * u2 * T{0.5});
-  // }
+
+
+  __any__ static inline T get(int k, const Vector<T, LatSet::d> &u, T rho, T u2) {
+    const T uc = u * latset::c<LatSet>(k);
+    return latset::w<LatSet>(k) * rho * (T{1} + LatSet::InvCs2 * uc + uc * uc * T{0.5} * LatSet::InvCs4 - LatSet::InvCs2 * u2 * T{0.5});
+  }
 
   __any__ static void apply(std::array<T, LatSet::q> &feq, T rho, const Vector<T, LatSet::d> &u) {
 		constexpr T InvCs4_ = T{0.5} * LatSet::InvCs4;
@@ -85,10 +87,11 @@ struct SecondOrder<CELL<T, D3Q19<T> ,TypePack>> {
   using LatSet = typename CELL<T, D3Q19<T> ,TypePack>::LatticeSet;
 	using CELLTYPE = CELL<T, D3Q19<T> ,TypePack>;
 
-  // __any__ static inline T get(int k, const Vector<T, LatSet::d> &u, T rho, T u2) {
-  //   const T uc = u * latset::c<LatSet>(k);
-  //   return latset::w<LatSet>(k) * rho * (T{1} + LatSet::InvCs2 * uc + uc * uc * T{0.5} * LatSet::InvCs4 - LatSet::InvCs2 * u2 * T{0.5});
-  // }
+
+  __any__ static inline T get(int k, const Vector<T, LatSet::d> &u, T rho, T u2) {
+    const T uc = u * latset::c<LatSet>(k);
+    return latset::w<LatSet>(k) * rho * (T{1} + LatSet::InvCs2 * uc + uc * uc * T{0.5} * LatSet::InvCs4 - LatSet::InvCs2 * u2 * T{0.5});
+  }
 
   __any__ static void apply(std::array<T, LatSet::q> &feq, T rho, const Vector<T, LatSet::d> &u) {
 		constexpr T InvCs4_ = T{0.5} * LatSet::InvCs4;

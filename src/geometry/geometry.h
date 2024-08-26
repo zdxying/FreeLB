@@ -18,22 +18,5 @@
  * 
  */
 
-//freelb.h
-//include haeder files for LBM
-
-// timer
-#include "utils/timer.h"
-// geometry
-#include "geometry/geometry.h"
-// boundary
-#include "boundary/boundary.h"
-
-// io
-#include "io/vtkWriter.h"
-#include "io/vtm_writer.h"
-#include "io/ini_reader.h"
-
-#include "lbm/lattice_set.h"
-// lbm dynamics
-#include "lbm/lbm.h"
-
+#include "geometry/basic_shape2d.h"
+#include "geometry/basic_shape3d.h"

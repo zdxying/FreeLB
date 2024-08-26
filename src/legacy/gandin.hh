@@ -298,24 +298,24 @@ void GandinCA2D<T, LatStru>::CellCapture(Gcell2D<T> &gcell,
     T ArmLen_s[2] = {ArmLen * quadrant[quad][0], ArmLen * quadrant[quad][1]};
     T dist0 = fabs(ArmLen_s[1] * r_pos[0] + ArmLen_s[0] * r_pos[1] -
                    ArmLen_s[0] * ArmLen_s[1]) /
-              sqrt(Vect2D<T>::sqr(ArmLen_s));
+              std::sqrt(Vect2D<T>::sqr(ArmLen_s));
     T dist1 = fabs(-ArmLen_s[1] * r_pos[0] + ArmLen_s[0] * r_pos[1] +
                    ArmLen_s[0] * ArmLen_s[1]) /
-              sqrt(Vect2D<T>::sqr(ArmLen_s));
+              std::sqrt(Vect2D<T>::sqr(ArmLen_s));
     // Compute new square size: Gandin's thesis
     T New_ArmLen =
-        std::min(dist0 / sqrt(T(2)), T(1)) + std::min(dist1 / sqrt(T(2)), T(1));
+        std::min(dist0 / std::sqrt(T(2)), T(1)) + std::min(dist1 / std::sqrt(T(2)), T(1));
     // ----get new growing centre of the captured cell
     // absolute position of arm0 and arm1
-    T Arm0[2] = {gcell[0] + ArmLen_s[0] * cos(CA.Orine[id]),
-                 gcell[1] + ArmLen_s[0] * sin(CA.Orine[id])};
-    T Arm1[2] = {gcell[0] + ArmLen_s[1] * cos(CA.Orine[id] + M_PI / T(2)),
-                 gcell[1] + ArmLen_s[1] * sin(CA.Orine[id] + M_PI / T(2))};
+    T Arm0[2] = {gcell[0] + ArmLen_s[0] * std::cos(CA.Orine[id]),
+                 gcell[1] + ArmLen_s[0] * std::sin(CA.Orine[id])};
+    T Arm1[2] = {gcell[0] + ArmLen_s[1] * std::cos(CA.Orine[id] + M_PI / T(2)),
+                 gcell[1] + ArmLen_s[1] * std::sin(CA.Orine[id] + M_PI / T(2))};
     // closest corner
     // T Len = dist0 <= dist1 ? ArmLen[0] : ArmLen[1];
     // new growing centre
-    T x = gcell[0] + (ArmLen - New_ArmLen) * cos(CA.Orine[id]);
-    T y = gcell[1] + (ArmLen - New_ArmLen) * sin(CA.Orine[id]);
+    T x = gcell[0] + (ArmLen - New_ArmLen) * std::cos(CA.Orine[id]);
+    T y = gcell[1] + (ArmLen - New_ArmLen) * std::sin(CA.Orine[id]);
 #ifdef _OPENMP
     if (!_Atomic_Visited[id].test_and_set(std::memory_order_acquire))
 #endif
@@ -345,7 +345,7 @@ void GandinCA2D<T, LatStru>::CellCapture(Gcell2D<T> &cell, int id,
   int quad = getQuad2D(RLoc);
   // check if captured by 4 edges of the growing square
   T ArmLen = cell.getArm();
-  if (fabs(RLoc[0] * ArmLen) + fabs(RLoc[1] * ArmLen) <= pow(ArmLen, 2)) {
+  if (fabs(RLoc[0] * ArmLen) + fabs(RLoc[1] * ArmLen) <= std::pow(ArmLen, 2)) {
     // captured！
     CA.Orine[id] = CA.Orine[cell.getCellId()];
     // get the corresponding capture line of [quad-1] and [quad+1]
@@ -358,14 +358,14 @@ void GandinCA2D<T, LatStru>::CellCapture(Gcell2D<T> &cell, int id,
     T Dist1 = fabs(Intercept2D[quad_1][1] * RLoc[0] +
                    Intercept2D[quad_1][0] * RLoc[1] -
                    Intercept2D[quad_1][0] * Intercept2D[quad_1][1] * ArmLen) /
-              sqrt(T(2));
+              std::sqrt(T(2));
     T Dist2 = fabs(Intercept2D[quad_2][1] * RLoc[0] +
                    Intercept2D[quad_2][0] * RLoc[1] -
                    Intercept2D[quad_2][0] * Intercept2D[quad_2][1] * ArmLen) /
-              sqrt(T(2));
+              std::sqrt(T(2));
     // Compute new square's arm length: Gandin's thesis
     T New_ArmLen =
-        std::min(Dist1 / sqrt(T(2)), T(1)) + std::min(Dist2 / sqrt(T(2)), T(1));
+        std::min(Dist1 / std::sqrt(T(2)), T(1)) + std::min(Dist2 / std::sqrt(T(2)), T(1));
     // get the nearest square corner(vertex) to the cell centre
     T minDist = GetDist2(RLoc, Vertex2D[0] * ArmLen);
     int Vertex2D_Id = 0;

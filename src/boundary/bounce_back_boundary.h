@@ -56,7 +56,7 @@ struct BounceBackLikeMethod {
       cell.getVelocity() +
       T(0.5) * (cell.getVelocity() - cell.getNeighbor(latset::opp<LatSet>(k)).getVelocity());
     cell[k] = 2 * cell.getRho() * latset::w<LatSet>(k) *
-                (T(1) + pow((uwall * latset::c<LatSet>(k)), 2) * T(0.5) * LatSet::InvCs4 -
+                (T(1) + std::pow((uwall * latset::c<LatSet>(k)), 2) * T(0.5) * LatSet::InvCs4 -
                  uwall.getnorm2() * T(0.5) * LatSet::InvCs2) -
               cell.getPrevious(latset::opp<LatSet>(k));
   }

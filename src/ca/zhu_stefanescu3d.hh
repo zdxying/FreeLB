@@ -68,14 +68,13 @@ ZhuStefanescu3D<T, LatSet, RhoLatSet>::ZhuStefanescu3D(
   // -cos(Ѱ) cos(θ) sin(Φ) - sin(Ѱ) cos(Φ) |
   // cos(Ѱ) cos(θ) cos(Φ) - sin(Ѱ) sin(Φ) | cos(Ѱ) sin(θ)
   // sin(θ) sin(Φ) | sin(θ)(-cos(Φ)) | cos(θ))
-  S[0] = Vector<T, 3>(cos(Psi) * cos(Phi) - sin(Psi) * cos(Theta) * sin(Phi),
-                      sin(Psi) * cos(Theta) * cos(Phi) + cos(Psi) * sin(Phi),
-                      sin(Psi) * sin(Theta));
-  S[1] = Vector<T, 3>(-cos(Psi) * cos(Theta) * sin(Phi) - sin(Psi) * cos(Phi),
-                      cos(Psi) * cos(Theta) * cos(Phi) - sin(Psi) * sin(Phi),
-                      cos(Psi) * sin(Theta));
-  S[2] =
-      Vector<T, 3>(sin(Theta) * sin(Phi), -sin(Theta) * cos(Phi), cos(Theta));
+  S[0] = Vector<T, 3>(std::cos(Psi) * std::cos(Phi) - std::sin(Psi) * std::cos(Theta) * std::sin(Phi),
+                      std::sin(Psi) * std::cos(Theta) * std::cos(Phi) + std::cos(Psi) * std::sin(Phi),
+                      std::sin(Psi) * std::sin(Theta));
+  S[1] = Vector<T, 3>(-std::cos(Psi) * std::cos(Theta) * std::sin(Phi) - std::sin(Psi) * std::cos(Phi),
+                      std::cos(Psi) * std::cos(Theta) * std::cos(Phi) - std::sin(Psi) * std::sin(Phi),
+                      std::cos(Psi) * std::sin(Theta));
+  S[2] = Vector<T, 3>(std::sin(Theta) * std::sin(Phi), -std::sin(Theta) * std::cos(Phi), std::cos(Theta));
 
   S_transpose[0] = Vector<T, 3>(S[0][0], S[1][0], S[2][0]);
   S_transpose[1] = Vector<T, 3>(S[0][1], S[1][1], S[2][1]);
@@ -270,7 +269,7 @@ void ZhuStefanescu3D<T, LatSet, RhoLatSet>::TypeConversion() {
 template <typename T, typename LatSet, typename RhoLatSet>
 void ZhuStefanescu3D<T, LatSet, RhoLatSet>::UpdateNGradFs() {
   FDM3D<T> FDM3D_gradFs(Geo, Fs.getField());
-  T lim = std::numeric_limits<T>::epsilon() * 1e3;
+  constexpr T lim = std::numeric_limits<T>::epsilon() * 1e3;
 #pragma omp parallel for num_threads(Thread_Num) schedule(static)
   for (int id = 0; id < N; ++id) {
     // gradient of solid fraction
@@ -286,9 +285,9 @@ void ZhuStefanescu3D<T, LatSet, RhoLatSet>::UpdateNGradFs() {
       NGradFs.template SetField<0>(id, gradFs[0] / normgradFs);
       NGradFs.template SetField<1>(id, gradFs[1] / normgradFs);
       NGradFs.template SetField<2>(id, gradFs[2] / normgradFs);
-      Q.SetField(id, pow(NGradFs.getField(0)[id], 4) +
-                         pow(NGradFs.getField(1)[id], 4) +
-                         pow(NGradFs.getField(2)[id], 4));
+      Q.SetField(id, std::pow(NGradFs.getField(0)[id], 4) +
+                         std::pow(NGradFs.getField(1)[id], 4) +
+                         std::pow(NGradFs.getField(2)[id], 4));
     }
   }
 }
@@ -369,9 +368,9 @@ void ZhuStefanescu3D<T, LatSet, RhoLatSet>::UpdateWMC() {
                   S_transpose[1] * Hcolumn2 * S[1][2] +
                   S_transpose[1] * Hcolumn3 * S[2][2];
 
-    T nx3 = 4 * pow(ntrans[0], 3);
-    T ny3 = 4 * pow(ntrans[1], 3);
-    T nz3 = 4 * pow(ntrans[2], 3);
+    T nx3 = 4 * std::pow(ntrans[0], 3);
+    T ny3 = 4 * std::pow(ntrans[1], 3);
+    T nz3 = 4 * std::pow(ntrans[2], 3);
 
     // T wmc_ =
     //     (3 * Epsilon - 1) * (nx_xtrans + ny_ytrans + nz_ztrans) -
@@ -391,8 +390,8 @@ void ZhuStefanescu3D<T, LatSet, RhoLatSet>::UpdateWMC() {
     T wmc_ =
         (3 * Epsilon - 1) * (nx_xtrans + ny_ytrans + nz_ztrans) -
         48 * Epsilon *
-            (pow(ntrans[0], 2) * nx_xtrans + pow(ntrans[1], 2) * ny_ytrans +
-             pow(ntrans[2], 2) * nz_ztrans) +
+            (std::pow(ntrans[0], 2) * nx_xtrans + std::pow(ntrans[1], 2) * ny_ytrans +
+             std::pow(ntrans[2], 2) * nz_ztrans) +
         12 * Epsilon * Q.get(id) * (nx_xtrans + ny_ytrans + nz_ztrans) +
         12 * Epsilon *
             (ntrans[0] * FDM3D_Q.p_x(id) + ntrans[1] * FDM3D_Q.p_y(id) +
@@ -543,9 +542,9 @@ void ZhuStefanescu3D<T, LatSet, RhoLatSet>::UpdateWMC_() {
 //     np_xy = FDM::p_xy(id) / gradfnorm;
 //     np_xz = FDM::p_xz(id) / gradfnorm;
 //     np_yz = FDM::p_yz(id) / gradfnorm;
-//     nx3 = 4 * pow(n[0], 3);
-//     ny3 = 4 * pow(n[1], 3);
-//     nz3 = 4 * pow(n[2], 3);
+//     nx3 = 4 * std::pow(n[0], 3);
+//     ny3 = 4 * std::pow(n[1], 3);
+//     nz3 = 4 * std::pow(n[2], 3);
 //     Cells[i].wmc = (3 * Epsilon - 1) * (Inablan[0] + Inablan[1] +
 //     Inablan[2])
 //     -
@@ -553,7 +552,7 @@ void ZhuStefanescu3D<T, LatSet, RhoLatSet>::UpdateWMC_() {
 //                        (n[0] * n[0] * Inablan[0] + n[1] * n[1] * Inablan[1]
 //                        +
 //                         n[2] * n[2] * Inablan[2]) +
-//                    12 * Epsilon * (pow(n[0], 4) + pow(n[1], 4) + pow(n[2],
+//                    12 * Epsilon * (std::pow(n[0], 4) + std::pow(n[1], 4) + std::pow(n[2],
 //                    4)) *
 //                        (Inablan[0] + Inablan[1] + Inablan[2]) +
 //                    12 * Epsilon *

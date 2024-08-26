@@ -25,14 +25,15 @@
 
 // int Total_Macro_Step = 0;
 using T = FLOAT;
-using LatSet = D2Q9<T>;
+using LatSet = D3Q19<T>;
 
 /*----------------------------------------------
                 Simulation Parameters
 -----------------------------------------------*/
 int Ni;
 int Nj;
-int pipewidth;
+int Nk;
+int piperadius;
 T Cell_Len;
 T RT;
 int Thread_Num;
@@ -76,7 +77,8 @@ void readParam() {
 
   Ni = param_reader.getValue<int>("Mesh", "Ni");
   Nj = param_reader.getValue<int>("Mesh", "Nj");
-  pipewidth = param_reader.getValue<int>("Mesh", "pipewidth");
+  // Nk = param_reader.getValue<int>("Mesh", "Nk");
+  piperadius = param_reader.getValue<int>("Mesh", "piperadius");
   Cell_Len = param_reader.getValue<T>("Mesh", "Cell_Len");
   // physical properties
   rho_ref = param_reader.getValue<T>("Physical_Property", "rho_ref");
@@ -96,10 +98,12 @@ void readParam() {
   // init conditions
   U_Ini[0] = param_reader.getValue<T>("Init_Conditions", "U_Ini0");
   U_Ini[1] = param_reader.getValue<T>("Init_Conditions", "U_Ini1");
+  U_Ini[2] = param_reader.getValue<T>("Init_Conditions", "U_Ini2");
   U_Max = param_reader.getValue<T>("Init_Conditions", "U_Max");
   // bcs
   U_Wall[0] = param_reader.getValue<T>("Boundary_Conditions", "Velo_Wall0");
   U_Wall[1] = param_reader.getValue<T>("Boundary_Conditions", "Velo_Wall1");
+  U_Wall[2] = param_reader.getValue<T>("Boundary_Conditions", "Velo_Wall2");
   // LB
   RT = param_reader.getValue<T>("LB", "RT");
   // Simulation settings
@@ -133,19 +137,19 @@ int main() {
   ConvManager.Check_and_Print();
 
   // define geometry
-  AABB<T, 2> cavity(Vector<T, 2>{}, Vector<T, 2>(T(Ni * Cell_Len), T(Nj * Cell_Len)));
-  AABB<T, LatSet::d> topleft(Vector<T, LatSet::d>{T{}, T(pipewidth)}, Vector<T, LatSet::d>(T(Ni * Cell_Len - pipewidth), T(Nj * Cell_Len)));
-  AABB<T, LatSet::d> left(Vector<T, LatSet::d>{}, Vector<T, LatSet::d>(T(1), T(Nj - 1) * Cell_Len));
-  AABB<T, 2> fluid(Vector<T, 2>{}, Vector<T, 2>(T(int(Ni / 2) * Cell_Len), T(int(Nj / 2) * Cell_Len)));
-  BlockGeometry2D<T> Geo(Ni, Nj, Thread_Num, cavity, Cell_Len);
+  BlockReader3D<T> blockreader("block");
+  BlockGeometry3D<T> Geo(blockreader);
+
+  Cylinder<T> horizontal_cylinder(piperadius, Vector<T, 3>{T{120},T{},T{}}, Vector<T, 3>{T{},T{20},T{20}});
+  Cylinder<T> vertical_cylinder(piperadius, Vector<T, 3>{T{},T{},T{60}}, Vector<T, 3>{T{100},T{20},T{20}});
+  Cylinder<T> Inlet(piperadius, Vector<T, 3>{T{1},T{},T{}}, Vector<T, 3>{T{},T{20},T{20}});
 
   // ------------------ define flag field ------------------
   BlockFieldManager<FLAG, T, LatSet::d> FlagFM(Geo, VoidFlag);
-  FlagFM.forEach(cavity, [&](auto& field, std::size_t id) { field.SetField(id, AABBFlag); });
-  FlagFM.forEach(topleft, [&](auto& field, std::size_t id) { field.SetField(id, VoidFlag); });
-  // FlagFM.template SetupBoundary<LatSet>(cavity, BouncebackFlag);
+  FlagFM.forEach(horizontal_cylinder, [&](auto& field, std::size_t id) { field.SetField(id, AABBFlag); });
+  FlagFM.forEach(vertical_cylinder, [&](auto& field, std::size_t id) { field.SetField(id, AABBFlag); });
   FlagFM.template SetupBoundary<LatSet>(AABBFlag, VoidFlag, BouncebackFlag);
-  FlagFM.forEach(left, [&](FLAG& field, std::size_t id) {
+  FlagFM.forEach(Inlet, [&](FLAG& field, std::size_t id) {
     if (util::isFlag(field.get(id), BouncebackFlag)) field.SetField(id, InletFlag);
   });
 
@@ -172,7 +176,7 @@ int main() {
   T surface_tension_coefficient_factor =
     BaseConv.Conv_Time * BaseConv.Conv_Time / (rho_ref * std::pow(BaseConv.Conv_L, 3));
 
-  ValuePack NSInitValues(BaseConv.getLatRhoInit(), Vector<T, 2>{}, T{},
+  ValuePack NSInitValues(BaseConv.getLatRhoInit(), Vector<T, LatSet::d>{}, T{},
                          -BaseConv.Lattice_g, LatU_Wall);
   ValuePack FSInitValues(FS::FSType::Solid, T{}, T{}, T{});
   ValuePack FSParamsInitValues(
@@ -244,7 +248,7 @@ int main() {
   vtmo::VectorWriter VeloWriter("Velo", NSLattice.getField<VELOCITY<T, LatSet::d>>());
   vtmo::ScalarWriter VOFWriter("VOF", NSLattice.getField<FS::VOLUMEFRAC<T>>());
   vtmo::ScalarWriter StateWriter("State", NSLattice.getField<FS::STATE>());
-  vtmo::vtmWriter<T, LatSet::d> Writer("PipeInjection2d", Geo, 1);
+  vtmo::vtmWriter<T, LatSet::d> Writer("PipeInjection3d", Geo, 1);
   Writer.addWriterSet(MassWriter, VOFWriter, VeloWriter, StateWriter);
 
   // count and timer

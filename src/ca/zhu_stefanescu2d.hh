@@ -111,7 +111,7 @@ void ZhuStefanescu2D<T, LatSet>::UpdateCurvature(T limit) {
     T px = FDM.p_x(id);
     T py = FDM.p_y(id);
     T curv = px * px + py * py;
-    curv = curv > 1e-3 ? pow(curv, -T(1.5)) : 0;
+    curv = curv > 1e-3 ? std::pow(curv, -T(1.5)) : 0;
     T K_ = curv *
            (2 * px * py * FDM.p_xy(id) - px * px * FDM.p_yy(id) - py * py * FDM.p_xx(id));
     if (K_ > T(limit)) K_ = T(limit);
@@ -161,12 +161,12 @@ T ZhuStefanescu2D<T, LatSet>::getanisotropy(int id) {
   // where: delta is the anisotropy coefficient, manually chosen
   // phi is growth angle to x-axis, which can be calculated by solid fraction:
   // theta is the preferred growth angle to x-axis
-  return 1 - delta * cos(4 * (getPhi(id) - Theta));
+  return 1 - delta * std::cos(4 * (getPhi(id) - Theta));
 }
 template <typename T, typename LatSet>
 T ZhuStefanescu2D<T, LatSet>::getPhi(int id) {
   FDM2D<T> FDM(Ni, Nj, Fs.getField(0));
-  return atan2(FDM.p_y(id), FDM.p_x(id));
+  return std::atan2(FDM.p_y(id), FDM.p_x(id));
 }
 
 template <typename T, typename LatSet>
@@ -293,7 +293,7 @@ BlockZhuStefanescu2D<T, LatSet>::BlockZhuStefanescu2D(Block2D<T> &geo,
                                                       T delta, T theta)
     : BlockLatticeBase<T, LatSet, ALLFIELDS<T>>(geo, fieldptrs), ConvCA(convca),
       Theta(theta), delta(delta), 
-      GT(convca.Lattice_GT_Coef * pow(2, int(geo.getLevel()))), m_l(convca.Lattice_m_Liq),
+      GT(convca.Lattice_GT_Coef * std::pow(2, int(geo.getLevel()))), m_l(convca.Lattice_m_Liq),
       Part_Coef(convca.Part_Coef), _Part_Coef(T(1) - convca.Part_Coef) {
   Tl_eq = ConvCA.get_LatTliq(this->template getField<CONCINIT<T>>().get());
   Interface.reserve(4 * (this->getNx() + this->getNy()));
@@ -362,7 +362,7 @@ void BlockZhuStefanescu2D<T, LatSet>::UpdateCurvature(T limit) {
     T px = FDM.p_x(id);
     T py = FDM.p_y(id);
     T curv = px * px + py * py;
-    curv = curv > 1e-3 ? pow(curv, -T(1.5)) : 0;
+    curv = curv > 1e-3 ? std::pow(curv, -T(1.5)) : 0;
     T K_ = curv *
            (2 * px * py * FDM.p_xy(id) - px * px * FDM.p_yy(id) - py * py * FDM.p_xx(id));
     if (K_ > T(limit)) K_ = T(limit);
@@ -430,14 +430,14 @@ T BlockZhuStefanescu2D<T, LatSet>::getanisotropy(std::size_t id) {
   // where: delta is the anisotropy coefficient, manually chosen
   // phi is growth angle to x-axis, which can be calculated by solid fraction:
   // theta is the preferred growth angle to x-axis
-  return 1 - delta * cos(4 * (getPhi(id) - Theta));
+  return 1 - delta * std::cos(4 * (getPhi(id) - Theta));
 }
 template <typename T, typename LatSet>
 T BlockZhuStefanescu2D<T, LatSet>::getPhi(std::size_t id) {
   // TODO: efficiency may be improved?
   FDM2D<T> FDM(this->getNx(), this->getNy(),
                this->template getField<FS<T>>().getField(0));
-  return atan2(FDM.p_y(id), FDM.p_x(id));
+  return std::atan2(FDM.p_y(id), FDM.p_x(id));
 }
 
 template <typename T, typename LatSet>

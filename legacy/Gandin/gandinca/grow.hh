@@ -153,29 +153,29 @@ void Grow2D<T, LatStru>::CellCapture(gcell2D<T>& gcell, int id) {
     // capture line equation: ArmLen[1]*x + ArmLen[0]*y = ArmLen[0]*ArmLen[1]
     // oppsite capture line: -ArmLen[1]*x - ArmLen[0]*y = ArmLen[0]*ArmLen[1]
     // get direction from cell centre(x,y) to capture line
-    // dir = fabs(Ax + By + C) / sqrt(A^2 + B^2)
+    // dir = fabs(Ax + By + C) / std::sqrt(A^2 + B^2)
     // get signed ArmLen
     T ArmLen_s[2] = {ArmLen * quadrant[quad][0], ArmLen * quadrant[quad][1]};
     T dir0 = fabs(ArmLen_s[1] * r_pos[0] + ArmLen_s[0] * r_pos[1] -
                   ArmLen_s[0] * ArmLen_s[1]) /
-             sqrt(Vect2D<T>::sqr(ArmLen_s));
+             std::sqrt(Vect2D<T>::sqr(ArmLen_s));
     T dir1 = fabs(-ArmLen_s[1] * r_pos[0] + ArmLen_s[0] * r_pos[1] +
                   ArmLen_s[0] * ArmLen_s[1]) /
-             sqrt(Vect2D<T>::sqr(ArmLen_s));
+             std::sqrt(Vect2D<T>::sqr(ArmLen_s));
     // Compute new square size: Gandin's thesis
     T New_ArmLen =
-        std::min(dir0 / sqrt(T(2)), T(1)) + std::min(dir1 / sqrt(T(2)), T(1));
+        std::min(dir0 / std::sqrt(T(2)), T(1)) + std::min(dir1 / std::sqrt(T(2)), T(1));
     // ----get new growing centre of the captured cell
     // absolute position of arm0 and arm1
-    T Arm0[2] = {gcell.x + ArmLen_s[0] * cos(CA.Orine[id]),
-                 gcell.y + ArmLen_s[0] * sin(CA.Orine[id])};
-    T Arm1[2] = {gcell.x + ArmLen_s[1] * cos(CA.Orine[id] + M_PI / T(2)),
-                 gcell.y + ArmLen_s[1] * sin(CA.Orine[id] + M_PI / T(2))};
+    T Arm0[2] = {gcell.x + ArmLen_s[0] * std::cos(CA.Orine[id]),
+                 gcell.y + ArmLen_s[0] * std::sin(CA.Orine[id])};
+    T Arm1[2] = {gcell.x + ArmLen_s[1] * std::cos(CA.Orine[id] + M_PI / T(2)),
+                 gcell.y + ArmLen_s[1] * std::sin(CA.Orine[id] + M_PI / T(2))};
     // closest corner
     // T Len = dir0 <= dir1 ? ArmLen[0] : ArmLen[1];
     // new growing centre
-    T x = gcell.x + (ArmLen - New_ArmLen) * cos(CA.Orine[id]);
-    T y = gcell.y + (ArmLen - New_ArmLen) * sin(CA.Orine[id]);
+    T x = gcell.x + (ArmLen - New_ArmLen) * std::cos(CA.Orine[id]);
+    T y = gcell.y + (ArmLen - New_ArmLen) * std::sin(CA.Orine[id]);
 #ifdef _CAPTURE_P
     Captureds_Th[omp_get_thread_num()].emplace_back(
         gcell2D<T>(id, x, y, New_ArmLen));
@@ -195,7 +195,7 @@ void Grow2D<T, LatStru>::CellCapture(gcell2D<T>& gcell, int id) {
 //   // capture line equation: ArmLen[1]*x + ArmLen[0]*y = ArmLen[0]*ArmLen[1]
 //   // oppsite capture line: ArmLen[1]*x + ArmLen[0]*y = -ArmLen[0]*ArmLen[1]
 //   // get direction from cell centre(x,y) to capture line
-//   // dir = (Ax + By + C) / sqrt(A^2 + B^2)
+//   // dir = (Ax + By + C) / std::sqrt(A^2 + B^2)
 
 //   // project cell centre to capture line
 
@@ -277,30 +277,30 @@ void Grow2D<T, LatStru>::CellCapture(gcell2D<T>& gcell, int id) {
 //     // capture line equation: ArmLen[1]*x + ArmLen[0]*y = ArmLen[0]*ArmLen[1]
 //     // oppsite capture line: -ArmLen[1]*x - ArmLen[0]*y = ArmLen[0]*ArmLen[1]
 //     // get direction from cell centre(x,y) to capture line
-//     // dir = fabs(Ax + By + C) / sqrt(A^2 + B^2)
+//     // dir = fabs(Ax + By + C) / std::sqrt(A^2 + B^2)
 //     // get signed ArmLen
 //     T ArmLen_s[2] = {ArmLen * quadrant[quad][0], ArmLen * quadrant[quad][1]};
 //     T dir0 = fabs(ArmLen_s[1] * r_pos[0] + ArmLen_s[0] * r_pos[1] -
 //                   ArmLen_s[0] * ArmLen_s[1]) /
-//              sqrt(Vect2D<T>::sqr(ArmLen_s));
+//              std::sqrt(Vect2D<T>::sqr(ArmLen_s));
 //     T dir1 = fabs(-ArmLen_s[1] * r_pos[0] + ArmLen_s[0] * r_pos[1] +
 //                   ArmLen_s[0] * ArmLen_s[1]) /
-//              sqrt(Vect2D<T>::sqr(ArmLen_s));
+//              std::sqrt(Vect2D<T>::sqr(ArmLen_s));
 //     // Compute new square size: Gandin's thesis
 //     T New_ArmLen =
-//         std::min(dir0 / sqrt(T(2)), T(1)) + std::min(dir1 / sqrt(T(2)),
+//         std::min(dir0 / std::sqrt(T(2)), T(1)) + std::min(dir1 / std::sqrt(T(2)),
 //         T(1));
 //     // ----get new growing centre of the captured cell
 //     // absolute position of arm0 and arm1
-//     T Arm0[2] = {gcell.x + ArmLen_s[0] * cos(CA.Orine[id]),
-//                  gcell.y + ArmLen_s[0] * sin(CA.Orine[id])};
-//     T Arm1[2] = {gcell.x + ArmLen_s[1] * cos(CA.Orine[id] + M_PI / T(2)),
-//                  gcell.y + ArmLen_s[1] * sin(CA.Orine[id] + M_PI / T(2))};
+//     T Arm0[2] = {gcell.x + ArmLen_s[0] * std::cos(CA.Orine[id]),
+//                  gcell.y + ArmLen_s[0] * std::sin(CA.Orine[id])};
+//     T Arm1[2] = {gcell.x + ArmLen_s[1] * std::cos(CA.Orine[id] + M_PI / T(2)),
+//                  gcell.y + ArmLen_s[1] * std::sin(CA.Orine[id] + M_PI / T(2))};
 //     // closest corner
 //     // T Len = dir0 <= dir1 ? ArmLen[0] : ArmLen[1];
 //     // new growing centre
-//     T x = gcell.x + (ArmLen - New_ArmLen) * cos(CA.Orine[id]);
-//     T y = gcell.y + (ArmLen - New_ArmLen) * sin(CA.Orine[id]);
+//     T x = gcell.x + (ArmLen - New_ArmLen) * std::cos(CA.Orine[id]);
+//     T y = gcell.y + (ArmLen - New_ArmLen) * std::sin(CA.Orine[id]);
 // #ifdef _CAPTURE_P
 //     Captureds_Th[omp_get_thread_num()].emplace_back(
 //         gcell2D<T>(id, x, y, New_ArmLen));

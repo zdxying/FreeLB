@@ -59,7 +59,7 @@ class iniReader {
   iniReader(const std::string& filename) {
     std::ifstream file(filename);
     if (!file) {
-      std::cerr << "Can't open file: " << filename << std::endl;
+      std::cerr << "[iniReader] Can't open file: " << filename << std::endl;
       exit(1);
     }
     std::string line, section;
@@ -91,12 +91,12 @@ class iniReader {
   T getValue(const std::string& section, const std::string& name) {
     // find if section exists
     if (iniContent.find(section) == iniContent.end()) {
-      std::cerr << "Section: [" << section << "] not found" << std::endl;
+      std::cerr << "[iniReader] Section: [" << section << "] not found" << std::endl;
       exit(1);
     }
     // find if key exists
     if (iniContent[section].find(name) == iniContent[section].end()) {
-      std::cerr << "Key: \"" << name << "\" not found" << std::endl;
+      std::cerr << "[iniReader] Key: \"" << name << "\" not found" << std::endl;
       exit(1);
     }
     // read

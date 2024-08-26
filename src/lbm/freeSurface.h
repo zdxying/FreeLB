@@ -220,7 +220,7 @@ class FreeSurface2DManager : public BlockLatticeManagerBase<T, LatSet, FSFIELDS<
   void Apply() {
     for (auto& fs : BlockFS) {
       // int deLevel = static_cast<int>(this->getMaxLevel() - fs.getLevel());
-      // if (count % (static_cast<int>(pow(2, deLevel))) == 0)
+      // if (count % (static_cast<int>(std::pow(2, deLevel))) == 0)
       
       fs.MassTransfer();
       // for cells with to_fluid flag, check neighbors and set transition flag

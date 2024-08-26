@@ -97,7 +97,7 @@ class BBLikeFixedBlockBdManager final : public AbstractBlockBoundary {
 #endif
     for (auto &bdBlock : BdBlocks) {
       if (count %
-            (static_cast<int>(pow(2, int(MaxLevel - bdBlock.getLat().getLevel())))) ==
+            (static_cast<int>(std::pow(2, int(MaxLevel - bdBlock.getLat().getLevel())))) ==
           0)
         bdBlock.template ApplyCellDynamics<CELLDYNAMICS>();
     }
@@ -181,7 +181,7 @@ class BBLikeMovingBlockBdManager final : public AbstractBlockBoundary {
 #endif
     for (auto &bdBlock : BdBlocks) {
       if (count %
-            (static_cast<int>(pow(2, int(MaxLevel - bdBlock.getLat().getLevel())))) ==
+            (static_cast<int>(std::pow(2, int(MaxLevel - bdBlock.getLat().getLevel())))) ==
           0)
         bdBlock.template ApplyCellDynamics<CELLDYNAMICS>();
     }

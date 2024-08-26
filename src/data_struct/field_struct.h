@@ -937,7 +937,7 @@ class BlockFieldManager {
     for (BlockField<FieldType, FloatType, Dim>& blockF : _Fields) {
       const int deLevel =
         static_cast<int>(_BlockGeo.getMaxLevel() - blockF.getBlock().getLevel());
-      if (count % (static_cast<int>(pow(2, deLevel))) == 0) {
+      if (count % (static_cast<int>(std::pow(2, deLevel))) == 0) {
         blockF.normalcommunicate();
       }
     }
@@ -949,7 +949,7 @@ class BlockFieldManager {
     for (BlockField<FieldType, FloatType, Dim>& blockF : _Fields) {
       const int deLevel =
         static_cast<int>(_BlockGeo.getMaxLevel() - blockF.getBlock().getLevel());
-      if (count % (static_cast<int>(pow(2, deLevel))) == 0) {
+      if (count % (static_cast<int>(std::pow(2, deLevel))) == 0) {
         blockF.avercommunicate();
       }
     }
@@ -961,7 +961,7 @@ class BlockFieldManager {
     for (BlockField<FieldType, FloatType, Dim>& blockF : _Fields) {
       const int deLevel =
         static_cast<int>(_BlockGeo.getMaxLevel() - blockF.getBlock().getLevel());
-      if (count % (static_cast<int>(pow(2, deLevel))) == 0) {
+      if (count % (static_cast<int>(std::pow(2, deLevel))) == 0) {
         blockF.interpcommunicate();
       }
     }
@@ -1030,7 +1030,7 @@ class BlockFieldManager {
     for (BlockField<FieldType, FloatType, Dim>& blockF : _Fields) {
       const int deLevel =
         static_cast<int>(_BlockGeo.getMaxLevel() - blockF.getBlock().getLevel());
-      if ((count % (static_cast<int>(pow(2, deLevel))) == 0) &&
+      if ((count % (static_cast<int>(std::pow(2, deLevel))) == 0) &&
           blockF.getBlock()._NeedMPIComm) {
         blockF.mpiNormalSend(SendRequests);
       }
@@ -1040,7 +1040,7 @@ class BlockFieldManager {
     for (BlockField<FieldType, FloatType, Dim>& blockF : _Fields) {
       const int deLevel =
         static_cast<int>(_BlockGeo.getMaxLevel() - blockF.getBlock().getLevel());
-      if ((count % (static_cast<int>(pow(2, deLevel))) == 0) &&
+      if ((count % (static_cast<int>(std::pow(2, deLevel))) == 0) &&
           blockF.getBlock()._NeedMPIComm) {
         blockF.mpiNormalRecv(RecvRequests);
       }
@@ -1053,7 +1053,7 @@ class BlockFieldManager {
     for (BlockField<FieldType, FloatType, Dim>& blockF : _Fields) {
       const int deLevel =
         static_cast<int>(_BlockGeo.getMaxLevel() - blockF.getBlock().getLevel());
-      if ((count % (static_cast<int>(pow(2, deLevel))) == 0) &&
+      if ((count % (static_cast<int>(std::pow(2, deLevel))) == 0) &&
           blockF.getBlock()._NeedMPIComm) {
         blockF.mpiNormalSet(reqidx, RecvRequests);
       }
@@ -1066,7 +1066,7 @@ class BlockFieldManager {
       const int deLevel =
         static_cast<int>(_BlockGeo.getMaxLevel() - blockF.getBlock().getLevel());
       if (blockF.getBlock().getLevel() != std::uint8_t(0)) {
-        if ((count % (static_cast<int>(pow(2, deLevel + 1))) == 0) &&
+        if ((count % (static_cast<int>(std::pow(2, deLevel + 1))) == 0) &&
             blockF.getBlock()._NeedMPIComm) {
           blockF.mpiAverSend(SendRequests);
         }
@@ -1077,7 +1077,7 @@ class BlockFieldManager {
     for (BlockField<FieldType, FloatType, Dim>& blockF : _Fields) {
       const int deLevel =
         static_cast<int>(_BlockGeo.getMaxLevel() - blockF.getBlock().getLevel());
-      if ((count % (static_cast<int>(pow(2, deLevel))) == 0) &&
+      if ((count % (static_cast<int>(std::pow(2, deLevel))) == 0) &&
           blockF.getBlock()._NeedMPIComm) {
         blockF.mpiAverRecv(RecvRequests);
       }
@@ -1088,7 +1088,7 @@ class BlockFieldManager {
     for (BlockField<FieldType, FloatType, Dim>& blockF : _Fields) {
       const int deLevel =
         static_cast<int>(_BlockGeo.getMaxLevel() - blockF.getBlock().getLevel());
-      if ((count % (static_cast<int>(pow(2, deLevel))) == 0) &&
+      if ((count % (static_cast<int>(std::pow(2, deLevel))) == 0) &&
           blockF.getBlock()._NeedMPIComm) {
         blockF.mpiAverSet(reqidx, RecvRequests);
       }
@@ -1114,7 +1114,7 @@ class BlockFieldManager {
       const int deLevel =
         static_cast<int>(_BlockGeo.getMaxLevel() - blockF.getBlock().getLevel()) - 1;
       if (deLevel != -1) {
-        if ((count % (static_cast<int>(pow(2, deLevel))) == 0) &&
+        if ((count % (static_cast<int>(std::pow(2, deLevel))) == 0) &&
             blockF.getBlock()._NeedMPIComm) {
           blockF.mpiIntpSend(SendRequests);
         }
@@ -1125,7 +1125,7 @@ class BlockFieldManager {
     for (BlockField<FieldType, FloatType, Dim>& blockF : _Fields) {
       const int deLevel =
         static_cast<int>(_BlockGeo.getMaxLevel() - blockF.getBlock().getLevel());
-      if ((count % (static_cast<int>(pow(2, deLevel))) == 0) &&
+      if ((count % (static_cast<int>(std::pow(2, deLevel))) == 0) &&
           blockF.getBlock()._NeedMPIComm) {
         blockF.mpiIntpRecv(RecvRequests);
       }
@@ -1136,7 +1136,7 @@ class BlockFieldManager {
     for (BlockField<FieldType, FloatType, Dim>& blockF : _Fields) {
       const int deLevel =
         static_cast<int>(_BlockGeo.getMaxLevel() - blockF.getBlock().getLevel());
-      if ((count % (static_cast<int>(pow(2, deLevel))) == 0) &&
+      if ((count % (static_cast<int>(std::pow(2, deLevel))) == 0) &&
           blockF.getBlock()._NeedMPIComm) {
         blockF.mpiIntpSet(reqidx, RecvRequests);
       }

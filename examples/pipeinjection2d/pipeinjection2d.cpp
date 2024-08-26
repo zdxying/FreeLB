@@ -136,7 +136,6 @@ int main() {
   AABB<T, 2> cavity(Vector<T, 2>{}, Vector<T, 2>(T(Ni * Cell_Len), T(Nj * Cell_Len)));
   AABB<T, LatSet::d> topleft(Vector<T, LatSet::d>{T{}, T(pipewidth)}, Vector<T, LatSet::d>(T(Ni * Cell_Len - pipewidth), T(Nj * Cell_Len)));
   AABB<T, LatSet::d> left(Vector<T, LatSet::d>{}, Vector<T, LatSet::d>(T(1), T(Nj - 1) * Cell_Len));
-  AABB<T, 2> fluid(Vector<T, 2>{}, Vector<T, 2>(T(int(Ni / 2) * Cell_Len), T(int(Nj / 2) * Cell_Len)));
   BlockGeometry2D<T> Geo(Ni, Nj, Thread_Num, cavity, Cell_Len);
 
   // ------------------ define flag field ------------------

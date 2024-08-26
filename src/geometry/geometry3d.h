@@ -25,61 +25,6 @@
 #include "geometry/basic_geometry.h"
 #include "io/stlreader.h"
 
-template <typename T>
-class Cylinder final : public AABB<T, 3> {
- protected:
-  T _Radius;
-  T _Height;
-  // normal of the circle
-  Vector<T, 3> _height;
-  // centre of the bottom circle of the cylinder
-  Vector<T, 3> _centre;
-
-  // normalized _height
-  Vector<T, 3> _heightn;
-
- public:
-  Cylinder(T radius, const Vector<T, 3>& height, const Vector<T, 3>& centre)
-      : _Radius(radius), _height(height), _centre(centre), AABB<T, 3>() {
-    // get radius and height
-    _Height = _height.getnorm();
-    // get normalized _height, i.e. get the normal of the circle
-    _heightn = _height.getnormalize();
-    // get projection of square of the circle's diameter
-    // centre of the another circle
-    Vector<T, 3> centre2 = _centre + _height;
-    T x_min = _centre[0] - _Radius * sqrt(1 - pow(_heightn[0], 2));
-    T x_max = centre2[0] + _Radius * sqrt(1 - pow(_heightn[0], 2));
-    T y_min = _centre[1] - _Radius * sqrt(1 - pow(_heightn[1], 2));
-    T y_max = centre2[1] + _Radius * sqrt(1 - pow(_heightn[1], 2));
-    T z_min = _centre[2] - _Radius * sqrt(1 - pow(_heightn[2], 2));
-    T z_max = centre2[2] + _Radius * sqrt(1 - pow(_heightn[2], 2));
-    // extension
-    Vector<T, 3> extension(x_max - x_min, y_max - y_min, z_max - z_min);
-    // get AABB centre
-    Vector<T, 3> centre_ = _centre + _height / T(2);
-    // set AABB
-    AABB<T, 3>::_center = centre_;
-    AABB<T, 3>::_extension = extension;
-    AABB<T, 3>::_min = centre - extension / T(2);
-    AABB<T, 3>::_max = centre + extension / T(2);
-  }
-  bool isInside(const Vector<T, 3>& pt) const override {
-    T eps = std::numeric_limits<T>::epsilon();
-    // check if pt is inside the Cylinder
-    Vector<T, 3> pt_ = pt - _centre;
-    // projection of pt_ on _height
-    T proj_h = pt_ * _heightn;
-    if (proj_h < 0 - eps || proj_h > _Height + eps) return false;
-    T pt_norm = pt_.getnorm();
-    // get cos(theta) between pt_ and _height
-    // T cos_theta = proj_h / pt_norm;
-    // projection of pt_ on _Radius
-    T proj_r = pt_norm * sqrt(1 - pow(proj_h / pt_norm, 2));
-    if (proj_r > _Radius + eps) return false;
-    return true;
-  }
-};
 
 ////////////////////////
 /// Geometry3D ////

@@ -18,8 +18,6 @@
  *
  */
 
-// moment.h
-
 #pragma once
 
 #include "data_struct/cell.h"

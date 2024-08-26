@@ -4,7 +4,7 @@
 
 #include <vector>
 #include <omp.h>
-#include <math.h>
+#include <cmath>
 
 template <typename T>
 struct Vect2D {
@@ -21,7 +21,7 @@ struct Vect2D {
   static T cross(const T *a, const int *b) { return a[0] * b[1] - b[0] * a[1]; }
   static T cross(const T *a, const T *b) { return a[0] * b[1] - b[0] * a[1]; }
   static T sqr(const T *a) { return a[0] * a[0] + a[1] * a[1]; }
-  static T norm(const T *a) { return sqrt(sqr(a)); }
+  static T norm(const T *a) { return std::sqrt(sqr(a)); }
   static int quad(const T *a) {
     // 2 | 1
     // -----
@@ -42,8 +42,8 @@ struct Vect2D {
   static void R_Loc(T x, T y, T x0, T y0, T theta, T *loc) {
     T dx = x - x0;
     T dy = y - y0;
-    loc[0] = dx * cos(theta) + dy * sin(theta);
-    loc[1] = -dx * sin(theta) + dy * cos(theta);
+    loc[0] = dx * std::cos(theta) + dy * std::sin(theta);
+    loc[1] = -dx * std::sin(theta) + dy * std::cos(theta);
   }
 };
 

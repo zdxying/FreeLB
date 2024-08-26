@@ -33,8 +33,6 @@
 
 #pragma once
 
-#include <math.h>
-
 #include <fstream>
 #include <iostream>
 // #include <stdexcept>
@@ -61,7 +59,7 @@ void Triangle<T>::Init() {
   // normal[0] = b[1] * c[2] - b[2] * c[1];
   // normal[1] = b[2] * c[0] - b[0] * c[2];
   // normal[2] = b[0] * c[1] - b[1] * c[0];
-  // T norm = sqrt(pow(normal[0], 2) + pow(normal[1], 2) + pow(normal[2], 2));
+  // T norm = std::sqrt(std::pow(normal[0], 2) + std::pow(normal[1], 2) + std::pow(normal[2], 2));
   // normal[0] /= norm;
   // normal[1] /= norm;
   // normal[2] /= norm;
@@ -124,7 +122,7 @@ std::vector<T> Triangle<T>::getE1() {
 
 template <typename T>
 bool Triangle<T>::IsInside(const Vector<T, 3> &pt) const {
-  const T epsilon = std::numeric_limits<T>::epsilon() * T(10);
+  constexpr T epsilon = std::numeric_limits<T>::epsilon() * T(10);
 
   const T beta = pt * uBeta + kBeta;
   const T gamma = pt * uGamma + kGamma;
@@ -544,10 +542,10 @@ StlReader<T>::StlReader(std::string fName, T voxelSize, T stlSize, int method,
   // max depth
   int depth = 0;
   // 2 ^ depth > max, radius = 2^(depth-1) * voxelSize(1)
-  for (; _voxelSize * pow(2, depth) < max; depth++)
+  for (; _voxelSize * std::pow(2, depth) < max; depth++)
     ;
   Vector<T, 3> center;
-  T radius = _voxelSize * pow(2, depth - 1);
+  T radius = _voxelSize * std::pow(2, depth - 1);
 
   /// Find center of tree and move by _voxelSize/4.
   for (unsigned i = 0; i < 3; i++) {

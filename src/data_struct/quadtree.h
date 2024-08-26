@@ -88,7 +88,7 @@ class QuadTree : public BasicTree<T, 2> {
  public:
   QuadTree(std::size_t id, const Vector<T, 2>& center, std::uint8_t level, std::uint8_t maxlevel,
            std::uint8_t flag, QuadTree<T>* parent = nullptr, T voxsize = T(1))
-      : BasicTree<T, 2>(center, pow(T(0.5), level + 1) * voxsize, id, flag), _level(level),
+      : BasicTree<T, 2>(center, std::pow(T(0.5), level + 1) * voxsize, id, flag), _level(level),
         _parent(parent) {
     if (_level < maxlevel) {
       _isLeaf = false;
@@ -226,7 +226,7 @@ class QuadTree : public BasicTree<T, 2> {
 //            bool isLeaf = true, QuadTree<T, LatSet>* parent = nullptr)
 //       : _id(Cid),
 //         id(0),
-//         BasicTree<T, 2>(center, pow(T(0.5), level + 1)),
+//         BasicTree<T, 2>(center, std::pow(T(0.5), level + 1)),
 //         _level(level),
 //         _flag(flag),
 //         _parent(parent),
@@ -257,7 +257,7 @@ class QuadTree : public BasicTree<T, 2> {
 //            std::uint8_t flag, QuadTree<T, LatSet>* parent = nullptr)
 //       : _id(Cid),
 //         id(0),
-//         BasicTree<T, 2>(center, pow(T(0.5), level + 1)),
+//         BasicTree<T, 2>(center, std::pow(T(0.5), level + 1)),
 //         _level(level),
 //         _flag(flag),
 //         _parent(parent) {

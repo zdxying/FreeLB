@@ -13,8 +13,8 @@ void CAManager<T>::init_Mushzone(int Grain_Id_)
 	T Orien = Grains[Grain_Id_].Orien;
 	T x_Grain = Grains[Grain_Id_].x;
 	T y_Grain = Grains[Grain_Id_].y;
-	T trans[2][2] = {{cos(Orien), sin(Orien)},
-						 {-sin(Orien), cos(Orien)}};
+	T trans[2][2] = {{std::cos(Orien), std::sin(Orien)},
+						 {-std::sin(Orien), std::cos(Orien)}};
 	/*Find the most distant Cell centre to determine Amax*/
 	T Length_max = 0;
 	for (int k = 0; k < 8; k++)
@@ -222,8 +222,8 @@ void CAManager<T>::Grain_capture()
 /*
 // void get_LocGrain_Cord(T Grain, T Cell, T Orien, T *x, T *y)
 // {
-// 	T trans[2][2] = {{cos(Orien), sin(Orien)},
-// 						 {-sin(Orien), cos(Orien)}};
+// 	T trans[2][2] = {{std::cos(Orien), std::sin(Orien)},
+// 						 {-std::sin(Orien), std::cos(Orien)}};
 // }
 
 // template <typename T>
@@ -240,8 +240,8 @@ void CAManager<T>::Grain_capture()
 // 	T x_Cell = Geo.getVoxel(Cell_Id)[0];
 // 	T y_Cell = Geo.getVoxel(Cell_Id)[1]; // cords of cell to be captured
 // 	T Orien = grain->Orien;	   // 0-90 degree
-// 	T trans[2][2] = {{cos(Orien), sin(Orien)},
-// 						 {-sin(Orien), cos(Orien)}}; // rotate the coordinate system counter-clockwise by an angle is equivalent to rotating the vector clockwise
+// 	T trans[2][2] = {{std::cos(Orien), std::sin(Orien)},
+// 						 {-std::sin(Orien), std::cos(Orien)}}; // rotate the coordinate system counter-clockwise by an angle is equivalent to rotating the vector clockwise
 // 	T x_Loc = trans[0][0] * (x_Cell - x_Grain) + trans[0][1] * (y_Cell - y_Grain);
 // 	T y_Loc = trans[1][0] * (x_Cell - x_Grain) + trans[1][1] * (y_Cell - y_Grain);
 
@@ -263,12 +263,12 @@ void CAManager<T>::Grain_capture()
 // 		T Angle1 = Angle0 + Pi / 2;				// 1/2  1  3/2  0	Pi
 // 		/*Arm0*/
 // 		// absolute position
-// 		T x_Arm0 = x_Grain + ArmLen0 * cos(Angle0);
-// 		T y_Arm0 = y_Grain + ArmLen0 * sin(Angle0);
+// 		T x_Arm0 = x_Grain + ArmLen0 * std::cos(Angle0);
+// 		T y_Arm0 = y_Grain + ArmLen0 * std::sin(Angle0);
 // 		/*Arm1*/
 // 		// absolute position
-// 		T x_Arm1 = x_Grain + ArmLen1 * cos(Angle1);
-// 		T y_Arm1 = y_Grain + ArmLen1 * sin(Angle1);
+// 		T x_Arm1 = x_Grain + ArmLen1 * std::cos(Angle1);
+// 		T y_Arm1 = y_Grain + ArmLen1 * std::sin(Angle1);
 
 // 		/*Project cell center onto capture line*/
 // 		T x_Vec_Edge = x_Arm1 - x_Arm0;
@@ -282,11 +282,11 @@ void CAManager<T>::Grain_capture()
 // 		T y_Vec_Proj_Cell_to_Edge = y_Arm0 + y_Vec_Edge * Dot_Edge_PtoC / NormSquare_Vec_Edge; // Vec_Arm0 + proj. Vec_Arm0_to_Cell to Vec_Edge = Proj.Point
 
 // 		// Compute line segments: Proj.Point on the Edge and divides the line into 2 parts: L1 and L2
-// 		T Edge_L1 = sqrt((x_Vec_Proj_Cell_to_Edge - x_Arm0) * (x_Vec_Proj_Cell_to_Edge - x_Arm0) + (y_Vec_Proj_Cell_to_Edge - y_Arm0) * (y_Vec_Proj_Cell_to_Edge - y_Arm0));
-// 		T Edge_L2 = sqrt((x_Vec_Proj_Cell_to_Edge - x_Arm1) * (x_Vec_Proj_Cell_to_Edge - x_Arm1) + (y_Vec_Proj_Cell_to_Edge - y_Arm1) * (y_Vec_Proj_Cell_to_Edge - y_Arm1));
+// 		T Edge_L1 = std::sqrt((x_Vec_Proj_Cell_to_Edge - x_Arm0) * (x_Vec_Proj_Cell_to_Edge - x_Arm0) + (y_Vec_Proj_Cell_to_Edge - y_Arm0) * (y_Vec_Proj_Cell_to_Edge - y_Arm0));
+// 		T Edge_L2 = std::sqrt((x_Vec_Proj_Cell_to_Edge - x_Arm1) * (x_Vec_Proj_Cell_to_Edge - x_Arm1) + (y_Vec_Proj_Cell_to_Edge - y_Arm1) * (y_Vec_Proj_Cell_to_Edge - y_Arm1));
 
 // 		// Compute new grain size: Gandin's thesis
-// 		T ArmLength_New = std::min(static_cast<T>(Edge_L1 / sqrt(2.0)), static_cast<T>(1)) + std::min(static_cast<T>(Edge_L2 / sqrt(2.0)), static_cast<T>(1));
+// 		T ArmLength_New = std::min(static_cast<T>(Edge_L1 / std::sqrt(2.0)), static_cast<T>(1)) + std::min(static_cast<T>(Edge_L2 / std::sqrt(2.0)), static_cast<T>(1));
 
 // 		// Compute closest corner
 // 		T x_Point = x_Arm0;
@@ -299,9 +299,9 @@ void CAManager<T>::Grain_capture()
 // 			ArmLen = ArmLen1;
 // 		}
 // 		// Compute new grain center
-// 		T Norm_Vec_Point = sqrt((x_Point - x_Grain) * (x_Point - x_Grain) + (y_Point - y_Grain) * (y_Point - y_Grain)); // = armLength
+// 		T Norm_Vec_Point = std::sqrt((x_Point - x_Grain) * (x_Point - x_Grain) + (y_Point - y_Grain) * (y_Point - y_Grain)); // = armLength
 // 		T x_Grain_New = x_Grain + (ArmLen - ArmLength_New) * (x_Point - x_Grain) / Norm_Vec_Point;
-// 		T y_Grain_New = y_Grain + (ArmLen - ArmLength_New) * (y_Point - y_Grain) / Norm_Vec_Point; // + *sin grow along Point direction
+// 		T y_Grain_New = y_Grain + (ArmLen - ArmLength_New) * (y_Point - y_Grain) / Norm_Vec_Point; // + *std::sin grow along Point direction
 
 // 		// #pragma omp critical
 // 		{
@@ -336,8 +336,8 @@ void CAManager<T>::set_Mushzone(int Grain_Id_)
 	T Orien = Grains[Grain_Id_].Orien;
 	T x_Grain = Grains[Grain_Id_].x;
 	T y_Grain = Grains[Grain_Id_].y;
-	T trans[2][2] = {{cos(Orien), sin(Orien)},
-						 {-sin(Orien), cos(Orien)}}; // rotate coord sys counter-clockwise
+	T trans[2][2] = {{std::cos(Orien), std::sin(Orien)},
+						 {-std::sin(Orien), std::cos(Orien)}}; // rotate coord sys counter-clockwise
 	T x_Cell0 = Geo.getVoxel(Id)[0];
 	T y_Cell0 = Geo.getVoxel(Id)[1];
 

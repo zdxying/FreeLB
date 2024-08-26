@@ -26,6 +26,9 @@
 #include <cstdint>
 // std::cout, std::endl
 #include <iostream>
+
+// Thread_Num
+#include "head.h"
 // MPI_RANK(x), mpi().getSize()
 #include "parallel/mpi_manager.h"
 

@@ -37,7 +37,7 @@ bool AABB<T, D>::IsInside(const Vector<S, D>& pt) const {
 
 template <typename T, unsigned int D>
 bool AABB<T, D>::isInside(const Vector<T, D>& pt) const {
-  T eps = std::numeric_limits<T>::epsilon();
+  constexpr T eps = std::numeric_limits<T>::epsilon();
   if constexpr (D == 2) {
     return (pt[0] >= _min[0] - eps && pt[0] <= _max[0] + eps && pt[1] >= _min[1] - eps &&
             pt[1] <= _max[1] + eps);
@@ -258,7 +258,7 @@ BasicBlock<T, D> BasicBlock<T, D>::getExtBlock(const Vector<int, D>& extension) 
   const Vector<T, D> extension_t = extension * VoxelSize;
   Vector<int, D> extension_idx;
   for (unsigned int i = 0; i < D; i++) {
-    extension_idx[i] = std::ceil(extension[i] / pow(2, _level));
+    extension_idx[i] = std::ceil(extension[i] / std::pow(2, _level));
   }
   const Vector<int, D> extmesh = Mesh + 2 * extension;
   const AABB<T, D> extaabb = AABB<T, D>::getExtended(extension_t);
@@ -268,7 +268,7 @@ BasicBlock<T, D> BasicBlock<T, D>::getExtBlock(const Vector<int, D>& extension) 
 
 template <typename T, unsigned int D>
 BasicBlock<T, D> BasicBlock<T, D>::getRefinedBlock(std::uint8_t deltalevel) const {
-  int ratio = pow(2, int(deltalevel));
+  int ratio = std::pow(2, int(deltalevel));
   T newvoxsize = VoxelSize / T(ratio);
   const Vector<int, D> refmesh = Mesh * ratio;
   return BasicBlock<T, D>(deltalevel + _level, newvoxsize, BlockId, *this, IndexBlock, refmesh);
@@ -277,7 +277,7 @@ BasicBlock<T, D> BasicBlock<T, D>::getRefinedBlock(std::uint8_t deltalevel) cons
 
 template <typename T, unsigned int D>
 void BasicBlock<T, D>::refine(std::uint8_t deltalevel) {
-  int ratio = pow(2, int(deltalevel));
+  int ratio = std::pow(2, int(deltalevel));
   Mesh = Mesh * ratio;
   VoxelSize /= T(ratio);
   _level += deltalevel;
@@ -297,7 +297,7 @@ BasicBlock<T, D> BasicBlock<T, D>::getCoasenedBlock(std::uint8_t _deltalevel) co
   if (_level == 0) {
     std::cerr << "The block is already the coarsest block" << std::endl;
   }
-  int ratio = pow(2, int(_deltalevel));
+  int ratio = std::pow(2, int(_deltalevel));
   T newvoxsize = VoxelSize * T(ratio);
   const Vector<int, D> coarsemesh = Mesh / ratio;
   return BasicBlock<T, D>(_level - _deltalevel, newvoxsize, BlockId, *this, IndexBlock, coarsemesh);
@@ -305,7 +305,7 @@ BasicBlock<T, D> BasicBlock<T, D>::getCoasenedBlock(std::uint8_t _deltalevel) co
 
 template <typename T, unsigned int D>
 void BasicBlock<T, D>::coarsen(std::uint8_t deltalevel) {
-  int ratio = pow(2, int(deltalevel));
+  int ratio = std::pow(2, int(deltalevel));
   Mesh = Mesh / ratio;
   VoxelSize *= T(ratio);
   _level -= deltalevel;

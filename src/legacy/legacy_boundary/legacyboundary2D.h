@@ -188,7 +188,7 @@ struct bouncebackmethod {
     pop.f[k] =
         2 * pop.rho * latset::w<LatSet>(k) *
             (T(1) +
-             pow(LatSet::InvCs2 * Vect2D<T>::dot(u, latset::c<LatSet>(k)), 2) * T(0.5) -
+             std::pow(LatSet::InvCs2 * Vect2D<T>::dot(u, latset::c<LatSet>(k)), 2) * T(0.5) -
              LatSet::InvCs2 * Vect2D<T>::sqr(u) * T(0.5)) -
         pop.fpostcol[latset::opp<LatSet>(k)];
   }

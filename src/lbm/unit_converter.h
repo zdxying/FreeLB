@@ -315,7 +315,7 @@ struct TempConverter final : public AbstractConverter<T> {
     TCond = TCond_;
     SHeatCap = SHeatCap_;
     Texpan_Coeff = TexpanCoeff_;
-    Ra = T(9800) * TexpanCoeff_ * Conv_dT * pow(BaseConv.charL, 3) /
+    Ra = T(9800) * TexpanCoeff_ * Conv_dT * std::pow(BaseConv.charL, 3) /
          (BaseConv.VisKine * TDiff);  // Ra = g*beta*(Th-Tl)*L^3/(nu*alpha)
 
     Lattice_betaT = TexpanCoeff_ * Conv_dT;
@@ -330,7 +330,7 @@ struct TempConverter final : public AbstractConverter<T> {
     // Lattice_gbetaT = Ra * VisKine * TDiff / (charL * charL * charL * Conv_dT)
     // / Conv_Acc * Conv_dT;
     Lattice_gbetaT =
-      Ra_ * BaseConv.VisKine * TDiff_ / pow(BaseConv.charL, 3) / BaseConv.Conv_Acc;
+      Ra_ * BaseConv.VisKine * TDiff_ / std::pow(BaseConv.charL, 3) / BaseConv.Conv_Acc;
     Lattice_betaT = Lattice_gbetaT / BaseConv.Lattice_g;
     Texpan_Coeff = Lattice_betaT / Conv_dT;
 
@@ -343,7 +343,7 @@ struct TempConverter final : public AbstractConverter<T> {
     SHeatCap = SHeatCap_;
     Ra = Ra_;  // Ra = g*beta*(Th-Tl)*L^3/(nu*alpha)
 
-    Lattice_gbetaT = Ra * BaseConv.VisKine * TDiff / (pow(BaseConv.charL, 3) * Conv_dT) /
+    Lattice_gbetaT = Ra * BaseConv.VisKine * TDiff / (std::pow(BaseConv.charL, 3) * Conv_dT) /
                      BaseConv.Conv_Acc * Conv_dT;
     Lattice_betaT = Lattice_gbetaT / BaseConv.Lattice_g;
     Texpan_Coeff = Lattice_betaT / Conv_dT;

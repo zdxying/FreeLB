@@ -367,7 +367,7 @@ class BlockLatticeManager : public BlockLatticeManagerBase<T, LatSet, TypePack> 
   void ForEachBlockLattice(std::int64_t count, Func&& func) {
     for (auto& blocklat : BlockLats) {
       const int deLevel = static_cast<int>(getMaxLevel() - blocklat.getLevel());
-      if (count % (static_cast<int>(pow(2, deLevel))) == 0) {
+      if (count % (static_cast<int>(std::pow(2, deLevel))) == 0) {
         func(blocklat);
       }
     }
@@ -408,7 +408,7 @@ class BlockLatManagerCoupling {
       auto& blocklat1 = BlockLatMan1.getBlockLat(i);
       const int deLevel =
         static_cast<int>(BlockLatMan0.getMaxLevel() - blocklat0.getLevel());
-      if (count % (static_cast<int>(pow(2, deLevel))) == 0) {
+      if (count % (static_cast<int>(std::pow(2, deLevel))) == 0) {
         const auto& flagArray = BFM.getBlockField(i).getField(0);
         CELL0 cell0(0, blocklat0);
         CELL1 cell1(0, blocklat1);

@@ -33,8 +33,6 @@
 // octree.hh
 #pragma once
 
-#include <math.h>
-
 #include <iomanip>
 #include <sstream>
 
@@ -154,7 +152,7 @@ bool Octree<T>::AABBTri(const Triangle<T>& tri, T overlap) {
    * Intersection test after Christer Ericson - Real time Collision Detection p.
    * TestTriangleAABB p.171 */
   Vector<T, 3> c(_center);
-  T eps = std::numeric_limits<T>::epsilon();
+  constexpr T eps = std::numeric_limits<T>::epsilon();
 
   for (int j = 0; j < 3; j++) {
     v0[j] = tri.vertex[0][j] - _center[j];
