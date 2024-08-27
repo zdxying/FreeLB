@@ -16,7 +16,7 @@
 
 // int Total_Macro_Step = 0;
 using T = FLOAT;
-using LatSet = D3Q19<T>;
+using LatSet = D3Q27<T>;
 
 /*----------------------------------------------
                 Simulation Parameters
