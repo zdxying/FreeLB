@@ -46,8 +46,8 @@ The following table shows the performance of FreeLB in simulating the lid-driven
 | Device | Platform | FP32 MLUPs |
 | :----- | :---- | :---- |
 | i9-14900K       | Ubuntu 22.04      | 608 | 
-| E5-2699v4       | Ubuntu 20.04 WSL2 | 485 |
-| i7-11800H       | Ubuntu 22.04 WSL2 | 158 |
+| E5-2699v4       | Ubuntu 20.04 WSL2 | 553 |
+| i7-11800H       | Ubuntu 22.04 WSL2 | 173 |
 | i7-8750H        | Ubuntu 22.04 WSL2 | 124 |
 | RTX 4080        | Ubuntu 22.04      | 2903 |
 | RTX 3060 Laptop | Ubuntu 22.04 WSL2 | 1581 |
