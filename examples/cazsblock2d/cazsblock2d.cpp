@@ -213,7 +213,7 @@ int main() {
 
   // ------------------ define lattice ------------------
   using NSFIELDS = TypePack<RHO<T>, VELOCITY<T, 2>, POP<T, LatSet0::q>, SCALARFORCE<T>>;
-  ValuePack NSInitValues(BaseConv.getLatRhoInit(), Vector<T, 2>{}, T{}, T{});
+  ValuePack NSInitValues(BaseConv.getLatRhoInit(), U_Ini, T{}, T{});
   using NSCELL = Cell<T, LatSet0, NSFIELDS>;
   BlockLatticeManager<T, LatSet0, NSFIELDS> NSLattice(Geo, NSInitValues, BaseConv);
 

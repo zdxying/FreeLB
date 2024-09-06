@@ -56,6 +56,10 @@ struct Timer : public Counter {
 
   void START_TIMER() { START = std::chrono::high_resolution_clock::now(); }
   void END_TIMER() { END = std::chrono::high_resolution_clock::now(); }
+  void reset() {
+    START_TIMER();
+    Counter::reset();
+  }
 
   std::chrono::milliseconds GetDuration() {
     END_TIMER();

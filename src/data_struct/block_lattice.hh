@@ -350,14 +350,13 @@ void BlockLattice<T, LatSet, TypePack>::EnableToleranceU(T ures) {
 
 template <typename T, typename LatSet, typename TypePack>
 T BlockLattice<T, LatSet, TypePack>::getToleranceRho() {
-  T res;
-  T maxres = T(0);
+  T maxres{};
 #ifdef SingleBlock_OMP
-#pragma omp parallel for num_threads(Thread_Num) schedule(static)
+#pragma omp parallel for num_threads(Thread_Num) schedule(static) reduction(max : maxres)
 #endif
   for (std::size_t i = 0; i < this->getN(); ++i) {
-    res = std::abs(this->template getField<GenericRho>().get(i) - RhoOld[i]);
-    maxres = std::max(res, maxres);
+    T res = std::abs(this->template getField<GenericRho>().get(i) - RhoOld[i]);
+    maxres = res > maxres ? res : maxres;
     RhoOld[i] = this->template getField<GenericRho>().get(i);
   }
   return maxres;
@@ -365,23 +364,19 @@ T BlockLattice<T, LatSet, TypePack>::getToleranceRho() {
 
 template <typename T, typename LatSet, typename TypePack>
 T BlockLattice<T, LatSet, TypePack>::getToleranceU() {
-  T res0, res1, res2, res;
-  T maxres = T(0);
+  T maxres{};
 #ifdef SingleBlock_OMP
-#pragma omp parallel for num_threads(Thread_Num) schedule(static)
+#pragma omp parallel for num_threads(Thread_Num) schedule(static) reduction(max : maxres)
 #endif
   for (std::size_t i = 0; i < this->getN(); ++i) {
-    res0 =
-      std::abs(this->template getField<VELOCITY<T, LatSet::d>>().get(i)[0] - UOld[i][0]);
-    res1 =
-      std::abs(this->template getField<VELOCITY<T, LatSet::d>>().get(i)[1] - UOld[i][1]);
+    T res0 = std::abs(this->template getField<VELOCITY<T, LatSet::d>>().get(i)[0] - UOld[i][0]);
+    T res1 = std::abs(this->template getField<VELOCITY<T, LatSet::d>>().get(i)[1] - UOld[i][1]);
     if constexpr (LatSet::d == 3) {
-      res2 = std::abs(this->template getField<VELOCITY<T, LatSet::d>>().get(i)[2] -
-                      UOld[i][2]);
-      res1 = std::max(res1, res2);
+      T res2 = std::abs(this->template getField<VELOCITY<T, LatSet::d>>().get(i)[2] - UOld[i][2]);
+      res1 = res1 > res2 ? res1 : res2;
     }
-    res = std::max(res0, res1);
-    maxres = std::max(res, maxres);
+    T res = res0 > res1 ? res0 : res1;
+    maxres = res > maxres ? res : maxres;
     // set UOld
     UOld[i][0] = this->template getField<VELOCITY<T, LatSet::d>>().get(i)[0];
     UOld[i][1] = this->template getField<VELOCITY<T, LatSet::d>>().get(i)[1];
@@ -393,31 +388,30 @@ T BlockLattice<T, LatSet, TypePack>::getToleranceU() {
 
 template <typename T, typename LatSet, typename TypePack>
 T BlockLattice<T, LatSet, TypePack>::getTolRho(int shift) {
-  T res;
-  T maxres = T(0);
+  T maxres{};
   if constexpr (LatSet::d == 2) {
 #ifdef SingleBlock_OMP
-#pragma omp parallel for num_threads(Thread_Num) schedule(static)
+#pragma omp parallel for num_threads(Thread_Num) schedule(static) reduction(max : maxres)
 #endif
     for (int j = shift; j < this->getNy() - shift; ++j) {
       for (int i = shift; i < this->getNx() - shift; ++i) {
         std::size_t id = j * this->getNx() + i;
-        res = std::abs(this->template getField<GenericRho>().get(id) - RhoOld[id]);
-        maxres = std::max(res, maxres);
+        T res = std::abs(this->template getField<GenericRho>().get(id) - RhoOld[id]);
+        maxres = res > maxres ? res : maxres;
         RhoOld[id] = this->template getField<GenericRho>().get(id);
       }
     }
   } else if constexpr (LatSet::d == 3) {
   std::size_t NxNy = this->getNx() * this->getNy();
 #ifdef SingleBlock_OMP
-#pragma omp parallel for num_threads(Thread_Num) schedule(static)
+#pragma omp parallel for num_threads(Thread_Num) schedule(static) reduction(max : maxres)
 #endif
     for (int k = shift; k < this->getNz() - shift; ++k) {
       for (int j = shift; j < this->getNy() - shift; ++j) {
         for (int i = shift; i < this->getNx() - shift; ++i) {
           std::size_t id = k * NxNy + j * this->getNx() + i;
-          res = std::abs(this->template getField<GenericRho>().get(id) - RhoOld[id]);
-          maxres = std::max(res, maxres);
+          T res = std::abs(this->template getField<GenericRho>().get(id) - RhoOld[id]);
+          maxres = res > maxres ? res : maxres;
           RhoOld[id] = this->template getField<GenericRho>().get(id);
         }
       }
@@ -428,21 +422,18 @@ T BlockLattice<T, LatSet, TypePack>::getTolRho(int shift) {
 
 template <typename T, typename LatSet, typename TypePack>
 T BlockLattice<T, LatSet, TypePack>::getTolU(int shift) {
-  T res0, res1, res2, res;
-  T maxres = T(0);
+  T maxres{};
   if constexpr (LatSet::d == 2) {
 #ifdef SingleBlock_OMP
-#pragma omp parallel for num_threads(Thread_Num) schedule(static)
+#pragma omp parallel for num_threads(Thread_Num) schedule(static) reduction(max : maxres) 
 #endif
     for (int j = shift; j < this->getNy() - shift; ++j) {
       for (int i = shift; i < this->getNx() - shift; ++i) {
         std::size_t id = j * this->getNx() + i;
-        res0 = std::abs(this->template getField<VELOCITY<T, LatSet::d>>().get(id)[0] -
-                        UOld[id][0]);
-        res1 = std::abs(this->template getField<VELOCITY<T, LatSet::d>>().get(id)[1] -
-                        UOld[id][1]);
-        res = std::max(res0, res1);
-        maxres = std::max(res, maxres);
+        T res0 = std::abs(this->template getField<VELOCITY<T, LatSet::d>>().get(id)[0] - UOld[id][0]);
+        T res1 = std::abs(this->template getField<VELOCITY<T, LatSet::d>>().get(id)[1] - UOld[id][1]);
+        T res = res0 > res1 ? res0 : res1;
+        maxres = res > maxres ? res : maxres;
         // set UOld
         UOld[id][0] = this->template getField<VELOCITY<T, LatSet::d>>().get(id)[0];
         UOld[id][1] = this->template getField<VELOCITY<T, LatSet::d>>().get(id)[1];
@@ -451,21 +442,18 @@ T BlockLattice<T, LatSet, TypePack>::getTolU(int shift) {
   } else if constexpr (LatSet::d == 3) {
     std::size_t NxNy = this->getNx() * this->getNy();
 #ifdef SingleBlock_OMP
-#pragma omp parallel for num_threads(Thread_Num) schedule(static)
+#pragma omp parallel for num_threads(Thread_Num) schedule(static) reduction(max : maxres)
 #endif
     for (int k = shift; k < this->getNz() - shift; ++k) {
       for (int j = shift; j < this->getNy() - shift; ++j) {
         for (int i = shift; i < this->getNx() - shift; ++i) {
           std::size_t id = k * NxNy + j * this->getNx() + i;
-          res0 = std::abs(this->template getField<VELOCITY<T, LatSet::d>>().get(id)[0] -
-                          UOld[id][0]);
-          res1 = std::abs(this->template getField<VELOCITY<T, LatSet::d>>().get(id)[1] -
-                          UOld[id][1]);
-          res2 = std::abs(this->template getField<VELOCITY<T, LatSet::d>>().get(id)[2] -
-                          UOld[id][2]);
-          res1 = std::max(res1, res2);
-          res = std::max(res0, res1);
-          maxres = std::max(res, maxres);
+          T res0 = std::abs(this->template getField<VELOCITY<T, LatSet::d>>().get(id)[0] - UOld[id][0]);
+          T res1 = std::abs(this->template getField<VELOCITY<T, LatSet::d>>().get(id)[1] - UOld[id][1]);
+          T res2 = std::abs(this->template getField<VELOCITY<T, LatSet::d>>().get(id)[2] - UOld[id][2]);
+          res1 = res1 > res2 ? res1 : res2;
+          T res = res0 > res1 ? res0 : res1;
+          maxres = res > maxres ? res : maxres;
           // set UOld
           UOld[id][0] = this->template getField<VELOCITY<T, LatSet::d>>().get(id)[0];
           UOld[id][1] = this->template getField<VELOCITY<T, LatSet::d>>().get(id)[1];
