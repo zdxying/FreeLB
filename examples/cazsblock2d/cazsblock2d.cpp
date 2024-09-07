@@ -168,6 +168,8 @@ int main() {
   constexpr std::uint8_t VoidFlag = std::uint8_t(1);
   constexpr std::uint8_t AABBFlag = std::uint8_t(2);
   constexpr std::uint8_t BouncebackFlag = std::uint8_t(4);
+  constexpr std::uint8_t InletFlag = std::uint8_t(8);
+  constexpr std::uint8_t OutletFlag = std::uint8_t(16);
   constexpr std::uint8_t FI_Flag = CA::CAType::Fluid | CA::CAType::Interface;
 
   Printer::Print_BigBanner(std::string("Initializing..."));
@@ -197,6 +199,8 @@ int main() {
   // ------------------ define geometry ------------------
   AABB<T, 2> cavity(Vector<T, 2>(T(0), T(0)),
                     Vector<T, 2>(T(Ni * Cell_Len), T(Nj * Cell_Len)));
+  AABB<T, 2> left(Vector<T, 2>{}, Vector<T, 2>(Cell_Len, T(Nj - 1) * Cell_Len));
+  AABB<T, 2> right(Vector<T, 2>(T(Ni - 1) * Cell_Len, Cell_Len), Vector<T, 2>(T(Ni * Cell_Len), T(Nj - 1) * Cell_Len));
   // NS geometry
   BlockGeometry2D<T> Geo(Ni, Nj, Thread_Num, cavity, Cell_Len);
 
@@ -205,6 +209,12 @@ int main() {
   FlagFM.forEach(cavity,
                  [&](auto& field, std::size_t id) { field.SetField(id, AABBFlag); });
   FlagFM.template SetupBoundary<LatSet0>(cavity, BouncebackFlag);
+  FlagFM.forEach(left, [&](FLAG& field, std::size_t id) {
+    if (util::isFlag(field.get(id), BouncebackFlag)) field.SetField(id, InletFlag);
+  });
+  FlagFM.forEach(right, [&](FLAG& field, std::size_t id) {
+    if (util::isFlag(field.get(id), BouncebackFlag)) field.SetField(id, OutletFlag);
+  });
 
   vtmo::ScalarWriter FlagWriter("flag", FlagFM);
   vtmo::vtmWriter<T, 2> GeoWriter("GeoFlag", Geo, 1);
@@ -216,6 +226,10 @@ int main() {
   ValuePack NSInitValues(BaseConv.getLatRhoInit(), U_Ini, T{}, T{});
   using NSCELL = Cell<T, LatSet0, NSFIELDS>;
   BlockLatticeManager<T, LatSet0, NSFIELDS> NSLattice(Geo, NSInitValues, BaseConv);
+  Vector<T, 2> LatU_Wall = BaseConv.getLatticeU(U_Wall);
+  NSLattice.getField<VELOCITY<T, 2>>().forEach(
+    FlagFM, InletFlag,
+    [&](auto& field, std::size_t id) { field.SetField(id, LatU_Wall); });
 
   using CONCFIELDS = TypePack<CONC<T>, POP<T, LatSet1::q>, RHOINIT<T>, GBETA<T>>;
   using CONCFIELDREFS = TypePack<VELOCITY<T, 2>, CA::EXCESSC<T>>;
@@ -256,6 +270,15 @@ int main() {
                             BlockLatticeManager<T, LatSet0, NSFIELDS>,
                             BlockFieldManager<FLAG, T, 2>>
     NS_BB("NS_BB", NSLattice, FlagFM, BouncebackFlag, VoidFlag);
+  
+  BBLikeFixedBlockBdManager<bounceback::movingwall<NSCELL>,
+                            BlockLatticeManager<T, LatSet0, NSFIELDS>,
+                            BlockFieldManager<FLAG, T, 2>>
+    NS_Inlet("NS_BBMW", NSLattice, FlagFM, InletFlag, VoidFlag);
+  BBLikeFixedBlockBdManager<bounceback::anti_pressure<NSCELL>,
+                            BlockLatticeManager<T, LatSet0, NSFIELDS>,
+                            BlockFieldManager<FLAG, T, 2>>
+    NS_Outlet("NS_BBMW", NSLattice, FlagFM, OutletFlag, VoidFlag);
 
   BBLikeMovingBlockBdManager<bounceback::normal<NSCELL>,
                              BlockLatticeManager<T, LatSet0, NSFIELDS>,
@@ -267,6 +290,10 @@ int main() {
                             BlockLatticeManager<T, LatSet1, CONCFIELDPACK>,
                             BlockFieldManager<FLAG, T, 2>>
     SO_BB("SO_BB", SOLattice, FlagFM, BouncebackFlag, VoidFlag);
+  BBLikeFixedBlockBdManager<bounceback::anti_O2<CONCCELL>,
+                            BlockLatticeManager<T, LatSet1, CONCFIELDPACK>,
+                            BlockFieldManager<FLAG, T, 2>>
+    SO_IOBB("SO_ABB", SOLattice, FlagFM, InletFlag | OutletFlag, VoidFlag);
 
   BBLikeMovingBlockBdManager<bounceback::normal<CONCCELL>,
                              BlockLatticeManager<T, LatSet1, CONCFIELDPACK>,
@@ -318,6 +345,42 @@ int main() {
   Timer OutputTimer;
 
   Printer::Print_BigBanner(std::string("Start Calculation..."));
+
+  // T res{1};
+  // T tol = T(1e-5);
+  // using RhoUTask = tmp::Key_TypePair<AABBFlag|OutletFlag, moment::rhou<NSCELL>>;
+  // using RhoUTaskSelector = TaskSelector<std::uint8_t, NSCELL, RhoUTask>;
+  // using collisionTask = collision::BGK_Feq<equilibrium::SecondOrder<NSCELL>>;
+  // NSLattice.EnableToleranceU();
+
+
+  // while (MainLoopTimer() < MaxStep && res > tol) {
+
+  //   NSLattice.ApplyCellDynamics<RhoUTaskSelector>(MainLoopTimer(), FlagFM);
+  //   NSLattice.ApplyCellDynamics<collisionTask>(MainLoopTimer());
+
+  //   NSLattice.Stream(MainLoopTimer());
+
+  //   NS_BB.Apply(MainLoopTimer());
+  //   NS_Inlet.Apply(MainLoopTimer());
+  //   NS_Outlet.Apply(MainLoopTimer());
+
+  //   NSLattice.Communicate(MainLoopTimer());
+
+  //   ++MainLoopTimer;
+  //   ++OutputTimer;
+
+  //   if (MainLoopTimer() % OutputStep == 0) {
+  //     res = NSLattice.getToleranceU(-1);
+  //     OutputTimer.Print_InnerLoopPerformance(Geo.getTotalCellNum(), OutputStep);
+  //     Printer::Print_Res<T>(res);
+  //     Printer::Endl();
+  //   }
+  // }
+
+  // MainLoopTimer.reset();
+  // OutputTimer.reset();
+
   MainWriter.WriteBinary(MainLoopTimer());
 
   while (MainLoopTimer() < MaxStep) {
@@ -335,6 +398,8 @@ int main() {
     NSLattice.Stream(MainLoopTimer());
     NS_BB.Apply(MainLoopTimer());
     NS_MBB.Apply(MainLoopTimer());
+    NS_Inlet.Apply(MainLoopTimer());
+    NS_Outlet.Apply(MainLoopTimer());
     NSLattice.Communicate(MainLoopTimer());
 
     // SO task
@@ -343,6 +408,7 @@ int main() {
     SOLattice.Stream(MainLoopTimer());
     SO_BB.Apply(MainLoopTimer());
     SO_MBB.Apply(MainLoopTimer());
+    SO_IOBB.Apply(MainLoopTimer());
     SOLattice.Communicate(MainLoopTimer());
 
     CA.Apply_SimpleCapture();

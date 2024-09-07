@@ -80,6 +80,13 @@ struct SecondOrder<CELL<T, D2Q9<T> ,TypePack>> {
 		feq[7] = latset::w<LatSet>(7) * rho * (_InvCs2_u2_ + InvCs2u0m1 + InvCs4_u0m1_2);
 		feq[8] = latset::w<LatSet>(8) * rho * (_InvCs2_u2_ - InvCs2u0m1 + InvCs4_u0m1_2);
   }
+
+	using GenericRho = typename CELLTYPE::GenericRho;
+	__any__ static void apply(std::array<T, LatSet::q> &feq, const CELLTYPE &cell) {
+    const T rho = cell.template get<GenericRho>();
+    const Vector<T, LatSet::d> &u = cell.template get<VELOCITY<T, LatSet::d>>();
+		apply(feq, rho, u);
+	}
 };
 
 template <typename T, typename TypePack>
@@ -156,6 +163,13 @@ struct SecondOrder<CELL<T, D3Q19<T> ,TypePack>> {
 		feq[17] = latset::w<LatSet>(17) * rho * (_InvCs2_u2_ + InvCs2u1m2 + InvCs4_u1_2_2);
 		feq[18] = latset::w<LatSet>(18) * rho * (_InvCs2_u2_ - InvCs2u1m2 + InvCs4_u1_2_2);
   }
+
+	using GenericRho = typename CELLTYPE::GenericRho;
+	__any__ static void apply(std::array<T, LatSet::q> &feq, const CELLTYPE &cell) {
+    const T rho = cell.template get<GenericRho>();
+    const Vector<T, LatSet::d> &u = cell.template get<VELOCITY<T, LatSet::d>>();
+		apply(feq, rho, u);
+	}
 };
 
 }  // namespace equilibrium
