@@ -233,9 +233,9 @@ using CONSTFORCE = Data<Vector<T, D>, CONSTFORCEBase>;
 template <typename T>
 using SCALARCONSTFORCE = Data<T, SCALARCONSTFORCEBase>;
 template <typename T, unsigned int q>
-// using POP = GenericField<StreamMapArray<T>, POPBase<q>>;
+using POP = GenericField<StreamMapArray<T>, POPBase<q>>;
 // using POP = GenericField<StreamArray<T>, POPBase<q>>;
-using POP = GenericField<CyclicArray<T>, POPBase<q>>;
+// using POP = GenericField<CyclicArray<T>, POPBase<q>>;
 template <typename T>
 using RHOINIT = Data<T, RHOINITBase>;
 template <typename T>
@@ -329,10 +329,17 @@ using CONSTFORCE = Data<Vector<T, D>, CONSTFORCEBase>;
 template <typename T>
 using SCALARCONSTFORCE = Data<T, SCALARCONSTFORCEBase>;
 
+#ifdef __CUDACC__
 template <typename T, unsigned int q>
-// using POP = GenericField<StreamMapArray<T>, POPBase<q>>;
+using POP = GenericField<StreamMapArray<T>, POPBase<q>>;
 // using POP = GenericField<StreamArray<T>, POPBase<q>>;
+// using POP = GenericField<CyclicArray<T>, POPBase<q>>;
+
+#else
+template <typename T, unsigned int q>
 using POP = GenericField<CyclicArray<T>, POPBase<q>>;
+
+#endif
 
 template <typename T>
 using RHOINIT = Data<T, RHOINITBase>;
