@@ -24,4 +24,5 @@
 #include "lbm/force.h"
 #include "lbm/equilibrium.ur.h"
 #include "lbm/collision.ur.h"
+#include "lbm/collisionLES.h"
 #include "lbm/powerlaw.h"

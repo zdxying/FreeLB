@@ -125,7 +125,7 @@ struct rhou<CELL<T, D3Q19<T> ,TypePack>, WriteToField> {
     rho_value = cell[0] + cell[1] + cell[2] + cell[3] + cell[4] + cell[5] + cell[6] + cell[7] + cell[8] + cell[9] + cell[10] + cell[11] + cell[12] + cell[13] + cell[14] + cell[15] + cell[16] + cell[17] + cell[18];
     u_value[0] = (cell[1] - cell[2] + cell[7] - cell[8] + cell[9] - cell[10] + cell[13] - cell[14] + cell[15] - cell[16]) / rho_value;
 		u_value[1] = (cell[3] - cell[4] + cell[7] - cell[8] + cell[11] - cell[12] - cell[13] + cell[14] + cell[17] - cell[18]) / rho_value;
-		u_value[1] = (cell[5] - cell[6] + cell[9] - cell[10] + cell[11] - cell[12] - cell[15] + cell[16] - cell[17] + cell[18]) / rho_value;
+		u_value[2] = (cell[5] - cell[6] + cell[9] - cell[10] + cell[11] - cell[12] - cell[15] + cell[16] - cell[17] + cell[18]) / rho_value;
     if constexpr (WriteToField) {
       cell.template get<GenericRho>() = rho_value;
       cell.template get<VELOCITY<T, 3>>() = u_value;
@@ -138,7 +138,7 @@ struct rhou<CELL<T, D3Q19<T> ,TypePack>, WriteToField> {
 		rho_value = cell[0] + cell[1] + cell[2] + cell[3] + cell[4] + cell[5] + cell[6] + cell[7] + cell[8] + cell[9] + cell[10] + cell[11] + cell[12] + cell[13] + cell[14] + cell[15] + cell[16] + cell[17] + cell[18];
     u_value[0] = (cell[1] - cell[2] + cell[7] - cell[8] + cell[9] - cell[10] + cell[13] - cell[14] + cell[15] - cell[16]) / rho_value;
 		u_value[1] = (cell[3] - cell[4] + cell[7] - cell[8] + cell[11] - cell[12] - cell[13] + cell[14] + cell[17] - cell[18]) / rho_value;
-		u_value[1] = (cell[5] - cell[6] + cell[9] - cell[10] + cell[11] - cell[12] - cell[15] + cell[16] - cell[17] + cell[18]) / rho_value;
+		u_value[2] = (cell[5] - cell[6] + cell[9] - cell[10] + cell[11] - cell[12] - cell[15] + cell[16] - cell[17] + cell[18]) / rho_value;
   }
 };
 

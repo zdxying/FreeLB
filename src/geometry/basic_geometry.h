@@ -725,7 +725,7 @@ T ComputeStdDev(const std::vector<BasicBlock<T, D>> &Blocks) {
 }
 
 using CellTagType = std::uint8_t;
-enum BlockCellTag : CellTagType { none = 1, refine = 2, coarsen = 4, solid = 8 };
+enum BlockCellTag : CellTagType { none = 1, refine = 2, coarsen = 4, inside = 8 };
 
 
 class MpiManager;

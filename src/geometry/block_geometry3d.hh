@@ -175,15 +175,15 @@ BlockGeometry3D<T>::BlockGeometry3D(const StlReader<T>& reader, int blocknum)
     : BasicBlock<T, 3>(reader.getVoxelSize(), 
         AABB<T, 3>(reader.getMesh().getMin() - reader.getVoxelSize(), reader.getMesh().getMax() + reader.getVoxelSize()),
         AABB<int, 3>(Vector<int, 3>{0}, 
-                     Vector<int, 3>{int(reader.getMesh().getMax_Min()[0] / reader.getStlSize()) + 2, 
-                                    int(reader.getMesh().getMax_Min()[1] / reader.getStlSize()) + 2,
-                                    int(reader.getMesh().getMax_Min()[1] / reader.getStlSize()) + 2})),
+                     Vector<int, 3>{int(std::ceil(reader.getMesh().getMax_Min()[0] / reader.getVoxelSize())) + 1, 
+                                    int(std::ceil(reader.getMesh().getMax_Min()[1] / reader.getVoxelSize())) + 1,
+                                    int(std::ceil(reader.getMesh().getMax_Min()[2] / reader.getVoxelSize())) + 1})),
       _BaseBlock(reader.getVoxelSize(), 
         AABB<T, 3>(reader.getMesh().getMin(), reader.getMesh().getMax()),
         AABB<int, 3>(Vector<int, 3>{1}, 
-                     Vector<int, 3>{int(reader.getMesh().getMax_Min()[0] / reader.getStlSize()), 
-                                    int(reader.getMesh().getMax_Min()[1] / reader.getStlSize()),
-                                    int(reader.getMesh().getMax_Min()[1] / reader.getStlSize())})), 
+                     Vector<int, 3>{int(std::ceil(reader.getMesh().getMax_Min()[0] / reader.getVoxelSize())), 
+                                    int(std::ceil(reader.getMesh().getMax_Min()[1] / reader.getVoxelSize())),
+                                    int(std::ceil(reader.getMesh().getMax_Min()[2] / reader.getVoxelSize()))})), 
       _overlap(1), _MaxLevel(std::uint8_t(0)) {
   CreateBlocks(blocknum);
   SetupNbrs();
@@ -399,7 +399,7 @@ void BlockGeometry3D<T>::InitIntpComm() {
         Vector<T, 3> startF = intsec.getMin() - block.getMin();
         int startFx = static_cast<int>(std::round(startF[0] / Fvoxsize));
         int startFy = static_cast<int>(std::round(startF[1] / Fvoxsize));
-        // int startFz = static_cast<int>(std::round(startF[2] / Fvoxsize));
+        int startFz = static_cast<int>(std::round(startF[2] / Fvoxsize));
 
         std::size_t nXY = nblock->getNx() * nblock->getNy();
         for (int iz = 0; iz < CNz; ++iz) {
@@ -415,7 +415,7 @@ void BlockGeometry3D<T>::InitIntpComm() {
               std::size_t Cid5 = Cid4 + 1;
               std::size_t Cid6 = Cid4 + nblock->getNx();
               std::size_t Cid7 = Cid6 + 1;
-              std::size_t Fid = (iy * 2 + startFy) * block.getNx() + ix * 2 + startFx;
+              std::size_t Fid = (iz * 2 + startFz) * XY + (iy * 2 + startFy) * block.getNx() + ix * 2 + startFx;
 
               // shift 1 voxel along +x direction
               std::size_t Cid0_x = Cid0 + 1;
@@ -910,9 +910,9 @@ BlockGeometryHelper3D<T>::BlockGeometryHelper3D(int Nx, int Ny, int Nz,
   if (BlockCellLen < 4) {
     std::cerr << "BlockGeometryHelper3D<T>, BlockCellLen < 4" << std::endl;
   }
-  CellsNx = _BaseBlock.getNx() / BlockCellLen;
-  CellsNy = _BaseBlock.getNy() / BlockCellLen;
-  CellsNz = _BaseBlock.getNz() / BlockCellLen;
+  CellsNx = std::ceil(T(_BaseBlock.getNx()) / T(BlockCellLen));
+  CellsNy = std::ceil(T(_BaseBlock.getNy()) / T(BlockCellLen));
+  CellsNz = std::ceil(T(_BaseBlock.getNz()) / T(BlockCellLen));
   CellsN = CellsNx * CellsNy * CellsNz;
 
   Vector<int, 3> Projection{1, CellsNx, CellsNx * CellsNy};
@@ -921,6 +921,62 @@ BlockGeometryHelper3D<T>::BlockGeometryHelper3D(int Nx, int Ny, int Nz,
     [&](int i) { return D3Q27<T>::c[i + 1] * Projection; });
 
   CreateBlockCells();
+}
+
+template <typename T>
+BlockGeometryHelper3D<T>::BlockGeometryHelper3D(const StlReader<T>& reader, int blockcelllen, std::uint8_t llimit, int ext)
+    : BasicBlock<T, 3>(reader.getVoxelSize(), 
+    AABB<T, 3>(reader.getMesh().getMin() - reader.getVoxelSize(), reader.getMesh().getMax() + reader.getVoxelSize()),
+    AABB<int, 3>(Vector<int, 3>{0}, 
+                 Vector<int, 3>{int(std::ceil(reader.getMesh().getMax_Min()[0] / reader.getVoxelSize())) + 1, 
+                                int(std::ceil(reader.getMesh().getMax_Min()[1] / reader.getVoxelSize())) + 1,
+                                int(std::ceil(reader.getMesh().getMax_Min()[2] / reader.getVoxelSize())) + 1})),
+    _BaseBlock(reader.getVoxelSize(), 
+      AABB<T, 3>(reader.getMesh().getMin(), reader.getMesh().getMax()),
+      AABB<int, 3>(Vector<int, 3>{1}, 
+                    Vector<int, 3>{int(std::ceil(reader.getMesh().getMax_Min()[0] / reader.getVoxelSize())), 
+                                  int(std::ceil(reader.getMesh().getMax_Min()[1] / reader.getVoxelSize())),
+                                  int(std::ceil(reader.getMesh().getMax_Min()[2] / reader.getVoxelSize()))})),
+      BlockCellLen(blockcelllen), Ext(ext), _LevelLimit(llimit), _MaxLevel(std::uint8_t(0)), 
+      _Exchanged(true), _IndexExchanged(true) {
+  if (BlockCellLen < 4) {
+    std::cerr << "BlockGeometryHelper3D<T>, BlockCellLen < 4" << std::endl;
+  }
+  CellsNx = std::ceil(T(_BaseBlock.getNx()) / T(BlockCellLen));
+  CellsNy = std::ceil(T(_BaseBlock.getNy()) / T(BlockCellLen));
+  CellsNz = std::ceil(T(_BaseBlock.getNz()) / T(BlockCellLen));
+  CellsN = CellsNx * CellsNy * CellsNz;
+
+  // correct the mesh size by CellsNx, CellsNy, CellsNz
+  int NewNx = CellsNx * BlockCellLen;
+  int NewNy = CellsNy * BlockCellLen;
+  int NewNz = CellsNz * BlockCellLen;
+  T MeshSizeX = T(NewNx) * _BaseBlock.getVoxelSize();
+  T MeshSizeY = T(NewNy) * _BaseBlock.getVoxelSize();
+  T MeshSizeZ = T(NewNz) * _BaseBlock.getVoxelSize();
+
+  static_cast<BasicBlock<T, 3>&>(*this) = BasicBlock<T, 3>(
+    reader.getVoxelSize(), 
+    AABB<T, 3>(reader.getMesh().getMin() - reader.getVoxelSize(), 
+               reader.getMesh().getMin() + Vector<T, 3>{MeshSizeX, MeshSizeY, MeshSizeZ} + reader.getVoxelSize()),
+    AABB<int, 3>(Vector<int, 3>{0}, 
+                 Vector<int, 3>{NewNx + 1, NewNy + 1, NewNz + 1}));
+  _BaseBlock = BasicBlock<T, 3>(
+    reader.getVoxelSize(), 
+    AABB<T, 3>(reader.getMesh().getMin(), 
+               reader.getMesh().getMin() + Vector<T, 3>{MeshSizeX, MeshSizeY, MeshSizeZ}),
+    AABB<int, 3>(Vector<int, 3>{1}, 
+                 Vector<int, 3>{NewNx, NewNy, NewNz}));
+
+  // end correct
+
+  Vector<int, 3> Projection{1, CellsNx, CellsNx * CellsNy};
+
+  Delta_Cellidx = make_Array<int, D3Q27<T>::q - 1>(
+    [&](int i) { return D3Q27<T>::c[i + 1] * Projection; });
+
+  CreateBlockCells();
+  TagBlockCells(reader);
 }
 
 template <typename T>
@@ -946,6 +1002,37 @@ void BlockGeometryHelper3D<T>::CreateBlockCells() {
 }
 
 template <typename T>
+void BlockGeometryHelper3D<T>::TagBlockCells(const StlReader<T>& reader) {
+  Octree<T>* tree = reader.getTree();
+  std::size_t i{};
+  for (const BasicBlock<T, 3> &blockcell : _BlockCells) {
+    if (IsInside(tree, blockcell)) _BlockCellTags[i] = BlockCellTag::inside;
+    ++i;
+  }
+}
+
+template <typename T>
+bool BlockGeometryHelper3D<T>::IsInside(Octree<T>* tree, const BasicBlock<T, 3> &blockcell) {
+  for (int z = 0; z < blockcell.getNz(); ++z) {
+    for (int y = 0; y < blockcell.getNy(); ++y) {
+      for (int x = 0; x < blockcell.getNx(); ++x) {
+        const Vector<int, 3> locidx{x, y, z};
+        const Vector<T, 3> vox = blockcell.getVoxel(locidx);
+        // get the node containing the voxel
+        Octree<T>* node = tree->find(vox);
+        if (node != nullptr) {
+          // check if it is a [leaf] node and if it is [inside]
+          if (node->isLeaf() && node->getInside()) {
+            return true;
+          }
+        }
+      }
+    }
+  }
+  return false;
+}
+
+template <typename T>
 void BlockGeometryHelper3D<T>::UpdateMaxLevel() {
   _MaxLevel = std::uint8_t(0);
   for (const BasicBlock<T, 3> &block : _BlockCells) {
@@ -954,7 +1041,7 @@ void BlockGeometryHelper3D<T>::UpdateMaxLevel() {
 }
 
 template <typename T>
-void BlockGeometryHelper3D<T>::CreateBlocks() {
+void BlockGeometryHelper3D<T>::CreateBlocks(bool CreateFromInsideTag) {
   // create new blocks on relatively older blocks
   std::vector<BasicBlock<T, 3>> &BasicBlocks = getAllOldBasicBlocks();
   BasicBlocks.clear();
@@ -975,6 +1062,9 @@ void BlockGeometryHelper3D<T>::CreateBlocks() {
     for (int j = 0; j < CellsNy; ++j) {
       for (int i = 0; i < CellsNx; ++i) {
         std::size_t id = i + j * CellsNx + k * XY;
+        if (CreateFromInsideTag && !util::isFlag(_BlockCellTags[id], BlockCellTag::inside)) {
+          continue;
+        }
         if (visited[id]) {
           continue;
         }
@@ -990,6 +1080,9 @@ void BlockGeometryHelper3D<T>::CreateBlocks() {
           if (_BlockCells[tempid].getLevel() != level || visited[tempid]) {
             break;
           }
+          if (CreateFromInsideTag && !util::isFlag(_BlockCellTags[tempid], BlockCellTag::inside)) {
+            break;
+          }
           NewMesh[0] += _BlockCells[tempid].getNx();
           ++Nx;
         }
@@ -1001,6 +1094,9 @@ void BlockGeometryHelper3D<T>::CreateBlocks() {
           for (int iNx = 0; iNx < Nx; ++iNx) {
             std::size_t tempid = startid + iNx;
             if (_BlockCells[tempid].getLevel() != level || visited[tempid]) {
+              goto end_y_expansion;
+            }
+            if (CreateFromInsideTag && !util::isFlag(_BlockCellTags[tempid], BlockCellTag::inside)) {
               goto end_y_expansion;
             }
           }
@@ -1016,6 +1112,9 @@ void BlockGeometryHelper3D<T>::CreateBlocks() {
             for (int iNx = 0; iNx < Nx; ++iNx) {
               std::size_t tempid = startid + iNx;
               if (_BlockCells[tempid].getLevel() != level || visited[tempid]) {
+                goto end_z_expansion;
+              }
+              if (CreateFromInsideTag && !util::isFlag(_BlockCellTags[tempid], BlockCellTag::inside)) {
                 goto end_z_expansion;
               }
             }

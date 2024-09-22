@@ -117,7 +117,7 @@ struct SecondOrder<CELL<T, D3Q19<T> ,TypePack>> {
 		const T u1_2 = u1 * u1;
 		const T u2_2 = u2 * u2;
 
-		const T _InvCs2_u2_ = T{1} - LatSet::InvCs2 * (u0_2 + u1_2) * T{0.5};
+		const T _InvCs2_u2_ = T{1} - LatSet::InvCs2 * (u0_2 + u1_2 + u2_2) * T{0.5};
 
 		const T InvCs2u0 = LatSet::InvCs2 * u0;
 		const T InvCs2u1 = LatSet::InvCs2 * u1;

@@ -209,6 +209,8 @@ struct GBETABase : public FieldBase<1> {};
 template <unsigned int q>
 struct POPBase : public FieldBase<q> {};
 
+struct SMAGORINSKYBase : public FieldBase<1> {};
+
 
 namespace cudev {
 
@@ -356,6 +358,9 @@ using CONSTRHO = Data<T, CONSTRHOBase>;
 
 template <typename T, unsigned int D>
 using CONSTU = Data<Vector<T, D>, CONSTUBase>;
+
+template <typename T>
+using SMAGORINSKY = Data<T, SMAGORINSKYBase>;
 
 // #endif
 // ---------block field alias-----------

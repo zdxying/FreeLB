@@ -236,6 +236,8 @@ class BlockGeometryHelper3D : public BasicBlock<T, 3> {
   BlockGeometryHelper3D(int Nx, int Ny, int Nz, const AABB<T, 3>& AABBs, T voxelSize = T(1),
                         int blockcelllen = 10, std::uint8_t llimit = std::uint8_t(2),
                         int ext = 1);
+  BlockGeometryHelper3D(const StlReader<T>& reader, int blockcelllen = 10, 
+                        std::uint8_t llimit = std::uint8_t(2), int ext = 1);
   ~BlockGeometryHelper3D() = default;
 
   // get
@@ -336,8 +338,10 @@ class BlockGeometryHelper3D : public BasicBlock<T, 3> {
 #endif
 
   void CreateBlockCells();
+  void TagBlockCells(const StlReader<T>& reader);
+  bool IsInside(Octree<T>* tree, const BasicBlock<T, 3> &aabbcell); 
   // create block from BlockCells, this should be called after refinement
-  void CreateBlocks();
+  void CreateBlocks(bool CreateFromInsideTag = false);
   // create block using normal divide method, like CreateBlocks() in BlockGeometry3D
   void CreateBlocks(int blocknum);
   // tag neighbor refine cells

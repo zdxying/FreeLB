@@ -454,20 +454,82 @@ struct forceRhou {
   }
 };
 
-// strain rate tensor/ rate of deformation matrix
+// second moment of non-equilibrium part of the distribution function
 template <typename CELLTYPE>
-struct strainRate {
+struct Pi_ab_neq {
   using CELL = CELLTYPE;
   using T = typename CELL::FloatType;
   using LatSet = typename CELL::LatticeSet;
-  // S_ab = (-3/(2*tau))*SUM_i(f_i^(1)*c_ia*c_ib)
   // f_i^(1) = f_i - f_i^eq
+  // PI_ab^neq = SUM_i((f_i - f_i^eq)*c_ia*c_ib)
   // PI_ab^eq = SUM_i(f_i^eq*c_ia*c_ib) = rho*U_a*U_b + rho*Cs^2*delta_ab
   __any__ static inline void get(CELL& cell,
                          std::array<T, util::SymmetricMatrixSize<LatSet::d>()>& tensor,
                          const T rho, const Vector<T, LatSet::d>& u) {
     unsigned int i{};
-    const T coeff = T{-1.5} * cell.getOmega();
+    for (unsigned int alpha = 0; alpha < LatSet::d; ++alpha) {
+      for (unsigned int beta = alpha; beta < LatSet::d; ++beta) {
+        T value{};
+        for (unsigned int k = 0; k < LatSet::q; ++k) {
+          value += latset::c<LatSet>(k)[alpha] * latset::c<LatSet>(k)[beta] * cell[k];
+        }
+        // remove the equilibrium part: PI_ab^eq
+        value -= rho * u[alpha] * u[beta];
+        if (alpha == beta) value -= rho * LatSet::cs2;
+        tensor[i] = value;
+        ++i;
+      }
+    }
+  }
+};
+
+// second moment of non-equilibrium part of the distribution function with force
+template <typename CELLTYPE>
+struct forcePi_ab_neq {
+  using CELL = CELLTYPE;
+  using T = typename CELL::FloatType;
+  using LatSet = typename CELL::LatticeSet;
+  // f_i^(1) = f_i - f_i^eq
+  // PI_ab^neq = SUM_i((f_i - f_i^eq)*c_ia*c_ib)
+  // PI_ab^eq = SUM_i(f_i^eq*c_ia*c_ib) = rho*U_a*U_b + rho*Cs^2*delta_ab
+  __any__ static inline void get(CELL& cell,
+                         std::array<T, util::SymmetricMatrixSize<LatSet::d>()>& tensor,
+                         const T rho, const Vector<T, LatSet::d>& u, const Vector<T, LatSet::d>& f_alpha) {
+    unsigned int i{};
+    // remove force term in u
+    Vector<T, LatSet::d> unew = u - f_alpha * (T{0.5} / rho);
+
+    for (unsigned int alpha = 0; alpha < LatSet::d; ++alpha) {
+      for (unsigned int beta = alpha; beta < LatSet::d; ++beta) {
+        T value{};
+        T force = T{0.5} * (f_alpha[alpha] * unew[beta] + f_alpha[beta] * unew[alpha]);
+        for (unsigned int k = 0; k < LatSet::q; ++k) {
+          value += latset::c<LatSet>(k)[alpha] * latset::c<LatSet>(k)[beta] * cell[k];
+        }
+        // remove the equilibrium part: PI_ab^eq
+        value -= rho * unew[alpha] * unew[beta];
+        if (alpha == beta) value -= rho * LatSet::cs2;
+        tensor[i] = value + force;
+        ++i;
+      }
+    }
+  }
+};
+
+// stress tensor
+template <typename CELLTYPE>
+struct Stress {
+  using CELL = CELLTYPE;
+  using T = typename CELL::FloatType;
+  using LatSet = typename CELL::LatticeSet;
+  // sigma_ab = -(1 - 1/(2*tau))*SUM_i(f_i^(1)*c_ia*c_ib)
+  // f_i^(1) = f_i - f_i^eq
+  // PI_ab^eq = SUM_i(f_i^eq*c_ia*c_ib) = rho*U_a*U_b + rho*Cs^2*delta_ab
+  __any__ static inline void get(CELL& cell,
+                         std::array<T, util::SymmetricMatrixSize<LatSet::d>()>& stress_tensor,
+                         const T rho, const Vector<T, LatSet::d>& u) {
+    unsigned int i{};
+    const T coeff = T{0.5} * cell.getOmega() - T{1};
     for (unsigned int alpha = 0; alpha < LatSet::d; ++alpha) {
       for (unsigned int beta = alpha; beta < LatSet::d; ++beta) {
         T value{};
@@ -479,7 +541,39 @@ struct strainRate {
         if (alpha == beta) value -= rho * LatSet::cs2;
         // multiply by the coefficient
         value *= coeff;
-        tensor[i] = value;
+        stress_tensor[i] = value;
+        ++i;
+      }
+    }
+  }
+};
+
+// strain rate tensor/ rate of deformation matrix
+template <typename CELLTYPE>
+struct strainRate {
+  using CELL = CELLTYPE;
+  using T = typename CELL::FloatType;
+  using LatSet = typename CELL::LatticeSet;
+  // S_ab = (1/rho)(-3/(2*tau))*SUM_i(f_i^(1)*c_ia*c_ib)
+  // f_i^(1) = f_i - f_i^eq
+  // PI_ab^eq = SUM_i(f_i^eq*c_ia*c_ib) = rho*U_a*U_b + rho*Cs^2*delta_ab
+  __any__ static inline void get(CELL& cell,
+                         std::array<T, util::SymmetricMatrixSize<LatSet::d>()>& strain_rate_tensor,
+                         const T rho, const Vector<T, LatSet::d>& u) {
+    unsigned int i{};
+    const T coeff = T{-1.5} * cell.getOmega() / cell.template get<CELL::GenericRho>();
+    for (unsigned int alpha = 0; alpha < LatSet::d; ++alpha) {
+      for (unsigned int beta = alpha; beta < LatSet::d; ++beta) {
+        T value{};
+        for (unsigned int k = 0; k < LatSet::q; ++k) {
+          value += latset::c<LatSet>(k)[alpha] * latset::c<LatSet>(k)[beta] * cell[k];
+        }
+        // remove the equilibrium part: PI_ab^eq
+        value -= rho * u[alpha] * u[beta];
+        if (alpha == beta) value -= rho * LatSet::cs2;
+        // multiply by the coefficient
+        value *= coeff;
+        strain_rate_tensor[i] = value;
         ++i;
       }
     }
@@ -493,12 +587,12 @@ struct shearRateMag {
   using T = typename CELL::FloatType;
   using LatSet = typename CELL::LatticeSet;
   // \dot{gamma} = sqrt(2*trace(S^2)) = sqrt(2*SUM_{a,b}S_ab^2)
-  __any__ static inline T get(const std::array<T, util::SymmetricMatrixSize<LatSet::d>()>& tensor) {
+  __any__ static inline T get(const std::array<T, util::SymmetricMatrixSize<LatSet::d>()>& strain_rate_tensor) {
     T value{};
     unsigned int i{};
     for (unsigned int alpha = 0; alpha < LatSet::d; ++alpha) {
       for (unsigned int beta = alpha; beta < LatSet::d; ++beta) {
-        T sq = tensor[i] * tensor[i];
+        T sq = strain_rate_tensor[i] * strain_rate_tensor[i];
         if (alpha != beta) sq *= T{2};
         value += sq;
         ++i;

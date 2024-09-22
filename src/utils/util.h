@@ -389,6 +389,26 @@ constexpr unsigned int SymmetricMatrixSize() {
   return N * (N + 1) / 2;
 }
 
+// get norm square of a tensor
+template <typename T, unsigned int N>
+T NormSquare(const std::array<T, SymmetricMatrixSize<N>()> &tensor) {
+  T normsquare{};
+  if constexpr (N == 2) {
+    normsquare = tensor[0] * tensor[0] 
+               + tensor[1] * tensor[1] * T{2}
+               + tensor[2] * tensor[2];
+  } else if constexpr (N == 3) {
+    normsquare = tensor[0] * tensor[0] 
+               + tensor[1] * tensor[1] * T{2}
+               + tensor[2] * tensor[2] * T{2}
+               + tensor[3] * tensor[3] 
+               + tensor[4] * tensor[4] * T{2}
+               + tensor[5] * tensor[5];
+  }
+  return normsquare;
+}
+
+
 // copy data from field
 template <typename ArrayType, unsigned int Dim>
 void CopyFromFieldArray(const Vector<int, Dim> &Mesh, int Overlap, const ArrayType &Array,
