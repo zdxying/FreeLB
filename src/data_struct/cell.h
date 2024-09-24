@@ -25,7 +25,8 @@
 #include <array>
 #include <cstdint>
 
-#include "data_struct/field_struct.h"
+// #include "data_struct/field_struct.h"
+#include "data_struct/field_statistics.h"
 #include "lbm/equilibrium.h"
 
 

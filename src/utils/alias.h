@@ -210,6 +210,7 @@ template <unsigned int q>
 struct POPBase : public FieldBase<q> {};
 
 struct SMAGORINSKYBase : public FieldBase<1> {};
+struct OMEGABase : public FieldBase<1> {};
 
 
 namespace cudev {
@@ -361,6 +362,9 @@ using CONSTU = Data<Vector<T, D>, CONSTUBase>;
 
 template <typename T>
 using SMAGORINSKY = Data<T, SMAGORINSKYBase>;
+
+template <typename T>
+using OMEGA = GenericField<GenericArray<T>, OMEGABase>;
 
 // #endif
 // ---------block field alias-----------

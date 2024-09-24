@@ -196,7 +196,7 @@ struct BaseConverter final : public AbstractConverter<T> {
     Lattice_charL = charL / Conv_L;
     Lattice_VisKine = VisKine / Conv_VisKine;
     Lattice_Re = Lattice_charU / Lattice_VisKine;
-    Lattice_g = T(9800) / Conv_Acc;
+    Lattice_g = T(9810) / Conv_Acc;
 
     OMEGA = T(1) / Lattice_RT;
   }

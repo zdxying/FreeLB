@@ -697,6 +697,7 @@ class BlockFieldManager {
     return _Fields;
   }
 
+  std::size_t size() const { return _Fields.size(); }
   // get block field with block id
   BlockField<FieldType, FloatType, Dim>* findBlockField(int blockid) {
     for (BlockField<FieldType, FloatType, Dim>& blockF : _Fields) {

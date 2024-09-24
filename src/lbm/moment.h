@@ -395,6 +395,7 @@ struct forceRhou {
 #endif
     u_value += f_alpha * T{0.5};
     u_value /= rho_value;
+    // u_value += f_alpha * T{0.5};
     if constexpr (WriteToField) {
       cell.template get<GenericRho>() = rho_value;
       cell.template get<VELOCITY<T, LatSet::d>>() = u_value;
@@ -497,12 +498,12 @@ struct forcePi_ab_neq {
                          const T rho, const Vector<T, LatSet::d>& u, const Vector<T, LatSet::d>& f_alpha) {
     unsigned int i{};
     // remove force term in u
-    Vector<T, LatSet::d> unew = u - f_alpha * (T{0.5} / rho);
+    Vector<T, LatSet::d> unew = u - f_alpha * T{0.5}; //(T{0.5} / rho);
 
     for (unsigned int alpha = 0; alpha < LatSet::d; ++alpha) {
       for (unsigned int beta = alpha; beta < LatSet::d; ++beta) {
         T value{};
-        T force = T{0.5} * (f_alpha[alpha] * unew[beta] + f_alpha[beta] * unew[alpha]);
+        T force = T{0.5} * (f_alpha[alpha] * unew[beta] + f_alpha[beta] * unew[alpha]);  //* rho
         for (unsigned int k = 0; k < LatSet::q; ++k) {
           value += latset::c<LatSet>(k)[alpha] * latset::c<LatSet>(k)[beta] * cell[k];
         }
@@ -561,7 +562,7 @@ struct strainRate {
                          std::array<T, util::SymmetricMatrixSize<LatSet::d>()>& strain_rate_tensor,
                          const T rho, const Vector<T, LatSet::d>& u) {
     unsigned int i{};
-    const T coeff = T{-1.5} * cell.getOmega() / cell.template get<CELL::GenericRho>();
+    const T coeff = T{-1.5} * cell.getOmega() / cell.template get<typename CELL::GenericRho>();
     for (unsigned int alpha = 0; alpha < LatSet::d; ++alpha) {
       for (unsigned int beta = alpha; beta < LatSet::d; ++beta) {
         T value{};
