@@ -24,7 +24,7 @@
 #include "freelb.hh"
 
 using T = FLOAT;
-using LatSet = D3Q7<T>;
+using LatSet = D3Q27<T>;
 
 int main() {
   constexpr std::uint8_t VoidFlag = std::uint8_t(1);
@@ -37,19 +37,24 @@ int main() {
   // geometry.Setup<LatSet>();
 
   // Geometry3D
-  Geometry3D<T> geometry(reader, 1);
-  geometry.SetupBoundary<LatSet>(1,2);
+  // Geometry3D<T> geometry(reader, 1);
+  // geometry.SetupBoundary<LatSet>(1,2);
 
-  vtkWriter::FieldFlagWriter<std::uint8_t> flagwriter(
-    "flag", geometry.getGeoFlagField().getField().getdataPtr(),
-    geometry.getGeoFlagField().getField().size());
-  vtkStruPointsWriter<T, LatSet::d> writer("Geometry", geometry);
-  writer.addtoWriteList(&flagwriter);
-  writer.Write();
+  // vtkWriter::FieldFlagWriter<std::uint8_t> flagwriter(
+  //   "flag", geometry.getGeoFlagField().getField().getdataPtr(),
+  //   geometry.getGeoFlagField().getField().size());
+  // vtkStruPointsWriter<T, LatSet::d> writer("Geometry", geometry);
+  // writer.addtoWriteList(&flagwriter);
+  // writer.Write();
 
 
   // BlockGeometry3D
-  BlockGeometry3D<T> blockgeometry(reader, 2);
+  BlockGeometryHelper3D<T> GeoHelper(reader, 10);
+  GeoHelper.CreateBlocks(true);
+  GeoHelper.AdaptiveOptimization(4);
+  GeoHelper.LoadBalancing();
+  BlockGeometry3D<T> blockgeometry(GeoHelper);
+  // BlockGeometry3D<T> blockgeometry(reader, 4);
   BlockFieldManager<FlagField, T, LatSet::d> FlagFM(blockgeometry, VoidFlag);
   FlagFM.ReadOctree(reader.getTree(), AABBFlag);
   FlagFM.SetupBoundary<LatSet>(AABBFlag, VoidFlag, BdFlag);

@@ -165,7 +165,8 @@ int main() {
 
   // define task/ dynamics:
   // bulk task
-  using BulkTask = tmp::Key_TypePair<AABBFlag, collision::BGK_Feq_RhoU<equilibrium::SecondOrder<CELL>>>;
+  // using BulkTask = tmp::Key_TypePair<AABBFlag, collision::BGK_Feq_RhoU<equilibrium::SecondOrder<CELL>>>;
+  using BulkTask = tmp::Key_TypePair<AABBFlag, collision::MRT_Feq_RhoU<CELL>>;
   // wall task
   // using WallTask = tmp::Key_TypePair<BouncebackFlag | BBMovingWallFlag, collision::BGK_Feq<equilibrium::SecondOrder<CELL>>>;
   // BCs task as a collision process, if used, bcs will be handled in the collision process

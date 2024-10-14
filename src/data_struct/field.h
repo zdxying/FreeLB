@@ -832,7 +832,7 @@ class CyclicArray {
 
 // a modified version of CyclicArray
 
-#include <execution>
+// #include <execution>
 
 template <typename T>
 class StreamArray {
@@ -1136,20 +1136,20 @@ class StreamArray {
     T* const base = data;
     endoffset = endoffset == 0 ? count : endoffset;
     // parallel copy
-    if (count > 100000) {
-      std::copy(std::execution::par, base, base + endoffset, base + count);
-    } else {
+    // if (count > 100000) {
+    //   std::copy(std::execution::par, base, base + endoffset, base + count);
+    // } else {
       std::copy(base, base + endoffset, base + count);
-    }
+    // }
   }
   void copyToFront(std::ptrdiff_t startoffset = 0) {
     T* const base = data;
-    if (count > 100000) {
-      std::copy(std::execution::par, base + count + startoffset, base + 2 * count,
-                base + startoffset);
-    } else {
+    // if (count > 100000) {
+    //   std::copy(std::execution::par, base + count + startoffset, base + 2 * count,
+    //             base + startoffset);
+    // } else {
       std::copy(base + count + startoffset, base + 2 * count, base + startoffset);
-    }
+    // }
   }
 #ifdef __CUDACC__
   void dev_rotate() {

@@ -90,8 +90,26 @@ public:
 		return TotalMin;
 	}
 
+	// get number of a kind of value in a field
+	std::size_t getCount(const FieldDataType value, std::size_t fieldidx = 0) const {
+		std::size_t TotalValueCount{};
+#ifdef _OPENMP
+#pragma omp parallel for num_threads(Thread_Num) schedule(static) reduction(+ : TotalValueCount)
+#endif
+		for (const auto& blockfield : BFM.getBlockFields()) {
+			const auto& field = blockfield.getFieldType().getField(fieldidx);
+			const std::size_t size = field.size();
+			std::size_t count{};
+			for (std::size_t i = 0; i < size; ++i) {
+				if (field[i] == value) ++count;
+			}
+			TotalValueCount += count;
+		}
+		return TotalValueCount;
+	}
+
 	// get the percentage of a kind of value in a field
-	FloatType getPercentage(FieldDataType value, std::size_t fieldidx = 0) const {
+	FloatType getPercentage(const FieldDataType value, std::size_t fieldidx = 0) const {
 		std::size_t TotalCount{};
 		std::size_t TotalValueCount{};
 #ifdef _OPENMP
@@ -103,6 +121,43 @@ public:
 			std::size_t count{};
 			for (std::size_t i = 0; i < size; ++i) {
 				if (field[i] == value) ++count;
+			}
+			TotalCount += size;
+			TotalValueCount += count;
+		}
+		return static_cast<FloatType>(TotalValueCount) / TotalCount;
+	}
+
+	std::size_t getFlagCount(const FieldDataType flag, std::size_t fieldidx = 0) const {
+		std::size_t TotalValueCount{};
+#ifdef _OPENMP
+#pragma omp parallel for num_threads(Thread_Num) schedule(static) reduction(+ : TotalValueCount)
+#endif
+		for (const auto& blockfield : BFM.getBlockFields()) {
+			const auto& field = blockfield.getFieldType().getField(fieldidx);
+			const std::size_t size = field.size();
+			std::size_t count{};
+			for (std::size_t i = 0; i < size; ++i) {
+				if (util::isFlag(field[i], flag)) ++count;
+			}
+			TotalValueCount += count;
+		}
+		return TotalValueCount;
+	}
+
+	// get the percentage of a kind of flag value in a flag field
+	FloatType getFlagPercentage(const FieldDataType flag, std::size_t fieldidx = 0) const {
+		std::size_t TotalCount{};
+		std::size_t TotalValueCount{};
+#ifdef _OPENMP
+#pragma omp parallel for num_threads(Thread_Num) schedule(static) reduction(+ : TotalCount, TotalValueCount)
+#endif
+		for (const auto& blockfield : BFM.getBlockFields()) {
+			const auto& field = blockfield.getFieldType().getField(fieldidx);
+			const std::size_t size = field.size();
+			std::size_t count{};
+			for (std::size_t i = 0; i < size; ++i) {
+				if (util::isFlag(field[i], flag)) ++count;
 			}
 			TotalCount += size;
 			TotalValueCount += count;
