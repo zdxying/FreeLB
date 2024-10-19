@@ -137,7 +137,7 @@ void PopLattice<T, LatSet>::BGK() {
 #pragma omp parallel for num_threads(Thread_Num) schedule(static)
   for (int id = 0; id < N; ++id) {
     PopCell<T, LatSet> cell(id, *this);
-    collision::BGK<T, LatSet>::template apply<GetFeq>(cell);
+    legacy::BGK<T, LatSet>::template apply<GetFeq>(cell);
   }
 }
 
@@ -147,7 +147,7 @@ void PopLattice<T, LatSet>::BGK(const std::vector<int>& index) {
 #pragma omp parallel for num_threads(Thread_Num) schedule(static)
   for (int id : index) {
     PopCell<T, LatSet> cell(id, *this);
-    collision::BGK<T, LatSet>::template apply<GetFeq>(cell);
+    legacy::BGK<T, LatSet>::template apply<GetFeq>(cell);
   }
 }
 
@@ -159,7 +159,7 @@ void PopLattice<T, LatSet>::BGK(const ArrayType& flagarr, std::uint8_t flag) {
   for (int id = 0; id < N; ++id) {
     if (util::isFlag(flagarr[id], flag)) {
       PopCell<T, LatSet> cell(id, *this);
-      collision::BGK<T, LatSet>::template apply<GetFeq>(cell);
+      legacy::BGK<T, LatSet>::template apply<GetFeq>(cell);
     }
   }
 }
@@ -173,7 +173,7 @@ void PopLattice<T, LatSet>::BGK_Source(const ArrayType& flagarr, std::uint8_t fl
   for (int id = 0; id < N; ++id) {
     if (util::isFlag(flagarr[id], flag)) {
       PopCell<T, LatSet> cell(id, *this);
-      collision::BGK<T, LatSet>::template applySource<GetFeq>(cell,
+      legacy::BGK<T, LatSet>::template applySource<GetFeq>(cell,
                                                               source[id]);
     }
   }

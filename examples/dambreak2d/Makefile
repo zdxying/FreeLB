@@ -6,9 +6,10 @@ FLAGS += -O3 -march=native -fopenmp
 # FLAGS += -O3 -march=native
 # FLAGS += -march=native
 # FLAGS += -fopenmp
+# FLAGS += -fsanitize=address
 # FLAGS += -g
 FLAGS += -DFLOAT_TYPE=double
-# FLAGS += -DUNROLLFOR
+FLAGS += -D_UNROLLFOR
 
 OUTPUT += vtkoutput
 

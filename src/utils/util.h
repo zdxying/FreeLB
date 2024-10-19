@@ -445,5 +445,10 @@ std::string trim(const std::string& str) {
   return str.substr(first, (last - first + 1));
 }
 
+template<typename T>
+__any__ inline T clamp(T val, T min, T max) {
+  return val < min ? min : (val > max ? max : val);
+}
+
 
 }  // namespace util

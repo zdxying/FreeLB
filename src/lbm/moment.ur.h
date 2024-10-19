@@ -44,14 +44,9 @@ struct rho<CELL<T, D2Q9<T> ,TypePack>, WriteToField> {
   using GenericRho = typename CELL<T, D2Q9<T> ,TypePack>::GenericRho;
 
   __any__ static inline T get(CELL<T, D2Q9<T> ,TypePack>& cell) {
-    if constexpr (WriteToField) {
-			T rho_value{};
-			rho_value = cell[0] + cell[1] + cell[2] + cell[3] + cell[4] + cell[5] + cell[6] + cell[7] + cell[8];
-			cell.template get<GenericRho>() = rho_value;
-			return rho_value;
-		} else {
-			return cell[0] + cell[1] + cell[2] + cell[3] + cell[4] + cell[5] + cell[6] + cell[7] + cell[8];
-		}
+    T rho_value{};
+    apply(cell, rho_value);
+    return rho_value;
   }
   __any__ static inline void apply(CELL<T, D2Q9<T> ,TypePack>& cell, T& rho_value) {
 		rho_value = cell[0] + cell[1] + cell[2] + cell[3] + cell[4] + cell[5] + cell[6] + cell[7] + cell[8];
@@ -69,16 +64,9 @@ struct rho<CELL<T, D3Q19<T> ,TypePack>, WriteToField> {
   using GenericRho = typename CELL<T, D3Q19<T> ,TypePack>::GenericRho;
 
   __any__ static inline T get(CELL<T, D3Q19<T> ,TypePack>& cell) {
-    if constexpr (WriteToField) {
-			T rho_value{};
-			rho_value = cell[0] + cell[1] + cell[2] + cell[3] + cell[4] + cell[5] + cell[6] + cell[7] + cell[8] 
-			+ cell[9] + cell[10] + cell[11] + cell[12] + cell[13] + cell[14] + cell[15] + cell[16] + cell[17] + cell[18];
-			cell.template get<GenericRho>() = rho_value;
-			return rho_value;
-		} else {
-			return cell[0] + cell[1] + cell[2] + cell[3] + cell[4] + cell[5] + cell[6] + cell[7] + cell[8]
-			+ cell[9] + cell[10] + cell[11] + cell[12] + cell[13] + cell[14] + cell[15] + cell[16] + cell[17] + cell[18];
-		}
+    T rho_value{};
+    apply(cell, rho_value);
+    return rho_value;
   }
   __any__ static inline void apply(CELL<T, D3Q19<T> ,TypePack>& cell, T& rho_value) {
 		rho_value = cell[0] + cell[1] + cell[2] + cell[3] + cell[4] + cell[5] + cell[6] + cell[7] + cell[8]
@@ -109,11 +97,10 @@ struct rhou<CELL<T, D2Q9<T> ,TypePack>, WriteToField> {
   }
   // will write to field regardless of WriteToField value
   __any__ static void apply(CELL<T, D2Q9<T> ,TypePack>& cell) {
+    static_assert(WriteToField, "rhou::apply(CELL& cell) must write to field");
     T& rho_value = cell.template get<GenericRho>();
     Vector<T, 2>& u_value = cell.template get<VELOCITY<T, 2>>();
-		rho_value = cell[0] + cell[1] + cell[2] + cell[3] + cell[4] + cell[5] + cell[6] + cell[7] + cell[8];
-    u_value[0] = (cell[1] - cell[2] + cell[5] - cell[6] + cell[7] - cell[8]) / rho_value;
-		u_value[1] = (cell[3] - cell[4] + cell[5] - cell[6] - cell[7] + cell[8]) / rho_value;
+    apply(cell, rho_value, u_value);
   }
 };
 
@@ -133,12 +120,10 @@ struct rhou<CELL<T, D3Q19<T> ,TypePack>, WriteToField> {
   }
   // will write to field regardless of WriteToField value
   __any__ static void apply(CELL<T, D3Q19<T> ,TypePack>& cell) {
+    static_assert(WriteToField, "rhou::apply(CELL& cell) must write to field");
     T& rho_value = cell.template get<GenericRho>();
     Vector<T, 3>& u_value = cell.template get<VELOCITY<T, 3>>();
-		rho_value = cell[0] + cell[1] + cell[2] + cell[3] + cell[4] + cell[5] + cell[6] + cell[7] + cell[8] + cell[9] + cell[10] + cell[11] + cell[12] + cell[13] + cell[14] + cell[15] + cell[16] + cell[17] + cell[18];
-    u_value[0] = (cell[1] - cell[2] + cell[7] - cell[8] + cell[9] - cell[10] + cell[13] - cell[14] + cell[15] - cell[16]) / rho_value;
-		u_value[1] = (cell[3] - cell[4] + cell[7] - cell[8] + cell[11] - cell[12] - cell[13] + cell[14] + cell[17] - cell[18]) / rho_value;
-		u_value[2] = (cell[5] - cell[6] + cell[9] - cell[10] + cell[11] - cell[12] - cell[15] + cell[16] - cell[17] + cell[18]) / rho_value;
+    apply(cell, rho_value, u_value);
   }
 };
 

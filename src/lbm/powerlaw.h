@@ -113,7 +113,7 @@ struct PowerLaw_BGKForce_Feq_RhoU {
     // update macroscopic variables
     T rho{};
     Vector<T, LatSet::d> u{};
-    moment::template forceRhou<CELL, WriteToField, dir>::apply(
+    moment::template forceRhou<CELL, ForceScheme, WriteToField, dir>::apply(
       cell, ForceScheme::getForce(cell), rho, u);
     // strain rate
     std::array<T, util::SymmetricMatrixSize<LatSet::d>()> strain_rate{};

@@ -98,7 +98,7 @@ class Buoyancy {
       std::array<T, LatSet::q> Fi{};
       force::ForcePop<T, LatSet>::compute(Fi, Velocity.get(id), getForce(id));
       moment::Velocity<T, LatSet>::apply(cell, Velocity.get(id), Fi);
-      collision::BGK<T, LatSet>::template applySource<GetFeq>(cell, Fi);
+      legacy::BGK<T, LatSet>::template applySource<GetFeq>(cell, Fi);
     }
   }
   // BGK with FORCE term
@@ -110,7 +110,7 @@ class Buoyancy {
       PopCell<T, LatSet> cell(id, NSLat);
         std::array<T, LatSet::q> Fi{};
         force::ForcePop<T, LatSet>::compute(Fi, Velocity.get(id), getForce(id));
-        collision::BGK<T, LatSet>::template applySource<GetFeq>(cell, Fi);
+        legacy::BGK<T, LatSet>::template applySource<GetFeq>(cell, Fi);
     }
   }
   // BGK with FORCE term
@@ -125,7 +125,7 @@ class Buoyancy {
         std::array<T, LatSet::q> Fi{};
         force::ForcePop<T, LatSet>::compute(Fi, Velocity.get(id), getForce(id));
         moment::Velocity<T, LatSet>::apply(cell, Velocity.get(id), Fi);
-        collision::BGK<T, LatSet>::template applySource<GetFeq>(cell, Fi);
+        legacy::BGK<T, LatSet>::template applySource<GetFeq>(cell, Fi);
       }
     }
   }
@@ -139,7 +139,7 @@ class Buoyancy {
         PopCell<T, LatSet> cell(id, NSLat);
         std::array<T, LatSet::q> Fi{};
         force::ForcePop<T, LatSet>::compute(Fi, Velocity.get(id), getForce(id));
-        collision::BGK<T, LatSet>::template applySource<GetFeq>(cell, Fi);
+        legacy::BGK<T, LatSet>::template applySource<GetFeq>(cell, Fi);
       }
     }
   }

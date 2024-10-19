@@ -210,6 +210,9 @@ int main() {
   vtmo::vtmWriter<T, LatSet::d> Writer("dambreak3d", Geo, 1);
   Writer.addWriterSet(StateWriter, VeloWriter);
 
+  FieldStatistics RhoStat(NSLattice.getField<RHO<T>>());
+  FieldStatistics MassStat(NSLattice.getField<fs::MASS<T>>());
+
   // count and timer
   Timer MainLoopTimer;
   Timer OutputTimer;
@@ -231,6 +234,9 @@ int main() {
 
     if (MainLoopTimer() % OutputStep == 0) {
       OutputTimer.Print_InnerLoopPerformance(Geo.getTotalCellNum(), OutputStep);
+      Printer::Print("Average Rho: ", RhoStat.getAverage());
+      Printer::Print("Average Mass: ", MassStat.getAverage());
+      Printer::Print("Max Mass: ", MassStat.getMax());
       Printer::Endl();
       Writer.WriteBinary(MainLoopTimer());
     }

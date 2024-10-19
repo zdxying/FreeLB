@@ -168,7 +168,7 @@ class Cell {
     return Cell<T, LatSet, TypePack>(Id + Lat.getDelta_Index()[i], Lat);
   }
   Cell<T, LatSet, TypePack> getNeighbor(const Vector<int, LatSet::d>& direction) const {
-    return Cell<T, LatSet, TypePack>(Id + direction * Lat.getProjection());
+    return Cell<T, LatSet, TypePack>(Id + direction * Lat.getProjection(), Lat);
   }
 
   void setId(std::size_t id) { Id = id; }

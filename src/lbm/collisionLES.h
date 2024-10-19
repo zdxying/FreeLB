@@ -77,7 +77,7 @@ struct SmagorinskyForceBGK_Feq_RhoU {
     // update macroscopic variables
     T rho{};
     Vector<T, LatSet::d> u{};
-    moment::template forceRhou<CELL, WriteToField>::apply(cell, ForceScheme::getForce(cell), rho, u);
+    moment::template forceRhou<CELL, ForceScheme, WriteToField>::apply(cell, ForceScheme::getForce(cell), rho, u);
     // compute force term
     std::array<T, LatSet::q> fi{};
     ForceScheme::apply(u, ForceScheme::getForce(cell), fi);
@@ -124,7 +124,7 @@ struct PalabosSmagorinskyForceBGK_Feq_RhoU {
     // update macroscopic variables
     T rho{};
     Vector<T, LatSet::d> u{};
-    moment::template forceRhou<CELL, WriteToField>::apply(cell, ForceScheme::getForce(cell), rho, u);
+    moment::template forceRhou<CELL, ForceScheme, WriteToField>::apply(cell, ForceScheme::getForce(cell), rho, u);
     // compute force term
     std::array<T, LatSet::q> fi{};
     ForceScheme::apply(u, ForceScheme::getForce(cell), fi);

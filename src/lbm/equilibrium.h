@@ -88,41 +88,18 @@ struct SecondOrder {
 
   __any__ static void apply(std::array<T, LatSet::q> &feq, T rho, const Vector<T, LatSet::d> &u) {
     const T u2 = u.getnorm2();
-#ifdef UNROLLFOR
-    apply_impl(feq, rho, u, u2, std::make_index_sequence<LatSet::q>());
-#else
     for (unsigned int k = 0; k < LatSet::q; ++k) {
       feq[k] = get(k, u, rho, u2);
     }
-#endif
   }
 
   __any__ static void apply(std::array<T, LatSet::q> &feq, const CELL &cell) {
     const T rho = cell.template get<GenericRho>();
     const Vector<T, LatSet::d> &u = cell.template get<VELOCITY<T, LatSet::d>>();
     const T u2 = u.getnorm2();
-#ifdef UNROLLFOR
-    apply_impl(feq, rho, u, u2, std::make_index_sequence<LatSet::q>());
-#else
     for (unsigned int k = 0; k < LatSet::q; ++k) {
       feq[k] = get(k, u, rho, u2);
     }
-#endif
-  }
-
-  // unroll the for loop
-  template <std::size_t... Is>
-  __any__ static inline void apply_impl(std::array<T, LatSet::q> &feq, T rho, const Vector<T, LatSet::d> &u, T u2, std::index_sequence<Is...>) {
-    // Unpack the sequence and call `get` for each index at compile time
-    ((feq[Is] = get<Is>(rho, u, u2)), ...);
-  }
-  // use template to enable compile-time evaluation of latset::c and latset::w
-  template <unsigned int k>
-  __any__ static inline T get(T rho, const Vector<T, LatSet::d> &u, T u2) {
-    const T uc = u * latset::c<LatSet>(k);
-    return latset::w<LatSet>(k) * rho *
-           (T{1} + LatSet::InvCs2 * uc + uc * uc * T{0.5} * LatSet::InvCs4 -
-            LatSet::InvCs2 * u2 * T{0.5});
   }
 };
 
@@ -139,38 +116,19 @@ struct FirstOrder {
   }
 
   __any__ static void apply(std::array<T, LatSet::q> &feq, T rho, const Vector<T, LatSet::d> &u) {
-#ifdef UNROLLFOR
-    apply_impl(feq, rho, u, std::make_index_sequence<LatSet::q>());
-#else
     for (unsigned int k = 0; k < LatSet::q; ++k) {
       feq[k] = get(k, u, rho);
     }
-#endif
   }
 
   __any__ static void apply(std::array<T, LatSet::q> &feq, const CELL &cell) {
     const T rho = cell.template get<GenericRho>();
     const Vector<T, LatSet::d> &u = cell.template get<VELOCITY<T, LatSet::d>>();
-#ifdef UNROLLFOR
-    apply_impl(feq, rho, u, std::make_index_sequence<LatSet::q>());
-#else
     for (unsigned int k = 0; k < LatSet::q; ++k) {
       feq[k] = get(k, u, rho);
     }
-#endif
   }
-
-  // unroll the for loop
-  template <std::size_t... Is>
-  __any__ static inline void apply_impl(std::array<T, LatSet::q> &feq, T rho, const Vector<T, LatSet::d> &u, std::index_sequence<Is...>) {
-    // Unpack the sequence and call `get` for each index at compile time
-    ((feq[Is] = get<Is>(rho, u)), ...);
-  }
-  // use template to enable compile-time evaluation of latset::c and latset::w
-  template <unsigned int k>
-  __any__ static inline T get(T rho, const Vector<T, LatSet::d> &u) {
-    return latset::w<LatSet>(k) * rho * (T{1} + LatSet::InvCs2 * (u * latset::c<LatSet>(k)));
-  }
+  
 };
 
 
