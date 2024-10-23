@@ -9,7 +9,6 @@ FLAGS += -O3 -Wall -march=native -fopenmp
 # FLAGS += -pg
 FLAGS += -DFLOAT_TYPE=double
 FLAGS += -D_UNROLLFOR
-# FLAGS += -DUNROLLFOR
 
 OUTPUT += vtkoutput
 

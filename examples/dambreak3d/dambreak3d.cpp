@@ -145,8 +145,8 @@ int main() {
   // ------------------ define lattice ------------------
   using NSFIELDS = TypePack<RHO<T>, VELOCITY<T, LatSet::d>, POP<T, LatSet::q>, SCALARCONSTFORCE<T>>;
 
-  // using ALLFIELDS = MergeFieldPack<NSFIELDS, FS::FSFIELDS<T, LatSet>, FS::FSPARAMS<T>>::mergedpack;
-  using ALLNSFS_FIELDS = MergeFieldPack<NSFIELDS, FS::FSFIELDS<T, LatSet>, FS::FSPARAMS<T>>::mergedpack;
+  // using ALLFIELDS = MergeFieldPack<NSFIELDS, olbfs::FSFIELDS<T, LatSet>, olbfs::FSPARAMS<T>>::mergedpack;
+  using ALLNSFS_FIELDS = MergeFieldPack<NSFIELDS, olbfs::FSFIELDS<T, LatSet>, olbfs::FSPARAMS<T>>::mergedpack;
   using ALLFIELDS = MergeFieldPack<ALLNSFS_FIELDS, PowerLawPARAMS<T>>::mergedpack;
 
   // a conversion factor of unit s^2 / g
@@ -157,7 +157,7 @@ int main() {
     BaseConv.Conv_Time * BaseConv.Conv_Time / (rho_ref * std::pow(BaseConv.Conv_L, 3));
 
   ValuePack NSInitValues(BaseConv.getLatRhoInit(), Vector<T, LatSet::d>{}, T{}, -BaseConv.Lattice_g);
-  ValuePack FSInitValues(FS::FSType::Solid, T{}, T{}, T{});
+  ValuePack FSInitValues(olbfs::FSType::Solid, T{}, T{}, T{});
   ValuePack FSParamsInitValues(LonelyThreshold, VOF_Trans_Threshold, true, surface_tension_coefficient_factor* surface_tension_coefficient);
   // power-law dynamics for non-Newtonian fluid
   ValuePack PowerLawInitValues(BaseConv.Lattice_VisKine, BehaviorIndex - 1, BaseConv.Lattice_VisKine*MInViscCoef, BaseConv.Lattice_VisKine*MaxViscCoef);
@@ -174,25 +174,25 @@ int main() {
   //// free surface
 
   // set cell state
-  NSLattice.getField<FS::STATE>().forEach(
-    cavity, [&](auto& field, std::size_t id) { field.SetField(id, FS::FSType::Gas); });
+  NSLattice.getField<olbfs::STATE>().forEach(
+    cavity, [&](auto& field, std::size_t id) { field.SetField(id, olbfs::FSType::Gas); });
   // set fluid
-  NSLattice.getField<FS::STATE>().forEach(
-    fluid, [&](auto& field, std::size_t id) { field.SetField(id, FS::FSType::Fluid); });
+  NSLattice.getField<olbfs::STATE>().forEach(
+    fluid, [&](auto& field, std::size_t id) { field.SetField(id, olbfs::FSType::Fluid); });
 
-  NSLattice.getField<FS::STATE>().template SetupBoundary<LatSet>(cavity, FS::FSType::Wall);
+  NSLattice.getField<olbfs::STATE>().template SetupBoundary<LatSet>(cavity, olbfs::FSType::Wall);
 
-  FS::FreeSurfaceHelper<NSLAT>::Init(NSLattice);
+  olbfs::FreeSurfaceHelper<NSLAT>::Init(NSLattice);
 
   //// end free surface
 
   // define task/ dynamics:
   // NS task
   using NSBulkTask =
-    tmp::Key_TypePair<FS::FSType::Fluid | FS::FSType::Interface,
+    tmp::Key_TypePair<olbfs::FSType::Fluid | olbfs::FSType::Interface,
                       collision::BGKForce_Feq_RhoU<equilibrium::SecondOrder<NSCELL>,
                                                    force::ScalarConstForce<NSCELL>, true>>;
-  using NSWallTask = tmp::Key_TypePair<FS::FSType::Wall, collision::BounceBack<NSCELL>>;
+  using NSWallTask = tmp::Key_TypePair<olbfs::FSType::Wall, collision::BounceBack<NSCELL>>;
 
   using NSTaskSelector = TaskSelector<std::uint8_t, NSCELL, NSBulkTask, NSWallTask>;
 
@@ -203,15 +203,15 @@ int main() {
   // NS_BB("NS_BB", NSLattice, FlagFM, BouncebackFlag, VoidFlag);
 
   vtmo::ScalarWriter rhovtm("rho", NSLattice.getField<RHO<T>>());
-  vtmo::ScalarWriter MassWriter("Mass", NSLattice.getField<FS::MASS<T>>());
+  vtmo::ScalarWriter MassWriter("Mass", NSLattice.getField<olbfs::MASS<T>>());
   vtmo::VectorWriter VeloWriter("Velo", NSLattice.getField<VELOCITY<T, LatSet::d>>());
-  vtmo::ScalarWriter VOFWriter("VOF", NSLattice.getField<FS::VOLUMEFRAC<T>>());
-  vtmo::ScalarWriter StateWriter("State", NSLattice.getField<FS::STATE>());
+  vtmo::ScalarWriter VOFWriter("VOF", NSLattice.getField<olbfs::VOLUMEFRAC<T>>());
+  vtmo::ScalarWriter StateWriter("State", NSLattice.getField<olbfs::STATE>());
   vtmo::vtmWriter<T, LatSet::d> Writer("dambreak3d", Geo, 1);
   Writer.addWriterSet(StateWriter, VeloWriter);
 
   FieldStatistics RhoStat(NSLattice.getField<RHO<T>>());
-  FieldStatistics MassStat(NSLattice.getField<fs::MASS<T>>());
+  FieldStatistics MassStat(NSLattice.getField<fx3dfs::MASS<T>>());
 
   // count and timer
   Timer MainLoopTimer;
@@ -224,12 +224,12 @@ int main() {
     ++MainLoopTimer;
     ++OutputTimer;
 
-    NSLattice.ApplyCellDynamics<NSTaskSelector>(MainLoopTimer(), NSLattice.getField<FS::STATE>());
+    NSLattice.ApplyCellDynamics<NSTaskSelector>(MainLoopTimer(), NSLattice.getField<olbfs::STATE>());
     NSLattice.Stream(MainLoopTimer());
     // NS_BB.Apply(MainLoopTimer());
     NSLattice.Communicate(MainLoopTimer());
 
-    FS::FreeSurfaceApply<BlockLatticeManager<T, LatSet, ALLFIELDS>>::Apply(NSLattice, MainLoopTimer());
+    olbfs::FreeSurfaceApply<BlockLatticeManager<T, LatSet, ALLFIELDS>>::Apply(NSLattice, MainLoopTimer());
 
 
     if (MainLoopTimer() % OutputStep == 0) {

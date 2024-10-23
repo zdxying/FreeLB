@@ -293,6 +293,28 @@ class BasicBlock : public AABB<T, D> {
   // cellIdx will be cleared before adding new indices
   void getCellIdx(const AABB<T, D>& base, const AABB<T, D>& AABBs,
                   std::vector<std::size_t>& cellIdx) const;
+  
+  // get corner index of the block, sorted by order(x->y->z, smallest->largest)
+  // 4 for 2D, 8 for 3D
+  void getCornerIdx(std::vector<std::size_t>& cornerIdx) const;
+  // get edge index of the block, sorted by order(smallest->largest)
+  // the edge should be marked by a direction vector pointing from the center to the edge of the block
+  // 4 for 2D, 12 for 3D
+  void getEdgeIdx(std::vector<std::size_t>& edgeIdx, const Vector<int, D>& dir) const;
+  // get face index of the block, sorted by order(x->y->z, smallest->largest)
+  // the face should be marked by a direction vector pointing from the center to the face of the block
+  // 0 for 2D, 6 for 3D
+  void getFaceIdx(std::vector<std::size_t>& faceIdx, const Vector<int, D>& dir) const;
+
+  // find which corner the point is in
+  int whichCorner(const Vector<int, D>& pt) const;
+  int whichCorner(std::size_t idx) const;
+  // find which edge the point is in
+  int whichEdge(const Vector<int, D>& pt) const;
+  int whichEdge(std::size_t idx) const;
+  // find which face the point is in
+  int whichFace(const Vector<int, D>& pt) const;
+  int whichFace(std::size_t idx) const;
 };
 
 

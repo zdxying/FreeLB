@@ -299,6 +299,30 @@ void BlockGeometry3D<T>::InitComm() {
         // cells
         block.getCellIdx(baseblock_ext1, nblock->getBaseBlock(), comm.RecvCells);
         nblock->getCellIdx(nblock->getBaseBlock(), baseblock_ext1, comm.SendCells);
+        // find direction
+        const std::size_t recvnum = comm.RecvCells.size();
+        if (recvnum == 1) {
+          int corner = block.whichCorner(comm.RecvCells[0]);
+          if (corner != -1) {
+            // corner
+            comm.Direction = getCornerNbrDirection<3>(corner);
+          }
+        } else {
+          // edge or face(face includes edge, so check edge first)
+          std::size_t halfidx = recvnum / 2;
+          int edge = block.whichEdge(comm.RecvCells[halfidx]);
+          // avoid getting edge cell on face
+          int edge2 = block.whichEdge(comm.RecvCells[halfidx+2]);
+          int edge2_ = block.whichEdge(comm.RecvCells[halfidx-2]);
+          if (edge == -1 || edge2 == -1 || edge2_ == -1) {
+            // not edge -> face
+            halfidx = (edge == -1) ? halfidx : (edge2 == -1) ? halfidx+2 : halfidx-2;
+            comm.Direction = getFaceNbrDirection(block.whichFace(comm.RecvCells[halfidx]));
+          } else {
+            // edge
+            comm.Direction = getEdgeNbrDirection<3>(edge);
+          }
+        }
       }
     }
   }

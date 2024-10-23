@@ -248,6 +248,19 @@ void BlockGeometry2D<T>::InitComm() {
         // cells
         block.getCellIdx(baseblock_ext1, nblock->getBaseBlock(), comm.RecvCells);
         nblock->getCellIdx(nblock->getBaseBlock(), baseblock_ext1, comm.SendCells);
+        // find direction
+        const std::size_t recvnum = comm.RecvCells.size();
+        if (recvnum == 1) {
+          int corner = block.whichCorner(comm.RecvCells[0]);
+          if (corner != -1) {
+            // corner
+            comm.Direction = getCornerNbrDirection<2>(corner);
+          }
+        } else {
+          // edge
+          std::size_t halfidx = recvnum / 2;
+          comm.Direction = getEdgeNbrDirection<2>(block.whichEdge(comm.RecvCells[halfidx]));
+        }
       }
     }
   }
@@ -293,6 +306,23 @@ void BlockGeometry2D<T>::InitAverComm() {
             comm.SendCells.emplace_back(IntpSource<2>{Fid0, Fid1, Fid2, Fid3});
           }
         }
+        // for now direction is only used to accelerate the normal communication between blocks of the same level
+        // find direction
+        // const std::size_t recvnum = comm.RecvCells.size();
+        // if (recvnum == 1) {
+        //   int corner = block.whichCorner(comm.RecvCells[0]);
+        //   if (corner != -1) {
+        //     // corner
+        //     comm.Direction = getCornerNbrDirection<2>(corner);
+        //   } else {
+        //     // edge
+        //     comm.Direction = getEdgeNbrDirection<2>(block.whichEdge(comm.RecvCells[0]));
+        //   }
+        // } else {
+        //   // edge
+        //   std::size_t halfidx = recvnum / 2;
+        //   comm.Direction = getEdgeNbrDirection<2>(block.whichEdge(comm.RecvCells[halfidx]));
+        // }
       } else if (nblock->getLevel() > blocklevel + 1) {
         std::cerr << "[BlockGeometry2D<T>::InitAverComm] Error: block level difference "
                      "larger than 1"
@@ -379,6 +409,23 @@ void BlockGeometry2D<T>::InitIntpComm() {
             //   InterpWeight<T, 2>{T(0.5625), T(0.1875), T(0.1875), T(0.0625)});
           }
         }
+        // for now direction is only used to accelerate the normal communication between blocks of the same level
+        // find direction
+        // const std::size_t recvnum = comm.RecvCells.size();
+        // if (recvnum == 1) {
+        //   int corner = block.whichCorner(comm.RecvCells[0]);
+        //   if (corner != -1) {
+        //     // corner
+        //     comm.Direction = getCornerNbrDirection<2>(corner);
+        //   } else {
+        //     // edge
+        //     comm.Direction = getEdgeNbrDirection<2>(block.whichEdge(comm.RecvCells[0]));
+        //   }
+        // } else {
+        //   // edge
+        //   std::size_t halfidx = recvnum / 2;
+        //   comm.Direction = getEdgeNbrDirection<2>(block.whichEdge(comm.RecvCells[halfidx]));
+        // }
       } else if (nblock->getLevel() < blocklevel - 1) {
         std::cerr << "[BlockGeometry2D<T>::InitIntpComm] Error: block level difference "
                      "larger than 1"

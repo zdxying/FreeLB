@@ -26,14 +26,98 @@
 // AbstractConverter
 #include "lbm/unit_converter.h"
 
+template <typename LatSet>
+void getCommDirection(NbrDirection direction, std::vector<unsigned int>& commdirection) {
+  commdirection.clear();
+  if (util::isFlag(direction, NbrDirection::NONE)) {
+    std::cerr << "[getCommDirection] Error: no neighbor direction" << std::endl;
+    exit(1);
+  }
+  // for(unsigned int i = 1; i < LatSet::q; ++i) {
+  //   commdirection.push_back(i);
+  // }
+  // x - direction
+  if (util::isFlag(direction, NbrDirection::XN)) {
+    // find which Vector<int, LatSet::d> c[0] are NOT positive and erase them
+    for (unsigned int i = 0; i < LatSet::q; ++i) {
+      if (latset::c<LatSet>(i)[0] > 0) {
+        commdirection.push_back(i);
+        // commdirection.erase(std::remove(commdirection.begin(), commdirection.end(), i), commdirection.end());
+      }
+    }
+  } else if (util::isFlag(direction, NbrDirection::XP)) {
+    // find which Vector<int, LatSet::d> c[0] are NOT negative and erase them
+    for (unsigned int i = 0; i < LatSet::q; ++i) {
+      if (latset::c<LatSet>(i)[0] < 0) {
+        commdirection.push_back(i);
+        // commdirection.erase(std::remove(commdirection.begin(), commdirection.end(), i), commdirection.end());
+      }
+    }
+  }
+  // y - direction
+  if (util::isFlag(direction, NbrDirection::YN)) {
+    // find which Vector<int, LatSet::d> c[1] are NOT positive and erase them
+    for (unsigned int i = 0; i < LatSet::q; ++i) {
+      if (latset::c<LatSet>(i)[1] > 0) {
+        // avoid repeated direction
+        if (std::find(commdirection.begin(), commdirection.end(), i) == commdirection.end()) {
+          commdirection.push_back(i);
+        }
+        // commdirection.erase(std::remove(commdirection.begin(), commdirection.end(), i), commdirection.end());
+      }
+    }
+  } else if (util::isFlag(direction, NbrDirection::YP)) {
+    // find which Vector<int, LatSet::d> c[1] are NOT negative and erase them
+    for (unsigned int i = 0; i < LatSet::q; ++i) {
+      if (latset::c<LatSet>(i)[1] < 0) {
+        // avoid repeated direction
+        if (std::find(commdirection.begin(), commdirection.end(), i) == commdirection.end()) {
+          commdirection.push_back(i);
+        }
+        // commdirection.erase(std::remove(commdirection.begin(), commdirection.end(), i), commdirection.end());
+      }
+    }
+  }
+  // z - direction
+  if constexpr (LatSet::d == 3) {
+    if (util::isFlag(direction, NbrDirection::ZN)) {
+      // find which Vector<int, LatSet::d> c[2] are NOT positive and erase them
+      for (unsigned int i = 0; i < LatSet::q; ++i) {
+        if (latset::c<LatSet>(i)[2] > 0) {
+        // avoid repeated direction
+        if (std::find(commdirection.begin(), commdirection.end(), i) == commdirection.end()) {
+          commdirection.push_back(i);
+        }
+          // commdirection.erase(std::remove(commdirection.begin(), commdirection.end(), i), commdirection.end());
+        }
+      }
+    } else if (util::isFlag(direction, NbrDirection::ZP)) {
+      // find which Vector<int, LatSet::d> c[2] are NOT negative and erase them
+      for (unsigned int i = 0; i < LatSet::q; ++i) {
+        if (latset::c<LatSet>(i)[2] < 0) {
+        // avoid repeated direction
+        if (std::find(commdirection.begin(), commdirection.end(), i) == commdirection.end()) {
+          commdirection.push_back(i);
+        }
+          // commdirection.erase(std::remove(commdirection.begin(), commdirection.end(), i), commdirection.end());
+        }
+      }
+    }
+  }
+
+}
+
 template <typename T, typename LatSet, typename TypePack>
 struct BlockLatComm {
   BlockLattice<T, LatSet, TypePack>* SendBlock;
   BlockComm<T, LatSet::d>* Comm;
+  std::vector<unsigned int> CommDirection;
 
   BlockLatComm(BlockLattice<T, LatSet, TypePack>* sblock,
                BlockComm<T, LatSet::d>* blockcomm)
-      : SendBlock(sblock), Comm(blockcomm) {}
+      : SendBlock(sblock), Comm(blockcomm) {
+    getCommDirection<LatSet>(Comm->Direction, CommDirection);
+  }
 
   std::vector<std::size_t>& getSends() { return Comm->SendCells; }
   std::vector<std::size_t>& getRecvs() { return Comm->RecvCells; }

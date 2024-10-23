@@ -44,14 +44,24 @@ void BlockLattice<T, LatSet, TypePack>::communicate() {
   for (BlockLatComm<T, LatSet, TypePack>& comm : Communicators) {
     BlockLattice<T, LatSet, TypePack>* nBlockLat = comm.SendBlock;
     std::size_t size = comm.getRecvs().size();
-    for (unsigned int k = 1; k < LatSet::q; ++k) {
-      const auto& nPopsk =
-        nBlockLat->template getField<POP<T, LatSet::q>>().getField(k);
-      auto& Popsk = this->template getField<POP<T, LatSet::q>>().getField(k);
-      for (std::size_t i = 0; i < size; ++i) {
-        std::size_t idrecv = comm.getRecvs()[i];
-        std::size_t idsend = comm.getSends()[i];
-        Popsk.set(idrecv, nPopsk[idsend]);
+    if (size > 1) {
+      // not corner cell
+      for (unsigned int k : comm.CommDirection) {
+        const auto& nPopsk =
+          nBlockLat->template getField<POP<T, LatSet::q>>().getField(k);
+        auto& Popsk = this->template getField<POP<T, LatSet::q>>().getField(k);
+        for (std::size_t i = 0; i < size; ++i) {
+          std::size_t idrecv = comm.getRecvs()[i];
+          std::size_t idsend = comm.getSends()[i];
+          Popsk.set(idrecv, nPopsk[idsend]);
+        }
+      }
+    } else {
+      for (unsigned int k = 1; k < LatSet::q; ++k) {
+        const auto& nPopsk =
+          nBlockLat->template getField<POP<T, LatSet::q>>().getField(k);
+        auto& Popsk = this->template getField<POP<T, LatSet::q>>().getField(k);
+        Popsk.set(comm.getRecvs()[0], nPopsk[comm.getSends()[0]]);
       }
     }
   }

@@ -1,5 +1,18 @@
-/* This file is part of FreeLB
+/* This file is part of FreeLB, modified from openLB and FluidX3D with the following copyright notice:
  *
+ * // start of the original OpenLB's copyright notice
+ * 
+ * This file is part of the OpenLB library
+ *
+ *  Copyright (C) 2007 Jonas Latt
+ *  E-mail contact: info@openlb.net
+ *  The most recent release of OpenLB can be downloaded at
+ *  <http://www.openlb.net/>
+ * 
+ * // end of the original OpenLB's copyright notice
+ * 
+ * FluidX3D: https://github.com/ProjectPhysX/FluidX3Ds
+ * 
  * Copyright (C) 2024 Yuan Man
  * E-mail contact: ymmanyuan@outlook.com
  * The most recent progress of FreeLB will be updated at
@@ -23,9 +36,10 @@
 
 #include "data_struct/block_lattice.h"
 
-// namespace FreeSurface
 
-namespace FS {
+// namespace olbfs: openlb's implementation of free surface model
+
+namespace olbfs {
 
 enum FSType : std::uint8_t {
   Solid = 1,
@@ -39,7 +53,7 @@ enum FSType : std::uint8_t {
 };
 
 
-// define unique FS Field
+// define unique olbfs Field
 struct STATEBase : public FieldBase<1> {};
 struct MASSBase : public FieldBase<1> {};
 struct VOLUMEFRACBase : public FieldBase<1> {};
@@ -58,7 +72,7 @@ using VOLUMEFRAC = GenericField<GenericArray<T>, VOLUMEFRACBase>;
 template <typename T, unsigned int q>
 using EXCESSMASS = GenericField<CyclicArray<T>, EXCESSMASSBase<q>>;
 
-// define FS parameters as single data stored in Data
+// define olbfs parameters as single data stored in Data
 struct Lonely_ThBase : public FieldBase<1> {};
 struct VOF_Trans_ThBase : public FieldBase<1> {};
 struct Surface_Tension_EnabledBase : public FieldBase<1> {};
@@ -89,9 +103,7 @@ struct NbrInfo {
   bool gas_nbr = false;
   int interface_nbrs = 0;
 };
-// incorporate free surface fields into BlockLattice is possible
-// (considered as a post-process of NS Lattice)
-// which may be done in the future
+
 template <typename T, typename LatSet, typename TypePack>
 class FreeSurface2D : public BlockLatticeBase<T, LatSet, FSFIELDS<T, LatSet>> {
  private:
@@ -229,21 +241,21 @@ class FreeSurface2DManager
   }
 
   void Apply() {
-    for (auto& fs : BlockFS) {
-      // int deLevel = static_cast<int>(this->getMaxLevel() - fs.getLevel());
+    for (auto& fx3dfs : BlockFS) {
+      // int deLevel = static_cast<int>(this->getMaxLevel() - fx3dfs.getLevel());
       // if (count % (static_cast<int>(std::pow(2, deLevel))) == 0)
 
-      fs.MassTransfer();
+      fx3dfs.MassTransfer();
       // for cells with to_fluid flag, check neighbors and set transition flag
-      fs.ToFluidNbrConversion();
+      fx3dfs.ToFluidNbrConversion();
       // for (gas) cells with to_interface flag, init pop using nbr fluid/interface cells
-      fs.GasToInterfacePopInit();
+      fx3dfs.GasToInterfacePopInit();
       // for cells with to_gas flag, check neighbors and set transition flag
-      fs.ToGasNbrConversion();
+      fx3dfs.ToGasNbrConversion();
       // excess mass
-      fs.InterfaceExcessMass();
-      fs.FinalizeConversion();
-      fs.CollectExcessMass();
+      fx3dfs.InterfaceExcessMass();
+      fx3dfs.FinalizeConversion();
+      fx3dfs.CollectExcessMass();
     }
   }
 };
@@ -333,6 +345,7 @@ static bool hasNeighborType(CELL& cell, FSType fstype) {
 template <typename LatSet>
 constexpr std::array<int, LatSet::q> Parker_YoungsWeights() {
   return make_Array<int, LatSet::q>([&](unsigned int i) {
+    // int weight = LatSet::d == 2 ? 4 : 8;
     int weight = 8;
     if (latset::c<LatSet>(i)[0] != 0) weight /= 2;
     if (latset::c<LatSet>(i)[1] != 0) weight /= 2;
@@ -968,7 +981,9 @@ struct MassTransfer {
       }
 
       // transition flag for interface cell
-      T rho = moment::rho<CELL>::get(cell);
+      // T rho = moment::rho<CELL>::get(cell);
+      // RHO should be updated before freesurface
+      const T rho = cell.template get<RHO<T>>();
 
       // transition by mass criterion
       if (cell.template get<MASS<T>>() >
@@ -1063,8 +1078,10 @@ struct GasToInterfacePopInit {
         CELL celln = cell.getNeighbor(k);
         if (util::isFlag(celln.template get<STATE>(),
                          (FSType::Fluid | FSType::Interface))) {
-          averho += moment::rho<CELL>::get(celln);
-          aveu += moment::u<CELL>::get(celln);
+          // averho += moment::rho<CELL>::get(celln);
+          // aveu += moment::u<CELL>::get(celln);
+          averho += celln.template get<RHO<T>>();
+          aveu += celln.template get<VELOCITY<T, LatSet::d>>();
           ++count;
         }
       }
@@ -1121,7 +1138,8 @@ struct InterfaceExcessMass {
     // excess mass is distributed to interface neighbors
     T excessmass{};
     if (util::isFlag(cell.template get<STATE>(), FSType::To_Fluid)) {
-      T rho = moment::rho<CELL>::get(cell);
+      // T rho = moment::rho<CELL>::get(cell);
+      T rho = cell.template get<RHO<T>>();
       excessmass = cell.template get<MASS<T>>() - rho;
       cell.template get<MASS<T>>() = rho;
     } else if (util::isFlag(cell.template get<STATE>(), FSType::To_Gas)) {
@@ -1213,7 +1231,8 @@ struct CollectExcessMass {
       }
       cell.template get<MASS<T>>() += exmass_sum;
       if (util::isFlag(cell.template get<STATE>(), FSType::Interface)) {
-        T rho = moment::rho<CELL>::get(cell);
+        // T rho = moment::rho<CELL>::get(cell);
+        T rho = cell.template get<RHO<T>>();
         cell.template get<VOLUMEFRAC<T>>() = cell.template get<MASS<T>>() / rho;
       }
     }
@@ -1312,12 +1331,12 @@ struct FreeSurfaceApply {
   }
 };
 
-}  // namespace FS
+}  // namespace olbfs
 
 
-// new implementation of free surface
+// FluidX3D's implementation of free surface model
 
-namespace fs {
+namespace fx3dfs {
 
 enum FSType : std::uint8_t {
   Solid = 1,
@@ -1331,7 +1350,6 @@ enum FSType : std::uint8_t {
 };
 
 
-// define unique FS Field
 struct STATEBase : public FieldBase<1> {};
 struct MASSBase : public FieldBase<1> {};
 struct VOLUMEFRACBase : public FieldBase<1> {};
@@ -1354,7 +1372,7 @@ using EXCESSMASS = GenericField<CyclicArray<T>, EXCESSMASSBase<q>>;
 template <typename T>
 using MASSEX = GenericField<GenericArray<T>, MASSEXBase>;
 
-// define FS parameters as single data stored in Data
+
 struct Lonely_ThBase : public FieldBase<1> {};
 struct VOF_Trans_ThBase : public FieldBase<1> {};
 struct Surface_Tension_EnabledBase : public FieldBase<1> {};
@@ -1826,7 +1844,9 @@ struct MassTransfer {
       }
 
       // transition flag for interface cell
-      T rho = moment::rho<CELL>::get(cell);
+      // T rho = moment::rho<CELL>::get(cell);
+      // rho should be updated before fx3dfs
+      T rho = cell.template get<RHO<T>>();
 
       // transition by mass criterion
       if (cell.template get<MASS<T>>() >
@@ -2529,4 +2549,4 @@ struct FreeSurfaceApply {
   }
 };
 
-}  // namespace fs
+}  // namespace fx3dfs

@@ -516,3 +516,350 @@ void BasicBlock<T, D>::getCellIdx(const AABB<T, D>& AABB0, const AABB<T, D>& AAB
     }
   }
 }
+
+template <typename T, unsigned int D>
+void BasicBlock<T, D>::getCornerIdx(std::vector<std::size_t>& cornerIdx) const {
+  if constexpr (D == 2) {
+    // (0,0) (Nx,0) (0,Ny) (Nx,Ny)
+    cornerIdx = {0, Mesh[0] - 1, Mesh[0] * (Mesh[1] - 1), Mesh[0] * Mesh[1] - 1};
+  } else if constexpr (D == 3) {
+    // (0,0,0) (Nx,0,0) (0,Ny,0) (Nx,Ny,0) (0,0,Nz) (Nx,0,Nz) (0,Ny,Nz) (Nx,Ny,Nz)
+    cornerIdx = {0, Mesh[0] - 1, Mesh[0] * (Mesh[1] - 1), Mesh[0] * Mesh[1] - 1,
+                 Mesh[0] * Mesh[1] * (Mesh[2] - 1), Mesh[0] * Mesh[1] * (Mesh[2] - 1) + Mesh[0] - 1,
+                 Mesh[0] * Mesh[1] * Mesh[2] - Mesh[0], Mesh[0] * Mesh[1] * Mesh[2] - 1};
+  }
+}
+
+template <typename T, unsigned int D>
+void BasicBlock<T, D>::getEdgeIdx(std::vector<std::size_t>& edgeIdx, const Vector<int, D>& dir) const {
+  edgeIdx.clear();
+  if constexpr (D == 2) {
+    if (dir[0] == 0) {
+      // y direction
+      edgeIdx.reserve(Mesh[0]);
+      if (dir[1] > 0) {
+        for (int i = 0; i < Mesh[0]; i++) {
+          edgeIdx.push_back(getIndex(Vector<int, 2>{i, Mesh[1] - 1}));
+        }
+      } else {
+        for (int i = 0; i < Mesh[0]; i++) {
+          edgeIdx.push_back(getIndex(Vector<int, 2>{i, 0}));
+        }
+      }
+    } else if (dir[1] == 0) {
+      // x direction
+      edgeIdx.reserve(Mesh[1]);
+      if (dir[0] > 0) {
+        for (int j = 0; j < Mesh[1]; j++) {
+          edgeIdx.push_back(getIndex(Vector<int, 2>{Mesh[0] - 1, j}));
+        }
+      } else {
+        for (int j = 0; j < Mesh[1]; j++) {
+          edgeIdx.push_back(getIndex(Vector<int, 2>{0, j}));
+        }
+      }
+    }
+  } else if constexpr (D == 3) {
+    if (dir[0] == 0) {
+      // yz plane
+      edgeIdx.reserve(Mesh[0]);
+      if (dir[1] > 0) {
+        if (dir[2] > 0) {
+          for (int i = 0; i < Mesh[0]; ++i) {
+            edgeIdx.push_back(getIndex(Vector<int, 3>{i, Mesh[1] - 1, Mesh[2] - 1}));
+          }
+        } else {
+          for (int i = 0; i < Mesh[0]; ++i) {
+            edgeIdx.push_back(getIndex(Vector<int, 3>{i, Mesh[1] - 1, 0}));
+          }
+        }
+      } else {
+        if (dir[2] > 0) {
+          for (int i = 0; i < Mesh[0]; ++i) {
+            edgeIdx.push_back(getIndex(Vector<int, 3>{i, 0, Mesh[2] - 1}));
+          }
+        } else {
+          for (int i = 0; i < Mesh[0]; ++i) {
+            edgeIdx.push_back(getIndex(Vector<int, 3>{i, 0, 0}));
+          }
+        }
+      }
+    } else if (dir[1] == 0) {
+      // xz plane
+      edgeIdx.reserve(Mesh[1]);
+      if (dir[0] > 0) {
+        if (dir[2] > 0) {
+          for (int j = 0; j < Mesh[1]; ++j) {
+            edgeIdx.push_back(getIndex(Vector<int, 3>{Mesh[0] - 1, j, Mesh[2] - 1}));
+          }
+        } else {
+          for (int j = 0; j < Mesh[1]; ++j) {
+            edgeIdx.push_back(getIndex(Vector<int, 3>{Mesh[0] - 1, j, 0}));
+          }
+        }
+      } else {
+        if (dir[2] > 0) {
+          for (int j = 0; j < Mesh[1]; ++j) {
+            edgeIdx.push_back(getIndex(Vector<int, 3>{0, j, Mesh[2] - 1}));
+          }
+        } else {
+          for (int j = 0; j < Mesh[1]; ++j) {
+            edgeIdx.push_back(getIndex(Vector<int, 3>{0, j, 0}));
+          }
+        }
+      }
+    } else if (dir[2] == 0) {
+      // xy plane
+      edgeIdx.reserve(Mesh[2]);
+      if (dir[0] > 0) {
+        if (dir[1] > 0) {
+          for (int k = 0; k < Mesh[2]; ++k) {
+            edgeIdx.push_back(getIndex(Vector<int, 3>{Mesh[0] - 1, Mesh[1] - 1, k}));
+          }
+        } else {
+          for (int k = 0; k < Mesh[2]; ++k) {
+            edgeIdx.push_back(getIndex(Vector<int, 3>{Mesh[0] - 1, 0, k}));
+          }
+        }
+      } else {
+        if (dir[1] > 0) {
+          for (int k = 0; k < Mesh[2]; ++k) {
+            edgeIdx.push_back(getIndex(Vector<int, 3>{0, Mesh[1] - 1, k}));
+          }
+        } else {
+          for (int k = 0; k < Mesh[2]; ++k) {
+            edgeIdx.push_back(getIndex(Vector<int, 3>{0, 0, k}));
+          }
+        }
+      }
+    }
+  }
+}
+
+
+template <typename T, unsigned int D>
+void BasicBlock<T, D>::getFaceIdx(std::vector<std::size_t>& faceIdx, const Vector<int, D>& dir) const {
+  static_assert(D == 3, "Only 3D block has face index.");
+  faceIdx.clear();
+  if (dir[0] == 0 && dir[1] == 0 && dir[2] == 0) {
+    std::cerr << "[BasicBlock<T, D>::getFaceIdx]: Invalid direction" << std::endl;
+    exit(1);
+  }
+  if (dir[0] == 0 && dir[1] == 0) {
+    // z direction
+    faceIdx.reserve(Mesh[0] * Mesh[1]);
+    if (dir[2] > 0) {
+      for (int j = 0; j < Mesh[1]; ++j) {
+        for (int i = 0; i < Mesh[0]; ++i) {
+          faceIdx.push_back(getIndex(Vector<int, 3>{i, j, Mesh[2] - 1}));
+        }
+      }
+    } else {
+      for (int j = 0; j < Mesh[1]; ++j) {
+        for (int i = 0; i < Mesh[0]; ++i) {
+          faceIdx.push_back(getIndex(Vector<int, 3>{i, j, 0}));
+        }
+      }
+    }
+  } else if (dir[0] == 0 && dir[2] == 0) {
+    // y direction
+    faceIdx.reserve(Mesh[0] * Mesh[2]);
+    if (dir[1] > 0) {
+      for (int k = 0; k < Mesh[2]; ++k) {
+        for (int i = 0; i < Mesh[0]; ++i) {
+          faceIdx.push_back(getIndex(Vector<int, 3>{i, Mesh[1] - 1, k}));
+        }
+      }
+    } else {
+      for (int k = 0; k < Mesh[2]; ++k) {
+        for (int i = 0; i < Mesh[0]; ++i) {
+          faceIdx.push_back(getIndex(Vector<int, 3>{i, 0, k}));
+        }
+      }
+    }
+  } else if (dir[1] == 0 && dir[2] == 0) {
+    // x direction
+    faceIdx.reserve(Mesh[1] * Mesh[2]);
+    if (dir[0] > 0) {
+      for (int k = 0; k < Mesh[2]; ++k) {
+        for (int j = 0; j < Mesh[1]; ++j) {
+          faceIdx.push_back(getIndex(Vector<int, 3>{Mesh[0] - 1, j, k}));
+        }
+      }
+    } else {
+      for (int k = 0; k < Mesh[2]; ++k) {
+        for (int j = 0; j < Mesh[1]; ++j) {
+          faceIdx.push_back(getIndex(Vector<int, 3>{0, j, k}));
+        }
+      }
+    }
+  }
+}
+
+// 2d
+// +y
+// 2-----3
+// |     |
+// |     |
+// 0-----1 +x
+//
+// 3d
+//   +z
+//   4-----6
+//  /|    /|
+// 5-----7 |
+// | 0---|-2  +y
+// |/    |/
+// 1-----3
+// +x
+
+template <typename T, unsigned int D>
+int BasicBlock<T, D>::whichCorner(const Vector<int, D>& pt) const {
+  if constexpr (D == 2) {
+    if (pt[0] == 0 && pt[1] == 0) {
+      return 0;
+    } else if (pt[0] == Mesh[0] - 1 && pt[1] == 0) {
+      return 1;
+    } else if (pt[0] == 0 && pt[1] == Mesh[1] - 1) {
+      return 2;
+    } else if (pt[0] == Mesh[0] - 1 && pt[1] == Mesh[1] - 1) {
+      return 3;
+    } else {
+      return -1;
+    }
+  } else if constexpr (D == 3) {
+    if (pt[0] == 0 && pt[1] == 0 && pt[2] == 0) {
+      return 0;
+    } else if (pt[0] == Mesh[0] - 1 && pt[1] == 0 && pt[2] == 0) {
+      return 1;
+    } else if (pt[0] == 0 && pt[1] == Mesh[1] - 1 && pt[2] == 0) {
+      return 2;
+    } else if (pt[0] == Mesh[0] - 1 && pt[1] == Mesh[1] - 1 && pt[2] == 0) {
+      return 3;
+    } else if (pt[0] == 0 && pt[1] == 0 && pt[2] == Mesh[2] - 1) {
+      return 4;
+    } else if (pt[0] == Mesh[0] - 1 && pt[1] == 0 && pt[2] == Mesh[2] - 1) {
+      return 5;
+    } else if (pt[0] == 0 && pt[1] == Mesh[1] - 1 && pt[2] == Mesh[2] - 1) {
+      return 6;
+    } else if (pt[0] == Mesh[0] - 1 && pt[1] == Mesh[1] - 1 && pt[2] == Mesh[2] - 1) {
+      return 7;
+    } else {
+      return -1;
+    }
+  }
+}
+template <typename T, unsigned int D>
+int BasicBlock<T, D>::whichCorner(std::size_t idx) const {
+  const Vector<int, D> pt = getLoc(idx);
+  return whichCorner(pt);
+}
+
+// 2d
+// +y  3
+//  -------
+// 0|     |1
+//  |     |
+//  -------  +x
+//     2
+//
+// 3d
+//   +z
+//      ---6---
+//   10/|0 11/|2
+//    ---7--  |
+//  1| ---4|3-   +y
+//   |/8   |/9
+//   ---5---
+// +x  
+
+template <typename T, unsigned int D>
+int BasicBlock<T, D>::whichEdge(const Vector<int, D>& pt) const {
+  if constexpr (D == 2) {
+    if (pt[0] == 0) {
+      return 0;
+    } else if (pt[0] == Mesh[0] - 1) {
+      return 1;
+    } else if (pt[1] == 0) {
+      return 2;
+    } else if (pt[1] == Mesh[1] - 1) {
+      return 3;
+    } else {
+      return -1;
+    }
+  } else if constexpr (D == 3) {
+    if (pt[0] == 0 && pt[1] == 0) {
+      return 0;
+    } else if (pt[0] == Mesh[0] - 1 && pt[1] == 0) {
+      return 1;
+    } else if (pt[0] == 0 && pt[1] == Mesh[1] - 1) {
+      return 2;
+    } else if (pt[0] == Mesh[0] - 1 && pt[1] == Mesh[1] - 1) {
+      return 3;
+    } else if (pt[0] == 0 && pt[2] == 0) {
+      return 4;
+    } else if (pt[0] == Mesh[0] - 1 && pt[2] == 0) {
+      return 5;
+    } else if (pt[0] == 0 && pt[2] == Mesh[2] - 1) {
+      return 6;
+    } else if (pt[0] == Mesh[0] - 1 && pt[2] == Mesh[2] - 1) {
+      return 7;
+    } else if (pt[1] == 0 && pt[2] == 0) {
+      return 8;
+    } else if (pt[1] == Mesh[1] - 1 && pt[2] == 0) {
+      return 9;
+    } else if (pt[1] == 0 && pt[2] == Mesh[2] - 1) {
+      return 10;
+    } else if (pt[1] == Mesh[1] - 1 && pt[2] == Mesh[2] - 1) {
+      return 11;
+    } else {
+      return -1;
+    }
+  }
+}
+template <typename T, unsigned int D>
+int BasicBlock<T, D>::whichEdge(std::size_t idx) const {
+  const Vector<int, D> pt = getLoc(idx);
+  return whichEdge(pt);
+}
+
+
+// 3d
+//   +z
+//      ---5---
+//     /| 0  /|
+//    ------  |
+//  2| ----|--3 +y
+//   |/ 1  |/
+//   ---4---
+// +x  
+
+template <typename T, unsigned int D>
+int BasicBlock<T, D>::whichFace(const Vector<int, D>& pt) const {
+  static_assert(D == 3, "Only 3D block has face index.");
+  // x face
+  if (pt[0] == 0) {
+    return 0;
+  } else if (pt[0] == Mesh[0] - 1) {
+    return 1;
+  } 
+  // y face
+    else if (pt[1] == 0) {
+    return 2;
+  } else if (pt[1] == Mesh[1] - 1) {
+    return 3;
+  }
+  // z face 
+  else if (pt[2] == 0) {
+    return 4;
+  } else if (pt[2] == Mesh[2] - 1) {
+    return 5;
+  } else {
+    return -1;
+  }
+}
+template <typename T, unsigned int D>
+int BasicBlock<T, D>::whichFace(std::size_t idx) const {
+  const Vector<int, D> pt = getLoc(idx);
+  return whichFace(pt);
+}

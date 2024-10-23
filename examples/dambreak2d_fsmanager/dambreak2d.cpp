@@ -140,15 +140,15 @@ int main() {
   T surface_tension_coefficient_factor =
     BaseConv.Conv_Time * BaseConv.Conv_Time / (rho_ref * std::pow(BaseConv.Conv_L, 3));
 
-  ValuePack FSInitValues(FS::FSType::Solid, T{}, T{}, T{});
+  ValuePack FSInitValues(olbfs::FSType::Solid, T{}, T{}, T{});
 
-  FS::FreeSurface2DManager<T, LatSet, NSFIELDS> FreeSurface(NSLattice, FSInitValues, LonelyThreshold, VOF_Trans_Threshold);
+  olbfs::FreeSurface2DManager<T, LatSet, NSFIELDS> FreeSurface(NSLattice, FSInitValues, LonelyThreshold, VOF_Trans_Threshold);
   // set cell state
-  FreeSurface.getField<FS::STATE>().forEach(
-    cavity, [&](auto& field, std::size_t id) { field.SetField(id, FS::FSType::Gas); });
+  FreeSurface.getField<olbfs::STATE>().forEach(
+    cavity, [&](auto& field, std::size_t id) { field.SetField(id, olbfs::FSType::Gas); });
   // set fluid
-  FreeSurface.getField<FS::STATE>().forEach(
-    fluid, [&](auto& field, std::size_t id) { field.SetField(id, FS::FSType::Fluid); });
+  FreeSurface.getField<olbfs::STATE>().forEach(
+    fluid, [&](auto& field, std::size_t id) { field.SetField(id, olbfs::FSType::Fluid); });
   // set interface
   FreeSurface.Init();
   //// end free surface
@@ -156,7 +156,7 @@ int main() {
   // define task/ dynamics:
   // NS task
   using NSBulkTask =
-    tmp::Key_TypePair<FS::FSType::Fluid | FS::FSType::Interface,
+    tmp::Key_TypePair<olbfs::FSType::Fluid | olbfs::FSType::Interface,
                       collision::BGKForce_Feq_RhoU<equilibrium::SecondOrder<NSCELL>,
                                                    force::ScalarConstForce<NSCELL>, true>>;
   
@@ -169,10 +169,10 @@ int main() {
     NS_BB("NS_BB", NSLattice, FlagFM, BouncebackFlag, VoidFlag);
 
   vtmo::ScalarWriter rhovtm("rho", NSLattice.getField<RHO<T>>());
-  vtmo::ScalarWriter MassWriter("Mass", FreeSurface.getField<FS::MASS<T>>());
+  vtmo::ScalarWriter MassWriter("Mass", FreeSurface.getField<olbfs::MASS<T>>());
   vtmo::VectorWriter VeloWriter("Velo", NSLattice.getField<VELOCITY<T, 2>>());
-  vtmo::ScalarWriter VOFWriter("VOF", FreeSurface.getField<FS::VOLUMEFRAC<T>>());
-  vtmo::ScalarWriter StateWriter("State", FreeSurface.getField<FS::STATE>());
+  vtmo::ScalarWriter VOFWriter("VOF", FreeSurface.getField<olbfs::VOLUMEFRAC<T>>());
+  vtmo::ScalarWriter StateWriter("State", FreeSurface.getField<olbfs::STATE>());
   vtmo::vtmWriter<T, LatSet::d> Writer("dambreak2d", Geo, 1);
   Writer.addWriterSet(rhovtm, MassWriter, VOFWriter, StateWriter, VeloWriter);
 
@@ -187,7 +187,7 @@ int main() {
     ++MainLoopTimer;
     ++OutputTimer;
 
-    NSLattice.ApplyCellDynamics<NSTaskSelector>(MainLoopTimer(), FreeSurface.getField<FS::STATE>());
+    NSLattice.ApplyCellDynamics<NSTaskSelector>(MainLoopTimer(), FreeSurface.getField<olbfs::STATE>());
 
     NSLattice.Stream(MainLoopTimer());
     NS_BB.Apply(MainLoopTimer());

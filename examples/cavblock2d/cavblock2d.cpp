@@ -166,7 +166,7 @@ int main() {
   // define task/ dynamics:
   // bulk task
   // using BulkTask = tmp::Key_TypePair<AABBFlag, collision::BGK_Feq_RhoU<equilibrium::SecondOrder<CELL>>>;
-  using BulkTask = tmp::Key_TypePair<AABBFlag, collision::MRT_Feq_RhoU<CELL>>;
+  using BulkTask = tmp::Key_TypePair<AABBFlag, collision::BGK<moment::rhou<CELL>, equilibrium::SecondOrder<CELL>>>;
   // wall task
   // using WallTask = tmp::Key_TypePair<BouncebackFlag | BBMovingWallFlag, collision::BGK_Feq<equilibrium::SecondOrder<CELL>>>;
   // BCs task as a collision process, if used, bcs will be handled in the collision process
@@ -179,7 +179,7 @@ int main() {
   using NSTask = tmp::TaskSelector<TaskCollection, std::uint8_t, CELL>;
 
   // task: update rho and u
-  using RhoUTask = tmp::Key_TypePair<AABBFlag, moment::rhou<CELL>>;
+  using RhoUTask = tmp::Key_TypePair<AABBFlag, moment::rhou<CELL, true>>;
   using TaskCollectionRhoU = tmp::TupleWrapper<RhoUTask>;
   using TaskSelectorRhoU = tmp::TaskSelector<TaskCollectionRhoU, std::uint8_t, CELL>;
 

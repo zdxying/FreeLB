@@ -22,6 +22,7 @@ OBJS = $(SRCS:.$(SRC_EXT)=.o)
 DEPS = $(SRCS:.$(SRC_EXT)=.d)
 
 FLAGS += -std=c++17
+FLAGS += -fno-diagnostics-show-template-tree
 
 # linker flags
 LINKFLAGS := -L$(ROOT)/lib -lrt 
