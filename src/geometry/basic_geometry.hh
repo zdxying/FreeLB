@@ -517,6 +517,69 @@ void BasicBlock<T, D>::getCellIdx(const AABB<T, D>& AABB0, const AABB<T, D>& AAB
   }
 }
 
+
+template <typename T, unsigned int D>
+void BasicBlock<T, D>::ExcludeCornerIdx(
+  std::vector<std::size_t>& cellIdxbase, std::vector<std::size_t>& cellIdxnbr, 
+  std::vector<std::size_t>& excellIdxbase, std::vector<std::size_t>& excellIdxnbr) const {
+
+  excellIdxbase.clear();
+  excellIdxnbr.clear();
+
+  auto it = cellIdxbase.begin();
+  auto it_nbr = cellIdxnbr.begin();
+
+  while (it != cellIdxbase.end()) {
+    if (whichCorner(*it) != -1) {
+      // if is corner cell
+      // add to excluded cell list
+      excellIdxbase.push_back(*it);
+      excellIdxnbr.push_back(*it_nbr);
+      // remove from original list
+      it = cellIdxbase.erase(it);
+      it_nbr = cellIdxnbr.erase(it_nbr);
+    } else {
+      ++it;
+      ++it_nbr;
+    }
+  }
+}
+
+template <typename T, unsigned int D>
+void BasicBlock<T, D>::ExcludeEdgeIdx(
+  std::vector<std::size_t>& cellIdxbase, std::vector<std::size_t>& cellIdxnbr,
+  std::vector<std::vector<std::size_t>>& excellIdxbase, std::vector<std::vector<std::size_t>>& excellIdxnbr) const {
+  static_assert(D == 3, "ExcludeEdgeIdx is only for 3D block");
+
+  excellIdxbase.clear();
+  excellIdxnbr.clear();
+  // 12 edges for 3D block
+  excellIdxbase.resize(12);
+  excellIdxnbr.resize(12);
+
+  auto it = cellIdxbase.begin();
+  auto it_nbr = cellIdxnbr.begin();
+
+  while (it != cellIdxbase.end()) {
+    if (whichEdge(*it) != -1) {
+      for (int i = 0; i < 12; ++i) {
+        // if is edge cell, add to excluded cell list
+        if (whichEdge(*it) == i) {
+          excellIdxbase[i].push_back(*it);
+          excellIdxnbr[i].push_back(*it_nbr);
+          break;
+        }
+      }
+      // remove from original list
+      it = cellIdxbase.erase(it);
+      it_nbr = cellIdxnbr.erase(it_nbr);
+    } else {
+      ++it;
+      ++it_nbr;
+    }
+  }
+}
+
 template <typename T, unsigned int D>
 void BasicBlock<T, D>::getCornerIdx(std::vector<std::size_t>& cornerIdx) const {
   if constexpr (D == 2) {

@@ -299,28 +299,32 @@ void BlockGeometry3D<T>::InitComm() {
         // cells
         block.getCellIdx(baseblock_ext1, nblock->getBaseBlock(), comm.RecvCells);
         nblock->getCellIdx(nblock->getBaseBlock(), baseblock_ext1, comm.SendCells);
-        // find direction
-        const std::size_t recvnum = comm.RecvCells.size();
-        if (recvnum == 1) {
-          int corner = block.whichCorner(comm.RecvCells[0]);
-          if (corner != -1) {
-            // corner
-            comm.Direction = getCornerNbrDirection<3>(corner);
-          }
-        } else {
-          // edge or face(face includes edge, so check edge first)
-          std::size_t halfidx = recvnum / 2;
-          int edge = block.whichEdge(comm.RecvCells[halfidx]);
-          // avoid getting edge cell on face
-          int edge2 = block.whichEdge(comm.RecvCells[halfidx+2]);
-          int edge2_ = block.whichEdge(comm.RecvCells[halfidx-2]);
-          if (edge == -1 || edge2 == -1 || edge2_ == -1) {
-            // not edge -> face
-            halfidx = (edge == -1) ? halfidx : (edge2 == -1) ? halfidx+2 : halfidx-2;
-            comm.Direction = getFaceNbrDirection(block.whichFace(comm.RecvCells[halfidx]));
-          } else {
-            // edge
-            comm.Direction = getEdgeNbrDirection<3>(edge);
+        // exclude corner cells
+        std::vector<std::size_t> cornerRecvCells;
+        std::vector<std::size_t> cornerSendCells;
+        block.ExcludeCornerIdx(comm.RecvCells, comm.SendCells, cornerRecvCells, cornerSendCells);
+        // exclude edge cells
+        std::vector<std::vector<std::size_t>> edgeRecvCells;
+        std::vector<std::vector<std::size_t>> edgeSendCells;
+        block.ExcludeEdgeIdx(comm.RecvCells, comm.SendCells, edgeRecvCells, edgeSendCells);
+        // find direction for normal(face) cells
+        comm.Direction = getFaceNbrDirection(block.whichFace(comm.RecvCells[0]));
+        // add corner cells to communicators and find direction
+        for (std::size_t i = 0; i < cornerRecvCells.size(); ++i) {
+          Communicators.emplace_back(nblock);
+          BlockComm<T, 3> &commcorner = Communicators.back();
+          commcorner.RecvCells.push_back(cornerRecvCells[i]);
+          commcorner.SendCells.push_back(cornerSendCells[i]);
+          commcorner.Direction = getCornerNbrDirection<3>(block.whichCorner(cornerRecvCells[i]));
+        }
+        // add edge cells to communicators and find direction
+        for (std::size_t i = 0; i < edgeRecvCells.size(); ++i) {
+          if (edgeRecvCells[i].size() > 0) {
+            Communicators.emplace_back(nblock);
+            BlockComm<T, 3> &commedge = Communicators.back();
+            commedge.RecvCells = edgeRecvCells[i];
+            commedge.SendCells = edgeSendCells[i];
+            commedge.Direction = getEdgeNbrDirection<3>(block.whichEdge(edgeRecvCells[i][0]));
           }
         }
       }

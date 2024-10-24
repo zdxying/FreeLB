@@ -294,6 +294,18 @@ class BasicBlock : public AABB<T, D> {
   void getCellIdx(const AABB<T, D>& base, const AABB<T, D>& AABBs,
                   std::vector<std::size_t>& cellIdx) const;
   
+  // use the result of getCellIdx(), but will exclude corner(2d or 3d) cells
+  void ExcludeCornerIdx(std::vector<std::size_t>& cellIdxbase,
+                       std::vector<std::size_t>& cellIdxnbr, 
+                       std::vector<std::size_t>& excellIdxbase,
+                       std::vector<std::size_t>& excellIdxnbr) const; 
+
+  // use the result of getCellIdx(), but will exclude edge(3d) cells
+  void ExcludeEdgeIdx(std::vector<std::size_t>& cellIdxbase,
+                      std::vector<std::size_t>& cellIdxnbr, 
+                      std::vector<std::vector<std::size_t>>& excellIdxbase, 
+                      std::vector<std::vector<std::size_t>>& excellIdxnbr) const; 
+  
   // get corner index of the block, sorted by order(x->y->z, smallest->largest)
   // 4 for 2D, 8 for 3D
   void getCornerIdx(std::vector<std::size_t>& cornerIdx) const;
