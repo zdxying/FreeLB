@@ -59,6 +59,8 @@ struct MASSBase : public FieldBase<1> {};
 struct VOLUMEFRACBase : public FieldBase<1> {};
 template <unsigned int q>
 struct EXCESSMASSBase : public FieldBase<q> {};
+struct MASSEXBase : public FieldBase<1> {};
+struct PREVIOUS_VELOCITYBase : public FieldBase<1> {};
 
 // free surface state, init with Solid
 using STATE = GenericField<GenericArray<FSType>, STATEBase>;
@@ -71,6 +73,13 @@ using VOLUMEFRAC = GenericField<GenericArray<T>, VOLUMEFRACBase>;
 // Excess mass
 template <typename T, unsigned int q>
 using EXCESSMASS = GenericField<CyclicArray<T>, EXCESSMASSBase<q>>;
+// a simple massex scalar filed is enough for excess mass exchange
+// more efficient than using a vector field of size q*N in openlb
+template <typename T>
+using MASSEX = GenericField<GenericArray<T>, MASSEXBase>;
+// previous velocity in openlb
+template <typename T, unsigned int D>
+using PREVIOUS_VELOCITY = GenericField<GenericArray<Vector<T, D>>, PREVIOUS_VELOCITYBase>;
 
 // define olbfs parameters as single data stored in Data
 struct Lonely_ThBase : public FieldBase<1> {};
@@ -92,7 +101,7 @@ using Surface_Tension_Parameter = Data<T, Surface_Tension_ParameterBase>;
 
 
 template <typename T, typename LatSet>
-using FSFIELDS = TypePack<STATE, MASS<T>, VOLUMEFRAC<T>, EXCESSMASS<T, LatSet::q>>;
+using FSFIELDS = TypePack<STATE, MASS<T>, VOLUMEFRAC<T>, MASSEX<T>, PREVIOUS_VELOCITY<T, LatSet::d>>;
 
 template <typename T>
 using FSPARAMS = TypePack<Lonely_Th<T>, VOF_Trans_Th<T>, Surface_Tension_Enabled,
@@ -304,7 +313,7 @@ struct FreeSurfaceHelper {
 #endif
 
     latman.template getField<VOLUMEFRAC<T>>().forEach(
-      latman.template getField<STATE>(), FSType::Fluid,
+      latman.template getField<STATE>(), FSType::Fluid | FSType::Wall,
       [&](auto& field, std::size_t id) { field.SetField(id, T{1}); });
     latman.template getField<VOLUMEFRAC<T>>().forEach(
       latman.template getField<STATE>(), FSType::Interface,
@@ -342,17 +351,26 @@ static bool hasNeighborType(CELL& cell, FSType fstype) {
 // Parker-Youngs weights, a corrected version:
 // |c|^2  1  2  3
 // weight 4  2  1
+// openlb 1  2  4
 template <typename LatSet>
 constexpr std::array<int, LatSet::q> Parker_YoungsWeights() {
   return make_Array<int, LatSet::q>([&](unsigned int i) {
     // int weight = LatSet::d == 2 ? 4 : 8;
-    int weight = 8;
-    if (latset::c<LatSet>(i)[0] != 0) weight /= 2;
-    if (latset::c<LatSet>(i)[1] != 0) weight /= 2;
+    // int weight = 8;
+    // if (latset::c<LatSet>(i)[0] != 0) weight /= 2;
+    // if (latset::c<LatSet>(i)[1] != 0) weight /= 2;
+    // if constexpr (LatSet::d == 3) {
+    //   if (latset::c<LatSet>(i)[2] != 0) weight /= 2;
+    // }
+    // return weight;
+    
+    int weight = 1;
+    if (latset::c<LatSet>(i)[0] != 0) weight *= 2;
+    if (latset::c<LatSet>(i)[1] != 0) weight *= 2;
     if constexpr (LatSet::d == 3) {
-      if (latset::c<LatSet>(i)[2] != 0) weight /= 2;
+      if (latset::c<LatSet>(i)[2] != 0) weight *= 2;
     }
-    return weight;
+    return weight/2;
   });
 }
 
@@ -363,7 +381,7 @@ void computeParker_YoungsNormal(
   using LatSet = typename CELL::LatticeSet;
   for (int i = 1; i < LatSet::q; ++i) {
     CELL celln = cell.getNeighbor(i);
-    T clampedvof = getClampedVOF(celln);
+    const T clampedvof = getClampedVOF(celln);
     normal -= Parker_YoungsWeights<LatSet>()[i] * latset::c<LatSet>(i) * clampedvof;
   }
 }
@@ -1078,10 +1096,10 @@ struct GasToInterfacePopInit {
         CELL celln = cell.getNeighbor(k);
         if (util::isFlag(celln.template get<STATE>(),
                          (FSType::Fluid | FSType::Interface))) {
-          // averho += moment::rho<CELL>::get(celln);
-          // aveu += moment::u<CELL>::get(celln);
-          averho += celln.template get<RHO<T>>();
-          aveu += celln.template get<VELOCITY<T, LatSet::d>>();
+          averho += moment::rho<CELL>::get(celln);
+          aveu += moment::u<CELL>::get(celln);
+          // averho += celln.template get<RHO<T>>();
+          // aveu += celln.template get<VELOCITY<T, LatSet::d>>();
           ++count;
         }
       }
@@ -1138,8 +1156,8 @@ struct InterfaceExcessMass {
     // excess mass is distributed to interface neighbors
     T excessmass{};
     if (util::isFlag(cell.template get<STATE>(), FSType::To_Fluid)) {
-      // T rho = moment::rho<CELL>::get(cell);
-      T rho = cell.template get<RHO<T>>();
+      T rho = moment::rho<CELL>::get(cell);
+      // T rho = cell.template get<RHO<T>>();
       excessmass = cell.template get<MASS<T>>() - rho;
       cell.template get<MASS<T>>() = rho;
     } else if (util::isFlag(cell.template get<STATE>(), FSType::To_Gas)) {

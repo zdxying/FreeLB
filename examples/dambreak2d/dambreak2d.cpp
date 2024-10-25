@@ -11,7 +11,7 @@
 
 #include "freelb.h"
 #include "freelb.hh"
-#include "lbm/freeSurface.h"
+#include "lbm/freeSurface2d.h"
 #include "lbm/freeSurface.hh"
 
 // int Total_Macro_Step = 0;
@@ -158,11 +158,11 @@ int main() {
     BaseConv.Conv_Time * BaseConv.Conv_Time / (rho_ref * std::pow(BaseConv.Conv_L, 3));
 
   ValuePack NSInitValues(BaseConv.getLatRhoInit(), Vector<T, 2>{}, T{}, Vector<T, 2>{T{}, -BaseConv.Lattice_g}, BaseConv.getOMEGA(), Smagorinsky);
-  ValuePack FSInitValues(olbfs::FSType::Solid, T{}, T{}, T{});
+  ValuePack FSInitValues(olbfs::FSType::Solid, T{}, T{}, T{}, Vector<T, 2>{});
   ValuePack FSParamsInitValues(LonelyThreshold, VOF_Trans_Threshold, true, surface_tension_coefficient_factor* surface_tension_coefficient);
   std::cout << "surface: " << surface_tension_coefficient_factor* surface_tension_coefficient << std::endl;
   // power-law dynamics for non-Newtonian fluid
-  ValuePack PowerLawInitValues(BaseConv.Lattice_VisKine, BehaviorIndex - 1, BaseConv.Lattice_VisKine*MInViscCoef, BaseConv.Lattice_VisKine*MaxViscCoef);
+  // ValuePack PowerLawInitValues(BaseConv.Lattice_VisKine, BehaviorIndex - 1, BaseConv.Lattice_VisKine*MInViscCoef, BaseConv.Lattice_VisKine*MaxViscCoef);
 
   auto ALLValues = mergeValuePack(NSInitValues, FSInitValues, FSParamsInitValues);
   // auto ALLNSFSValues = mergeValuePack(NSInitValues, FSInitValues, FSParamsInitValues);
@@ -193,8 +193,8 @@ int main() {
   // NS task  PowerLaw_BGKForce_Feq_RhoU
   using NSBulkTask =
     tmp::Key_TypePair<olbfs::FSType::Fluid | olbfs::FSType::Interface,
-                      collision::BGKForce<moment::forceRhou<NSCELL, force::ConstForce<NSCELL>, false>, equilibrium::SecondOrder<NSCELL>,
-                                                   force::ConstForce<NSCELL>>>;
+                      collision::BGKForce<moment::forceRhou<NSCELL, force::ConstForce<NSCELL>, true>, 
+                      equilibrium::SecondOrder<NSCELL>, force::ConstForce<NSCELL>>>;
   using NSWallTask = tmp::Key_TypePair<olbfs::FSType::Wall, collision::BounceBack<NSCELL>>;
 
   using NSTaskSelector = TaskSelector<std::uint8_t, NSCELL, NSBulkTask, NSWallTask>;
@@ -235,10 +235,8 @@ int main() {
     NSLattice.Stream(MainLoopTimer());
     // NS_BB.Apply(MainLoopTimer());
     NSLattice.Communicate(MainLoopTimer());
-    
-    NSLattice.ApplyCellDynamics<RhoUTaskSelector>(MainLoopTimer(), NSLattice.getField<olbfs::STATE>());
-    // olbfs::Apply<NSBlockLatMan>::apply(NSLattice, MainLoopTimer());
-    olbfs::FreeSurfaceApply<NSBlockLatMan>::Apply(NSLattice, MainLoopTimer());
+
+    olbfs::FreeSurfaceApply2D<NSBlockLatMan>::Apply(NSLattice, MainLoopTimer());
 
 
     if (MainLoopTimer() % OutputStep == 0) {
@@ -246,6 +244,7 @@ int main() {
       Printer::Print("Average Rho: ", RhoStat.getAverage());
       Printer::Print("Average Mass: ", MassStat.getAverage());
       Printer::Print("Max Mass: ", MassStat.getMax());
+      Printer::Print("Min Mass: ", MassStat.getMin());
       Printer::Endl();
       Writer.WriteBinary(MainLoopTimer());
     }

@@ -340,6 +340,11 @@ struct forceRhou {
     apply(cell, f, rho_value, u_value);
   }
 
+  __any__ static inline void apply(CELL& cell, T& rho_value, Vector<T, LatSet::d>& u_value) {
+    const auto force = ForceScheme::getForce(cell);
+    apply(cell, force, rho_value, u_value);
+  }
+
   __any__ static inline void apply(CELL& cell, const Vector<T, LatSet::d>& f_alpha, T& rho_value,
                            Vector<T, LatSet::d>& u_value) {
     rho_value = T{};
@@ -350,7 +355,6 @@ struct forceRhou {
     }
     u_value += f_alpha * T{0.5};
     u_value /= rho_value;
-    // u_value += f_alpha * T{0.5};
     if constexpr (WriteToField) {
       cell.template get<GenericRho>() = rho_value;
       cell.template get<VELOCITY<T, LatSet::d>>() = u_value;
