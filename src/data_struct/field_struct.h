@@ -874,6 +874,37 @@ class BlockFieldManager {
     }
   }
 
+  template <typename Func>
+  void forEachInner(const Func& func) {
+    for (const auto& blockfield : this->getBlockFields()) {
+      const auto& field = blockfield.getFieldType().getField(fieldidx);
+			const auto& blockxd = blockfield.getBlock();
+			const int overlap = blockxd.getOverlap();
+			const int Nx = blockxd.getNx();
+			const int Ny = blockxd.getNy();
+			const int Nz = blockxd.getNz();
+
+      if constexpr (Dim == 2) {
+					for (int j = overlap; j < Ny - overlap; ++j) {
+						for (int i = overlap; i < Nx - overlap; ++i) {
+              std::size_t id = j * Nx + i;
+							func(field[id]);
+					}
+				}
+			} else if constexpr (Dim == 3) {
+				std::size_t NxNy = Nx * Ny;
+				for (int k = overlap; k < Nz - overlap; ++k) {
+					for (int j = overlap; j < Ny - overlap; ++j) {
+						for (int i = overlap; i < Nx - overlap; ++i) {
+              std::size_t id = k * NxNy + j * Nx + i;
+              func(field[id]);
+						}
+					}
+				}
+			}
+    }
+  }
+
   template <typename Func, typename Func1>
   void forEach_TransFlag(const Func& func, const Func1& func1) {
     int iblock = 0;

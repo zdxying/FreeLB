@@ -68,6 +68,26 @@ void BlockLattice<T, LatSet, TypePack>::communicate() {
 }
 
 template <typename T, typename LatSet, typename TypePack>
+void BlockLattice<T, LatSet, TypePack>::fullcommunicate() {
+  // same level communication
+  for (BlockLatComm<T, LatSet, TypePack>& comm : Communicators) {
+    BlockLattice<T, LatSet, TypePack>* nBlockLat = comm.SendBlock;
+    std::size_t size = comm.getRecvs().size();
+
+    for (unsigned int k = 0; k < LatSet::q; ++k) {
+      const auto& nPopsk =
+        nBlockLat->template getField<POP<T, LatSet::q>>().getField(k);
+      auto& Popsk = this->template getField<POP<T, LatSet::q>>().getField(k);
+      for (std::size_t i = 0; i < size; ++i) {
+        std::size_t idrecv = comm.getRecvs()[i];
+        std::size_t idsend = comm.getSends()[i];
+        Popsk.set(idrecv, nPopsk[idsend]);
+      }
+    }
+  }
+}
+
+template <typename T, typename LatSet, typename TypePack>
 void BlockLattice<T, LatSet, TypePack>::avercommunicate() {
   // average communication, low level get from high level
   for (IntpBlockLatComm<T, LatSet, TypePack>& comm : AverageComm) {
@@ -1055,6 +1075,50 @@ void BlockLatticeManager<T, LatSet, TypePack>::Communicate(std::int64_t count) {
   for (auto& BLat : BlockLats) {
     if (count % (static_cast<int>(std::pow(2, int(getMaxLevel() - BLat.getLevel())))) == 0)
       BLat.communicate();
+  }
+
+#ifdef MPI_ENABLED
+  this->template getField<POP<T, LatSet::q>>().MPINormalCommunicate(count);
+#endif
+
+  // --- average communication ---
+#ifndef SingleBlock_OMP
+#pragma omp parallel for num_threads(Thread_Num)
+#endif
+  for (auto& BLat : BlockLats) {
+    if (count % (static_cast<int>(std::pow(2, int(getMaxLevel() - BLat.getLevel())))) == 0)
+      BLat.avercommunicate();
+  }
+
+#ifdef MPI_ENABLED
+  MPIAverComm(count);
+#endif
+
+  // --- interpolation communication ---
+#ifndef SingleBlock_OMP
+#pragma omp parallel for num_threads(Thread_Num)
+#endif
+  for (auto& BLat : BlockLats) {
+    if (count % (static_cast<int>(std::pow(2, int(getMaxLevel() - BLat.getLevel())))) == 0)
+      BLat.interpcommunicate();
+  }
+
+#ifdef MPI_ENABLED
+  MPIIntpComm(count);
+#endif
+
+  mpi().barrier();
+}
+
+template <typename T, typename LatSet, typename TypePack>
+void BlockLatticeManager<T, LatSet, TypePack>::FullCommunicate(std::int64_t count) {
+  // --- noraml communication ---
+#ifndef SingleBlock_OMP
+#pragma omp parallel for num_threads(Thread_Num)
+#endif
+  for (auto& BLat : BlockLats) {
+    if (count % (static_cast<int>(std::pow(2, int(getMaxLevel() - BLat.getLevel())))) == 0)
+      BLat.fullcommunicate();
   }
 
 #ifdef MPI_ENABLED

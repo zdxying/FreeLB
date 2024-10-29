@@ -123,9 +123,9 @@ struct MassTransfer2D {
     }
   };
 
-
   static void apply(CELL& cell) {
     // openlb removes all cells' transition flags here
+    cell.template get<FLAG>() = FSFlag::None;
 
     if (util::isFlag(cell.template get<STATE>(), FSType::Interface)) {
       // mass transfer
@@ -143,35 +143,37 @@ struct MassTransfer2D {
           // celln's nbr info
           NbrInfo cellnNbrInfo(celln);
           T massflow{};
+          // openlb deletes latset::w<LatSet>(k) term cause it is already contained in fi
+          // not that latset::w<LatSet>(k) = latset::w<LatSet>(kopp)
           if (!cellNbrInfo.fluid_nbr) {
             if (!cellnNbrInfo.fluid_nbr) {
               if (cellNbrInfo.interface_nbrs < cellnNbrInfo.interface_nbrs) {
-                massflow = -celln[k];
+                massflow = -celln[k] + latset::w<LatSet>(k);
               } else if (cellNbrInfo.interface_nbrs > cellnNbrInfo.interface_nbrs) {
-                massflow = cell[kopp];
+                massflow = cell[kopp] - latset::w<LatSet>(k);
               } else {
                 massflow = cell[kopp] - celln[k];
               }
             } else {
-              massflow = -celln[k];
+              massflow = -celln[k] + latset::w<LatSet>(k);
             }
           } else if (!cellNbrInfo.gas_nbr) {
             if (!cellnNbrInfo.gas_nbr) {
               if (cellNbrInfo.interface_nbrs < cellnNbrInfo.interface_nbrs) {
-                massflow = cell[kopp];
+                massflow = cell[kopp] - latset::w<LatSet>(k);
               } else if (cellNbrInfo.interface_nbrs > cellnNbrInfo.interface_nbrs) {
-                massflow = -celln[k];
+                massflow = -celln[k] + latset::w<LatSet>(k);
               } else {
                 massflow = cell[kopp] - celln[k];
               }
             } else {
-              massflow = cell[kopp];
+              massflow = cell[kopp] - latset::w<LatSet>(k);
             }
           } else {
             if (!cellnNbrInfo.fluid_nbr) {
-              massflow = cell[kopp];
+              massflow = cell[kopp] - latset::w<LatSet>(k);
             } else if (!cellnNbrInfo.gas_nbr) {
-              massflow = -celln[k];
+              massflow = -celln[k] + latset::w<LatSet>(k);
             } else {
               massflow = cell[kopp] - celln[k];
             }
@@ -210,15 +212,15 @@ struct MassTransfer2D {
       // transition by mass criterion
       if (mass_tmp < -cell.template get<VOF_Trans_Th<T>>() * rho ||
       (mass_tmp < cell.template get<Lonely_Th<T>>() * rho && !cellNbrInfo.fluid_nbr)) {
-        util::addFlag(FSType::To_Gas, util::underlyingRef(cell.template get<STATE>()));
+        cell.template get<FLAG>() = FSFlag::To_Gas;
         return;
       } else if (mass_tmp > (T(1) + cell.template get<VOF_Trans_Th<T>>()) * rho ||
       (mass_tmp > (T(1) - cell.template get<Lonely_Th<T>>()) * rho && !cellNbrInfo.gas_nbr)) {
-        util::addFlag(FSType::To_Fluid, util::underlyingRef(cell.template get<STATE>()));
+        cell.template get<FLAG>() = FSFlag::To_Fluid;
         return;
       } else if (cellNbrInfo.interface_nbrs == 0) {
         if (!cellNbrInfo.gas_nbr) {
-          util::addFlag(FSType::To_Fluid, util::underlyingRef(cell.template get<STATE>()));
+          cell.template get<FLAG>() = FSFlag::To_Fluid;
         }
       }
     }
@@ -235,9 +237,9 @@ struct ToFluidNbrConversion2D {
   static void apply(CELL& cell) {
 
     if (util::isFlag(cell.template get<STATE>(), FSType::Gas)) {
-      if (hasNeighborType(cell, FSType::To_Fluid)) {
+      if (hasNeighborFlag(cell, FSFlag::To_Fluid)) {
         // set to_interface
-        util::addFlag(FSType::To_Interface, util::underlyingRef(cell.template get<STATE>()));
+        cell.template get<FLAG>() = FSFlag::To_Interface;
 				// init fi using [fluid|interface] neighbor cells
 				T averho{};
 				Vector<T, LatSet::d> aveu{};
@@ -266,10 +268,10 @@ struct ToFluidNbrConversion2D {
 					cell[k] = equilibrium::SecondOrder<CELL>::get(k, aveu, averho, aveu2);
 				}
       }
-    } else if (util::isFlag(cell.template get<STATE>(), FSType::To_Gas)) {
-      if (hasNeighborType(cell, FSType::To_Fluid)) {
+    } else if (util::isFlag(cell.template get<FLAG>(), FSFlag::To_Gas)) {
+      if (hasNeighborFlag(cell, FSFlag::To_Fluid)) {
         // remove to_gas flag, in openlb: clear transition flag
-        util::removeFlag(FSType::To_Gas, util::underlyingRef(cell.template get<STATE>()));
+        cell.template get<FLAG>() = FSFlag::None;
       }
     }
   }
@@ -285,9 +287,9 @@ struct ToGasNbrConversion2D {
   static void apply(CELL& cell) {
 
     if (util::isFlag(cell.template get<STATE>(), FSType::Fluid)) {
-      if (hasNeighborType(cell, FSType::To_Gas)) {
+      if (hasNeighborFlag(cell, FSFlag::To_Gas)) {
         // set to_interface
-        util::addFlag(FSType::To_Interface, util::underlyingRef(cell.template get<STATE>()));
+        cell.template get<FLAG>() = FSFlag::To_Interface;
 				cell.template get<MASS<T>>() = moment::rho<CELL>::get(cell);
       }
     }
@@ -310,10 +312,10 @@ struct InterfaceExcessMass2D {
 			T mass = cell.template get<MASS<T>>();
 			T mass_excess{};
 
-			if (util::isFlag(cell.template get<STATE>(), FSType::To_Gas)) {
+			if (util::isFlag(cell.template get<FLAG>(), FSFlag::To_Gas)) {
 				mass_excess = mass;
 				cell.template get<MASS<T>>() = T{};
-    	} else if (util::isFlag(cell.template get<STATE>(), FSType::To_Fluid)) {
+    	} else if (util::isFlag(cell.template get<FLAG>(), FSFlag::To_Fluid)) {
       	mass_excess = mass - rho;
 				cell.template get<MASS<T>>() = rho;
 			} else {
@@ -325,14 +327,30 @@ struct InterfaceExcessMass2D {
 			for (int k = 1; k < LatSet::q; ++k) {
 				CELL celln = cell.getNeighbor(k);
 				if (util::isFlag(celln.template get<STATE>(), FSType::Interface) &&
-						!util::isFlag(celln.template get<STATE>(), FSType::To_Gas | FSType::To_Fluid | FSType::To_Interface)) {
+						!util::isFlag(celln.template get<FLAG>(), std::uint8_t(255))) {
 					++count;
 				}
 			}
+
+      Vector<T, LatSet::q>& mass_ex_vec = cell.template get<MASSEX<T, LatSet::q>>();
+      mass_ex_vec[0] = T{};
 			if (count > 0) {
-				cell.template get<MASSEX<T>>() = mass_excess / count;
-			} else {
-				cell.template get<MASSEX<T>>() = mass_excess;
+        const T mass_excess_frac = mass_excess / count;
+        
+        for (int k = 1; k < LatSet::q; ++k) {
+          CELL celln = cell.getNeighbor(k);
+          if (util::isFlag(celln.template get<STATE>(), FSType::Interface) &&
+              !util::isFlag(celln.template get<FLAG>(), std::uint8_t(255))) {
+            mass_ex_vec[k] = mass_excess_frac;
+          } else {
+            mass_ex_vec[k] = T{};
+          }
+        }
+      } else {
+				mass_ex_vec[0] = mass_excess;
+        for (int k = 1; k < LatSet::q; ++k) {
+          mass_ex_vec[k] = T{};
+        }
 			}
 		}
 	}
@@ -347,16 +365,15 @@ struct FinalizeConversion2D {
 
   static void apply(CELL& cell) {
     // update state
-    if (util::isFlag(cell.template get<STATE>(), FSType::To_Fluid)) {
+    if (util::isFlag(cell.template get<FLAG>(), FSFlag::To_Fluid)) {
       cell.template get<STATE>() = FSType::Fluid;
       cell.template get<VOLUMEFRAC<T>>() = T(1);
-      cell.template get<MASS<T>>() += cell.template get<MASSEX<T>>();
-    } else if (util::isFlag(cell.template get<STATE>(), FSType::To_Gas)) {
+      cell.template get<MASS<T>>() += cell.template get<MASSEX<T, LatSet::q>>()[0];
+    } else if (util::isFlag(cell.template get<FLAG>(), FSFlag::To_Gas)) {
       cell.template get<STATE>() = FSType::Gas;
       cell.template get<VOLUMEFRAC<T>>() = T{};
-      cell.template get<MASS<T>>() += cell.template get<MASSEX<T>>();
-      cell.template get<VELOCITY<T, LatSet::d>>().clear();
-    } else if (util::isFlag(cell.template get<STATE>(), FSType::To_Interface)) {
+      cell.template get<MASS<T>>() += cell.template get<MASSEX<T, LatSet::q>>()[0];
+    } else if (util::isFlag(cell.template get<FLAG>(), FSFlag::To_Interface)) {
       cell.template get<STATE>() = FSType::Interface;
     }
 		// collect excess mass
@@ -364,7 +381,8 @@ struct FinalizeConversion2D {
       T collected_excess{};
 			for (int k = 1; k < LatSet::q; ++k) {
 				CELL celln = cell.getNeighbor(k);
-				collected_excess += celln.template get<MASSEX<T>>();
+        if (util::isFlag(celln.template get<FLAG>(), FSFlag::To_Fluid | FSFlag::To_Gas))
+				collected_excess += celln.template get<MASSEX<T, LatSet::q>>()[latset::opp<LatSet>(k)];
 			}
 			T mass_tmp = cell.template get<MASS<T>>();
 			mass_tmp += collected_excess;
@@ -379,11 +397,13 @@ struct FinalizeConversion2D {
 			cell.template get<MASS<T>>() = mass_tmp;
 			cell.template get<VOLUMEFRAC<T>>() = mass_tmp / rho;
 			cell.template get<PREVIOUS_VELOCITY<T, LatSet::d>>() = u;
+
     } else if (util::isFlag(cell.template get<STATE>(), FSType::Fluid)) {
       T collected_excess{};
 			for (int k = 1; k < LatSet::q; ++k) {
 				CELL celln = cell.getNeighbor(k);
-				collected_excess += celln.template get<MASSEX<T>>();
+				if (util::isFlag(celln.template get<FLAG>(), FSFlag::To_Fluid | FSFlag::To_Gas))
+				collected_excess += celln.template get<MASSEX<T, LatSet::q>>()[latset::opp<LatSet>(k)];
 			}
 			cell.template get<MASS<T>>() += collected_excess;
     }
@@ -402,32 +422,36 @@ struct FreeSurfaceApply2D {
     // mass transfer
     latManager.template ApplyInnerCellDynamics<MassTransfer2D<CELL>>(count);
 
-    latManager.template getField<STATE>().NormalCommunicate(count);
+    latManager.template getField<FLAG>().NormalCommunicate(count);
 #ifdef MPI_ENABLED
-    latManager.template getField<STATE>().MPINormalCommunicate(count);
+    latManager.template getField<FLAG>().MPINormalCommunicate(count);
 #endif
     latManager.template getField<MASS<T>>().CommunicateAll(count);
 
-		latManager.Communicate(count);
+    // communicate reconstructed pops streamed in from a gas cell
+    // this is NOT a post-stream process, so we must communicate fi in each direction
+		latManager.FullCommunicate(count);
 
 
     // to fluid neighbor conversion
     latManager.template ApplyInnerCellDynamics<ToFluidNbrConversion2D<CELL>>(count);
 
-    latManager.template getField<STATE>().NormalCommunicate(count);
+    latManager.template getField<FLAG>().NormalCommunicate(count);
 #ifdef MPI_ENABLED
-    latManager.template getField<STATE>().MPINormalCommunicate(count);
+    latManager.template getField<FLAG>().MPINormalCommunicate(count);
 #endif
 
-    latManager.Communicate(count);
+    // communicate equilibrium fi from nbr Fluid/Interface cells' rho and u for a Gas->Interface cell
+    // this is NOT a post-stream process, so we must communicate fi in each direction
+    latManager.FullCommunicate(count);
 
 
     // to gas neighbor conversion
     latManager.template ApplyInnerCellDynamics<ToGasNbrConversion2D<CELL>>(count);
 
-    latManager.template getField<STATE>().NormalCommunicate(count);
+    latManager.template getField<FLAG>().NormalCommunicate(count);
 #ifdef MPI_ENABLED
-    latManager.template getField<STATE>().MPINormalCommunicate(count);
+    latManager.template getField<FLAG>().MPINormalCommunicate(count);
 #endif
 		latManager.template getField<MASS<T>>().CommunicateAll(count);
 
@@ -436,7 +460,7 @@ struct FreeSurfaceApply2D {
     latManager.template ApplyInnerCellDynamics<InterfaceExcessMass2D<CELL>>(count);
 
     latManager.template getField<MASS<T>>().CommunicateAll(count);
-    latManager.template getField<MASSEX<T>>().CommunicateAll(count);
+    latManager.template getField<MASSEX<T, LatSet::q>>().CommunicateAll(count);
 
 
     // finalize conversion
@@ -448,12 +472,12 @@ struct FreeSurfaceApply2D {
 #endif
     latManager.template getField<MASS<T>>().CommunicateAll(count);
     latManager.template getField<VOLUMEFRAC<T>>().CommunicateAll(count);
-    latManager.template getField<VELOCITY<T,LatSet::d>>().CommunicateAll(count);
+    latManager.template getField<PREVIOUS_VELOCITY<T,LatSet::d>>().CommunicateAll(count);
 
 
     // clear EXCESSMASS<T,LatSet::q>
     latManager.ForEachBlockLattice(
-      count, [&](auto& blocklat) { blocklat.template getField<MASSEX<T>>().Init(T{}); });
+      count, [&](auto& blocklat) { blocklat.template getField<MASSEX<T, LatSet::q>>().Init(Vector<T,LatSet::q>{}); });
   }
 };
 

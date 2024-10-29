@@ -43,11 +43,37 @@ public:
 #endif
 		for (const auto& blockfield : BFM.getBlockFields()) {
 			const auto& field = blockfield.getFieldType().getField(fieldidx);
+			const auto& blockxd = blockfield.getBlock();
+			const int overlap = blockxd.getOverlap();
+			const int Nx = blockxd.getNx();
+			const int Ny = blockxd.getNy();
+			const int Nz = blockxd.getNz();
+
 			FieldDataType sum{};
-			const std::size_t size = field.size();
-			for (std::size_t i = 0; i < size; ++i) {
-				sum += field[i];
+			std::size_t size{};
+			// const std::size_t size = field.size();
+			// for (std::size_t i = 0; i < size; ++i) {
+			// 	sum += field[i];
+			// }
+			if constexpr (BLOCKFIELDMANAGER::dim == 2) {
+					for (int j = overlap; j < Ny - overlap; ++j) {
+						for (int i = overlap; i < Nx - overlap; ++i) {
+							sum += field[std::size_t{j * Nx + i}];
+					}
+				}
+				size = (Nx - 2 * overlap) * (Ny - 2 * overlap);
+			} else if constexpr (BLOCKFIELDMANAGER::dim == 3) {
+				std::size_t NxNy = Nx * Ny;
+				for (int k = overlap; k < Nz - overlap; ++k) {
+					for (int j = overlap; j < Ny - overlap; ++j) {
+						for (int i = overlap; i < Nx - overlap; ++i) {
+							sum += field[std::size_t{k * NxNy + j * Nx + i}];
+						}
+					}
+				}
+				size = (Nx - 2 * overlap) * (Ny - 2 * overlap) * (Nz - 2 * overlap);
 			}
+			
 			sum /= size;
 			TotalSum += sum;
 		}
@@ -62,11 +88,35 @@ public:
 #endif
 		for (const auto& blockfield : BFM.getBlockFields()) {
 			const auto& field = blockfield.getFieldType().getField(fieldidx);
+			const auto& blockxd = blockfield.getBlock();
+			const int overlap = blockxd.getOverlap();
+			const int Nx = blockxd.getNx();
+			const int Ny = blockxd.getNy();
+			const int Nz = blockxd.getNz();
 			FieldDataType max{};
-			const std::size_t size = field.size();
-			for (std::size_t i = 0; i < size; ++i) {
-				max = max > field[i] ? max : field[i];
+
+			// const std::size_t size = field.size();
+			// for (std::size_t i = 0; i < size; ++i) {
+			// 	max = max > field[i] ? max : field[i];
+			// }
+
+			if constexpr (BLOCKFIELDMANAGER::dim == 2) {
+					for (int j = overlap; j < Ny - overlap; ++j) {
+						for (int i = overlap; i < Nx - overlap; ++i) {
+							max = max > field[std::size_t{j * Nx + i}] ? max : field[std::size_t{j * Nx + i}];
+					}
+				}
+			} else if constexpr (BLOCKFIELDMANAGER::dim == 3) {
+				std::size_t NxNy = Nx * Ny;
+				for (int k = overlap; k < Nz - overlap; ++k) {
+					for (int j = overlap; j < Ny - overlap; ++j) {
+						for (int i = overlap; i < Nx - overlap; ++i) {
+							max = max > field[std::size_t{k * NxNy + j * Nx + i}] ? max : field[std::size_t{k * NxNy + j * Nx + i}];
+						}
+					}
+				}
 			}
+
 			TotalMax = TotalMax > max ? TotalMax : max;
 		}
 		return TotalMax;
@@ -80,11 +130,35 @@ public:
 #endif
 		for (const auto& blockfield : BFM.getBlockFields()) {
 			const auto& field = blockfield.getFieldType().getField(fieldidx);
+			const auto& blockxd = blockfield.getBlock();
+			const int overlap = blockxd.getOverlap();
+			const int Nx = blockxd.getNx();
+			const int Ny = blockxd.getNy();
+			const int Nz = blockxd.getNz();
 			FieldDataType min{};
-			const std::size_t size = field.size();
-			for (std::size_t i = 0; i < size; ++i) {
-				min = min < field[i] ? min : field[i];
+
+			// const std::size_t size = field.size();
+			// for (std::size_t i = 0; i < size; ++i) {
+			// 	min = min < field[i] ? min : field[i];
+			// }
+
+			if constexpr (BLOCKFIELDMANAGER::dim == 2) {
+					for (int j = overlap; j < Ny - overlap; ++j) {
+						for (int i = overlap; i < Nx - overlap; ++i) {
+							min = min < field[std::size_t{j * Nx + i}] ? min : field[std::size_t{j * Nx + i}];
+					}
+				}
+			} else if constexpr (BLOCKFIELDMANAGER::dim == 3) {
+				std::size_t NxNy = Nx * Ny;
+				for (int k = overlap; k < Nz - overlap; ++k) {
+					for (int j = overlap; j < Ny - overlap; ++j) {
+						for (int i = overlap; i < Nx - overlap; ++i) {
+							min = min < field[std::size_t{k * NxNy + j * Nx + i}] ? min : field[std::size_t{k * NxNy + j * Nx + i}];
+						}
+					}
+				}
 			}
+
 			TotalMin = TotalMin < min ? TotalMin : min;
 		}
 		return TotalMin;
@@ -98,10 +172,33 @@ public:
 #endif
 		for (const auto& blockfield : BFM.getBlockFields()) {
 			const auto& field = blockfield.getFieldType().getField(fieldidx);
-			const std::size_t size = field.size();
+			const auto& blockxd = blockfield.getBlock();
+			const int overlap = blockxd.getOverlap();
+			const int Nx = blockxd.getNx();
+			const int Ny = blockxd.getNy();
+			const int Nz = blockxd.getNz();
+			
 			std::size_t count{};
-			for (std::size_t i = 0; i < size; ++i) {
-				if (field[i] == value) ++count;
+			// const std::size_t size = field.size();
+			// for (std::size_t i = 0; i < size; ++i) {
+			// 	if (field[i] == value) ++count;
+			// }
+
+			if constexpr (BLOCKFIELDMANAGER::dim == 2) {
+					for (int j = overlap; j < Ny - overlap; ++j) {
+						for (int i = overlap; i < Nx - overlap; ++i) {
+							if (field[std::size_t{j * Nx + i}] == value) ++count;
+					}
+				}
+			} else if constexpr (BLOCKFIELDMANAGER::dim == 3) {
+				std::size_t NxNy = Nx * Ny;
+				for (int k = overlap; k < Nz - overlap; ++k) {
+					for (int j = overlap; j < Ny - overlap; ++j) {
+						for (int i = overlap; i < Nx - overlap; ++i) {
+							if (field[std::size_t{k * NxNy + j * Nx + i}] == value) ++count;
+						}
+					}
+				}
 			}
 			TotalValueCount += count;
 		}

@@ -140,7 +140,7 @@ int main() {
   T surface_tension_coefficient_factor =
     BaseConv.Conv_Time * BaseConv.Conv_Time / (rho_ref * std::pow(BaseConv.Conv_L, 3));
 
-  ValuePack FSInitValues(olbfs::FSType::Solid, T{}, T{}, T{});
+  ValuePack FSInitValues(olbfs::FSType::Void, T{}, T{}, T{});
 
   olbfs::FreeSurface2DManager<T, LatSet, NSFIELDS> FreeSurface(NSLattice, FSInitValues, LonelyThreshold, VOF_Trans_Threshold);
   // set cell state

@@ -178,7 +178,7 @@ int main() {
 
   ValuePack NSInitValues(BaseConv.getLatRhoInit(), Vector<T, LatSet::d>{}, T{},
                          -BaseConv.Lattice_g, LatU_Wall);
-  ValuePack FSInitValues(olbfs::FSType::Solid, T{}, T{}, T{});
+  ValuePack FSInitValues(olbfs::FSType::Void, T{}, T{}, T{});
   ValuePack FSParamsInitValues(
     LonelyThreshold, VOF_Trans_Threshold, true,
     surface_tension_coefficient_factor * surface_tension_coefficient);

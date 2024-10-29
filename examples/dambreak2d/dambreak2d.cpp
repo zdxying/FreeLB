@@ -110,6 +110,11 @@ void readParam() {
             << "----------------------------------------------" << std::endl;
 }
 
+int getOutputStep(const Timer& timer) {
+  if (timer() > 1990) return 1;
+  else return 1000;
+}
+
 int main() {
   constexpr std::uint8_t VoidFlag = std::uint8_t(1);
   constexpr std::uint8_t AABBFlag = std::uint8_t(2);
@@ -158,7 +163,7 @@ int main() {
     BaseConv.Conv_Time * BaseConv.Conv_Time / (rho_ref * std::pow(BaseConv.Conv_L, 3));
 
   ValuePack NSInitValues(BaseConv.getLatRhoInit(), Vector<T, 2>{}, T{}, Vector<T, 2>{T{}, -BaseConv.Lattice_g}, BaseConv.getOMEGA(), Smagorinsky);
-  ValuePack FSInitValues(olbfs::FSType::Solid, T{}, T{}, T{}, Vector<T, 2>{});
+  ValuePack FSInitValues(olbfs::FSType::Void, olbfs::FSFlag::None, T{}, T{}, Vector<T, LatSet::q>{}, Vector<T, 2>{});
   ValuePack FSParamsInitValues(LonelyThreshold, VOF_Trans_Threshold, true, surface_tension_coefficient_factor* surface_tension_coefficient);
   std::cout << "surface: " << surface_tension_coefficient_factor* surface_tension_coefficient << std::endl;
   // power-law dynamics for non-Newtonian fluid
@@ -191,8 +196,9 @@ int main() {
 
   // define task/ dynamics:
   // NS task  PowerLaw_BGKForce_Feq_RhoU
+  // openlb used BGK dynamics for Gas cells
   using NSBulkTask =
-    tmp::Key_TypePair<olbfs::FSType::Fluid | olbfs::FSType::Interface,
+    tmp::Key_TypePair<olbfs::FSType::Fluid | olbfs::FSType::Interface | olbfs::FSType::Gas,
                       collision::BGKForce<moment::forceRhou<NSCELL, force::ConstForce<NSCELL>, true>, 
                       equilibrium::SecondOrder<NSCELL>, force::ConstForce<NSCELL>>>;
   using NSWallTask = tmp::Key_TypePair<olbfs::FSType::Wall, collision::BounceBack<NSCELL>>;
@@ -241,10 +247,10 @@ int main() {
 
     if (MainLoopTimer() % OutputStep == 0) {
       OutputTimer.Print_InnerLoopPerformance(Geo.getTotalCellNum(), OutputStep);
-      Printer::Print("Average Rho: ", RhoStat.getAverage());
-      Printer::Print("Average Mass: ", MassStat.getAverage());
-      Printer::Print("Max Mass: ", MassStat.getMax());
-      Printer::Print("Min Mass: ", MassStat.getMin());
+      Printer::Print("Average Rho", RhoStat.getAverage());
+      Printer::Print("Average Mass", MassStat.getAverage());
+      Printer::Print("Max Mass", MassStat.getMax());
+      Printer::Print("Min Mass", MassStat.getMin());
       Printer::Endl();
       Writer.WriteBinary(MainLoopTimer());
     }

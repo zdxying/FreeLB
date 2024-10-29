@@ -42,19 +42,24 @@
 namespace olbfs {
 
 enum FSType : std::uint8_t {
-  Solid = 1,
+  Void = 1,
   Wall = 2,
   Gas = 4,
   Interface = 8,
-  Fluid = 16,
-  To_Fluid = 32,
-  To_Gas = 64,
-  To_Interface = 128
+  Fluid = 16
+};
+
+enum FSFlag : std::uint8_t {
+  None = 0,
+  To_Fluid = 1,
+  To_Gas = 2,
+  To_Interface = 4
 };
 
 
 // define unique olbfs Field
 struct STATEBase : public FieldBase<1> {};
+struct FLAGBase : public FieldBase<1> {};
 struct MASSBase : public FieldBase<1> {};
 struct VOLUMEFRACBase : public FieldBase<1> {};
 template <unsigned int q>
@@ -64,6 +69,8 @@ struct PREVIOUS_VELOCITYBase : public FieldBase<1> {};
 
 // free surface state, init with Solid
 using STATE = GenericField<GenericArray<FSType>, STATEBase>;
+// free surface transition flag
+using FLAG = GenericField<GenericArray<FSFlag>, FLAGBase>;
 // mass = rho * volumefraction
 template <typename T>
 using MASS = GenericField<GenericArray<T>, MASSBase>;
@@ -75,8 +82,8 @@ template <typename T, unsigned int q>
 using EXCESSMASS = GenericField<CyclicArray<T>, EXCESSMASSBase<q>>;
 // a simple massex scalar filed is enough for excess mass exchange
 // more efficient than using a vector field of size q*N in openlb
-template <typename T>
-using MASSEX = GenericField<GenericArray<T>, MASSEXBase>;
+template <typename T, unsigned int q>
+using MASSEX = GenericField<GenericArray<Vector<T, q>>, MASSEXBase>;
 // previous velocity in openlb
 template <typename T, unsigned int D>
 using PREVIOUS_VELOCITY = GenericField<GenericArray<Vector<T, D>>, PREVIOUS_VELOCITYBase>;
@@ -101,7 +108,7 @@ using Surface_Tension_Parameter = Data<T, Surface_Tension_ParameterBase>;
 
 
 template <typename T, typename LatSet>
-using FSFIELDS = TypePack<STATE, MASS<T>, VOLUMEFRAC<T>, MASSEX<T>, PREVIOUS_VELOCITY<T, LatSet::d>>;
+using FSFIELDS = TypePack<STATE, FLAG, MASS<T>, VOLUMEFRAC<T>, MASSEX<T, LatSet::q>, PREVIOUS_VELOCITY<T, LatSet::d>>;
 
 template <typename T>
 using FSPARAMS = TypePack<Lonely_Th<T>, VOF_Trans_Th<T>, Surface_Tension_Enabled,
@@ -192,7 +199,7 @@ class FreeSurface2DManager
   T surface_tension_parameter;  // coefficient_factor * coefficient
 
  public:
-  //  FSType::Solid, T{}, T{}, T{}
+  //  FSType::Void, T{}, T{}, T{}
   template <typename INITVALUEPACK>
   FreeSurface2DManager(BlockLatticeManager<T, LatSet, TypePack>& lm,
                        INITVALUEPACK& initvalues, T lonely_th = 0.3,
@@ -342,6 +349,16 @@ static bool hasNeighborType(CELL& cell, FSType fstype) {
   using LatSet = typename CELL::LatticeSet;
   for (int i = 1; i < LatSet::q; ++i) {
     if (util::isFlag(cell.template getField<STATE>().get(cell.getNeighborId(i)), fstype))
+      return true;
+  }
+  return false;
+}
+
+template <typename CELL>
+static bool hasNeighborFlag(CELL& cell, FSFlag fsflag) {
+  using LatSet = typename CELL::LatticeSet;
+  for (int i = 1; i < LatSet::q; ++i) {
+    if (util::isFlag(cell.template getField<FLAG>().get(cell.getNeighborId(i)), fsflag))
       return true;
   }
   return false;
@@ -893,461 +910,461 @@ typename CELL::FloatType ComputeCurvature(CELL& cell) {
 }
 
 
-// mass transfer
-template <typename CELLTYPE>
-struct MassTransfer {
-  using CELL = CELLTYPE;
-  using T = typename CELL::FloatType;
-  using LatSet = typename CELL::LatticeSet;
+// // mass transfer
+// template <typename CELLTYPE>
+// struct MassTransfer {
+//   using CELL = CELLTYPE;
+//   using T = typename CELL::FloatType;
+//   using LatSet = typename CELL::LatticeSet;
 
-  // this is from openLB's struct NeighbourInfo in FreeSurfaceHelpers.h
-  struct NbrInfo {
-    bool fluid_nbr = false;
-    bool gas_nbr = false;
-    int interface_nbrs = 0;
+//   // this is from openLB's struct NeighbourInfo in FreeSurfaceHelpers.h
+//   struct NbrInfo {
+//     bool fluid_nbr = false;
+//     bool gas_nbr = false;
+//     int interface_nbrs = 0;
 
-    NbrInfo(CELL& cell) {
-      for (int k = 1; k < LatSet::q; ++k) {
-        auto iflag = cell.template getField<STATE>().get(cell.getNeighborId(k));
-        if (util::isFlag(iflag, FSType::Fluid)) {
-          fluid_nbr = true;
-        } else if (util::isFlag(iflag, FSType::Gas)) {
-          gas_nbr = true;
-        } else if (util::isFlag(iflag, FSType::Interface)) {
-          ++interface_nbrs;
-        }
-      }
-    }
-  };
-
-
-  static void apply(CELL& cell) {
-    if (util::isFlag(cell.template get<STATE>(), FSType::Interface)) {
-      // mass transfer
-      T deltamass{};
-      T massflow{};
-      // cell's nbr info
-      NbrInfo cellNbrInfo(cell);
-
-      for (int k = 1; k < LatSet::q; ++k) {
-        CELL celln = cell.getNeighbor(k);
-        int kopp = latset::opp<LatSet>(k);
-
-        if (util::isFlag(celln.template get<STATE>(), FSType::Fluid)) {
-          deltamass += cell[kopp] - celln[k];
-        } else if (util::isFlag(celln.template get<STATE>(), FSType::Interface)) {
-          // celln's nbr info
-          NbrInfo cellnNbrInfo(celln);
-          if (!cellNbrInfo.fluid_nbr) {
-            if (!cellnNbrInfo.fluid_nbr) {
-              if (cellNbrInfo.interface_nbrs < cellnNbrInfo.interface_nbrs) {
-                massflow = -celln[k];
-              } else if (cellNbrInfo.interface_nbrs > cellnNbrInfo.interface_nbrs) {
-                massflow = cell[kopp];
-              } else {
-                massflow = cell[kopp] - celln[k];
-              }
-            } else {
-              massflow = -celln[k];
-            }
-          } else if (!cellNbrInfo.gas_nbr) {
-            if (!cellnNbrInfo.gas_nbr) {
-              if (cellNbrInfo.interface_nbrs < cellnNbrInfo.interface_nbrs) {
-                massflow = cell[kopp];
-              } else if (cellNbrInfo.interface_nbrs > cellnNbrInfo.interface_nbrs) {
-                massflow = -celln[k];
-              } else {
-                massflow = cell[kopp] - celln[k];
-              }
-            } else {
-              massflow = cell[kopp];
-            }
-          } else {
-            if (!cellnNbrInfo.fluid_nbr) {
-              massflow = cell[kopp];
-            } else if (!cellnNbrInfo.gas_nbr) {
-              massflow = -celln[k];
-            } else {
-              massflow = cell[kopp] - celln[k];
-            }
-          }
-
-          deltamass += massflow * T(0.5) * (getClampedVOF(cell) + getClampedVOF(celln));
-        }
-      }
-
-      cell.template get<MASS<T>>() += deltamass;
-
-      // reconstruct pop streamed in from a gas cell
-      T curvature{};
-      if (cell.template get<Surface_Tension_Enabled>()) {
-        if (hasNeighborType(cell, FSType::Gas)) curvature = ComputeCurvature(cell);
-      }
-      T rho_gas =
-        T(1) - T(6) * cell.template get<Surface_Tension_Parameter<T>>() * curvature;
-      const Vector<T, LatSet::d>& u = cell.template get<VELOCITY<T, LatSet::d>>();
-      T u2 = u.getnorm2();
-      for (int k = 1; k < LatSet::q; ++k) {
-        CELL celln = cell.getNeighbor(k);
-        if (util::isFlag(celln.template get<STATE>(), FSType::Gas)) {
-          // fiopp = feqiopp(rho_gas) + feqi(rho_gas) - fi(x+ei)
-          cell[latset::opp<LatSet>(k)] =
-            equilibrium::SecondOrder<CELL>::get(k, u, rho_gas, u2) +
-            equilibrium::SecondOrder<CELL>::get(latset::opp<LatSet>(k), u, rho_gas, u2) -
-            celln[k];
-        }
-      }
-
-      // transition flag for interface cell
-      // T rho = moment::rho<CELL>::get(cell);
-      // RHO should be updated before freesurface
-      const T rho = cell.template get<RHO<T>>();
-
-      // transition by mass criterion
-      if (cell.template get<MASS<T>>() >
-          (T(1) + cell.template get<VOF_Trans_Th<T>>()) * rho) {
-        util::addFlag(FSType::To_Fluid, util::underlyingRef(cell.template get<STATE>()));
-        return;
-      } else if (cell.template get<MASS<T>>() <
-                 -cell.template get<VOF_Trans_Th<T>>() * rho) {
-        util::addFlag(FSType::To_Gas, util::underlyingRef(cell.template get<STATE>()));
-        return;
-      }
-      // transition by lonely criterion
-      if (cell.template get<MASS<T>>() >
-          (T(1) - cell.template get<Lonely_Th<T>>()) * rho) {
-        if (!hasNeighborType(cell, FSType::Gas)) {
-          util::addFlag(FSType::To_Fluid,
-                        util::underlyingRef(cell.template get<STATE>()));
-          return;
-        }
-      } else if (cell.template get<MASS<T>>() < cell.template get<Lonely_Th<T>>() * rho) {
-        if (!hasNeighborType(cell, FSType::Fluid)) {
-          util::addFlag(FSType::To_Gas, util::underlyingRef(cell.template get<STATE>()));
-          return;
-        }
-      }
-      // deal with isolated interface cells
-      if (!hasNeighborType(cell, FSType::Interface)) {
-        if (!hasNeighborType(cell, FSType::Fluid)) {
-          util::addFlag(FSType::To_Gas, util::underlyingRef(cell.template get<STATE>()));
-        } else if (!hasNeighborType(cell, FSType::Gas)) {
-          util::addFlag(FSType::To_Fluid,
-                        util::underlyingRef(cell.template get<STATE>()));
-        }
-      }
-    }
-  }
-};
-
-// to fluid neighbor conversion
-template <typename CELLTYPE>
-struct ToFluidNbrConversion {
-  using CELL = CELLTYPE;
-  using T = typename CELL::FloatType;
-  using LatSet = typename CELL::LatticeSet;
-
-  static void apply(CELL& cell) {
-    // if (util::isFlag(cell.template get<STATE>(), FSType::To_Fluid)) {
-    //   // check neighbors
-    //   for (int k = 1; k < LatSet::q; ++k) {
-    //     CELL celln = cell.getNeighbor(k);
-    //     if (util::isFlag(celln.template get<STATE>(), FSType::To_Gas)) {
-    //       // remove to_gas flag
-    //       util::removeFlag(FSType::To_Gas, util::underlyingRef(celln.template
-    //       get<STATE>()));
-    //     } else if (util::isFlag(celln.template get<STATE>(), FSType::Gas)) {
-    //       // set to_interface for gas neighbor cells
-    //       util::addFlag(FSType::To_Interface, util::underlyingRef(celln.template
-    //       get<STATE>()));
-    //     }
-    //   }
-    // }
-
-    if (util::isFlag(cell.template get<STATE>(), FSType::To_Gas)) {
-      if (hasNeighborType(cell, FSType::To_Fluid)) {
-        // remove to_gas flag
-        util::removeFlag(FSType::To_Gas, util::underlyingRef(cell.template get<STATE>()));
-      }
-    } else if (util::isFlag(cell.template get<STATE>(), FSType::Gas)) {
-      if (hasNeighborType(cell, FSType::To_Fluid)) {
-        // set to_interface
-        util::addFlag(FSType::To_Interface,
-                      util::underlyingRef(cell.template get<STATE>()));
-      }
-    }
-  }
-};
-
-// gas to interface pop init
-template <typename CELLTYPE>
-struct GasToInterfacePopInit {
-  using CELL = CELLTYPE;
-  using T = typename CELL::FloatType;
-  using LatSet = typename CELL::LatticeSet;
-
-  static void apply(CELL& cell) {
-    if (util::isFlag(cell.template get<STATE>(), FSType::To_Interface)) {
-      // init fi using [fluid|interface] neighbor cells
-      T averho{};
-      Vector<T, LatSet::d> aveu{};
-      int count{};
-      for (int k = 1; k < LatSet::q; ++k) {
-        CELL celln = cell.getNeighbor(k);
-        if (util::isFlag(celln.template get<STATE>(),
-                         (FSType::Fluid | FSType::Interface))) {
-          averho += moment::rho<CELL>::get(celln);
-          aveu += moment::u<CELL>::get(celln);
-          // averho += celln.template get<RHO<T>>();
-          // aveu += celln.template get<VELOCITY<T, LatSet::d>>();
-          ++count;
-        }
-      }
-      averho /= count;
-      aveu /= count;
-      // set fi
-      T aveu2 = aveu.getnorm2();
-      for (int k = 0; k < LatSet::q; ++k) {
-        cell[k] = equilibrium::SecondOrder<CELL>::get(k, aveu, averho, aveu2);
-      }
-    }
-  }
-};
-
-// to gas neighbor conversion
-template <typename CELLTYPE>
-struct ToGasNbrConversion {
-  using CELL = CELLTYPE;
-  using T = typename CELL::FloatType;
-  using LatSet = typename CELL::LatticeSet;
-
-  static void apply(CELL& cell) {
-    // if (util::isFlag(cell.template get<STATE>(), FSType::To_Gas)) {
-    //   // check neighbors
-    //   for (int k = 1; k < LatSet::q; ++k) {
-    //     CELL celln = cell.getNeighbor(k);
-    //     if (util::isFlag(celln.template get<STATE>(), FSType::Fluid)) {
-    //       // to interface
-    //       util::addFlag(FSType::To_Interface, util::underlyingRef(celln.template
-    //       get<STATE>()));
-    //     }
-    //   }
-    // }
-
-    if (util::isFlag(cell.template get<STATE>(), FSType::Fluid)) {
-      if (hasNeighborType(cell, FSType::To_Gas)) {
-        // set to_interface
-        util::addFlag(FSType::To_Interface,
-                      util::underlyingRef(cell.template get<STATE>()));
-      }
-    }
-  }
-};
-
-// interface excess mass
-template <typename CELLTYPE>
-struct InterfaceExcessMass {
-  using CELL = CELLTYPE;
-  using T = typename CELL::FloatType;
-  using LatSet = typename CELL::LatticeSet;
-
-  static void apply(CELL& cell) {
-    // for interface cells to be converted to fluid or gas
-    // excess mass is distributed to interface neighbors
-    T excessmass{};
-    if (util::isFlag(cell.template get<STATE>(), FSType::To_Fluid)) {
-      T rho = moment::rho<CELL>::get(cell);
-      // T rho = cell.template get<RHO<T>>();
-      excessmass = cell.template get<MASS<T>>() - rho;
-      cell.template get<MASS<T>>() = rho;
-    } else if (util::isFlag(cell.template get<STATE>(), FSType::To_Gas)) {
-      excessmass = cell.template get<MASS<T>>();
-      cell.template get<MASS<T>>() = T{};
-    } else {
-      return;
-    }
-
-    // find neighbors
-    int count{};
-    for (int k = 1; k < LatSet::q; ++k) {
-      CELL celln = cell.getNeighbor(k);
-      if (util::isFlag(celln.template get<STATE>(), FSType::Interface) &&
-          !util::isFlag(celln.template get<STATE>(), FSType::To_Gas | FSType::To_Fluid)) {
-        ++count;
-      }
-    }
-
-    std::array<T*, LatSet::q> exmasscell =
-      cell.template getField<EXCESSMASS<T, LatSet::q>>().getArray(cell.getId());
-    *(exmasscell[0]) = T{};
-    if (count > 0) {
-      T excessmassk = excessmass / count;
-      for (int k = 1; k < LatSet::q; ++k) {
-        CELL celln = cell.getNeighbor(k);
-        if (util::isFlag(celln.template get<STATE>(), FSType::Interface) &&
-            !util::isFlag(celln.template get<STATE>(),
-                          FSType::To_Gas | FSType::To_Fluid)) {
-          *(exmasscell[k]) = excessmassk;
-        }
-      }
-    } else {
-      *(exmasscell[0]) = excessmass;
-    }
-  }
-};
-
-// finalize conversion
-template <typename CELLTYPE>
-struct FinalizeConversion {
-  using CELL = CELLTYPE;
-  using T = typename CELL::FloatType;
-  using LatSet = typename CELL::LatticeSet;
-
-  static void apply(CELL& cell) {
-    // update state
-    if (util::isFlag(cell.template get<STATE>(), FSType::To_Fluid)) {
-      cell.template get<STATE>() = FSType::Fluid;
-      cell.template get<VOLUMEFRAC<T>>() = T(1);
-      cell.template get<MASS<T>>() += cell.template get<EXCESSMASS<T, LatSet::q>, 0>();
-    } else if (util::isFlag(cell.template get<STATE>(), FSType::To_Gas)) {
-      cell.template get<STATE>() = FSType::Gas;
-      cell.template get<VOLUMEFRAC<T>>() = T{};
-      cell.template get<MASS<T>>() += cell.template get<EXCESSMASS<T, LatSet::q>, 0>();
-      cell.template get<VELOCITY<T, LatSet::d>>().clear();
-    } else if (util::isFlag(cell.template get<STATE>(), FSType::To_Interface)) {
-      cell.template get<STATE>() = FSType::Interface;
-    }
-  }
-};
-// stream EXCESSMASS<T,LatSet::q>
-template <typename LATTICETYPE>
-struct StreamExcessMass {
-  using LATTICE = LATTICETYPE;
-  using T = typename LATTICE::FloatType;
-  using LatSet = typename LATTICE::LatticeSet;
-
-  static void apply(LATTICE& lattice) {
-    for (int i = 1; i < LatSet::q; ++i) {
-      lattice.template getField<EXCESSMASS<T, LatSet::q>>().getField(i).rotate(
-        lattice.getDelta_Index()[i]);
-    }
-  }
-};
-
-// collect excess mass
-template <typename CELLTYPE>
-struct CollectExcessMass {
-  using CELL = CELLTYPE;
-  using T = typename CELL::FloatType;
-  using LatSet = typename CELL::LatticeSet;
-
-  static void apply(CELL& cell) {
-    if (util::isFlag(cell.template get<STATE>(), FSType::Interface | FSType::Fluid)) {
-      T exmass_sum = cell.template get<EXCESSMASS<T, LatSet::q>, 0>();
-      for (int k = 1; k < LatSet::q; ++k) {
-        exmass_sum += cell.template get<EXCESSMASS<T, LatSet::q>>(k);
-      }
-      cell.template get<MASS<T>>() += exmass_sum;
-      if (util::isFlag(cell.template get<STATE>(), FSType::Interface)) {
-        // T rho = moment::rho<CELL>::get(cell);
-        T rho = cell.template get<RHO<T>>();
-        cell.template get<VOLUMEFRAC<T>>() = cell.template get<MASS<T>>() / rho;
-      }
-    }
-  }
-};
-
-// clear EXCESSMASS<T,LatSet::q>
-template <typename LATTICETYPE>
-struct ClearExcessMass {
-  using LATTICE = LATTICETYPE;
-  using T = typename LATTICE::FloatType;
-  using LatSet = typename LATTICE::LatticeSet;
-
-  static void apply(LATTICE& lattice) {
-    lattice.template getField<EXCESSMASS<T, LatSet::q>>().Init();
-  }
-};
-
-// apply all the free surface dynamics
-template <typename LATTICEMANAGERTYPE>
-struct FreeSurfaceApply {
-  using CELL = typename LATTICEMANAGERTYPE::CellType;
-  using BLOCKLAT = typename LATTICEMANAGERTYPE::BLOCKLATTICE;
-  using T = typename CELL::FloatType;
-  using LatSet = typename CELL::LatticeSet;
-
-  static void Apply(LATTICEMANAGERTYPE& latManager, std::int64_t count) {
-    // mass transfer
-    latManager.template ApplyInnerCellDynamics<MassTransfer<CELL>>(count);
-
-    latManager.template getField<STATE>().NormalCommunicate(count);
-#ifdef MPI_ENABLED
-    latManager.template getField<STATE>().MPINormalCommunicate(count);
-#endif
-    latManager.template getField<MASS<T>>().CommunicateAll(count);
+//     NbrInfo(CELL& cell) {
+//       for (int k = 1; k < LatSet::q; ++k) {
+//         auto iflag = cell.template getField<STATE>().get(cell.getNeighborId(k));
+//         if (util::isFlag(iflag, FSType::Fluid)) {
+//           fluid_nbr = true;
+//         } else if (util::isFlag(iflag, FSType::Gas)) {
+//           gas_nbr = true;
+//         } else if (util::isFlag(iflag, FSType::Interface)) {
+//           ++interface_nbrs;
+//         }
+//       }
+//     }
+//   };
 
 
-    // to fluid neighbor conversion
-    latManager.template ApplyInnerCellDynamics<ToFluidNbrConversion<CELL>>(count);
+//   static void apply(CELL& cell) {
+//     if (util::isFlag(cell.template get<STATE>(), FSType::Interface)) {
+//       // mass transfer
+//       T deltamass{};
+//       T massflow{};
+//       // cell's nbr info
+//       NbrInfo cellNbrInfo(cell);
 
-    latManager.template getField<STATE>().NormalCommunicate(count);
-#ifdef MPI_ENABLED
-    latManager.template getField<STATE>().MPINormalCommunicate(count);
-#endif
+//       for (int k = 1; k < LatSet::q; ++k) {
+//         CELL celln = cell.getNeighbor(k);
+//         int kopp = latset::opp<LatSet>(k);
+
+//         if (util::isFlag(celln.template get<STATE>(), FSType::Fluid)) {
+//           deltamass += cell[kopp] - celln[k];
+//         } else if (util::isFlag(celln.template get<STATE>(), FSType::Interface)) {
+//           // celln's nbr info
+//           NbrInfo cellnNbrInfo(celln);
+//           if (!cellNbrInfo.fluid_nbr) {
+//             if (!cellnNbrInfo.fluid_nbr) {
+//               if (cellNbrInfo.interface_nbrs < cellnNbrInfo.interface_nbrs) {
+//                 massflow = -celln[k];
+//               } else if (cellNbrInfo.interface_nbrs > cellnNbrInfo.interface_nbrs) {
+//                 massflow = cell[kopp];
+//               } else {
+//                 massflow = cell[kopp] - celln[k];
+//               }
+//             } else {
+//               massflow = -celln[k];
+//             }
+//           } else if (!cellNbrInfo.gas_nbr) {
+//             if (!cellnNbrInfo.gas_nbr) {
+//               if (cellNbrInfo.interface_nbrs < cellnNbrInfo.interface_nbrs) {
+//                 massflow = cell[kopp];
+//               } else if (cellNbrInfo.interface_nbrs > cellnNbrInfo.interface_nbrs) {
+//                 massflow = -celln[k];
+//               } else {
+//                 massflow = cell[kopp] - celln[k];
+//               }
+//             } else {
+//               massflow = cell[kopp];
+//             }
+//           } else {
+//             if (!cellnNbrInfo.fluid_nbr) {
+//               massflow = cell[kopp];
+//             } else if (!cellnNbrInfo.gas_nbr) {
+//               massflow = -celln[k];
+//             } else {
+//               massflow = cell[kopp] - celln[k];
+//             }
+//           }
+
+//           deltamass += massflow * T(0.5) * (getClampedVOF(cell) + getClampedVOF(celln));
+//         }
+//       }
+
+//       cell.template get<MASS<T>>() += deltamass;
+
+//       // reconstruct pop streamed in from a gas cell
+//       T curvature{};
+//       if (cell.template get<Surface_Tension_Enabled>()) {
+//         if (hasNeighborType(cell, FSType::Gas)) curvature = ComputeCurvature(cell);
+//       }
+//       T rho_gas =
+//         T(1) - T(6) * cell.template get<Surface_Tension_Parameter<T>>() * curvature;
+//       const Vector<T, LatSet::d>& u = cell.template get<VELOCITY<T, LatSet::d>>();
+//       T u2 = u.getnorm2();
+//       for (int k = 1; k < LatSet::q; ++k) {
+//         CELL celln = cell.getNeighbor(k);
+//         if (util::isFlag(celln.template get<STATE>(), FSType::Gas)) {
+//           // fiopp = feqiopp(rho_gas) + feqi(rho_gas) - fi(x+ei)
+//           cell[latset::opp<LatSet>(k)] =
+//             equilibrium::SecondOrder<CELL>::get(k, u, rho_gas, u2) +
+//             equilibrium::SecondOrder<CELL>::get(latset::opp<LatSet>(k), u, rho_gas, u2) -
+//             celln[k];
+//         }
+//       }
+
+//       // transition flag for interface cell
+//       // T rho = moment::rho<CELL>::get(cell);
+//       // RHO should be updated before freesurface
+//       const T rho = cell.template get<RHO<T>>();
+
+//       // transition by mass criterion
+//       if (cell.template get<MASS<T>>() >
+//           (T(1) + cell.template get<VOF_Trans_Th<T>>()) * rho) {
+//         util::addFlag(FSType::To_Fluid, util::underlyingRef(cell.template get<STATE>()));
+//         return;
+//       } else if (cell.template get<MASS<T>>() <
+//                  -cell.template get<VOF_Trans_Th<T>>() * rho) {
+//         util::addFlag(FSType::To_Gas, util::underlyingRef(cell.template get<STATE>()));
+//         return;
+//       }
+//       // transition by lonely criterion
+//       if (cell.template get<MASS<T>>() >
+//           (T(1) - cell.template get<Lonely_Th<T>>()) * rho) {
+//         if (!hasNeighborType(cell, FSType::Gas)) {
+//           util::addFlag(FSType::To_Fluid,
+//                         util::underlyingRef(cell.template get<STATE>()));
+//           return;
+//         }
+//       } else if (cell.template get<MASS<T>>() < cell.template get<Lonely_Th<T>>() * rho) {
+//         if (!hasNeighborType(cell, FSType::Fluid)) {
+//           util::addFlag(FSType::To_Gas, util::underlyingRef(cell.template get<STATE>()));
+//           return;
+//         }
+//       }
+//       // deal with isolated interface cells
+//       if (!hasNeighborType(cell, FSType::Interface)) {
+//         if (!hasNeighborType(cell, FSType::Fluid)) {
+//           util::addFlag(FSType::To_Gas, util::underlyingRef(cell.template get<STATE>()));
+//         } else if (!hasNeighborType(cell, FSType::Gas)) {
+//           util::addFlag(FSType::To_Fluid,
+//                         util::underlyingRef(cell.template get<STATE>()));
+//         }
+//       }
+//     }
+//   }
+// };
+
+// // to fluid neighbor conversion
+// template <typename CELLTYPE>
+// struct ToFluidNbrConversion {
+//   using CELL = CELLTYPE;
+//   using T = typename CELL::FloatType;
+//   using LatSet = typename CELL::LatticeSet;
+
+//   static void apply(CELL& cell) {
+//     // if (util::isFlag(cell.template get<STATE>(), FSType::To_Fluid)) {
+//     //   // check neighbors
+//     //   for (int k = 1; k < LatSet::q; ++k) {
+//     //     CELL celln = cell.getNeighbor(k);
+//     //     if (util::isFlag(celln.template get<STATE>(), FSType::To_Gas)) {
+//     //       // remove to_gas flag
+//     //       util::removeFlag(FSType::To_Gas, util::underlyingRef(celln.template
+//     //       get<STATE>()));
+//     //     } else if (util::isFlag(celln.template get<STATE>(), FSType::Gas)) {
+//     //       // set to_interface for gas neighbor cells
+//     //       util::addFlag(FSType::To_Interface, util::underlyingRef(celln.template
+//     //       get<STATE>()));
+//     //     }
+//     //   }
+//     // }
+
+//     if (util::isFlag(cell.template get<STATE>(), FSType::To_Gas)) {
+//       if (hasNeighborType(cell, FSType::To_Fluid)) {
+//         // remove to_gas flag
+//         util::removeFlag(FSType::To_Gas, util::underlyingRef(cell.template get<STATE>()));
+//       }
+//     } else if (util::isFlag(cell.template get<STATE>(), FSType::Gas)) {
+//       if (hasNeighborType(cell, FSType::To_Fluid)) {
+//         // set to_interface
+//         util::addFlag(FSType::To_Interface,
+//                       util::underlyingRef(cell.template get<STATE>()));
+//       }
+//     }
+//   }
+// };
+
+// // gas to interface pop init
+// template <typename CELLTYPE>
+// struct GasToInterfacePopInit {
+//   using CELL = CELLTYPE;
+//   using T = typename CELL::FloatType;
+//   using LatSet = typename CELL::LatticeSet;
+
+//   static void apply(CELL& cell) {
+//     if (util::isFlag(cell.template get<STATE>(), FSType::To_Interface)) {
+//       // init fi using [fluid|interface] neighbor cells
+//       T averho{};
+//       Vector<T, LatSet::d> aveu{};
+//       int count{};
+//       for (int k = 1; k < LatSet::q; ++k) {
+//         CELL celln = cell.getNeighbor(k);
+//         if (util::isFlag(celln.template get<STATE>(),
+//                          (FSType::Fluid | FSType::Interface))) {
+//           averho += moment::rho<CELL>::get(celln);
+//           aveu += moment::u<CELL>::get(celln);
+//           // averho += celln.template get<RHO<T>>();
+//           // aveu += celln.template get<VELOCITY<T, LatSet::d>>();
+//           ++count;
+//         }
+//       }
+//       averho /= count;
+//       aveu /= count;
+//       // set fi
+//       T aveu2 = aveu.getnorm2();
+//       for (int k = 0; k < LatSet::q; ++k) {
+//         cell[k] = equilibrium::SecondOrder<CELL>::get(k, aveu, averho, aveu2);
+//       }
+//     }
+//   }
+// };
+
+// // to gas neighbor conversion
+// template <typename CELLTYPE>
+// struct ToGasNbrConversion {
+//   using CELL = CELLTYPE;
+//   using T = typename CELL::FloatType;
+//   using LatSet = typename CELL::LatticeSet;
+
+//   static void apply(CELL& cell) {
+//     // if (util::isFlag(cell.template get<STATE>(), FSType::To_Gas)) {
+//     //   // check neighbors
+//     //   for (int k = 1; k < LatSet::q; ++k) {
+//     //     CELL celln = cell.getNeighbor(k);
+//     //     if (util::isFlag(celln.template get<STATE>(), FSType::Fluid)) {
+//     //       // to interface
+//     //       util::addFlag(FSType::To_Interface, util::underlyingRef(celln.template
+//     //       get<STATE>()));
+//     //     }
+//     //   }
+//     // }
+
+//     if (util::isFlag(cell.template get<STATE>(), FSType::Fluid)) {
+//       if (hasNeighborType(cell, FSType::To_Gas)) {
+//         // set to_interface
+//         util::addFlag(FSType::To_Interface,
+//                       util::underlyingRef(cell.template get<STATE>()));
+//       }
+//     }
+//   }
+// };
+
+// // interface excess mass
+// template <typename CELLTYPE>
+// struct InterfaceExcessMass {
+//   using CELL = CELLTYPE;
+//   using T = typename CELL::FloatType;
+//   using LatSet = typename CELL::LatticeSet;
+
+//   static void apply(CELL& cell) {
+//     // for interface cells to be converted to fluid or gas
+//     // excess mass is distributed to interface neighbors
+//     T excessmass{};
+//     if (util::isFlag(cell.template get<STATE>(), FSType::To_Fluid)) {
+//       T rho = moment::rho<CELL>::get(cell);
+//       // T rho = cell.template get<RHO<T>>();
+//       excessmass = cell.template get<MASS<T>>() - rho;
+//       cell.template get<MASS<T>>() = rho;
+//     } else if (util::isFlag(cell.template get<STATE>(), FSType::To_Gas)) {
+//       excessmass = cell.template get<MASS<T>>();
+//       cell.template get<MASS<T>>() = T{};
+//     } else {
+//       return;
+//     }
+
+//     // find neighbors
+//     int count{};
+//     for (int k = 1; k < LatSet::q; ++k) {
+//       CELL celln = cell.getNeighbor(k);
+//       if (util::isFlag(celln.template get<STATE>(), FSType::Interface) &&
+//           !util::isFlag(celln.template get<STATE>(), FSType::To_Gas | FSType::To_Fluid)) {
+//         ++count;
+//       }
+//     }
+
+//     std::array<T*, LatSet::q> exmasscell =
+//       cell.template getField<EXCESSMASS<T, LatSet::q>>().getArray(cell.getId());
+//     *(exmasscell[0]) = T{};
+//     if (count > 0) {
+//       T excessmassk = excessmass / count;
+//       for (int k = 1; k < LatSet::q; ++k) {
+//         CELL celln = cell.getNeighbor(k);
+//         if (util::isFlag(celln.template get<STATE>(), FSType::Interface) &&
+//             !util::isFlag(celln.template get<STATE>(),
+//                           FSType::To_Gas | FSType::To_Fluid)) {
+//           *(exmasscell[k]) = excessmassk;
+//         }
+//       }
+//     } else {
+//       *(exmasscell[0]) = excessmass;
+//     }
+//   }
+// };
+
+// // finalize conversion
+// template <typename CELLTYPE>
+// struct FinalizeConversion {
+//   using CELL = CELLTYPE;
+//   using T = typename CELL::FloatType;
+//   using LatSet = typename CELL::LatticeSet;
+
+//   static void apply(CELL& cell) {
+//     // update state
+//     if (util::isFlag(cell.template get<STATE>(), FSType::To_Fluid)) {
+//       cell.template get<STATE>() = FSType::Fluid;
+//       cell.template get<VOLUMEFRAC<T>>() = T(1);
+//       cell.template get<MASS<T>>() += cell.template get<EXCESSMASS<T, LatSet::q>, 0>();
+//     } else if (util::isFlag(cell.template get<STATE>(), FSType::To_Gas)) {
+//       cell.template get<STATE>() = FSType::Gas;
+//       cell.template get<VOLUMEFRAC<T>>() = T{};
+//       cell.template get<MASS<T>>() += cell.template get<EXCESSMASS<T, LatSet::q>, 0>();
+//       cell.template get<VELOCITY<T, LatSet::d>>().clear();
+//     } else if (util::isFlag(cell.template get<STATE>(), FSType::To_Interface)) {
+//       cell.template get<STATE>() = FSType::Interface;
+//     }
+//   }
+// };
+// // stream EXCESSMASS<T,LatSet::q>
+// template <typename LATTICETYPE>
+// struct StreamExcessMass {
+//   using LATTICE = LATTICETYPE;
+//   using T = typename LATTICE::FloatType;
+//   using LatSet = typename LATTICE::LatticeSet;
+
+//   static void apply(LATTICE& lattice) {
+//     for (int i = 1; i < LatSet::q; ++i) {
+//       lattice.template getField<EXCESSMASS<T, LatSet::q>>().getField(i).rotate(
+//         lattice.getDelta_Index()[i]);
+//     }
+//   }
+// };
+
+// // collect excess mass
+// template <typename CELLTYPE>
+// struct CollectExcessMass {
+//   using CELL = CELLTYPE;
+//   using T = typename CELL::FloatType;
+//   using LatSet = typename CELL::LatticeSet;
+
+//   static void apply(CELL& cell) {
+//     if (util::isFlag(cell.template get<STATE>(), FSType::Interface | FSType::Fluid)) {
+//       T exmass_sum = cell.template get<EXCESSMASS<T, LatSet::q>, 0>();
+//       for (int k = 1; k < LatSet::q; ++k) {
+//         exmass_sum += cell.template get<EXCESSMASS<T, LatSet::q>>(k);
+//       }
+//       cell.template get<MASS<T>>() += exmass_sum;
+//       if (util::isFlag(cell.template get<STATE>(), FSType::Interface)) {
+//         // T rho = moment::rho<CELL>::get(cell);
+//         T rho = cell.template get<RHO<T>>();
+//         cell.template get<VOLUMEFRAC<T>>() = cell.template get<MASS<T>>() / rho;
+//       }
+//     }
+//   }
+// };
+
+// // clear EXCESSMASS<T,LatSet::q>
+// template <typename LATTICETYPE>
+// struct ClearExcessMass {
+//   using LATTICE = LATTICETYPE;
+//   using T = typename LATTICE::FloatType;
+//   using LatSet = typename LATTICE::LatticeSet;
+
+//   static void apply(LATTICE& lattice) {
+//     lattice.template getField<EXCESSMASS<T, LatSet::q>>().Init();
+//   }
+// };
+
+// // apply all the free surface dynamics
+// template <typename LATTICEMANAGERTYPE>
+// struct FreeSurfaceApply {
+//   using CELL = typename LATTICEMANAGERTYPE::CellType;
+//   using BLOCKLAT = typename LATTICEMANAGERTYPE::BLOCKLATTICE;
+//   using T = typename CELL::FloatType;
+//   using LatSet = typename CELL::LatticeSet;
+
+//   static void Apply(LATTICEMANAGERTYPE& latManager, std::int64_t count) {
+//     // mass transfer
+//     latManager.template ApplyInnerCellDynamics<MassTransfer<CELL>>(count);
+
+//     latManager.template getField<STATE>().NormalCommunicate(count);
+// #ifdef MPI_ENABLED
+//     latManager.template getField<STATE>().MPINormalCommunicate(count);
+// #endif
+//     latManager.template getField<MASS<T>>().CommunicateAll(count);
 
 
-    // gas to interface pop init
-    latManager.template ApplyInnerCellDynamics<GasToInterfacePopInit<CELL>>(count);
+//     // to fluid neighbor conversion
+//     latManager.template ApplyInnerCellDynamics<ToFluidNbrConversion<CELL>>(count);
 
-    latManager.Communicate(count);
-
-
-    // to gas neighbor conversion
-    latManager.template ApplyInnerCellDynamics<ToGasNbrConversion<CELL>>(count);
-
-    latManager.template getField<STATE>().NormalCommunicate(count);
-#ifdef MPI_ENABLED
-    latManager.template getField<STATE>().MPINormalCommunicate(count);
-#endif
+//     latManager.template getField<STATE>().NormalCommunicate(count);
+// #ifdef MPI_ENABLED
+//     latManager.template getField<STATE>().MPINormalCommunicate(count);
+// #endif
 
 
-    // interface excess mass
-    latManager.template ApplyInnerCellDynamics<InterfaceExcessMass<CELL>>(count);
+//     // gas to interface pop init
+//     latManager.template ApplyInnerCellDynamics<GasToInterfacePopInit<CELL>>(count);
 
-    latManager.template getField<MASS<T>>().CommunicateAll(count);
-    latManager.template getField<EXCESSMASS<T, LatSet::q>>().CommunicateAll(count);
-
-
-    // finalize conversion
-    latManager.template ApplyInnerCellDynamics<FinalizeConversion<CELL>>(count);
-
-    latManager.template getField<STATE>().NormalCommunicate(count);
-#ifdef MPI_ENABLED
-    latManager.template getField<STATE>().MPINormalCommunicate(count);
-#endif
-    latManager.template getField<MASS<T>>().CommunicateAll(count);
-    latManager.template getField<VOLUMEFRAC<T>>().CommunicateAll(count);
-    // latManager.template getField<VELOCITY<T,LatSet::d>>().CommunicateAll(count);
+//     latManager.Communicate(count);
 
 
-    // stream EXCESSMASS<T,LatSet::q>
-    latManager.ForEachBlockLattice(
-      count, [&](auto& blocklat) { StreamExcessMass<BLOCKLAT>::apply(blocklat); });
+//     // to gas neighbor conversion
+//     latManager.template ApplyInnerCellDynamics<ToGasNbrConversion<CELL>>(count);
+
+//     latManager.template getField<STATE>().NormalCommunicate(count);
+// #ifdef MPI_ENABLED
+//     latManager.template getField<STATE>().MPINormalCommunicate(count);
+// #endif
 
 
-    // collect excess mass
-    latManager.template ApplyInnerCellDynamics<CollectExcessMass<CELL>>(count);
+//     // interface excess mass
+//     latManager.template ApplyInnerCellDynamics<InterfaceExcessMass<CELL>>(count);
 
-    latManager.template getField<MASS<T>>().CommunicateAll(count);
-    latManager.template getField<VOLUMEFRAC<T>>().CommunicateAll(count);
+//     latManager.template getField<MASS<T>>().CommunicateAll(count);
+//     latManager.template getField<EXCESSMASS<T, LatSet::q>>().CommunicateAll(count);
 
 
-    // clear EXCESSMASS<T,LatSet::q>
-    latManager.ForEachBlockLattice(
-      count, [&](auto& blocklat) { ClearExcessMass<BLOCKLAT>::apply(blocklat); });
-  }
-};
+//     // finalize conversion
+//     latManager.template ApplyInnerCellDynamics<FinalizeConversion<CELL>>(count);
+
+//     latManager.template getField<STATE>().NormalCommunicate(count);
+// #ifdef MPI_ENABLED
+//     latManager.template getField<STATE>().MPINormalCommunicate(count);
+// #endif
+//     latManager.template getField<MASS<T>>().CommunicateAll(count);
+//     latManager.template getField<VOLUMEFRAC<T>>().CommunicateAll(count);
+//     // latManager.template getField<VELOCITY<T,LatSet::d>>().CommunicateAll(count);
+
+
+//     // stream EXCESSMASS<T,LatSet::q>
+//     latManager.ForEachBlockLattice(
+//       count, [&](auto& blocklat) { StreamExcessMass<BLOCKLAT>::apply(blocklat); });
+
+
+//     // collect excess mass
+//     latManager.template ApplyInnerCellDynamics<CollectExcessMass<CELL>>(count);
+
+//     latManager.template getField<MASS<T>>().CommunicateAll(count);
+//     latManager.template getField<VOLUMEFRAC<T>>().CommunicateAll(count);
+
+
+//     // clear EXCESSMASS<T,LatSet::q>
+//     latManager.ForEachBlockLattice(
+//       count, [&](auto& blocklat) { ClearExcessMass<BLOCKLAT>::apply(blocklat); });
+//   }
+// };
 
 }  // namespace olbfs
 
