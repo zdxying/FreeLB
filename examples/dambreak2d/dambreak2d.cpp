@@ -11,7 +11,7 @@
 
 #include "freelb.h"
 #include "freelb.hh"
-#include "lbm/freeSurface2d.h"
+#include "lbm/freeSurface.h"
 #include "lbm/freeSurface.hh"
 
 // int Total_Macro_Step = 0;
@@ -242,7 +242,7 @@ int main() {
     // NS_BB.Apply(MainLoopTimer());
     NSLattice.Communicate(MainLoopTimer());
 
-    olbfs::FreeSurfaceApply2D<NSBlockLatMan>::Apply(NSLattice, MainLoopTimer());
+    olbfs::FreeSurfaceApply<NSBlockLatMan>::Apply(NSLattice, MainLoopTimer());
 
 
     if (MainLoopTimer() % OutputStep == 0) {

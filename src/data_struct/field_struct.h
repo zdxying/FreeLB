@@ -877,7 +877,7 @@ class BlockFieldManager {
   template <typename Func>
   void forEachInner(const Func& func) {
     for (const auto& blockfield : this->getBlockFields()) {
-      const auto& field = blockfield.getFieldType().getField(fieldidx);
+      const auto& field = blockfield.getFieldType().getField(0);
 			const auto& blockxd = blockfield.getBlock();
 			const int overlap = blockxd.getOverlap();
 			const int Nx = blockxd.getNx();

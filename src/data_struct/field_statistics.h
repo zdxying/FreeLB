@@ -55,10 +55,14 @@ public:
 			// for (std::size_t i = 0; i < size; ++i) {
 			// 	sum += field[i];
 			// }
+
+			std::size_t id{};
 			if constexpr (BLOCKFIELDMANAGER::dim == 2) {
 					for (int j = overlap; j < Ny - overlap; ++j) {
+						id = j * Nx + overlap;
 						for (int i = overlap; i < Nx - overlap; ++i) {
-							sum += field[std::size_t{j * Nx + i}];
+							sum += field[id];
+							++id;
 					}
 				}
 				size = (Nx - 2 * overlap) * (Ny - 2 * overlap);
@@ -66,8 +70,10 @@ public:
 				std::size_t NxNy = Nx * Ny;
 				for (int k = overlap; k < Nz - overlap; ++k) {
 					for (int j = overlap; j < Ny - overlap; ++j) {
+						id = k * NxNy + j * Nx + overlap;
 						for (int i = overlap; i < Nx - overlap; ++i) {
-							sum += field[std::size_t{k * NxNy + j * Nx + i}];
+							sum += field[id];
+							++id;
 						}
 					}
 				}
@@ -100,18 +106,23 @@ public:
 			// 	max = max > field[i] ? max : field[i];
 			// }
 
+			std::size_t id{};
 			if constexpr (BLOCKFIELDMANAGER::dim == 2) {
 					for (int j = overlap; j < Ny - overlap; ++j) {
+						id = j * Nx + overlap;
 						for (int i = overlap; i < Nx - overlap; ++i) {
-							max = max > field[std::size_t{j * Nx + i}] ? max : field[std::size_t{j * Nx + i}];
+							max = max > field[id] ? max : field[id];
+							++id;
 					}
 				}
 			} else if constexpr (BLOCKFIELDMANAGER::dim == 3) {
 				std::size_t NxNy = Nx * Ny;
 				for (int k = overlap; k < Nz - overlap; ++k) {
 					for (int j = overlap; j < Ny - overlap; ++j) {
+						id = k * NxNy + j * Nx + overlap;
 						for (int i = overlap; i < Nx - overlap; ++i) {
-							max = max > field[std::size_t{k * NxNy + j * Nx + i}] ? max : field[std::size_t{k * NxNy + j * Nx + i}];
+							max = max > field[id] ? max : field[id];
+							++id;
 						}
 					}
 				}
@@ -142,18 +153,23 @@ public:
 			// 	min = min < field[i] ? min : field[i];
 			// }
 
+			std::size_t id{};
 			if constexpr (BLOCKFIELDMANAGER::dim == 2) {
 					for (int j = overlap; j < Ny - overlap; ++j) {
+						id = j * Nx + overlap;
 						for (int i = overlap; i < Nx - overlap; ++i) {
-							min = min < field[std::size_t{j * Nx + i}] ? min : field[std::size_t{j * Nx + i}];
+							min = min < field[id] ? min : field[id];
+							++id;
 					}
 				}
 			} else if constexpr (BLOCKFIELDMANAGER::dim == 3) {
 				std::size_t NxNy = Nx * Ny;
 				for (int k = overlap; k < Nz - overlap; ++k) {
 					for (int j = overlap; j < Ny - overlap; ++j) {
+						id = k * NxNy + j * Nx + overlap;
 						for (int i = overlap; i < Nx - overlap; ++i) {
-							min = min < field[std::size_t{k * NxNy + j * Nx + i}] ? min : field[std::size_t{k * NxNy + j * Nx + i}];
+							min = min < field[id] ? min : field[id];
+							++id;
 						}
 					}
 				}
@@ -179,23 +195,29 @@ public:
 			const int Nz = blockxd.getNz();
 			
 			std::size_t count{};
+
 			// const std::size_t size = field.size();
 			// for (std::size_t i = 0; i < size; ++i) {
 			// 	if (field[i] == value) ++count;
 			// }
 
+			std::size_t id{};
 			if constexpr (BLOCKFIELDMANAGER::dim == 2) {
 					for (int j = overlap; j < Ny - overlap; ++j) {
+						id = j * Nx + overlap;
 						for (int i = overlap; i < Nx - overlap; ++i) {
-							if (field[std::size_t{j * Nx + i}] == value) ++count;
+							if (field[id] == value) ++count;
+							++id;
 					}
 				}
 			} else if constexpr (BLOCKFIELDMANAGER::dim == 3) {
 				std::size_t NxNy = Nx * Ny;
 				for (int k = overlap; k < Nz - overlap; ++k) {
 					for (int j = overlap; j < Ny - overlap; ++j) {
+						id = k * NxNy + j * Nx + overlap;
 						for (int i = overlap; i < Nx - overlap; ++i) {
-							if (field[std::size_t{k * NxNy + j * Nx + i}] == value) ++count;
+							if (field[id] == value) ++count;
+							++id;
 						}
 					}
 				}
@@ -214,12 +236,43 @@ public:
 #endif
 		for (const auto& blockfield : BFM.getBlockFields()) {
 			const auto& field = blockfield.getFieldType().getField(fieldidx);
-			const std::size_t size = field.size();
+			const auto& blockxd = blockfield.getBlock();
+			const int overlap = blockxd.getOverlap();
+			const int Nx = blockxd.getNx();
+			const int Ny = blockxd.getNy();
+			const int Nz = blockxd.getNz();
+
 			std::size_t count{};
-			for (std::size_t i = 0; i < size; ++i) {
-				if (field[i] == value) ++count;
+
+			// const std::size_t size = field.size();
+			// for (std::size_t i = 0; i < size; ++i) {
+			// 	if (field[i] == value) ++count;
+			// }
+
+			std::size_t id{};
+			if constexpr (BLOCKFIELDMANAGER::dim == 2) {
+					for (int j = overlap; j < Ny - overlap; ++j) {
+						id = j * Nx + overlap;
+						for (int i = overlap; i < Nx - overlap; ++i) {
+							if (field[id] == value) ++count;
+							++id;
+					}
+				}
+				TotalCount += (Nx - 2 * overlap) * (Ny - 2 * overlap);
+			} else if constexpr (BLOCKFIELDMANAGER::dim == 3) {
+				std::size_t NxNy = Nx * Ny;
+				for (int k = overlap; k < Nz - overlap; ++k) {
+					for (int j = overlap; j < Ny - overlap; ++j) {
+						id = k * NxNy + j * Nx + overlap;
+						for (int i = overlap; i < Nx - overlap; ++i) {
+							if (field[id] == value) ++count;
+							++id;
+						}
+					}
+				}
+				TotalCount += (Nx - 2 * overlap) * (Ny - 2 * overlap) * (Nz - 2 * overlap);
 			}
-			TotalCount += size;
+
 			TotalValueCount += count;
 		}
 		return static_cast<FloatType>(TotalValueCount) / TotalCount;
@@ -232,11 +285,41 @@ public:
 #endif
 		for (const auto& blockfield : BFM.getBlockFields()) {
 			const auto& field = blockfield.getFieldType().getField(fieldidx);
-			const std::size_t size = field.size();
+			const auto& blockxd = blockfield.getBlock();
+			const int overlap = blockxd.getOverlap();
+			const int Nx = blockxd.getNx();
+			const int Ny = blockxd.getNy();
+			const int Nz = blockxd.getNz();
+
 			std::size_t count{};
-			for (std::size_t i = 0; i < size; ++i) {
-				if (util::isFlag(field[i], flag)) ++count;
+
+			// const std::size_t size = field.size();
+			// for (std::size_t i = 0; i < size; ++i) {
+			// 	if (util::isFlag(field[i], flag)) ++count;
+			// }
+
+			std::size_t id{};
+			if constexpr (BLOCKFIELDMANAGER::dim == 2) {
+					for (int j = overlap; j < Ny - overlap; ++j) {
+						id = j * Nx + overlap;
+						for (int i = overlap; i < Nx - overlap; ++i) {
+							if (util::isFlag(field[id], flag)) ++count;
+							++id;
+					}
+				}
+			} else if constexpr (BLOCKFIELDMANAGER::dim == 3) {
+				std::size_t NxNy = Nx * Ny;
+				for (int k = overlap; k < Nz - overlap; ++k) {
+					for (int j = overlap; j < Ny - overlap; ++j) {
+						id = k * NxNy + j * Nx + overlap;
+						for (int i = overlap; i < Nx - overlap; ++i) {
+							if (util::isFlag(field[id], flag)) ++count;
+							++id;
+						}
+					}
+				}
 			}
+
 			TotalValueCount += count;
 		}
 		return TotalValueCount;
@@ -251,12 +334,42 @@ public:
 #endif
 		for (const auto& blockfield : BFM.getBlockFields()) {
 			const auto& field = blockfield.getFieldType().getField(fieldidx);
-			const std::size_t size = field.size();
+			const auto& blockxd = blockfield.getBlock();
+			const int overlap = blockxd.getOverlap();
+			const int Nx = blockxd.getNx();
+			const int Ny = blockxd.getNy();
+			const int Nz = blockxd.getNz();
+		
 			std::size_t count{};
-			for (std::size_t i = 0; i < size; ++i) {
-				if (util::isFlag(field[i], flag)) ++count;
+			// const std::size_t size = field.size();
+			// for (std::size_t i = 0; i < size; ++i) {
+			// 	if (util::isFlag(field[i], flag)) ++count;
+			// }
+
+			std::size_t id{};
+			if constexpr (BLOCKFIELDMANAGER::dim == 2) {
+					for (int j = overlap; j < Ny - overlap; ++j) {
+						id = j * Nx + overlap;
+						for (int i = overlap; i < Nx - overlap; ++i) {
+							if (util::isFlag(field[id], flag)) ++count;
+							++id;
+					}
+				}
+				TotalCount += (Nx - 2 * overlap) * (Ny - 2 * overlap);
+			} else if constexpr (BLOCKFIELDMANAGER::dim == 3) {
+				std::size_t NxNy = Nx * Ny;
+				for (int k = overlap; k < Nz - overlap; ++k) {
+					for (int j = overlap; j < Ny - overlap; ++j) {
+						id = k * NxNy + j * Nx + overlap;
+						for (int i = overlap; i < Nx - overlap; ++i) {
+							if (util::isFlag(field[id], flag)) ++count;
+							++id;
+						}
+					}
+				}
+				TotalCount += (Nx - 2 * overlap) * (Ny - 2 * overlap) * (Nz - 2 * overlap);
 			}
-			TotalCount += size;
+
 			TotalValueCount += count;
 		}
 		return static_cast<FloatType>(TotalValueCount) / TotalCount;
