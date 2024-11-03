@@ -24,7 +24,7 @@
 #include "freelb.hh"
 #include "lbm/buoyancy.h"
 
-// int Total_Macro_Step = 0;
+
 using T = FLOAT;
 using LatSet0 = D3Q27<T>;
 using LatSet1 = D3Q7<T>;

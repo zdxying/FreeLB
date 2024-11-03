@@ -5,7 +5,7 @@
 #include "freelb.h"
 #include "freelb.hh"
 
-// int Total_Macro_Step = 0;
+
 using T = FLOAT;
 using LatSet0 = D2Q9<T>;
 using LatSet1 = D2Q9<T>;

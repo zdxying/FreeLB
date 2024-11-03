@@ -21,7 +21,7 @@
 #include "freelb.h"
 #include "freelb.hh"
 
-// int Total_Macro_Step = 0;
+
 using T = FLOAT;
 using LatSet = D2Q9<T>;
 

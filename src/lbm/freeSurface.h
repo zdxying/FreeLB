@@ -236,6 +236,10 @@ struct ToFluidNbrConversion {
   using T = typename CELL::FloatType;
   using LatSet = typename CELL::LatticeSet;
 
+  // here only 2 force schemes are considered
+  using ForceScheme = std::conditional_t<CELL::template hasField<CONSTFORCE<T, LatSet::d>>(), 
+  force::ConstForce<CELL>, force::ScalarConstForce<CELL>>;
+
   static void apply(CELL& cell) {
 
     if (util::isFlag(cell.template get<STATE>(), FSType::Gas)) {
@@ -254,7 +258,7 @@ struct ToFluidNbrConversion {
             // we have to use forceRhou here
             T rho{};
             Vector<T, LatSet::d> u{};
-            moment::forceRhou<CELL, force::ConstForce<CELL>>::apply(celln, rho, u);
+            moment::forceRhou<CELL, ForceScheme>::apply(celln, rho, u);
             averho += rho;
             aveu += u;
 						++count;
@@ -365,6 +369,10 @@ struct FinalizeConversion {
   using T = typename CELL::FloatType;
   using LatSet = typename CELL::LatticeSet;
 
+  // here only 2 force schemes are considered
+  using ForceScheme = std::conditional_t<CELL::template hasField<CONSTFORCE<T, LatSet::d>>(), 
+  force::ConstForce<CELL>, force::ScalarConstForce<CELL>>;
+
   static void apply(CELL& cell) {
     // update state
     if (util::isFlag(cell.template get<FLAG>(), FSFlag::To_Fluid)) {
@@ -394,7 +402,7 @@ struct FinalizeConversion {
       // we have to use forceRhou here
 			T rho;
 			Vector<T, LatSet::d> u{};
-			moment::forceRhou<CELL, force::ConstForce<CELL>>::apply(cell, rho, u);
+			moment::forceRhou<CELL, ForceScheme>::apply(cell, rho, u);
 
 			cell.template get<MASS<T>>() = mass_tmp;
 			cell.template get<VOLUMEFRAC<T>>() = mass_tmp / rho;

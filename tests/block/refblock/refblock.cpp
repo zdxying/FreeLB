@@ -18,23 +18,10 @@
  *
  */
 
-// cavblock2d.cpp
-
-// Lid-driven cavity flow 2d
-
-
-// the top wall is set with a constant velocity,
-// while the other walls are set with a no-slip boundary condition
-// Bounce-Back-like method is used:
-// Bounce-Back-Moving-Wall method for the top wall
-// Bounce-Back method for the other walls
-
-// block data structure is used
-
 #include "freelb.h"
 #include "freelb.hh"
 
-// int Total_Macro_Step = 0;
+
 using T = FLOAT;
 using LatSet = D2Q9<T>;
 

@@ -21,9 +21,9 @@
 #include "freelb.h"
 #include "freelb.hh"
 #include "lbm/freeSurface.h"
-#include "lbm/freeSurface.hh"
 
-// int Total_Macro_Step = 0;
+
+
 using T = FLOAT;
 using LatSet = D3Q27<T>;
 

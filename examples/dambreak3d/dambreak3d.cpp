@@ -1,22 +1,33 @@
-// dambreak2d.cpp
+/* This file is part of FreeLB
+ *
+ * Copyright (C) 2024 Yuan Man
+ * E-mail contact: ymmanyuan@outlook.com
+ * The most recent progress of FreeLB will be updated at
+ * <https://github.com/zdxying/FreeLB>
+ *
+ * FreeLB is free software: you can redistribute it and/or modify it under the terms of
+ * the GNU General Public License as published by the Free Software Foundation, either
+ * version 3 of the License, or (at your option) any later version.
+ *
+ * FreeLB is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
+ * without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
+ * PURPOSE. See the GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License along with FreeLB. If
+ * not, see <https://www.gnu.org/licenses/>.
+ *
+ */
 
-// Lid-driven cavity flow 2d
+// dambreak3d.cpp
 
-
-// the top wall is set with a constant velocity,
-// while the other walls are set with a no-slip boundary condition
-// Bounce-Back-like method is used:
-// Bounce-Back-Moving-Wall method for the top wall
-// Bounce-Back method for the other walls
 
 #include "freelb.h"
 #include "freelb.hh"
 #include "lbm/freeSurface.h"
-#include "lbm/freeSurface.hh"
 
-// int Total_Macro_Step = 0;
+
 using T = FLOAT;
-using LatSet = D3Q27<T>;
+using LatSet = D3Q19<T>;
 
 /*----------------------------------------------
                 Simulation Parameters
@@ -145,9 +156,9 @@ int main() {
   // ------------------ define lattice ------------------
   using NSFIELDS = TypePack<RHO<T>, VELOCITY<T, LatSet::d>, POP<T, LatSet::q>, SCALARCONSTFORCE<T>>;
 
-  // using ALLFIELDS = MergeFieldPack<NSFIELDS, olbfs::FSFIELDS<T, LatSet>, olbfs::FSPARAMS<T>>::mergedpack;
-  using ALLNSFS_FIELDS = MergeFieldPack<NSFIELDS, olbfs::FSFIELDS<T, LatSet>, olbfs::FSPARAMS<T>>::mergedpack;
-  using ALLFIELDS = MergeFieldPack<ALLNSFS_FIELDS, PowerLawPARAMS<T>>::mergedpack;
+  using ALLFIELDS = MergeFieldPack<NSFIELDS, olbfs::FSFIELDS<T, LatSet>, olbfs::FSPARAMS<T>>::mergedpack;
+  // using ALLNSFS_FIELDS = MergeFieldPack<NSFIELDS, olbfs::FSFIELDS<T, LatSet>, olbfs::FSPARAMS<T>>::mergedpack;
+  // using ALLFIELDS = MergeFieldPack<ALLNSFS_FIELDS, PowerLawPARAMS<T>>::mergedpack;
 
   // a conversion factor of unit s^2 / g
   // [surface_tension_coefficient_factor * surface_tension_coefficient] = [1]
@@ -157,14 +168,14 @@ int main() {
     BaseConv.Conv_Time * BaseConv.Conv_Time / (rho_ref * std::pow(BaseConv.Conv_L, 3));
 
   ValuePack NSInitValues(BaseConv.getLatRhoInit(), Vector<T, LatSet::d>{}, T{}, -BaseConv.Lattice_g);
-  ValuePack FSInitValues(olbfs::FSType::Void, T{}, T{}, T{});
+  ValuePack FSInitValues(olbfs::FSType::Void, olbfs::FSFlag::None, T{}, T{}, Vector<T, LatSet::q>{}, Vector<T, LatSet::d>{});
   ValuePack FSParamsInitValues(LonelyThreshold, VOF_Trans_Threshold, true, surface_tension_coefficient_factor* surface_tension_coefficient);
   // power-law dynamics for non-Newtonian fluid
-  ValuePack PowerLawInitValues(BaseConv.Lattice_VisKine, BehaviorIndex - 1, BaseConv.Lattice_VisKine*MInViscCoef, BaseConv.Lattice_VisKine*MaxViscCoef);
+  // ValuePack PowerLawInitValues(BaseConv.Lattice_VisKine, BehaviorIndex - 1, BaseConv.Lattice_VisKine*MInViscCoef, BaseConv.Lattice_VisKine*MaxViscCoef);
 
-  // auto ALLValues = mergeValuePack(NSInitValues, FSInitValues, FSParamsInitValues);
-  auto ALLNSFSValues = mergeValuePack(NSInitValues, FSInitValues, FSParamsInitValues);
-  auto ALLValues = mergeValuePack(ALLNSFSValues, PowerLawInitValues);
+  auto ALLValues = mergeValuePack(NSInitValues, FSInitValues, FSParamsInitValues);
+  // auto ALLNSFSValues = mergeValuePack(NSInitValues, FSInitValues, FSParamsInitValues);
+  // auto ALLValues = mergeValuePack(ALLNSFSValues, PowerLawInitValues);
 
   using NSCELL = Cell<T, LatSet, ALLFIELDS>;
   using NSLAT = BlockLatticeManager<T, LatSet, ALLFIELDS>;
@@ -189,9 +200,9 @@ int main() {
   // define task/ dynamics:
   // NS task
   using NSBulkTask =
-    tmp::Key_TypePair<olbfs::FSType::Fluid | olbfs::FSType::Interface,
-                      collision::BGKForce_Feq_RhoU<equilibrium::SecondOrder<NSCELL>,
-                                                   force::ScalarConstForce<NSCELL>, true>>;
+    tmp::Key_TypePair<olbfs::FSType::Fluid | olbfs::FSType::Interface | olbfs::FSType::Gas,
+                      collision::BGKForce<moment::forceRhou<NSCELL, force::ScalarConstForce<NSCELL>, true>, 
+                      equilibrium::SecondOrder<NSCELL>, force::ScalarConstForce<NSCELL>>>;
   using NSWallTask = tmp::Key_TypePair<olbfs::FSType::Wall, collision::BounceBack<NSCELL>>;
 
   using NSTaskSelector = TaskSelector<std::uint8_t, NSCELL, NSBulkTask, NSWallTask>;
@@ -208,10 +219,10 @@ int main() {
   vtmo::ScalarWriter VOFWriter("VOF", NSLattice.getField<olbfs::VOLUMEFRAC<T>>());
   vtmo::ScalarWriter StateWriter("State", NSLattice.getField<olbfs::STATE>());
   vtmo::vtmWriter<T, LatSet::d> Writer("dambreak3d", Geo, 1);
-  Writer.addWriterSet(StateWriter, VeloWriter);
+  Writer.addWriterSet(rhovtm, StateWriter, MassWriter, VOFWriter, VeloWriter);
 
   FieldStatistics RhoStat(NSLattice.getField<RHO<T>>());
-  FieldStatistics MassStat(NSLattice.getField<fx3dfs::MASS<T>>());
+  FieldStatistics MassStat(NSLattice.getField<olbfs::MASS<T>>());
 
   // count and timer
   Timer MainLoopTimer;
