@@ -99,7 +99,7 @@ void computeParker_YoungsNormal(
   using T = typename CELL::FloatType;
   using LatSet = std::conditional_t<CELL::LatticeSet::d == 2, D2Q9<T>, D3Q27<T>>;
   for (int i = 1; i < LatSet::q; ++i) {
-    CELL celln = cell.getNeighbor(i);
+    CELL celln = cell.getNeighbor(latset::c<LatSet>(i));
     const T clampedvof = getClampedVOF(celln);
     normal -= Parker_YoungsWeights<LatSet>()[i] * latset::c<LatSet>(i) * clampedvof;
   }
@@ -364,7 +364,7 @@ typename CELL::FloatType ComputeCurvature2D(CELL& cell) {
   std::size_t healthy_interfaces = 0;
 
   for (int iPop = 1; iPop < LatSet::q; ++iPop) {
-    CELL cellC = cell.getNeighbor(iPop);
+    CELL cellC = cell.getNeighbor(latset::c<LatSet>(iPop));
     if (!util::isFlag(cellC.template get<STATE>(), FSType::Interface) ||
         !hasNeighborType(cellC, FSType::Gas)) {
       continue;
@@ -501,7 +501,7 @@ typename CELL::FloatType ComputeCurvature3D(CELL& cell) {
 
   size_t healthy_interfaces = 0;
   for (int iPop = 1; iPop < LatSet::q; iPop++) {
-    auto cellC = cell.getNeighbor(iPop);
+    auto cellC = cell.getNeighbor(latset::c<LatSet>(iPop));
 
     if (!util::isFlag(cellC.template get<STATE>(), FSType::Interface) ||
         !hasNeighborType(cellC, FSType::Gas)) {

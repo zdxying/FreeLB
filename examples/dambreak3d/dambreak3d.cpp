@@ -245,9 +245,10 @@ int main() {
 
     if (MainLoopTimer() % OutputStep == 0) {
       OutputTimer.Print_InnerLoopPerformance(Geo.getTotalCellNum(), OutputStep);
-      Printer::Print("Average Rho: ", RhoStat.getAverage());
-      Printer::Print("Average Mass: ", MassStat.getAverage());
-      Printer::Print("Max Mass: ", MassStat.getMax());
+      Printer::Print("Average Rho", RhoStat.getAverage());
+      Printer::Print("Average Mass", MassStat.getAverage());
+      Printer::Print("Max Mass", MassStat.getMax());
+      Printer::Print("Min Mass", MassStat.getMin());
       Printer::Endl();
       Writer.WriteBinary(MainLoopTimer());
     }
