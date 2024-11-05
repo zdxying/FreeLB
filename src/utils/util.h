@@ -353,6 +353,22 @@ inline bool nearZero(T a, T epsilon) {
   }
 }
 
+// equality of two floating point numbers
+template <typename T>
+inline bool fpequal(T x, T y, T eps = std::numeric_limits<T>::epsilon())
+{
+    // This is an attempt to treat underflow.
+    if (std::fabs(x) <= eps) x = T{};
+    // This is an attempt to treat underflow.
+    if (std::fabs(y) <= eps) y = T{};
+
+    if (x == T{} || y == T{}) {
+        return (std::fabs(x - y) <= eps);
+    } else {
+        return (std::fabs(x - y) <= eps * std::fabs(x) && std::fabs(x - y) <= eps * std::fabs(y));
+    }
+}
+
 // get underlying value of enum 
 template <typename T>
 constexpr auto underlyingVal(T e) noexcept {

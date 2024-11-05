@@ -963,6 +963,18 @@ class BlockFieldManager {
     }
   }
 
+  // call forEach(FlagFManager, [&](FieldType& field, std::size_t id){});
+  template <typename BFM, typename Func>
+  void forEach(const BFM& BlockFM, const Func& func) {
+    int iblock = 0;
+    for (Block<FloatType, Dim>& blockgeo : _BlockGeo.getBlocks()) {
+      auto& thisbfield = _Fields[iblock];
+      const auto& bfield = BlockFM.getBlockField(iblock);
+      blockgeo.forEach([&thisbfield, &bfield, &func](std::size_t id) { func(thisbfield, bfield, id); });
+      ++iblock;
+    }
+  }
+
   // communication
   void NormalCommunicate(std::int64_t count) {
 #pragma omp parallel for num_threads(Thread_Num)

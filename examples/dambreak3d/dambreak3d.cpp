@@ -24,6 +24,7 @@
 #include "freelb.h"
 #include "freelb.hh"
 #include "lbm/freeSurface.h"
+#include "offLattice/marchingCube.hh"
 
 
 using T = FLOAT;
@@ -251,6 +252,21 @@ int main() {
       Printer::Print("Min Mass", MassStat.getMin());
       Printer::Endl();
       Writer.WriteBinary(MainLoopTimer());
+      // write freeSurface stl
+      // set wall vof to 0
+      NSLattice.getField<olbfs::VOLUMEFRAC<T>>().forEach(
+      NSLattice.getField<olbfs::STATE>(), olbfs::FSType::Wall,
+      [&](auto& field, std::size_t id) { field.SetField(id, T{}); });
+      // mc algorithm
+      offlat::MarchingCubeSurface<T, olbfs::VOLUMEFRAC<T>> mc(NSLattice.getField<olbfs::VOLUMEFRAC<T>>(), T{0.5});
+      offlat::TriangleSet<T> triangles;
+      mc.generateIsoSurface(triangles.getTriangles());
+      triangles.writeBinarySTL("SurfacemarchingCube" + std::to_string(MainLoopTimer()));
+      // set wall vof back to 1
+      NSLattice.getField<olbfs::VOLUMEFRAC<T>>().forEach(
+      NSLattice.getField<olbfs::STATE>(), olbfs::FSType::Wall,
+      [&](auto& field, std::size_t id) { field.SetField(id, T{1}); });
+
     }
   }
 

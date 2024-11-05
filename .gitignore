@@ -34,6 +34,7 @@
 # ignore any directory named temp at any depth
 # **/temp/
 **/output/
+**/STLoutput/
 **/.vscode/
 
 # ignore all directories with the name temp including their files
