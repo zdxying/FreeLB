@@ -136,7 +136,7 @@ int main() {
   AABB<T, 2> cavity(Vector<T, 2>{}, Vector<T, 2>(T(Ni * Cell_Len), T(Nj * Cell_Len)));
   AABB<T, LatSet::d> topleft(Vector<T, LatSet::d>{T{}, T(pipewidth)}, Vector<T, LatSet::d>(T(Ni * Cell_Len - pipewidth), T(Nj * Cell_Len)));
   AABB<T, LatSet::d> left(Vector<T, LatSet::d>{}, Vector<T, LatSet::d>(T(1), T(Nj - 1) * Cell_Len));
-  BlockGeometry2D<T> Geo(Ni, Nj, Thread_Num, cavity, Cell_Len);
+  BlockGeometry2D<T> Geo(Ni, Nj, Thread_Num, cavity, Cell_Len, 2);
 
   // ------------------ define flag field ------------------
   BlockFieldManager<FLAG, T, LatSet::d> FlagFM(Geo, VoidFlag);
@@ -173,7 +173,7 @@ int main() {
 
   ValuePack NSInitValues(BaseConv.getLatRhoInit(), Vector<T, 2>{}, T{},
                          -BaseConv.Lattice_g, LatU_Wall);
-  ValuePack FSInitValues(olbfs::FSType::Void, T{}, T{}, T{});
+  ValuePack FSInitValues(olbfs::FSType::Void, olbfs::FSFlag::None, T{}, T{}, Vector<T, LatSet::q>{}, Vector<T, 2>{});
   ValuePack FSParamsInitValues(
     LonelyThreshold, VOF_Trans_Threshold, true,
     surface_tension_coefficient_factor * surface_tension_coefficient);
@@ -217,9 +217,8 @@ int main() {
   // define task/ dynamics:
   // NS task  PowerLaw_BGKForce_Feq_RhoU
   // using NSBulkTask = tmp::Key_TypePair<olbfs::FSType::Fluid | olbfs::FSType::Interface,
-    // collision::BGKForce_Feq_RhoU<equilibrium::SecondOrder<NSCELL>, force::ScalarConstForce<NSCELL>, true>>;
   using NSBulkTask = tmp::Key_TypePair<olbfs::FSType::Fluid | olbfs::FSType::Interface,
-    collision::BGK_Feq_RhoU<equilibrium::SecondOrder<NSCELL>, true>>;
+    collision::BGK<moment::rhou<NSCELL, true>, equilibrium::SecondOrder<NSCELL>>>;
   using NSWallTask = tmp::Key_TypePair<olbfs::FSType::Wall, collision::BounceBack<NSCELL>>;
 
   using NSTaskSelector = TaskSelector<std::uint8_t, NSCELL, NSBulkTask, NSWallTask>;

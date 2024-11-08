@@ -1066,6 +1066,13 @@ void BlockLatticeManager<T, LatSet, TypePack>::MPIIntpComm(std::int64_t count) {
 
 #endif
 
+
+// Although the new communication scheme of populations is efficient, it did not communicate all directions,
+// when you use other post-stream processors(after stream and before communication) in cells to be communicated, 
+// if they might use invalid pop in one direction to get pop in anohter direction which will not be communicated
+// e.g. the half-way bounce-back boundary condition, 
+// then you should use Lattice.getField<POP<T, LatSet::q>>().CommunicateAll() instead
+
 template <typename T, typename LatSet, typename TypePack>
 void BlockLatticeManager<T, LatSet, TypePack>::Communicate(std::int64_t count) {
   // --- noraml communication ---

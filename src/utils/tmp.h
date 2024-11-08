@@ -29,7 +29,7 @@
 // template meta-programming library
 namespace util {
 __any__ bool isFlag(std::uint8_t flag1, std::uint8_t flag2);
-__any__ bool isFlag(std::uint16_t flag1, std::uint16_t flag2);
+// __any__ bool isFlag(std::uint16_t flag1, std::uint16_t flag2);
 }  // namespace util
 
 template <typename Type, typename... Types>

@@ -167,7 +167,7 @@ int main() {
   using CELL = Cell<T, LatSet, ALLFIELDS>;
   ValuePack InitValues(BaseConv.getLatRhoInit(), Vector<T, 2>{}, T{});
   // lattice
-  BlockLatticeManager<T, LatSet, FIELDSPACK> NSLattice(Geo, InitValues, BaseConv, &FlagFM);
+  BlockLatticeManager<T, LatSet, FIELDSPACK> NSLattice(Geo, InitValues, BaseConv);
   NSLattice.EnableToleranceU();
   T res = 1;
   // set initial value of field
@@ -185,9 +185,9 @@ int main() {
   // define task/ dynamics:
   // to use refined/multi-level block structure, macroscopic fields should be updated each time step for pop conversion
   // bulk task
-  using BulkTask = tmp::Key_TypePair<AABBFlag, collision::BGK_Feq_RhoU<equilibrium::SecondOrder<CELL>, true>>;
+  using BulkTask = tmp::Key_TypePair<AABBFlag, collision::BGK<moment::rhou<CELL, true>, equilibrium::SecondOrder<CELL>>>;
   // wall task
-  using WallTask = tmp::Key_TypePair<BouncebackFlag | BBMovingWallFlag, collision::BGK_Feq<equilibrium::SecondOrder<CELL>, true>>;
+  using WallTask = tmp::Key_TypePair<BouncebackFlag | BBMovingWallFlag, collision::BGK<moment::UseFieldRhoU<CELL>, equilibrium::SecondOrder<CELL>>>;
   // task collection
   using TaskCollection = tmp::TupleWrapper<BulkTask, WallTask>;
   // task executor
@@ -217,7 +217,8 @@ int main() {
     // boundary conditions
     BM.Apply(MainLoopTimer());
     // block communication
-    NSLattice.Communicate(MainLoopTimer());
+    // NSLattice.Communicate(MainLoopTimer());
+    NSLattice.getField<POP<T, LatSet::q>>().CommunicateAll(MainLoopTimer());
 
     ++MainLoopTimer;
     ++OutputTimer;

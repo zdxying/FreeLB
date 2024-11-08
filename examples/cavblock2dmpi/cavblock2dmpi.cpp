@@ -191,10 +191,10 @@ int main(int argc, char* argv[]) {
   // define task/ dynamics:
   // bulk task
   using BulkTask =
-    tmp::Key_TypePair<AABBFlag, collision::BGK_Feq_RhoU<equilibrium::SecondOrder<CELL>, true>>;
+    tmp::Key_TypePair<AABBFlag, collision::BGK<moment::rhou<CELL, true>, equilibrium::SecondOrder<CELL>>>;
   // wall task
   using WallTask = tmp::Key_TypePair<BouncebackFlag | BBMovingWallFlag,
-                                     collision::BGK_Feq<equilibrium::SecondOrder<CELL>, true>>;
+                                     collision::BGK<moment::UseFieldRhoU<CELL>, equilibrium::SecondOrder<CELL>>>;
   // task collection
   using TaskCollection = tmp::TupleWrapper<BulkTask, WallTask>;
   // task executor

@@ -158,11 +158,11 @@ int main() {
 
   // define task/ dynamics:
   // rho u
-  using RhoUTask = tmp::Key_TypePair<AABBFlag|OutletFlag, moment::rhou<CELL>>;
+  using RhoUTask = tmp::Key_TypePair<AABBFlag|OutletFlag, moment::rhou<CELL, true>>;
   using rhoTask = tmp::Key_TypePair<InletFlag, moment::rho<CELL>>;
   using RhoUTaskSelector = TaskSelector<std::uint8_t, CELL, RhoUTask>;
   // collision
-  using collisionTask = collision::BGK_Feq<equilibrium::SecondOrder<CELL>>;
+  using collisionTask = collision::BGK<moment::UseFieldRhoU<CELL>, equilibrium::SecondOrder<CELL>>;
 
   // writers
   vtmwriter::ScalarWriter RhoWriter("Rho", NSLattice.getField<RHO<T>>());
@@ -186,7 +186,10 @@ int main() {
 
     BM.Apply(MainLoopTimer());
 
-    NSLattice.Communicate(MainLoopTimer());
+    // NSLattice.Communicate(MainLoopTimer());
+    // use CommunicateAll() (less efficient) instead, 
+    // cause bounceback::normal used invalid pop to get another pop which will not be communicated
+    NSLattice.getField<POP<T, LatSet::q>>().CommunicateAll(MainLoopTimer());
 
     ++MainLoopTimer;
     ++OutputTimer;

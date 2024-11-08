@@ -305,13 +305,12 @@ int main() {
   // bulk task
   using NSBulkTask =
     tmp::Key_TypePair<CA::CAType::Fluid,
-                      collision::BGKForce_Feq_RhoU<equilibrium::SecondOrder<NSCELL>,
-                                                   force::ScalarForce<NSCELL>, true>>;
+                      collision::BGKForce<moment::forceRhou<NSCELL, force::ScalarForce<NSCELL>, true>, 
+                      equilibrium::SecondOrder<NSCELL>, force::ScalarForce<NSCELL>>>;
   // wall task
   using NSWallTask =
     tmp::Key_TypePair<CA::CAType::Interface,
-                      collision::BGKForce_Feq<equilibrium::SecondOrder<NSCELL>,
-                                              force::ScalarForce<NSCELL>>>;
+    collision::BGKForce<moment::UseFieldRhoU<NSCELL>, equilibrium::SecondOrder<NSCELL>, force::ScalarForce<NSCELL>>>;
 
   using NSTaskSelector = TaskSelector<std::uint8_t, NSCELL, NSBulkTask, NSWallTask>;
 
@@ -350,7 +349,7 @@ int main() {
   // T tol = T(1e-5);
   // using RhoUTask = tmp::Key_TypePair<AABBFlag|OutletFlag, moment::rhou<NSCELL>>;
   // using RhoUTaskSelector = TaskSelector<std::uint8_t, NSCELL, RhoUTask>;
-  // using collisionTask = collision::BGK_Feq<equilibrium::SecondOrder<NSCELL>>;
+  // using collisionTask = collision::BGK<moment::UseFieldRhoU<NSCELL>, equilibrium::SecondOrder<NSCELL>>;
   // NSLattice.EnableToleranceU();
 
 
@@ -400,7 +399,8 @@ int main() {
     NS_MBB.Apply(MainLoopTimer());
     NS_Inlet.Apply(MainLoopTimer());
     NS_Outlet.Apply(MainLoopTimer());
-    NSLattice.Communicate(MainLoopTimer());
+    // NSLattice.Communicate(MainLoopTimer());
+    NSLattice.getField<POP<T, LatSet0::q>>().CommunicateAll(MainLoopTimer());
 
     // SO task
     SOLattice.ApplyCellDynamics<SOTaskSelector>(MainLoopTimer(),
@@ -409,7 +409,8 @@ int main() {
     SO_BB.Apply(MainLoopTimer());
     SO_MBB.Apply(MainLoopTimer());
     SO_IOBB.Apply(MainLoopTimer());
-    SOLattice.Communicate(MainLoopTimer());
+    // SOLattice.Communicate(MainLoopTimer());
+    SOLattice.getField<POP<T, LatSet1::q>>().CommunicateAll(MainLoopTimer());
 
     CA.Apply_SimpleCapture();
 

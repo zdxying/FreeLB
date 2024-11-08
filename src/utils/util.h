@@ -391,9 +391,9 @@ __any__ inline bool isFlag(std::uint8_t flag1, std::uint8_t flag2) {
 }
 // compare 2 uint8_t flags by bitwise AND operation
 // return static_cast<bool>(uint16_t flag1 & uint16_t flag2);
-__any__ inline bool isFlag(std::uint16_t flag1, std::uint16_t flag2) {
-  return static_cast<bool>(flag1 & flag2);
-}
+// __any__ inline bool isFlag(std::uint16_t flag1, std::uint16_t flag2) {
+//   return static_cast<bool>(flag1 & flag2);
+// }
 // add flagx to existing flag
 inline void addFlag(std::uint8_t src, std::uint8_t &dst) { dst |= src; }
 // remove flagx from existing flag

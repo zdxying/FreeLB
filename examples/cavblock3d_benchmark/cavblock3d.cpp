@@ -179,9 +179,9 @@ int main() {
 
   // define task/ dynamics:
   // bulk task
-  using BulkTask = tmp::Key_TypePair<AABBFlag, collision::BGK_Feq_RhoU<equilibrium::SecondOrder<CELL>>>;
+  using BulkTask = tmp::Key_TypePair<AABBFlag, collision::BGK<moment::rhou<CELL>, equilibrium::SecondOrder<CELL>>>;
   // wall task
-  using WallTask = tmp::Key_TypePair<BouncebackFlag | BBMovingWallFlag, collision::BGK_Feq<equilibrium::SecondOrder<CELL>>>;
+  using WallTask = tmp::Key_TypePair<BouncebackFlag | BBMovingWallFlag, collision::BGK<moment::UseFieldRhoU<CELL>, equilibrium::SecondOrder<CELL>>>;
   // BCs task as a collision process, if used, bcs will be handled in the collision process
   using BBTask = tmp::Key_TypePair<BouncebackFlag, collision::BounceBack<CELL>>;
   using BBMVTask = tmp::Key_TypePair<BBMovingWallFlag, collision::BounceBackMovingWall<CELL>>;
@@ -220,8 +220,8 @@ int main() {
 
     NSLattice.ApplyCellDynamics<NSTask>(FlagFM);
 
-    // NSLattice.ApplyCellDynamics<collision::BGK_Feq_RhoU<equilibrium::SecondOrder<CELL>>>(BulkTaskIds);
-    // NSLattice.ApplyCellDynamics<collision::BGK_Feq<equilibrium::SecondOrder<CELL>>>(WallTaskIds);
+    // NSLattice.ApplyCellDynamics<collision::BGK<moment::rhou<CELL>, equilibrium::SecondOrder<CELL>>>(BulkTaskIds);
+    // NSLattice.ApplyCellDynamics<collision::BGK<moment::UseFieldRhoU<CELL>, equilibrium::SecondOrder<CELL>>>(WallTaskIds);
     // NSLattice.ApplyCellDynamics<collision::BounceBack<CELL>>(BBTaskIds);
     // NSLattice.ApplyCellDynamics<collision::BounceBackMovingWall<CELL>>(BBMWTaskIds);
     

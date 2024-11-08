@@ -178,7 +178,7 @@ int main() {
 
   ValuePack NSInitValues(BaseConv.getLatRhoInit(), Vector<T, LatSet::d>{}, T{},
                          -BaseConv.Lattice_g, LatU_Wall);
-  ValuePack FSInitValues(olbfs::FSType::Void, T{}, T{}, T{});
+  ValuePack FSInitValues(olbfs::FSType::Void, olbfs::FSFlag::None, T{}, T{}, Vector<T, LatSet::q>{}, Vector<T, 3>{});
   ValuePack FSParamsInitValues(
     LonelyThreshold, VOF_Trans_Threshold, true,
     surface_tension_coefficient_factor * surface_tension_coefficient);
@@ -222,9 +222,8 @@ int main() {
   // define task/ dynamics:
   // NS task  PowerLaw_BGKForce_Feq_RhoU
   // using NSBulkTask = tmp::Key_TypePair<olbfs::FSType::Fluid | olbfs::FSType::Interface,
-    // collision::BGKForce_Feq_RhoU<equilibrium::SecondOrder<NSCELL>, force::ScalarConstForce<NSCELL>, true>>;
   using NSBulkTask = tmp::Key_TypePair<olbfs::FSType::Fluid | olbfs::FSType::Interface,
-    collision::BGK_Feq_RhoU<equilibrium::SecondOrder<NSCELL>, true>>;
+    collision::BGK<moment::rhou<NSCELL, true>, equilibrium::SecondOrder<NSCELL>>>;
   using NSWallTask = tmp::Key_TypePair<olbfs::FSType::Wall, collision::BounceBack<NSCELL>>;
 
   using NSTaskSelector = TaskSelector<std::uint8_t, NSCELL, NSBulkTask, NSWallTask>;

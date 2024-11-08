@@ -332,14 +332,12 @@ int main() {
   // NS task
   // bulk task
   using NSBulkTask =
-    tmp::Key_TypePair<CA::CAType::Fluid,
-                      collision::BGKForce_Feq_RhoU<equilibrium::SecondOrder<NSCELL>,
-                                                   force::ScalarForce<NSCELL>, true>>;
+    tmp::Key_TypePair<CA::CAType::Fluid, collision::BGKForce<moment::forceRhou<NSCELL, force::ScalarForce<NSCELL>, true>, 
+                      equilibrium::SecondOrder<NSCELL>, force::ScalarForce<NSCELL>>>;
   // wall task
   using NSWallTask =
-    tmp::Key_TypePair<CA::CAType::Interface,
-                      collision::BGKForce_Feq<equilibrium::SecondOrder<NSCELL>,
-                                              force::ScalarForce<NSCELL>>>;
+    tmp::Key_TypePair<CA::CAType::Interface, 
+    collision::BGKForce<moment::UseFieldRhoU<NSCELL>, equilibrium::SecondOrder<NSCELL>, force::ScalarForce<NSCELL>>>;
 
   using NSTaskSelector = TaskSelector<std::uint8_t, NSCELL, NSBulkTask, NSWallTask>;
 

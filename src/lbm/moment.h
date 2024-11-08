@@ -68,6 +68,16 @@ struct UseFieldRhoU {
     rho = cell.template get<GenericRho>();
     u = cell.template get<VELOCITY<T, LatSet::d>>();
   }
+  // for compatible with force scheme
+  __any__ static inline void apply(CELL& cell, const T& force, T& rho, Vector<T, LatSet::d>& u) {
+    rho = cell.template get<GenericRho>();
+    u = cell.template get<VELOCITY<T, LatSet::d>>();
+  }
+  // for compatible with force scheme
+  __any__ static inline void apply(CELL& cell, const Vector<T, LatSet::d>& force, T& rho, Vector<T, LatSet::d>& u) {
+    rho = cell.template get<GenericRho>();
+    u = cell.template get<VELOCITY<T, LatSet::d>>();
+  }
 };
 
 template <typename CELLTYPE, bool WriteToField = false>
