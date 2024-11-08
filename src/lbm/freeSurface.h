@@ -143,6 +143,7 @@ struct MassTransfer {
           mass_tmp += cell[kopp] - celln[k];
         } else if (util::isFlag(celln.template get<STATE>(), FSType::Interface)) {
           // celln's nbr info
+          // 2 layers of overlaped cells is needed to avoid accessing non-existing cell nbr' nbr 
           NbrInfo cellnNbrInfo(celln);
           T massflow{};
           // openlb deletes latset::w<LatSet>(k) term cause it is already contained in fi
@@ -440,7 +441,8 @@ struct FreeSurfaceApply {
 
     // communicate reconstructed pops streamed in from a gas cell
     // this is NOT a post-stream process, so we must communicate fi in each direction
-		latManager.FullCommunicate(count);
+		// latManager.FullDirectionCommunicate(count);
+    latManager.template getField<POP<T, LatSet::q>>().CommunicateAll(count);
 
 
     // to fluid neighbor conversion
@@ -453,7 +455,8 @@ struct FreeSurfaceApply {
 
     // communicate equilibrium fi from nbr Fluid/Interface cells' rho and u for a Gas->Interface cell
     // this is NOT a post-stream process, so we must communicate fi in each direction
-    latManager.FullCommunicate(count);
+    // latManager.FullDirectionCommunicate(count);
+    latManager.template getField<POP<T, LatSet::q>>().CommunicateAll(count);
 
 
     // to gas neighbor conversion

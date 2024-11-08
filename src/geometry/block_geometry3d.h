@@ -42,7 +42,11 @@ class Block3D : public BasicBlock<T, 3> {
   std::vector<IntpBlockComm<T, 3>> AverageComm;
   // interp block comm, get from lower level block
   std::vector<IntpBlockComm<T, 3>> IntpComm;
-
+  // inner cells' communicator, only for _overlap > 1
+  // Pops of inner cells are NOT intended to be communicated after initial communication
+  // so full communication is enough and will not damage the performance
+  // direction is set to None
+  std::vector<BlockComm<T, 3>> InnerCommunicators;
   // overlap
   int _overlap;
 
@@ -91,6 +95,8 @@ class Block3D : public BasicBlock<T, 3> {
   std::vector<IntpBlockComm<T, 3>>& getIntpBlockComm() { return IntpComm; }
 
   std::vector<IntpBlockComm<T, 3>>& getAverageBlockComm() { return AverageComm; }
+
+  std::vector<BlockComm<T, 3>>& getInnerCommunicators() { return InnerCommunicators; }
 
 #ifdef MPI_ENABLED
   int getRank() const { return _Rank; }
@@ -185,6 +191,10 @@ class BlockGeometry3D : public BasicBlock<T, 3> {
   void InitAllMPIComm(BlockGeometryHelper3D<T>& GeoHelper);
 
 #endif
+
+private:
+  void SplitCommunictor(BlockComm<T, 3> & basecomm, Block3D<T>& block, Block3D<T> *nblock, 
+  std::vector<BlockComm<T, 3>> &Communicators);
 };
 
 template <typename T>

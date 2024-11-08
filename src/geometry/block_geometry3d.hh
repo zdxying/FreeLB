@@ -32,8 +32,8 @@ Block3D<T>::Block3D(const BasicBlock<T, 3> &baseblock, int olap)
 template <typename T>
 Block3D<T>::Block3D(const AABB<T, 3> &block, const AABB<int, 3> &idxblock, int blockid,
                     T voxelSize, int olap)
-    : BasicBlock<T, 3>(voxelSize, block.getExtended(Vector<T, 3>{voxelSize}),
-                       idxblock.getExtended(Vector<int, 3>{1}), blockid),
+    : BasicBlock<T, 3>(voxelSize, block.getExtended(Vector<T, 3>{voxelSize*olap}),
+                       idxblock.getExtended(Vector<int, 3>{olap}), blockid),
       _BaseBlock(voxelSize, block, idxblock, blockid), _overlap(olap) {
   // read from AABBs
   // ReadAABBs(AABBs, AABBflag);
@@ -45,9 +45,10 @@ void Block3D<T>::SetupBoundary(const AABB<T, 3> &block, FieldType &field,
                                typename FieldType::value_type bdvalue) {
   // temp flag field store the transition flag
   GenericArray<bool> TransFlag(BasicBlock<T, 3>::N, false);
-  for (int z = _overlap; z < BasicBlock<T, 3>::Mesh[2] - _overlap; ++z) {
-    for (int y = _overlap; y < BasicBlock<T, 3>::Mesh[1] - _overlap; ++y) {
-      for (int x = _overlap; x < BasicBlock<T, 3>::Mesh[0] - _overlap; ++x) {
+  const int overlap = _overlap;
+  for (int z = overlap; z < BasicBlock<T, 3>::Mesh[2] - overlap; ++z) {
+    for (int y = overlap; y < BasicBlock<T, 3>::Mesh[1] - overlap; ++y) {
+      for (int x = overlap; x < BasicBlock<T, 3>::Mesh[0] - overlap; ++x) {
         const Vector<int, 3> locidx{x, y, z};
         const Vector<T, 3> vox = BasicBlock<T, 3>::getVoxel(locidx);
         for (unsigned int i = 1; i < LatSet::q; ++i) {
@@ -72,10 +73,10 @@ void Block3D<T>::SetupBoundary(FieldType &field, typename FieldType::value_type 
 typename FieldType::value_type voidvalue, typename FieldType::value_type bdvalue) {
   // temp flag field store the transition flag
   GenericArray<bool> TransFlag(BasicBlock<T, 3>::N, false);
-
-  for (int z = _overlap; z < BasicBlock<T, 3>::Mesh[2] - _overlap; ++z) {
-    for (int y = _overlap; y < BasicBlock<T, 3>::Mesh[1] - _overlap; ++y) {
-      for (int x = _overlap; x < BasicBlock<T, 3>::Mesh[0] - _overlap; ++x) {
+  const int overlap = _overlap;
+  for (int z = overlap; z < BasicBlock<T, 3>::Mesh[2] - overlap; ++z) {
+    for (int y = overlap; y < BasicBlock<T, 3>::Mesh[1] - overlap; ++y) {
+      for (int x = overlap; x < BasicBlock<T, 3>::Mesh[0] - overlap; ++x) {
         const std::size_t idx = x + y * BasicBlock<T, 3>::Projection[1] + z * BasicBlock<T, 3>::Projection[2];
         if (field.get(idx) == fromvalue) {
           for (unsigned int i = 1; i < LatSet::q; ++i) {
@@ -122,10 +123,10 @@ template <typename T>
 BlockGeometry3D<T>::BlockGeometry3D(int Nx, int Ny, int Nz, int blocknum,
                                     const AABB<T, 3> &block, T voxelSize, int overlap)
     : BasicBlock<T, 3>(
-        voxelSize, block.getExtended(Vector<T, 3>{voxelSize}),
-        AABB<int, 3>(Vector<int, 3>{0}, Vector<int, 3>{Nx + 1, Ny + 1, Nz + 1})),
+        voxelSize, block.getExtended(Vector<T, 3>{voxelSize*overlap}),
+        AABB<int, 3>(Vector<int, 3>{0}, Vector<int, 3>{Nx - 1 + 2*overlap, Ny - 1 + 2*overlap, Nz - 1 + 2*overlap})),
       _BaseBlock(voxelSize, block,
-                 AABB<int, 3>(Vector<int, 3>{1}, Vector<int, 3>{Nx, Ny, Nz})),
+                 AABB<int, 3>(Vector<int, 3>{overlap}, Vector<int, 3>{Nx - 1 + overlap, Ny - 1 + overlap, Nz - 1 + overlap})),
       _overlap(overlap), _MaxLevel(std::uint8_t(0)) {
   CreateBlocks(blocknum);
   SetupNbrs();
@@ -250,15 +251,15 @@ void BlockGeometry3D<T>::CreateBlocks(int blocknum) {
   _BasicBlocks.reserve(_BlockAABBs.size());
   // create blocks
   int blockid = 0;
+  const T voxsize = _BaseBlock.getVoxelSize();
   for (const AABB<int, 3> &blockaabb : _BlockAABBs) {
     Vector<T, 3> MIN =
-      blockaabb.getMin() * _BaseBlock.getVoxelSize() + BasicBlock<T, 3>::_min;
+      (blockaabb.getMin() - Vector<int,3>{_overlap}) * voxsize + _BaseBlock.getMin();
     Vector<T, 3> MAX =
-      (blockaabb.getMax() + Vector<T, 3>{T(1)}) * _BaseBlock.getVoxelSize() +
-      BasicBlock<T, 3>::_min;
+      (blockaabb.getMax() - Vector<int,3>{_overlap-1}) * voxsize + _BaseBlock.getMin();
     AABB<T, 3> aabb(MIN, MAX);
-    _Blocks.emplace_back(aabb, blockaabb, blockid, _BaseBlock.getVoxelSize(), _overlap);
-    _BasicBlocks.emplace_back(_BaseBlock.getVoxelSize(), aabb, blockaabb, blockid);
+    _Blocks.emplace_back(aabb, blockaabb, blockid, voxsize, _overlap);
+    _BasicBlocks.emplace_back(voxsize, aabb, blockaabb, blockid);
     blockid++;
   }
 }
@@ -284,47 +285,116 @@ void BlockGeometry3D<T>::SetupNbrs() {
 
 template <typename T>
 void BlockGeometry3D<T>::InitComm() {
-  for (Block3D<T> &block : _Blocks) {
-    std::vector<BlockComm<T, 3>> &Communicators = block.getCommunicators();
-    Communicators.clear();
-    // get the first layer of overlapped cells(counted from inside to outside)
-    BasicBlock<T, 3> baseblock_ext1 = block.getBaseBlock().getExtBlock(1);
-    std::uint8_t blocklevel = block.getLevel();
-    for (Block3D<T> *nblock : block.getNeighbors()) {
-      // check if 2 blocks are of the same level
-      if (nblock->getLevel() == blocklevel) {
-        Communicators.emplace_back(nblock);
-        BlockComm<T, 3> &comm = Communicators.back();
-        // blocks of the same level only communicate with the first layer of overlapped
-        // cells
-        block.getCellIdx(baseblock_ext1, nblock->getBaseBlock(), comm.RecvCells);
-        nblock->getCellIdx(nblock->getBaseBlock(), baseblock_ext1, comm.SendCells);
-        // exclude corner cells
-        std::vector<std::size_t> cornerRecvCells;
-        std::vector<std::size_t> cornerSendCells;
-        block.ExcludeCornerIdx(comm.RecvCells, comm.SendCells, cornerRecvCells, cornerSendCells);
-        // exclude edge cells
-        std::vector<std::vector<std::size_t>> edgeRecvCells;
-        std::vector<std::vector<std::size_t>> edgeSendCells;
-        block.ExcludeEdgeIdx(comm.RecvCells, comm.SendCells, edgeRecvCells, edgeSendCells);
-        // find direction for normal(face) cells
-        comm.Direction = getFaceNbrDirection(block.whichFace(comm.RecvCells[0]));
-        // add corner cells to communicators and find direction
-        for (std::size_t i = 0; i < cornerRecvCells.size(); ++i) {
+  if (_overlap == 1) {
+    for (Block3D<T> &block : _Blocks) {
+      std::vector<BlockComm<T, 3>> &Communicators = block.getCommunicators();
+      Communicators.clear();
+      // get the first layer of overlapped cells(counted from inside to outside)
+      BasicBlock<T, 3> baseblock_exto = block.getBaseBlock().getExtBlock(_overlap);
+      std::uint8_t blocklevel = block.getLevel();
+      for (Block3D<T> *nblock : block.getNeighbors()) {
+        // check if 2 blocks are of the same level
+        if (nblock->getLevel() == blocklevel) {
           Communicators.emplace_back(nblock);
-          BlockComm<T, 3> &commcorner = Communicators.back();
-          commcorner.RecvCells.push_back(cornerRecvCells[i]);
-          commcorner.SendCells.push_back(cornerSendCells[i]);
-          commcorner.Direction = getCornerNbrDirection<3>(block.whichCorner(cornerRecvCells[i]));
-        }
-        // add edge cells to communicators and find direction
-        for (std::size_t i = 0; i < edgeRecvCells.size(); ++i) {
-          if (edgeRecvCells[i].size() > 0) {
+          BlockComm<T, 3> &comm = Communicators.back();
+          // blocks of the same level only communicate with the first layer of overlapped
+          // cells
+          block.getCellIdx(baseblock_exto, nblock->getBaseBlock(), comm.RecvCells);
+          nblock->getCellIdx(nblock->getBaseBlock(), baseblock_exto, comm.SendCells);
+          // exclude corner cells
+          std::vector<std::size_t> cornerRecvCells;
+          std::vector<std::size_t> cornerSendCells;
+          block.ExcludeCornerIdx(comm.RecvCells, comm.SendCells, cornerRecvCells, cornerSendCells);
+          // exclude edge cells
+          std::vector<std::vector<std::size_t>> edgeRecvCells;
+          std::vector<std::vector<std::size_t>> edgeSendCells;
+          block.ExcludeEdgeIdx(comm.RecvCells, comm.SendCells, edgeRecvCells, edgeSendCells);
+          // find direction for normal(face) cells
+          comm.Direction = getFaceNbrDirection(block.whichFace(comm.RecvCells[0]));
+          // add corner cells to communicators and find direction
+          for (std::size_t i = 0; i < cornerRecvCells.size(); ++i) {
             Communicators.emplace_back(nblock);
-            BlockComm<T, 3> &commedge = Communicators.back();
-            commedge.RecvCells = edgeRecvCells[i];
-            commedge.SendCells = edgeSendCells[i];
-            commedge.Direction = getEdgeNbrDirection<3>(block.whichEdge(edgeRecvCells[i][0]));
+            BlockComm<T, 3> &commcorner = Communicators.back();
+            commcorner.RecvCells.push_back(cornerRecvCells[i]);
+            commcorner.SendCells.push_back(cornerSendCells[i]);
+            commcorner.Direction = getCornerNbrDirection<3>(block.whichCorner(cornerRecvCells[i]));
+          }
+          // add edge cells to communicators and find direction
+          for (std::size_t i = 0; i < edgeRecvCells.size(); ++i) {
+            if (edgeRecvCells[i].size() > 0) {
+              Communicators.emplace_back(nblock);
+              BlockComm<T, 3> &commedge = Communicators.back();
+              commedge.RecvCells = edgeRecvCells[i];
+              commedge.SendCells = edgeSendCells[i];
+              commedge.Direction = getEdgeNbrDirection<3>(block.whichEdge(edgeRecvCells[i][0]));
+            }
+          }
+        }
+      }
+    }
+  } else {
+    // _overlap > 1
+    for (Block3D<T> &block : _Blocks) {
+      std::vector<BlockComm<T, 3>> &Communicators = block.getCommunicators();
+      Communicators.clear();
+      // reserve enough space
+      Communicators.reserve(block.getNeighbors().size() * 10 + 10);
+      // get the first layer of overlapped cells(counted from inside to outside)
+      BasicBlock<T, 3> baseblock_exto = block.getBaseBlock().getExtBlock(_overlap);
+      std::uint8_t blocklevel = block.getLevel();
+      for (Block3D<T> *nblock : block.getNeighbors()) {
+        // check if 2 blocks are of the same level
+        if (nblock->getLevel() == blocklevel) {
+          Communicators.emplace_back(nblock);
+          BlockComm<T, 3> &comm = Communicators.back();
+          // blocks of the same level only communicate with the first layer of overlapped
+          // cells
+          block.getCellIdx(baseblock_exto, nblock->getBaseBlock(), comm.RecvCells);
+          nblock->getCellIdx(nblock->getBaseBlock(), baseblock_exto, comm.SendCells);
+          // exclude inner cells
+          std::vector<std::size_t> InnerRecvCells;
+          std::vector<std::size_t> InnerSendCells;
+          block.ExcludeInnerIdx(comm.RecvCells, comm.SendCells, InnerRecvCells, InnerSendCells);
+          // exclude corner cells
+          std::vector<std::size_t> cornerRecvCells;
+          std::vector<std::size_t> cornerSendCells;
+          bool hasC = block.ExcludeCornerIdx(comm.RecvCells, comm.SendCells, cornerRecvCells, cornerSendCells);
+          // exclude edge cells
+          std::vector<std::vector<std::size_t>> edgeRecvCells;
+          std::vector<std::vector<std::size_t>> edgeSendCells;
+          bool hasE = block.ExcludeEdgeIdx(comm.RecvCells, comm.SendCells, edgeRecvCells, edgeSendCells);
+          // check if has corner or edge cells
+          if(hasC || hasE) {
+            SplitCommunictor(comm, block, nblock, Communicators);
+            // add corner cells to communicators and find direction
+            for (std::size_t i = 0; i < cornerRecvCells.size(); ++i) {
+              Communicators.emplace_back(nblock);
+              BlockComm<T, 3> &commcorner = Communicators.back();
+              commcorner.RecvCells.push_back(cornerRecvCells[i]);
+              commcorner.SendCells.push_back(cornerSendCells[i]);
+              commcorner.Direction = getCornerNbrDirection<3>(block.whichCorner(cornerRecvCells[i]));
+            }
+            // add edge cells to communicators and find direction
+            for (std::size_t i = 0; i < edgeRecvCells.size(); ++i) {
+              if (edgeRecvCells[i].size() > 0) {
+                Communicators.emplace_back(nblock);
+                BlockComm<T, 3> &commedge = Communicators.back();
+                commedge.RecvCells = edgeRecvCells[i];
+                commedge.SendCells = edgeSendCells[i];
+                commedge.Direction = getEdgeNbrDirection<3>(block.whichEdge(edgeRecvCells[i][0]));
+              }
+            }
+          } else {
+            // no corner and edge cells means uniform direction
+            // find direction for normal(face) cells
+            comm.Direction = getFaceNbrDirection(block.whichFace(comm.RecvCells[0]));
+          }
+           // add inner cells to communicators
+          if (InnerRecvCells.size() > 0) {
+            block.getInnerCommunicators().emplace_back(nblock);
+            BlockComm<T, 3> &commInner = block.getInnerCommunicators().back();
+            commInner.RecvCells = InnerRecvCells;
+            commInner.SendCells = InnerSendCells;
           }
         }
       }
@@ -919,6 +989,42 @@ void BlockGeometry3D<T>::InitAllMPIComm(BlockGeometryHelper3D<T> &GeoHelper) {
 
 #endif
 
+template <typename T>
+void BlockGeometry3D<T>::SplitCommunictor(BlockComm<T, 3> &comm, Block3D<T>& block, Block3D<T> *nblock, std::vector<BlockComm<T, 3>> &Communicators) {
+  if(comm.RecvCells.size() == 0) return;
+  bool hasnextcomm = false;
+  // find direction for normal(edge) cells of this communicator
+  comm.Direction = getFaceNbrDirection(block.whichFace(comm.RecvCells[0]));
+  // check direction for each remaining cell
+  std::size_t i{};
+  for (i = 1; i < comm.RecvCells.size(); ++i) {
+    NbrDirection dir = getFaceNbrDirection(block.whichFace(comm.RecvCells[i]));
+    if (dir != comm.Direction) {
+      hasnextcomm = true;
+      break;
+    }
+  }
+  if (hasnextcomm) {
+    Communicators.emplace_back(nblock);
+    BlockComm<T, 3> &nextcomm = Communicators.back();
+    // get ref of the element before nextcomm in the vector Communicators
+    // we used emplace_back() here, which may invalidate the ref comm
+    // so we need to get the ref again
+    BlockComm<T, 3> &prevcomm = Communicators[Communicators.size() - 2];
+    // split the communicator and continue checking each remaining cell
+    // prevcomm.RecvCells and prevcomm.SendCells are cut off at i
+    // the rest of prevcomm.RecvCells and prevcomm.SendCells are moved to nextcomm
+    nextcomm.RecvCells.clear();
+    nextcomm.SendCells.clear();
+    nextcomm.RecvCells.insert(nextcomm.RecvCells.end(), prevcomm.RecvCells.begin() + i, prevcomm.RecvCells.end());
+    nextcomm.SendCells.insert(nextcomm.SendCells.end(), prevcomm.SendCells.begin() + i, prevcomm.SendCells.end());
+    prevcomm.RecvCells.resize(i);
+    prevcomm.SendCells.resize(i);
+    // recursively split communicator
+    SplitCommunictor(nextcomm, block, nblock, Communicators);
+  }
+}
+
 
 // BlockGeometryHelper3D
 #include "lbm/lattice_set.h"
@@ -930,9 +1036,9 @@ BlockGeometryHelper3D<T>::BlockGeometryHelper3D(int Nx, int Ny, int Nz,
                                                 int ext)
     : BasicBlock<T, 3>(
         voxelSize, AABBs.getExtended(Vector<T, 3>{voxelSize * ext}),
-        AABB<int, 3>(Vector<int, 3>{0}, Vector<int, 3>{Nx + 1, Ny + 1, Nz + 1})),
+        AABB<int, 3>(Vector<int, 3>{0}, Vector<int, 3>{Nx - 1 + 2*ext, Ny - 1 + 2*ext, Nz - 1 + 2*ext})),
       _BaseBlock(voxelSize, AABBs,
-                 AABB<int, 3>(Vector<int, 3>{1}, Vector<int, 3>{Nx, Ny, Nz})),
+                 AABB<int, 3>(Vector<int, 3>{ext}, Vector<int, 3>{Nx - 1 + ext, Ny - 1 + ext, Nz - 1 + ext})),
       BlockCellLen(blockcelllen), Ext(ext), _LevelLimit(llimit), _MaxLevel(std::uint8_t(0)), 
       _Exchanged(true), _IndexExchanged(true) {
   if (BlockCellLen < 4) {

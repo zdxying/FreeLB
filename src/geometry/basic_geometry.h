@@ -295,16 +295,23 @@ class BasicBlock : public AABB<T, D> {
                   std::vector<std::size_t>& cellIdx) const;
   
   // use the result of getCellIdx(), but will exclude corner(2d or 3d) cells
-  void ExcludeCornerIdx(std::vector<std::size_t>& cellIdxbase,
+  bool ExcludeCornerIdx(std::vector<std::size_t>& cellIdxbase,
                        std::vector<std::size_t>& cellIdxnbr, 
                        std::vector<std::size_t>& excellIdxbase,
                        std::vector<std::size_t>& excellIdxnbr) const; 
 
   // use the result of getCellIdx(), but will exclude edge(3d) cells
-  void ExcludeEdgeIdx(std::vector<std::size_t>& cellIdxbase,
+  bool ExcludeEdgeIdx(std::vector<std::size_t>& cellIdxbase,
                       std::vector<std::size_t>& cellIdxnbr, 
                       std::vector<std::vector<std::size_t>>& excellIdxbase, 
-                      std::vector<std::vector<std::size_t>>& excellIdxnbr) const; 
+                      std::vector<std::vector<std::size_t>>& excellIdxnbr) const;
+                      
+  // use the result of getCellIdx(), but will exclude inner cells
+  // remain only edge|corner(2d)/ face|edge|corner(3d) cells
+  bool ExcludeInnerIdx(std::vector<std::size_t>& cellIdxbase,
+                      std::vector<std::size_t>& cellIdxnbr,
+                      std::vector<std::size_t>& excellIdxbase,
+                       std::vector<std::size_t>& excellIdxnbr) const; 
   
   // get corner index of the block, sorted by order(x->y->z, smallest->largest)
   // 4 for 2D, 8 for 3D
@@ -318,13 +325,13 @@ class BasicBlock : public AABB<T, D> {
   // 0 for 2D, 6 for 3D
   void getFaceIdx(std::vector<std::size_t>& faceIdx, const Vector<int, D>& dir) const;
 
-  // find which corner the point is in
+  // find which corner the point is in, return -1 if not on corner
   int whichCorner(const Vector<int, D>& pt) const;
   int whichCorner(std::size_t idx) const;
-  // find which edge the point is in
+  // find which edge the point is in, return -1 if not on edge
   int whichEdge(const Vector<int, D>& pt) const;
   int whichEdge(std::size_t idx) const;
-  // find which face the point is in
+  // find which face the point is in, return -1 if not on face
   int whichFace(const Vector<int, D>& pt) const;
   int whichFace(std::size_t idx) const;
 };

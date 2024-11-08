@@ -141,7 +141,7 @@ int main() {
                     Vector<T, 3>(T(Ni * Cell_Len), T(Nj * Cell_Len), T(Nk * Cell_Len)));
   AABB<T, 3> fluid(Vector<T, 3>{},
                    Vector<T, 3>(T(int(Ni / 2) * Cell_Len), T(int(Nj) * Cell_Len), T(int(Nk/2) * Cell_Len)));
-  BlockGeometry3D<T> Geo(Ni, Nj, Nk, Thread_Num, cavity, Cell_Len);
+  BlockGeometry3D<T> Geo(Ni, Nj, Nk, Thread_Num, cavity, Cell_Len, 2);
 
   // ------------------ define flag field ------------------
   // BlockFieldManager<FLAG, T, LatSet::d> FlagFM(Geo, VoidFlag);
@@ -219,7 +219,7 @@ int main() {
   vtmo::VectorWriter VeloWriter("Velo", NSLattice.getField<VELOCITY<T, LatSet::d>>());
   vtmo::ScalarWriter VOFWriter("VOF", NSLattice.getField<olbfs::VOLUMEFRAC<T>>());
   vtmo::ScalarWriter StateWriter("State", NSLattice.getField<olbfs::STATE>());
-  vtmo::vtmWriter<T, LatSet::d> Writer("dambreak3d", Geo, 1);
+  vtmo::vtmWriter<T, LatSet::d> Writer("dambreak3d", Geo);
   Writer.addWriterSet(rhovtm, StateWriter, MassWriter, VOFWriter, VeloWriter);
 
   FieldStatistics RhoStat(NSLattice.getField<RHO<T>>());
@@ -232,6 +232,14 @@ int main() {
   Writer.WriteBinary(MainLoopTimer());
 
   Printer::Print_BigBanner(std::string("Start Calculation..."));
+
+  Printer::PrintTitle("[Step: 0]");
+  Printer::Print("Average Rho", RhoStat.getAverage());
+  Printer::Print("Average Mass", MassStat.getAverage());
+  Printer::Print("Max Mass", MassStat.getMax());
+  Printer::Print("Min Mass", MassStat.getMin());
+  Printer::Endl();
+
   while (MainLoopTimer() < MaxStep) {
     ++MainLoopTimer;
     ++OutputTimer;
@@ -242,7 +250,6 @@ int main() {
     NSLattice.Communicate(MainLoopTimer());
 
     olbfs::FreeSurfaceApply<BlockLatticeManager<T, LatSet, ALLFIELDS>>::Apply(NSLattice, MainLoopTimer());
-
 
     if (MainLoopTimer() % OutputStep == 0) {
       OutputTimer.Print_InnerLoopPerformance(Geo.getTotalCellNum(), OutputStep);

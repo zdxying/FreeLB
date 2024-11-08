@@ -146,7 +146,7 @@ int main() {
                     Vector<T, 2>(T(Ni * Cell_Len), T(Nj * Cell_Len)));
   AABB<T, 2> fluid(Vector<T, 2>{},
                    Vector<T, 2>(T(int(Ni / 2) * Cell_Len), T(int(Nj / 2) * Cell_Len)));
-  BlockGeometry2D<T> Geo(Ni, Nj, Thread_Num, cavity, Cell_Len);
+  BlockGeometry2D<T> Geo(Ni, Nj, Thread_Num, cavity, Cell_Len, 2);
 
   // ------------------ define flag field ------------------
   // BlockFieldManager<FLAG, T, LatSet::d> FlagFM(Geo, VoidFlag);
@@ -244,6 +244,14 @@ int main() {
   Writer.WriteBinary(MainLoopTimer());
 
   Printer::Print_BigBanner(std::string("Start Calculation..."));
+
+  Printer::PrintTitle("[Step: 0]");
+  Printer::Print("Average Rho", RhoStat.getAverage());
+  Printer::Print("Average Mass", MassStat.getAverage());
+  Printer::Print("Max Mass", MassStat.getMax());
+  Printer::Print("Min Mass", MassStat.getMin());
+  Printer::Endl();
+  
   while (MainLoopTimer() < MaxStep) {
     ++MainLoopTimer;
     ++OutputTimer;
@@ -254,7 +262,6 @@ int main() {
     NSLattice.Communicate(MainLoopTimer());
 
     olbfs::FreeSurfaceApply<NSBlockLatMan>::Apply(NSLattice, MainLoopTimer());
-
 
     if (MainLoopTimer() % OutputStep == 0) {
       OutputTimer.Print_InnerLoopPerformance(Geo.getTotalCellNum(), OutputStep);

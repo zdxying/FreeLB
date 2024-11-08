@@ -8,6 +8,6 @@ FLAGS += -O3 -march=native -fopenmp
 # FLAGS += -g
 FLAGS += -DFLOAT_TYPE=double
 
-OUTPUT += vtkoutput
+OUTPUT += vtkoutput STLoutput
 
 include $(ROOT)/make.mk

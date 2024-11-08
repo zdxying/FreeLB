@@ -96,6 +96,8 @@ class BlockField : public FieldType {
   // interp block comm, get from lower level block
   std::vector<IntpBlockFieldComm<FieldType, FloatType, Dim>> IntpComms;
 
+  std::vector<BlockFieldComm<FieldType, FloatType, Dim>> InnerComms;
+
 #ifdef __CUDACC__
   using cudev_FieldType = typename FieldType::cudev_FieldType;
   using cudev_BlockFieldType = cudev::BlockField<cudev_FieldType, FloatType, Dim>;
@@ -124,14 +126,14 @@ class BlockField : public FieldType {
   // copy constructor
   BlockField(const BlockField& blockF)
       : FieldType(blockF), _Block(blockF._Block), Comms(blockF.Comms),
-        AverComms(blockF.AverComms), IntpComms(blockF.IntpComms) {
+        AverComms(blockF.AverComms), IntpComms(blockF.IntpComms), InnerComms(blockF.InnerComms) {
     MPIBufferInit();
     constructInDevice();
   }
   // move constructor
   BlockField(BlockField&& blockF) noexcept
       : FieldType(std::move(blockF)), _Block(blockF._Block), Comms(std::move(blockF.Comms)),
-        AverComms(std::move(blockF.AverComms)), IntpComms(std::move(blockF.IntpComms)) {
+        AverComms(std::move(blockF.AverComms)), IntpComms(std::move(blockF.IntpComms)), InnerComms(std::move(blockF.InnerComms)) {
     MPIBufferInit();
     constructInDevice();
   }
@@ -143,6 +145,7 @@ class BlockField : public FieldType {
       Comms = blockF.Comms;
       AverComms = blockF.AverComms;
       IntpComms = blockF.IntpComms;
+      InnerComms = blockF.InnerComms;
       MPIBufferInit();
     }
     return *this;
@@ -155,6 +158,7 @@ class BlockField : public FieldType {
       Comms = std::move(blockF.Comms);
       AverComms = std::move(blockF.AverComms);
       IntpComms = std::move(blockF.IntpComms);
+      InnerComms = std::move(blockF.InnerComms);
       MPIBufferInit();
     }
     return *this;
@@ -202,9 +206,23 @@ if (dev_BlockField) cuda_free(dev_BlockField);
   std::vector<IntpBlockFieldComm<FieldType, FloatType, Dim>>& getIntpComms() {
     return IntpComms;
   }
+  std::vector<BlockFieldComm<FieldType, FloatType, Dim>>& getInnerComms() { return InnerComms; }
 
   void normalcommunicate() {
     for (BlockFieldComm<FieldType, FloatType, Dim>& comm : Comms) {
+      BlockField<FieldType, FloatType, Dim>* nblockF = comm.BlockF;
+      std::size_t size = comm.getRecvs().size();
+      for (unsigned int iArr = 0; iArr < nblockF->Size(); ++iArr) {
+        const auto& nArray = nblockF->getField(iArr);
+        auto& Array = this->getField(iArr);
+        for (std::size_t id = 0; id < size; ++id) {
+          Array.set(comm.getRecv(id), nArray[comm.getSend(id)]);
+        }
+      }
+    }
+  }
+  void normalInnercommunicate() {
+    for (BlockFieldComm<FieldType, FloatType, Dim>& comm : InnerComms) {
       BlockField<FieldType, FloatType, Dim>* nblockF = comm.BlockF;
       std::size_t size = comm.getRecvs().size();
       for (unsigned int iArr = 0; iArr < nblockF->Size(); ++iArr) {
@@ -734,6 +752,13 @@ class BlockFieldManager {
       for (IntpBlockComm<FloatType, Dim>& comm : block.getIntpBlockComm()) {
         Interpcomms.emplace_back(findBlockField(comm.getSendId()), &comm);
       }
+      // inner communication
+      std::vector<BlockFieldComm<FieldType, FloatType, Dim>>& Innercomms =
+        blockF.getInnerComms();
+      Innercomms.clear();
+      for (BlockComm<FloatType, Dim>& comm : block.getInnerCommunicators()) {
+        Innercomms.emplace_back(findBlockField(comm.getSendId()), &comm);
+      }
     }
   }
 
@@ -983,6 +1008,7 @@ class BlockFieldManager {
         static_cast<int>(_BlockGeo.getMaxLevel() - blockF.getBlock().getLevel());
       if (count % (static_cast<int>(std::pow(2, deLevel))) == 0) {
         blockF.normalcommunicate();
+        blockF.normalInnercommunicate();
       }
     }
   }
@@ -1030,6 +1056,7 @@ class BlockFieldManager {
 #pragma omp parallel for num_threads(Thread_Num)
     for (BlockField<FieldType, FloatType, Dim>& blockF : _Fields) {
       blockF.normalcommunicate();
+      blockF.normalInnercommunicate();
     }
   }
   void NormalAddCommunicate() {

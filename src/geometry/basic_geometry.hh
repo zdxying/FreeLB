@@ -466,23 +466,26 @@ void BasicBlock<T, D>::forEach(const AABB<T, D>& AABBs, const ArrayType& flag,
 template <typename T, unsigned int D>
 template <typename ArrayType, typename Func>
 void BasicBlock<T, D>::forEach(const ArrayType& flag, std::uint8_t fromflag, const Func& func) {
-  if constexpr (D == 2) {
-    for (int j = 0; j < Mesh[1]; ++j) {
-      for (int i = 0; i < Mesh[0]; ++i) {
-        std::size_t id = getIndex(Vector<int, 2>{i, j});
-        if (util::isFlag(flag[id], fromflag)) func(id);
-      }
-    }
-  } else if constexpr (D == 3) {
-    for (int k = 0; k < Mesh[2]; ++k) {
-      for (int j = 0; j < Mesh[1]; ++j) {
-        for (int i = 0; i < Mesh[0]; ++i) {
-          std::size_t id = getIndex(Vector<int, 3>{i, j, k});
-          if (util::isFlag(flag[id], fromflag)) func(id);
-        }
-      }
-    }
+  for (std::size_t id = 0; id < N; ++id) {
+    if (util::isFlag(flag[id], fromflag)) func(id);
   }
+  // if constexpr (D == 2) {
+  //   for (int j = 0; j < Mesh[1]; ++j) {
+  //     for (int i = 0; i < Mesh[0]; ++i) {
+  //       std::size_t id = getIndex(Vector<int, 2>{i, j});
+  //       if (util::isFlag(flag[id], fromflag)) func(id);
+  //     }
+  //   }
+  // } else if constexpr (D == 3) {
+  //   for (int k = 0; k < Mesh[2]; ++k) {
+  //     for (int j = 0; j < Mesh[1]; ++j) {
+  //       for (int i = 0; i < Mesh[0]; ++i) {
+  //         std::size_t id = getIndex(Vector<int, 3>{i, j, k});
+  //         if (util::isFlag(flag[id], fromflag)) func(id);
+  //       }
+  //     }
+  //   }
+  // }
 }
 
 template <typename T, unsigned int D>
@@ -519,9 +522,11 @@ void BasicBlock<T, D>::getCellIdx(const AABB<T, D>& AABB0, const AABB<T, D>& AAB
 
 
 template <typename T, unsigned int D>
-void BasicBlock<T, D>::ExcludeCornerIdx(
+bool BasicBlock<T, D>::ExcludeCornerIdx(
   std::vector<std::size_t>& cellIdxbase, std::vector<std::size_t>& cellIdxnbr, 
   std::vector<std::size_t>& excellIdxbase, std::vector<std::size_t>& excellIdxnbr) const {
+  
+  bool hasCorner = false;
 
   excellIdxbase.clear();
   excellIdxnbr.clear();
@@ -538,18 +543,22 @@ void BasicBlock<T, D>::ExcludeCornerIdx(
       // remove from original list
       it = cellIdxbase.erase(it);
       it_nbr = cellIdxnbr.erase(it_nbr);
+      hasCorner = true;
     } else {
       ++it;
       ++it_nbr;
     }
   }
+  return hasCorner;
 }
 
 template <typename T, unsigned int D>
-void BasicBlock<T, D>::ExcludeEdgeIdx(
+bool BasicBlock<T, D>::ExcludeEdgeIdx(
   std::vector<std::size_t>& cellIdxbase, std::vector<std::size_t>& cellIdxnbr,
   std::vector<std::vector<std::size_t>>& excellIdxbase, std::vector<std::vector<std::size_t>>& excellIdxnbr) const {
   static_assert(D == 3, "ExcludeEdgeIdx is only for 3D block");
+
+  bool hasEdge = false;
 
   excellIdxbase.clear();
   excellIdxnbr.clear();
@@ -573,11 +582,85 @@ void BasicBlock<T, D>::ExcludeEdgeIdx(
       // remove from original list
       it = cellIdxbase.erase(it);
       it_nbr = cellIdxnbr.erase(it_nbr);
+      hasEdge = true;
     } else {
       ++it;
       ++it_nbr;
     }
   }
+  return hasEdge;
+}
+
+template <typename T, unsigned int D>
+bool BasicBlock<T, D>::ExcludeInnerIdx(
+  std::vector<std::size_t>& cellIdxbase, std::vector<std::size_t>& cellIdxnbr,
+  std::vector<std::size_t>& excellIdxbase, std::vector<std::size_t>& excellIdxnbr) const {
+  
+  bool hasInner = false;
+
+  excellIdxbase.clear();
+  excellIdxnbr.clear();
+
+  auto it = cellIdxbase.begin();
+  auto it_nbr = cellIdxnbr.begin();
+
+  if constexpr (D == 2) {
+    while (it != cellIdxbase.end()) {
+      if (whichEdge(*it) != -1) {
+        // if is edge cell, continue
+        ++it;
+        ++it_nbr;
+        continue;
+      } 
+      // else if (whichCorner(*it) != -1) {
+      //   // if is corner cell, continue
+      //   ++it;
+      //   ++it_nbr;
+      //   continue;
+      // } 
+      else {
+        // if is inner cell
+        // add to excluded cell list
+        excellIdxbase.push_back(*it);
+        excellIdxnbr.push_back(*it_nbr);
+        // remove from original list
+        it = cellIdxbase.erase(it);
+        it_nbr = cellIdxnbr.erase(it_nbr);
+        hasInner = true;
+      }
+    }
+  } else if constexpr (D == 3) {
+    while (it != cellIdxbase.end()) {
+      if (whichFace(*it) != -1) {
+        // if is face cell, continue
+        ++it;
+        ++it_nbr;
+        continue;
+      } 
+      // else if (whichEdge(*it) != -1) {
+      //   // if is edge cell, continue
+      //   ++it;
+      //   ++it_nbr;
+      //   continue;
+      // } else if (whichCorner(*it) != -1) {
+      //   // if is corner cell, continue
+      //   ++it;
+      //   ++it_nbr;
+      //   continue;
+      // }
+       else {
+        // if is inner cell
+        // add to excluded cell list
+        excellIdxbase.push_back(*it);
+        excellIdxnbr.push_back(*it_nbr);
+        // remove from original list
+        it = cellIdxbase.erase(it);
+        it_nbr = cellIdxnbr.erase(it_nbr);
+        hasInner = true;
+      }
+    }
+  }
+  return hasInner;
 }
 
 template <typename T, unsigned int D>

@@ -223,7 +223,7 @@ class BlockLattice : public BlockLatticeBase<T, LatSet, TypePack> {
 
   // normal communication, which can be done using normalcommunicate() in blockFM
   void communicate();
-  void fullcommunicate();
+  void fulldirectioncommunicate();
   // average communication
   void avercommunicate();
   // interp communication
@@ -465,7 +465,7 @@ class BlockLatticeManager : public BlockLatticeManagerBase<T, LatSet, TypePack> 
 #endif
 
   void Communicate(std::int64_t count);
-  void FullCommunicate(std::int64_t count);
+  void FullDirectionCommunicate(std::int64_t count);
 
   // tolerance
   void EnableToleranceRho(T rhores = T(1e-5));

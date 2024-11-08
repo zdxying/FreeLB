@@ -68,7 +68,7 @@ void BlockLattice<T, LatSet, TypePack>::communicate() {
 }
 
 template <typename T, typename LatSet, typename TypePack>
-void BlockLattice<T, LatSet, TypePack>::fullcommunicate() {
+void BlockLattice<T, LatSet, TypePack>::fulldirectioncommunicate() {
   // same level communication
   for (BlockLatComm<T, LatSet, TypePack>& comm : Communicators) {
     BlockLattice<T, LatSet, TypePack>* nBlockLat = comm.SendBlock;
@@ -1111,14 +1111,14 @@ void BlockLatticeManager<T, LatSet, TypePack>::Communicate(std::int64_t count) {
 }
 
 template <typename T, typename LatSet, typename TypePack>
-void BlockLatticeManager<T, LatSet, TypePack>::FullCommunicate(std::int64_t count) {
+void BlockLatticeManager<T, LatSet, TypePack>::FullDirectionCommunicate(std::int64_t count) {
   // --- noraml communication ---
 #ifndef SingleBlock_OMP
 #pragma omp parallel for num_threads(Thread_Num)
 #endif
   for (auto& BLat : BlockLats) {
     if (count % (static_cast<int>(std::pow(2, int(getMaxLevel() - BLat.getLevel())))) == 0)
-      BLat.fullcommunicate();
+      BLat.fulldirectioncommunicate();
   }
 
 #ifdef MPI_ENABLED
