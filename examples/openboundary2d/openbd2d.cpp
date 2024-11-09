@@ -186,10 +186,13 @@ int main() {
 
     BM.Apply(MainLoopTimer());
 
-    // NSLattice.Communicate(MainLoopTimer());
+    NSLattice.Communicate(MainLoopTimer());
     // use CommunicateAll() (less efficient) instead, 
-    // cause bounceback::normal used invalid pop to get another pop which will not be communicated
-    NSLattice.getField<POP<T, LatSet::q>>().CommunicateAll(MainLoopTimer());
+    // because bounceback::normal used only inner cells to apply Bounceback
+    // however, Bounceback is not applied to the outer cells which are to be communicated 
+    // and partial(efficient) communication only communicate pops in certain directions
+    // the bounce-back direction might not be communicated, becomming invalid pop
+    // NSLattice.getField<POP<T, LatSet::q>>().CommunicateAll(MainLoopTimer());
 
     ++MainLoopTimer;
     ++OutputTimer;

@@ -26,8 +26,8 @@
 
 namespace collision {
 
-template <typename EquilibriumScheme, bool WriteToField = false>
-struct SmagorinskyBGK_Feq_RhoU {
+template <typename MomentaScheme, typename EquilibriumScheme, bool WriteToField = false>
+struct SmagorinskyBGK {
   using CELL = typename EquilibriumScheme::CELLTYPE;
   using T = typename CELL::FloatType;
   using LatSet = typename CELL::LatticeSet;
@@ -37,7 +37,7 @@ struct SmagorinskyBGK_Feq_RhoU {
     // update macroscopic variables
     T rho{};
     Vector<T, LatSet::d> u{};
-    moment::template rhou<CELL, WriteToField>::apply(cell, rho, u);
+    MomentaScheme::apply(cell, rho, u);
 
     // get Smagorinsky Effective Omega
     // second moment of non-equilibrium part of the distribution function
@@ -66,8 +66,8 @@ struct SmagorinskyBGK_Feq_RhoU {
   }
 };
 
-template <typename EquilibriumScheme, typename ForceScheme, bool WriteToField = false>
-struct SmagorinskyForceBGK_Feq_RhoU {
+template <typename MomentaScheme, typename EquilibriumScheme, typename ForceScheme, bool WriteToField = false>
+struct SmagorinskyForceBGK {
   using CELL = typename EquilibriumScheme::CELLTYPE;
   using T = typename CELL::FloatType;
   using LatSet = typename CELL::LatticeSet;
@@ -77,15 +77,16 @@ struct SmagorinskyForceBGK_Feq_RhoU {
     // update macroscopic variables
     T rho{};
     Vector<T, LatSet::d> u{};
-    moment::template forceRhou<CELL, ForceScheme, WriteToField>::apply(cell, ForceScheme::getForce(cell), rho, u);
+    const auto force = ForceScheme::getForce(cell);
+    MomentaScheme::apply(cell, force, rho, u);
     // compute force term
     std::array<T, LatSet::q> fi{};
-    ForceScheme::apply(u, ForceScheme::getForce(cell), fi);
+    ForceScheme::apply(u, force, fi);
 
     // get Smagorinsky Effective Omega
     // second moment of non-equilibrium part of the distribution function
     std::array<T, util::SymmetricMatrixSize<LatSet::d>()> Pi_ab{};
-    moment::template forcePi_ab_neq<CELL>::get(cell, Pi_ab, rho, u, ForceScheme::getForce(cell));
+    moment::template forcePi_ab_neq<CELL>::get(cell, Pi_ab, rho, u, force);
     // nrom of Pi_ab
     T Pi_ab_norm = std::sqrt(util::NormSquare<T, LatSet::d>(Pi_ab));
     // coefficient
@@ -108,7 +109,7 @@ struct SmagorinskyForceBGK_Feq_RhoU {
     const T _Eomega = T{1} - Eomega;
     const T fEomega = T{1} - T{0.5} * Eomega;
     for (unsigned int i = 0; i < LatSet::q; ++i) {
-      cell[i] = Eomega * feq[i] + _Eomega * cell[i] + fEomega * fi[i] * rho;
+      cell[i] = Eomega * feq[i] + _Eomega * cell[i] + fEomega * fi[i];
     }
   }
 };

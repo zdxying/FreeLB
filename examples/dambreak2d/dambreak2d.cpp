@@ -210,7 +210,7 @@ int main() {
   // openlb used BGK dynamics for Gas cells
   using NSBulkTask =
     tmp::Key_TypePair<olbfs::FSType::Fluid | olbfs::FSType::Interface | olbfs::FSType::Gas,
-                      collision::BGKForce<moment::forceRhou<NSCELL, force::ConstForce<NSCELL>, true>, 
+                      collision::SmagorinskyForceBGK<moment::forceRhou<NSCELL, force::ConstForce<NSCELL>, true>, 
                       equilibrium::SecondOrder<NSCELL>, force::ConstForce<NSCELL>>>;
   using NSWallTask = tmp::Key_TypePair<olbfs::FSType::Wall, collision::BounceBack<NSCELL>>;
 
@@ -251,7 +251,7 @@ int main() {
   Printer::Print("Max Mass", MassStat.getMax());
   Printer::Print("Min Mass", MassStat.getMin());
   Printer::Endl();
-  
+
   while (MainLoopTimer() < MaxStep) {
     ++MainLoopTimer;
     ++OutputTimer;
