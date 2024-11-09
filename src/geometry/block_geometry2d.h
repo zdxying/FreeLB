@@ -246,7 +246,7 @@ class BlockGeometryHelper2D : public BasicBlock<T, 2> {
   // domain of Nx * Ny will be divided into (Nx/blocklen)*(Ny/blocklen) blocks
   BlockGeometryHelper2D(int Nx, int Ny, const AABB<T, 2>& AABBs, T voxelSize = T(1),
                         int blocklen = 10, std::uint8_t llimit = std::uint8_t(2),
-                        int ext = 1);
+                        int overlap = 1);
   ~BlockGeometryHelper2D() = default;
 
   // get

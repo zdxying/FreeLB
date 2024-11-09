@@ -217,8 +217,7 @@ int main() {
     // boundary conditions
     BM.Apply(MainLoopTimer());
     // block communication
-    // NSLattice.Communicate(MainLoopTimer());
-    NSLattice.getField<POP<T, LatSet::q>>().CommunicateAll(MainLoopTimer());
+    NSLattice.FullDirectionCommunicate(MainLoopTimer());
 
     ++MainLoopTimer;
     ++OutputTimer;

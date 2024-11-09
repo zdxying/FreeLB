@@ -233,48 +233,49 @@ void BlockGeometry2D<T>::SetupNbrs() {
 
 template <typename T>
 void BlockGeometry2D<T>::InitComm() {
-  if (_overlap == 1) {
-    for (Block2D<T> &block : _Blocks) {
-      std::vector<BlockComm<T, 2>> &Communicators = block.getCommunicators();
-      Communicators.clear();
-      // get the first layer of overlapped cells(counted from inside to outside)
-      BasicBlock<T, 2> baseblock_exto = block.getBaseBlock().getExtBlock(_overlap);
-      std::uint8_t blocklevel = block.getLevel();
-      for (Block2D<T> *nblock : block.getNeighbors()) {
-        // check if 2 blocks are of the same level
-        if (nblock->getLevel() == blocklevel) {
-          Communicators.emplace_back(nblock);
-          BlockComm<T, 2> &comm = Communicators.back();
-          // blocks of the same level only communicate with the first layer of overlapped
-          // cells
-          block.getCellIdx(baseblock_exto, nblock->getBaseBlock(), comm.RecvCells);
-          nblock->getCellIdx(nblock->getBaseBlock(), baseblock_exto, comm.SendCells);
-          // exclude corner cells
-          std::vector<std::size_t> cornerRecvCells;
-          std::vector<std::size_t> cornerSendCells;
-          block.ExcludeCornerIdx(comm.RecvCells, comm.SendCells, cornerRecvCells, cornerSendCells);
-          // find direction for normal(edge) cells
-          comm.Direction = getEdgeNbrDirection<2>(block.whichEdge(comm.RecvCells[0]));
-          // add corner cells to communicators and find direction
-          for (std::size_t i = 0; i < cornerRecvCells.size(); ++i) {
-            Communicators.emplace_back(nblock);
-            BlockComm<T, 2> &commcorner = Communicators.back();
-            commcorner.RecvCells.push_back(cornerRecvCells[i]);
-            commcorner.SendCells.push_back(cornerSendCells[i]);
-            commcorner.Direction = getCornerNbrDirection<2>(block.whichCorner(cornerRecvCells[i]));
-          }
-        }
-      }
-    }
-  } else {
+  // if (_overlap == 1) {
+  //   for (Block2D<T> &block : _Blocks) {
+  //     std::vector<BlockComm<T, 2>> &Communicators = block.getCommunicators();
+  //     Communicators.clear();
+  //     // get the first layer of overlapped cells(counted from inside to outside)
+  //     BasicBlock<T, 2> baseblock_exto = block.getBaseBlock().getExtBlock(_overlap);
+  //     std::uint8_t blocklevel = block.getLevel();
+  //     for (Block2D<T> *nblock : block.getNeighbors()) {
+  //       // check if 2 blocks are of the same level
+  //       if (nblock->getLevel() == blocklevel) {
+  //         Communicators.emplace_back(nblock);
+  //         BlockComm<T, 2> &comm = Communicators.back();
+  //         // blocks of the same level only communicate with the first layer of overlapped
+  //         // cells
+  //         block.getCellIdx(baseblock_exto, nblock->getBaseBlock(), comm.RecvCells);
+  //         nblock->getCellIdx(nblock->getBaseBlock(), baseblock_exto, comm.SendCells);
+  //         // exclude corner cells
+  //         std::vector<std::size_t> cornerRecvCells;
+  //         std::vector<std::size_t> cornerSendCells;
+  //         block.ExcludeCornerIdx(comm.RecvCells, comm.SendCells, cornerRecvCells, cornerSendCells);
+  //         // find direction for normal(edge) cells
+  //         comm.Direction = getEdgeNbrDirection<2>(block.whichEdge(comm.RecvCells[0]));
+  //         // add corner cells to communicators and find direction
+  //         for (std::size_t i = 0; i < cornerRecvCells.size(); ++i) {
+  //           Communicators.emplace_back(nblock);
+  //           BlockComm<T, 2> &commcorner = Communicators.back();
+  //           commcorner.RecvCells.push_back(cornerRecvCells[i]);
+  //           commcorner.SendCells.push_back(cornerSendCells[i]);
+  //           commcorner.Direction = getCornerNbrDirection<2>(block.whichCorner(cornerRecvCells[i]));
+  //         }
+  //       }
+  //     }
+  //   }
+  // } else {
     // _overlap > 1
     for (Block2D<T> &block : _Blocks) {
       std::vector<BlockComm<T, 2>> &Communicators = block.getCommunicators();
       Communicators.clear();
       // reserve enough space
       Communicators.reserve(block.getNeighbors().size() * 10 + 10);
-      // get the first layer of overlapped cells(counted from inside to outside)
-      BasicBlock<T, 2> baseblock_exto = block.getBaseBlock().getExtBlock(_overlap);
+      // get the first layer of overlapped cells(counted from inside to outside)?
+      // BasicBlock<T, 2> baseblock_exto = block.getBaseBlock().getExtBlock(block.getOverlap());
+      BasicBlock<T, 2> baseblock_exto = block.getSelfBlock();
       std::uint8_t blocklevel = block.getLevel();
       for (Block2D<T> *nblock : block.getNeighbors()) {
         // check if 2 blocks are of the same level
@@ -319,7 +320,7 @@ void BlockGeometry2D<T>::InitComm() {
         }
       }
     }
-  }
+  // }
 }
 
 template <typename T>
@@ -761,12 +762,12 @@ void BlockGeometry2D<T>::SplitCommunictor(BlockComm<T, 2> &comm, Block2D<T>& blo
 template <typename T>
 BlockGeometryHelper2D<T>::BlockGeometryHelper2D(int Nx, int Ny, const AABB<T, 2> &AABBs,
                                                 T voxelSize, int blockcelllen,
-                                                std::uint8_t llimit, int ext)
-    : BasicBlock<T, 2>(voxelSize, AABBs.getExtended(Vector<T, 2>{voxelSize * ext}),
-                       AABB<int, 2>(Vector<int, 2>{0}, Vector<int, 2>{Nx - 1 + 2*ext, Ny - 1 + 2*ext})),
+                                                std::uint8_t llimit, int overlap)
+    : BasicBlock<T, 2>(voxelSize, AABBs.getExtended(Vector<T, 2>{voxelSize * overlap}),
+                       AABB<int, 2>(Vector<int, 2>{0}, Vector<int, 2>{Nx - 1 + 2*overlap, Ny - 1 + 2*overlap})),
       _BaseBlock(voxelSize, AABBs,
-                 AABB<int, 2>(Vector<int, 2>{ext}, Vector<int, 2>{Nx - 1 + ext, Ny - 1 + ext})),
-      BlockCellLen(blockcelllen), Ext(ext), _LevelLimit(llimit), _MaxLevel(std::uint8_t(0)), 
+                 AABB<int, 2>(Vector<int, 2>{overlap}, Vector<int, 2>{Nx - 1 + overlap, Ny - 1 + overlap})),
+      BlockCellLen(blockcelllen), Ext(overlap), _LevelLimit(llimit), _MaxLevel(std::uint8_t(0)), 
       _Exchanged(true), _IndexExchanged(true) {
   if (BlockCellLen < 4) {
     std::cerr << "BlockGeometryHelper2D<T>, BlockCellLen < 4" << std::endl;
