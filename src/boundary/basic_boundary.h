@@ -219,16 +219,16 @@ class BlockFixedBoundary {
     BdCells.reserve(reserveSize);
     // add inner cells
     if constexpr (LatSet::d == 2) {
-      for (int iy = Lat.getOverlap(); iy < Lat.getNy() - Lat.getOverlap(); ++iy) {
-        for (int ix = Lat.getOverlap(); ix < Lat.getNx() - Lat.getOverlap(); ++ix) {
+      for (int iy = 1; iy < Lat.getNy() - 1; ++iy) {
+        for (int ix = 1; ix < Lat.getNx() - 1; ++ix) {
           std::size_t id = ix + iy * Lat.getNx();
           if (util::isFlag(Field[id], BdCellFlag)) addtoBd(id);
         }
       }
     } else if constexpr (LatSet::d == 3) {
-      for (int iz = Lat.getOverlap(); iz < Lat.getNz() - Lat.getOverlap(); ++iz) {
-        for (int iy = Lat.getOverlap(); iy < Lat.getNy() - Lat.getOverlap(); ++iy) {
-          for (int ix = Lat.getOverlap(); ix < Lat.getNx() - Lat.getOverlap(); ++ix) {
+      for (int iz = 1; iz < Lat.getNz() - 1; ++iz) {
+        for (int iy = 1; iy < Lat.getNy() - 1; ++iy) {
+          for (int ix = 1; ix < Lat.getNx() - 1; ++ix) {
             std::size_t id =
               ix + iy * Lat.getProjection()[1] + iz * Lat.getProjection()[2];
             if (util::isFlag(Field[id], BdCellFlag)) addtoBd(id);
