@@ -26,4 +26,4 @@
 #include "lbm/collision.ur.h"
 #include "lbm/collisionLES.h"
 #include "lbm/collisionMRT.ur.h"
-#include "lbm/powerlaw.h"
+#include "lbm/nonNewtonian.h"

@@ -488,7 +488,10 @@ struct strainRate {
   using CELL = CELLTYPE;
   using T = typename CELL::FloatType;
   using LatSet = typename CELL::LatticeSet;
-  // S_ab = (1/rho)(-3/(2*tau))*SUM_i(f_i^(1)*c_ia*c_ib)
+  // sigma_ab = -(1 - delta_T/(2*tau)) * SUM_i(f_i^(1)*c_ia*c_ib)
+  // sigma_ab = 2 * mu * S_ab = 2 * rho * nu * S_ab
+  // S_ab = simga_ab / (2 * rho * Cs^2 * (tau - 0.5))
+  // S_ab = (1/rho)(-Cs^2/(2*tau))*SUM_i(f_i^(1)*c_ia*c_ib)
   // f_i^(1) = f_i - f_i^eq
   // PI_ab^eq = SUM_i(f_i^eq*c_ia*c_ib) = rho*U_a*U_b + rho*Cs^2*delta_ab
   __any__ static inline void get(CELL& cell,

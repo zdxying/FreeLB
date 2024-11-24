@@ -18,7 +18,7 @@
  *
  */
 
-// powerlaw.h
+// nonNewtonian.h
 
 #pragma once
 
@@ -54,6 +54,12 @@ struct PowerLaw_Omega {
   using LatSet = typename CELL::LatticeSet;
 
   static inline T get(T gamma, CELL& cell) {
+    // if (gamma < std::numeric_limits<T>::epsilon()) {
+    //   return cell.getOmega();
+    // }
+    // test gamma
+    // cell.template get<StrainRateMag<T>>() = gamma;
+    // end test gamma
     T m = cell.template get<ConsistencyIndex<T>>();
     T n_minus1 = cell.template get<BehaviorIndexMinus1<T>>();
     // Ostwald-de Waele/ power-law
@@ -71,8 +77,8 @@ struct PowerLaw_Omega {
 
 namespace collision {
 
-template <typename EquilibriumScheme, bool WriteToField = false>
-struct PowerLaw_BGK_Feq_RhoU {
+template <typename MomentaScheme, typename EquilibriumScheme>
+struct PowerLaw_BGK {
   using CELL = typename EquilibriumScheme::CELLTYPE;
   using T = typename CELL::FloatType;
   using LatSet = typename CELL::LatticeSet;
@@ -82,7 +88,7 @@ struct PowerLaw_BGK_Feq_RhoU {
     // update macroscopic variables
     T rho{};
     Vector<T, LatSet::d> u{};
-    moment::template rhou<CELL, WriteToField>::apply(cell, rho, u);
+    MomentaScheme::apply(cell, rho, u);
     // strain rate
     std::array<T, util::SymmetricMatrixSize<LatSet::d>()> strain_rate{};
     moment::template strainRate<CELL>::get(cell, strain_rate, rho, u);
@@ -94,15 +100,15 @@ struct PowerLaw_BGK_Feq_RhoU {
     // BGK collision
     const T omega = PowerLaw_Omega<CELL>::get(gamma, cell);
     const T _omega = T{1} - omega;
+
     for (unsigned int i = 0; i < LatSet::q; ++i) {
       cell[i] = omega * feq[i] + _omega * cell[i];
     }
   }
 };
 
-template <typename EquilibriumScheme, typename ForceScheme, bool WriteToField = false,
-          unsigned int dir = 2>
-struct PowerLaw_BGKForce_Feq_RhoU {
+template <typename MomentaScheme, typename EquilibriumScheme, typename ForceScheme>
+struct PowerLaw_BGKForce {
   using CELL = typename EquilibriumScheme::CELLTYPE;
   using T = typename CELL::FloatType;
   using LatSet = typename CELL::LatticeSet;
@@ -113,8 +119,8 @@ struct PowerLaw_BGKForce_Feq_RhoU {
     // update macroscopic variables
     T rho{};
     Vector<T, LatSet::d> u{};
-    moment::template forceRhou<CELL, ForceScheme, WriteToField, dir>::apply(
-      cell, ForceScheme::getForce(cell), rho, u);
+    const auto force = ForceScheme::getForce(cell);
+    MomentaScheme::apply(cell, force, rho, u);
     // strain rate
     std::array<T, util::SymmetricMatrixSize<LatSet::d>()> strain_rate{};
     moment::template strainRate<CELL>::get(cell, strain_rate, rho, u);
@@ -122,7 +128,7 @@ struct PowerLaw_BGKForce_Feq_RhoU {
     T gamma = moment::template shearRateMag<CELL>::get(strain_rate);
     // compute force term
     std::array<T, LatSet::q> fi{};
-    ForceScheme::apply(u, ForceScheme::getForce(cell), fi);
+    ForceScheme::apply(u, force, fi);
     // equilibrium distribution function
     std::array<T, LatSet::q> feq{};
     EquilibriumScheme::apply(feq, rho, u);

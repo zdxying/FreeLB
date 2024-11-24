@@ -201,6 +201,7 @@ struct CONSTFORCEBase : public FieldBase<1> {};
 struct SCALARCONSTFORCEBase : public FieldBase<1> {};
 struct CONSTRHOBase : public FieldBase<1> {};
 struct CONSTUBase : public FieldBase<1> {};
+struct StrainRateMagBase : public FieldBase<1> {};
 
 struct RHOINITBase : public FieldBase<1> {};
 struct TEMPINITBase : public FieldBase<1> {};
@@ -331,6 +332,9 @@ using CONSTFORCE = Data<Vector<T, D>, CONSTFORCEBase>;
 
 template <typename T>
 using SCALARCONSTFORCE = Data<T, SCALARCONSTFORCEBase>;
+
+template <typename T>
+using StrainRateMag = GenericField<GenericArray<T>, StrainRateMagBase>;
 
 #ifdef __CUDACC__
 template <typename T, unsigned int q>

@@ -220,7 +220,7 @@ int main() {
   //// end free surface
 
   // define task/ dynamics:
-  // NS task  PowerLaw_BGKForce_Feq_RhoU
+  // NS task  PowerLaw_BGKForce
   // using NSBulkTask = tmp::Key_TypePair<olbfs::FSType::Fluid | olbfs::FSType::Interface,
   using NSBulkTask = tmp::Key_TypePair<olbfs::FSType::Fluid | olbfs::FSType::Interface,
     collision::BGK<moment::rhou<NSCELL, true>, equilibrium::SecondOrder<NSCELL>>>;
