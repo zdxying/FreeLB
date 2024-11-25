@@ -518,11 +518,30 @@ struct strainRate {
 };
 
 // magnitude of shear rate
-template <typename CELLTYPE>
+template <typename CELLTYPE, bool WriteToField = false>
 struct shearRateMag {
   using CELL = CELLTYPE;
   using T = typename CELL::FloatType;
   using LatSet = typename CELL::LatticeSet;
+  using GenericRho = typename CELL::GenericRho;
+
+  __any__ static void apply(CELL& cell, const T rho_value, const Vector<T, LatSet::d>& u_value) {
+    static_assert(WriteToField, "shearRateMag::apply(CELL& cell, T& rho_value, Vector<T, LatSet::d>& u_value) must write to field");
+    std::array<T, util::SymmetricMatrixSize<LatSet::d>()> strain_rate_tensor;
+    strainRate<CELL>::get(cell, strain_rate_tensor, rho_value, u_value);
+    cell.template get<StrainRateMag<T>>() = get(strain_rate_tensor);
+  }
+  __any__ static void apply(CELL& cell) {
+    const T rho_value = cell.template get<GenericRho>();
+    const Vector<T, LatSet::d>& u_value = cell.template get<VELOCITY<T, LatSet::d>>();
+    apply(cell, rho_value, u_value);
+  }
+
+  __any__ static inline T get(CELL& cell, const std::array<T, util::SymmetricMatrixSize<LatSet::d>()>& strain_rate_tensor) {
+    const T gamma = get(strain_rate_tensor);
+    if constexpr (WriteToField) cell.template get<StrainRateMag<T>>() = gamma;
+    return gamma;
+  }
   // \dot{gamma} = sqrt(2*trace(S^2)) = sqrt(2*SUM_{a,b}S_ab^2)
   __any__ static inline T get(const std::array<T, util::SymmetricMatrixSize<LatSet::d>()>& strain_rate_tensor) {
     T value{};
@@ -539,6 +558,22 @@ struct shearRateMag {
   }
 };
 
+
+// a tuple containing multiple momenta
+template <typename... Momenta>
+struct MomentaTuple {
+  // get the first template parameter 
+  using CELL = typename tmp::FirstParam<Momenta...>::type::CELL;
+  using T = typename CELL::FloatType;
+  using LatSet = typename CELL::LatticeSet;
+
+  __any__ static void apply(CELL& cell) {
+    (Momenta::apply(cell), ...);
+  }
+  __any__ static void apply(CELL& cell, T& rho_value, Vector<T, LatSet::d>& u_value) {
+    (Momenta::apply(cell, rho_value, u_value), ...);
+  }
+};
 
 // ----------------- legacy code -----------------
 

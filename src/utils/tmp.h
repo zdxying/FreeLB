@@ -269,6 +269,14 @@ struct CoupledTaskSelector {
   }
 };
 
+// get the first template parameter from a parameter pack
+template <typename... Params>
+struct FirstParam;
+
+template <typename First, typename... Rest>
+struct FirstParam<First, Rest...> {
+  using type = First;
+};
 
 }  // namespace tmp
 
