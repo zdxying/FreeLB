@@ -307,6 +307,36 @@ std::vector<int> getCornerIdxFromNbr(std::vector<std::size_t>& cornerId, const s
   return corners;
 }
 
+// a generalized (send-recv) cell map for multi-block communication for both shared and distributed memory
+// to define the communication for one block, multiple CellMap should be used for different neighbor blocks
+template <typename T, unsigned int D>
+struct CellMap {
+  // send / recv cells
+  std::vector<std::size_t> Cells;
+  // recv / send rank
+  int TargetRank;
+  // recv / send block ptr
+  Block<T, D>* TargetBlock;
+  // recv / send block id
+  int TargetBlockId;
+  // neighbor direction
+  NbrDirection Direction;
+
+  CellMap(Block<T, D>* block) : TargetRank(-1), TargetBlock(block), TargetBlockId(block->getBlockId()), Direction(NbrDirection::NONE) {}
+  CellMap(int rank, int blockid) : TargetRank(rank), TargetBlock(nullptr), TargetBlockId(blockid), Direction(NbrDirection::NONE) {}
+  
+};
+
+// a collection of CellMap for one block
+template <typename T, unsigned int D>
+struct BlockCellMaps {
+  std::vector<CellMap<T, D>> SendMaps;
+  std::vector<CellMap<T, D>> RecvMaps;
+
+  const CellMap<T, D>& getSendMap(int id) const { return SendMaps[id]; }
+  const CellMap<T, D>& getRecvMap(int id) const { return RecvMaps[id]; }
+};
+
 // communication structure for block geometry
 template <typename T, unsigned int D>
 struct BlockComm {

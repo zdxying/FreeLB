@@ -320,3 +320,70 @@ class BlockBoundaryManager {
     for (AbstractBlockBoundary *boundary : _Boundaries) boundary->Apply(count);
   }
 };
+
+// non-local boundary
+template <typename BLOCKLATTICE, typename ArrayType>
+class NonLocalBoundary {
+ public:
+  using LatSet = typename BLOCKLATTICE::LatticeSet;
+  using T = typename LatSet::FloatType;
+  static constexpr unsigned int D = LatSet::d;
+
+ protected:
+  // boundary cell
+  std::vector<std::size_t> BdCells;
+  // reference to lattice
+  BLOCKLATTICE &Lat;
+  // geometry flag
+  const ArrayType &Field;
+  // boundary cell flag
+  std::uint8_t BdCellFlag;
+  // boundary flag
+  std::uint8_t voidFlag;
+  // cell maps
+  BlockCellMaps<T, D> CellMaps;
+
+ public:
+
+  NonLocalBoundary(BLOCKLATTICE &lat, const ArrayType &f, std::uint8_t cellflag,
+                   std::uint8_t voidflag)
+      : Lat(lat), Field(f), BdCellFlag(cellflag), voidFlag(voidflag) {
+    Setup();
+  }
+  // get boundary cell flag
+  std::uint8_t getBdCellFlag() const { return BdCellFlag; }
+  // get void cell flag
+  std::uint8_t getVoidFlag() const { return voidFlag; }
+  BLOCKLATTICE &getLat() { return Lat; }
+  // setup boundary cells
+  void Setup() {
+    std::size_t reserveSize;
+    if constexpr (D == 2) {
+      reserveSize = (Lat.getNx() + Lat.getNy()) * 2;
+    } else if constexpr (D == 3) {
+      reserveSize = (Lat.getNx() * Lat.getNy() + Lat.getNx() * Lat.getNz() +
+                     Lat.getNy() * Lat.getNz()) *
+                    2;
+    }
+    BdCells.reserve(reserveSize);
+    if constexpr (D == 2) {
+      for (int iy = 0; iy < Lat.getNy() ; ++iy) {
+        for (int ix = 0; ix < Lat.getNx(); ++ix) {
+          std::size_t id = ix + iy * Lat.getNx();
+          if (util::isFlag(Field[id], BdCellFlag)) BdCells.emplace_back(id);
+        }
+      }
+    } else if constexpr (D == 3) {
+      for (int iz = 0; iz < Lat.getNz(); ++iz) {
+        for (int iy = 0; iy < Lat.getNy(); ++iy) {
+          for (int ix = 0; ix < Lat.getNx(); ++ix) {
+            std::size_t id = ix + iy * Lat.getProjection()[1] + iz * Lat.getProjection()[2];
+            if (util::isFlag(Field[id], BdCellFlag)) BdCells.emplace_back(id);
+          }
+        }
+      }
+    }
+    // shrink capacity to actual size
+    BdCells.shrink_to_fit();
+  }
+};
