@@ -160,6 +160,7 @@ class MovingBoundary : public AbstractBoundary {
 class AbstractBlockBoundary {
  public:
   virtual void Apply(std::int64_t count) = 0;
+  // virtual void Apply() = 0;
 };
 
 template <typename BLOCKLATTICE, typename ArrayType>
@@ -328,6 +329,7 @@ class NonLocalBoundary {
   using LatSet = typename BLOCKLATTICE::LatticeSet;
   using T = typename LatSet::FloatType;
   static constexpr unsigned int D = LatSet::d;
+  using TypePack = typename BLOCKLATTICE::FieldTypePack;
 
  protected:
   // boundary cell
@@ -340,21 +342,30 @@ class NonLocalBoundary {
   std::uint8_t BdCellFlag;
   // boundary flag
   std::uint8_t voidFlag;
-  // cell maps
-  BlockCellMaps<T, D> CellMaps;
+  // base communication structure
+  // it is NOT the same comm set in BlockGeometry
+  BasicCommSet<T, D> BaseCommSet;
+  // LatticeComm for Pop communication
+  LatticeCommSet<LatSet, TypePack> LatticeComm;
 
  public:
 
   NonLocalBoundary(BLOCKLATTICE &lat, const ArrayType &f, std::uint8_t cellflag,
                    std::uint8_t voidflag)
       : Lat(lat), Field(f), BdCellFlag(cellflag), voidFlag(voidflag) {
-    Setup();
-  }
+        Setup();
+      }
   // get boundary cell flag
   std::uint8_t getBdCellFlag() const { return BdCellFlag; }
   // get void cell flag
   std::uint8_t getVoidFlag() const { return voidFlag; }
   BLOCKLATTICE &getLat() { return Lat; }
+  // BasicCommSet<T, D> BaseCommSet
+  BasicCommSet<T, D> &getBaseCommSet() { return BaseCommSet; }
+  // LatticeComm<T, TypePack> LatticeComm
+  LatticeCommSet<LatSet, TypePack> &getLatticeComm() { return LatticeComm; }
+  // std::vector<std::size_t> BdCells;
+  std::vector<std::size_t> &getBdCells() { return BdCells; }
   // setup boundary cells
   void Setup() {
     std::size_t reserveSize;
@@ -362,8 +373,7 @@ class NonLocalBoundary {
       reserveSize = (Lat.getNx() + Lat.getNy()) * 2;
     } else if constexpr (D == 3) {
       reserveSize = (Lat.getNx() * Lat.getNy() + Lat.getNx() * Lat.getNz() +
-                     Lat.getNy() * Lat.getNz()) *
-                    2;
+                     Lat.getNy() * Lat.getNz()) * 2;
     }
     BdCells.reserve(reserveSize);
     if constexpr (D == 2) {

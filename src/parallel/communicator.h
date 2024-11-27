@@ -26,6 +26,7 @@
 
 #include "parallel/mpi_manager.h"
 #include "utils/alias.h"
+#include "lbm/lattice_set.h"
 
 #ifdef __CUDACC__
 #include "utils/cuda_device.h"
@@ -109,6 +110,86 @@ enum NbrDirection : std::uint8_t {
   // z-positive
   ZP = 32
 };
+
+template <typename LatSet>
+void getCommDirection(NbrDirection direction, std::vector<unsigned int>& commdirection) {
+  commdirection.clear();
+  if (util::isFlag(direction, NbrDirection::NONE)) {
+    std::cerr << "[getCommDirection] Error: no neighbor direction" << std::endl;
+    exit(1);
+  }
+  // for(unsigned int i = 1; i < LatSet::q; ++i) {
+  //   commdirection.push_back(i);
+  // }
+  // x - direction
+  if (util::isFlag(direction, NbrDirection::XN)) {
+    // find which Vector<int, LatSet::d> c[0] are NOT positive and erase them
+    for (unsigned int i = 0; i < LatSet::q; ++i) {
+      if (latset::c<LatSet>(i)[0] > 0) {
+        commdirection.push_back(i);
+        // commdirection.erase(std::remove(commdirection.begin(), commdirection.end(), i), commdirection.end());
+      }
+    }
+  } else if (util::isFlag(direction, NbrDirection::XP)) {
+    // find which Vector<int, LatSet::d> c[0] are NOT negative and erase them
+    for (unsigned int i = 0; i < LatSet::q; ++i) {
+      if (latset::c<LatSet>(i)[0] < 0) {
+        commdirection.push_back(i);
+        // commdirection.erase(std::remove(commdirection.begin(), commdirection.end(), i), commdirection.end());
+      }
+    }
+  }
+  // y - direction
+  if (util::isFlag(direction, NbrDirection::YN)) {
+    // find which Vector<int, LatSet::d> c[1] are NOT positive and erase them
+    for (unsigned int i = 0; i < LatSet::q; ++i) {
+      if (latset::c<LatSet>(i)[1] > 0) {
+        // avoid repeated direction
+        if (std::find(commdirection.begin(), commdirection.end(), i) == commdirection.end()) {
+          commdirection.push_back(i);
+        }
+        // commdirection.erase(std::remove(commdirection.begin(), commdirection.end(), i), commdirection.end());
+      }
+    }
+  } else if (util::isFlag(direction, NbrDirection::YP)) {
+    // find which Vector<int, LatSet::d> c[1] are NOT negative and erase them
+    for (unsigned int i = 0; i < LatSet::q; ++i) {
+      if (latset::c<LatSet>(i)[1] < 0) {
+        // avoid repeated direction
+        if (std::find(commdirection.begin(), commdirection.end(), i) == commdirection.end()) {
+          commdirection.push_back(i);
+        }
+        // commdirection.erase(std::remove(commdirection.begin(), commdirection.end(), i), commdirection.end());
+      }
+    }
+  }
+  // z - direction
+  if constexpr (LatSet::d == 3) {
+    if (util::isFlag(direction, NbrDirection::ZN)) {
+      // find which Vector<int, LatSet::d> c[2] are NOT positive and erase them
+      for (unsigned int i = 0; i < LatSet::q; ++i) {
+        if (latset::c<LatSet>(i)[2] > 0) {
+        // avoid repeated direction
+        if (std::find(commdirection.begin(), commdirection.end(), i) == commdirection.end()) {
+          commdirection.push_back(i);
+        }
+          // commdirection.erase(std::remove(commdirection.begin(), commdirection.end(), i), commdirection.end());
+        }
+      }
+    } else if (util::isFlag(direction, NbrDirection::ZP)) {
+      // find which Vector<int, LatSet::d> c[2] are NOT negative and erase them
+      for (unsigned int i = 0; i < LatSet::q; ++i) {
+        if (latset::c<LatSet>(i)[2] < 0) {
+        // avoid repeated direction
+        if (std::find(commdirection.begin(), commdirection.end(), i) == commdirection.end()) {
+          commdirection.push_back(i);
+        }
+          // commdirection.erase(std::remove(commdirection.begin(), commdirection.end(), i), commdirection.end());
+        }
+      }
+    }
+  }
+}
 
 template <unsigned int D>
 NbrDirection getCornerNbrDirection(int corner) {
@@ -307,10 +388,13 @@ std::vector<int> getCornerIdxFromNbr(std::vector<std::size_t>& cornerId, const s
   return corners;
 }
 
-// a generalized (send-recv) cell map for multi-block communication for both shared and distributed memory
-// to define the communication for one block, multiple CellMap should be used for different neighbor blocks
+
+// a generalized (send-recv) cell map for inter-block communication for both shared and distributed memory
+// to define the communication for one block, multiple BasicComm should be used for different neighbor blocks
+// BasicComm is based on geometry, streaming direction is not contained here(needs <LatSet>)
+// this is enough for normal communication and full direction Pop communication
 template <typename T, unsigned int D>
-struct CellMap {
+struct BasicComm {
   // send / recv cells
   std::vector<std::size_t> Cells;
   // recv / send rank
@@ -322,20 +406,88 @@ struct CellMap {
   // neighbor direction
   NbrDirection Direction;
 
-  CellMap(Block<T, D>* block) : TargetRank(-1), TargetBlock(block), TargetBlockId(block->getBlockId()), Direction(NbrDirection::NONE) {}
-  CellMap(int rank, int blockid) : TargetRank(rank), TargetBlock(nullptr), TargetBlockId(blockid), Direction(NbrDirection::NONE) {}
-  
+  BasicComm(Block<T, D>* block) : TargetRank(-1), TargetBlock(block), TargetBlockId(block->getBlockId()), Direction(NbrDirection::NONE) {}
+  BasicComm(int rank, int blockid) : TargetRank(rank), TargetBlock(nullptr), TargetBlockId(blockid), Direction(NbrDirection::NONE) {}
 };
 
-// a collection of CellMap for one block
+// a collection of BasicComm for one block
 template <typename T, unsigned int D>
-struct BlockCellMaps {
-  std::vector<CellMap<T, D>> SendMaps;
-  std::vector<CellMap<T, D>> RecvMaps;
+struct BasicCommSet {
+  std::vector<BasicComm<T, D>> Sends;
+  std::vector<BasicComm<T, D>> Recvs;
 
-  const CellMap<T, D>& getSendMap(int id) const { return SendMaps[id]; }
-  const CellMap<T, D>& getRecvMap(int id) const { return RecvMaps[id]; }
+  // find the BasicComm with the given BlockId
+  const BasicComm<T, D>& getSendComm(int BlockId) const { 
+    for (const auto& comm : Sends) {
+      if (comm.TargetBlockId == BlockId) return comm;
+    }
+  }
+  const BasicComm<T, D>& getRecvComm(int BlockId) const { 
+    for (const auto& comm : Recvs) {
+      if (comm.TargetBlockId == BlockId) return comm;
+    }
+  }
+
 };
+
+// specialized communication for blocklattice
+// which is not neccessary in BlockLatticeManager
+template <typename FieldType, typename FloatType, unsigned int Dim>
+class BlockField;
+
+template <typename FieldType, typename FloatType, unsigned int Dim>
+struct FieldComm {
+  // block send to or recv from
+  const BlockField<FieldType, FloatType, Dim>& TargetField;
+  const BasicComm<FloatType, Dim>& Comm;
+  // for streaming fields like populations
+  std::vector<unsigned int> StreamDirections;
+
+  FieldComm(const BlockField<FieldType, FloatType, Dim>& bf,
+            const BasicComm<FloatType, Dim>& comm) : TargetField(bf), Comm(comm) {}
+};
+
+// specialized communication for blocklattice
+// which is not neccessary in BlockLatticeManager
+template <typename T, typename LatSet, typename TypePack>
+class BlockLattice;
+
+template <typename LatSet, typename TypePack>
+struct LatticeComm {
+  using T = typename LatSet::FloatType;
+  // block send to or recv from
+  const BlockLattice<T, LatSet, TypePack>& TargetLattice;
+  const BasicComm<T, LatSet::d>& Comm;
+  // for streaming fields like populations
+  std::vector<unsigned int> StreamDirections;
+
+  LatticeComm(BlockLattice<T, LatSet, TypePack>& blat,
+               BasicComm<T, LatSet::d>& blockcomm)
+      : TargetLattice(blat), Comm(blockcomm) {}
+};
+// a collection of LatticeComm
+template <typename LatSet, typename TypePack>
+struct LatticeCommSet {
+  std::vector<LatticeComm<LatSet, TypePack>> Sends;
+  std::vector<LatticeComm<LatSet, TypePack>> Recvs;
+
+  // find the LatticeComm with the given BlockId
+  const LatticeComm<LatSet, TypePack>& getSendComm(int BlockId) const {
+    for (const auto& comm : Sends) {
+      if (comm.Comm.TargetBlockId == BlockId) return comm;
+    }
+    std::cerr << "[LatticeCommSet]: no SendComm with BlockId " << BlockId << std::endl;
+    exit(-1);
+  }
+  const LatticeComm<LatSet, TypePack>& getRecvComm(int BlockId) const {
+    for (const auto& comm : Recvs) {
+      if (comm.Comm.TargetBlockId == BlockId) return comm;
+    }
+    std::cerr << "[LatticeCommSet]: no RecvComm with BlockId " << BlockId << std::endl;
+    exit(-1);
+  }
+};
+
 
 // communication structure for block geometry
 template <typename T, unsigned int D>

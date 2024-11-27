@@ -120,3 +120,198 @@ class FixedPeriodicBoundary final : public AbstractBoundary {
     }
   }
 };
+
+
+// --------- block boundary ---------
+
+template <typename BLOCKLATTICE, typename ArrayType>
+class BlockFixedPeriodicBoundary : public NonLocalBoundary<BLOCKLATTICE, ArrayType> {
+ public:
+  BlockFixedPeriodicBoundary(BLOCKLATTICE &lat, const ArrayType &f, std::uint8_t cellflag,
+                           std::uint8_t voidflag)
+      : NonLocalBoundary<BLOCKLATTICE, ArrayType>(lat, f, cellflag, voidflag) {}
+};
+
+template <typename BLOCKLATTICEMANAGER, typename BLOCKFIELDMANAGER>
+class FixedPeriodicBoundaryManager {
+ public:
+  using BLOCKLATTICE = typename BLOCKLATTICEMANAGER::BLOCKLATTICE;
+  using CELL = typename BLOCKLATTICE::CellType;
+  using T = typename BLOCKLATTICE::FloatType;
+  using LatSet = typename BLOCKLATTICE::LatticeSet;
+  static constexpr unsigned int D = BLOCKLATTICE::LatticeSet::d;
+  using ArrayType = typename BLOCKFIELDMANAGER::array_type;
+  using TypePack = typename BLOCKLATTICE::FieldTypePack;
+
+ private:
+  std::string _name;
+  std::vector<BlockFixedPeriodicBoundary<BLOCKLATTICE, ArrayType>> BdBlocks;
+  // boundary cell flag
+  std::uint8_t BdCellFlag;
+  // boundary flag
+  std::uint8_t voidFlag;
+
+  BLOCKLATTICEMANAGER &LatMan;
+
+  BLOCKFIELDMANAGER &BlockFManager;
+
+ public:
+  FixedPeriodicBoundaryManager(std::string name, BLOCKLATTICEMANAGER &lat,
+                            BLOCKFIELDMANAGER &BlockFM, std::uint8_t cellflag,
+                            std::uint8_t voidflag = std::uint8_t(1))
+      : _name(name), BdCellFlag(cellflag), voidFlag(voidflag), LatMan(lat),
+        BlockFManager(BlockFM) {
+    Init();
+  }
+
+  void Init() {
+    BdBlocks.clear();
+    // for each blocks in blocklat
+    for (int i = 0; i < LatMan.getGeo().getBlockNum(); ++i) {
+      BdBlocks.emplace_back(LatMan.getBlockLat(i),
+                            BlockFManager.getBlockField(i).getField(0), BdCellFlag,
+                            voidFlag);
+    }
+  }
+
+  void Setup(const AABB<T, D>& box0, NbrDirection dir0, 
+  const AABB<T, D>& box1, NbrDirection dir1) {
+    // set periodic boundary condition for cells within box0 and box1
+    for (std::size_t i = 0; i < BdBlocks.size(); ++i) {
+      auto &bdBlock = BdBlocks[i];
+      // find which block contain the 2 boxes
+      if (bdBlock.getBdCells().size() > 0){
+        BasicCommSet<T, D>& BaseCommSet = bdBlock.getBaseCommSet();
+        LatticeCommSet<LatSet, TypePack>& LatCommSet = bdBlock.getLatticeComm();
+
+        auto &lat = bdBlock.getLat();
+        auto &block = bdBlock.getLat().getGeo();
+        auto &baseblock = block.getBaseBlock();
+        // find which box is in the base block
+        bool box0in = isOverlapped(baseblock, box0);
+        bool box1in = isOverlapped(baseblock, box1);
+
+        if (box0in && box1in) {
+          // 2 boxes are in the same block
+          BaseCommSet.Recvs.emplace_back(&block);
+          block.getCellIdx(box0, BaseCommSet.Recvs.back().Cells);
+          LatCommSet.Recvs.emplace_back(lat, BaseCommSet.Recvs.back());
+          getCommDirection<LatSet>(dir0, LatCommSet.Recvs.back().StreamDirections);
+
+          BaseCommSet.Sends.emplace_back(&block);
+          block.getCellIdx(box1, BaseCommSet.Sends.back().Cells);
+          LatCommSet.Sends.emplace_back(lat, BaseCommSet.Sends.back());
+          getCommDirection<LatSet>(dir0, LatCommSet.Sends.back().StreamDirections);
+
+          BaseCommSet.Recvs.emplace_back(&block);
+          block.getCellIdx(box1, BaseCommSet.Recvs.back().Cells);
+          LatCommSet.Recvs.emplace_back(lat, BaseCommSet.Recvs.back());
+          getCommDirection<LatSet>(dir1, LatCommSet.Recvs.back().StreamDirections);
+
+          BaseCommSet.Sends.emplace_back(&block);
+          block.getCellIdx(box0, BaseCommSet.Sends.back().Cells);
+          LatCommSet.Sends.emplace_back(lat, BaseCommSet.Sends.back());
+          getCommDirection<LatSet>(dir1, LatCommSet.Sends.back().StreamDirections);
+
+        } else if (box0in) {
+          // box0 is in the block
+          // find which block contains box1
+          for (std::size_t j = i + 1; j < BdBlocks.size(); ++j) {
+            auto &bdBlock1 = BdBlocks[j];
+            if (bdBlock1.getBdCells().size() > 0){
+              BasicCommSet<T, D>& BaseCommSet1 = bdBlock1.getBaseCommSet();
+              LatticeCommSet<LatSet, TypePack>& LatCommSet1 = bdBlock1.getLatticeComm();
+              auto &lat1 = bdBlock1.getLat();
+              auto &block1 = bdBlock1.getLat().getGeo();
+              auto &baseblock1 = block1.getBaseBlock();
+              if (isOverlapped(baseblock1, box1)) {
+                BaseCommSet1.Sends.emplace_back(&block);
+                block1.getCellIdx(box1, BaseCommSet1.Sends.back().Cells);
+                LatCommSet1.Sends.emplace_back(lat, BaseCommSet1.Sends.back());
+                getCommDirection<LatSet>(dir0, LatCommSet1.Sends.back().StreamDirections);
+
+                BaseCommSet1.Recvs.emplace_back(&block);
+                block1.getCellIdx(box1, BaseCommSet1.Recvs.back().Cells);
+                LatCommSet1.Recvs.emplace_back(lat, BaseCommSet1.Recvs.back());
+                getCommDirection<LatSet>(dir1, LatCommSet1.Recvs.back().StreamDirections);
+
+                BaseCommSet.Sends.emplace_back(&block1);
+                block.getCellIdx(box0, BaseCommSet.Sends.back().Cells);
+                LatCommSet.Sends.emplace_back(lat1, BaseCommSet.Sends.back());
+                getCommDirection<LatSet>(dir1, LatCommSet.Sends.back().StreamDirections);
+
+                BaseCommSet.Recvs.emplace_back(&block1);
+                block.getCellIdx(box0, BaseCommSet.Recvs.back().Cells);
+                LatCommSet.Recvs.emplace_back(lat1, BaseCommSet.Recvs.back());
+                getCommDirection<LatSet>(dir0, LatCommSet.Recvs.back().StreamDirections);
+
+                i = j;
+                break;
+              }
+            }
+          }
+        } else if (box1in) {
+          // box1 is in the block
+          // find which block contains box0
+          for (std::size_t j = i + 1; j < BdBlocks.size(); ++j) {
+            auto &bdBlock0 = BdBlocks[j];
+            if (bdBlock0.getBdCells().size() > 0){
+              BasicCommSet<T, D>& BaseCommSet0 = bdBlock0.getBaseCommSet();
+              LatticeCommSet<LatSet, TypePack>& LatCommSet0 = bdBlock0.getLatticeComm();
+              auto &lat0 = bdBlock0.getLat();
+              auto &block0 = bdBlock0.getLat().getGeo();
+              auto &baseblock0 = block0.getBaseBlock();
+              if (isOverlapped(baseblock0, box1)) {
+                BaseCommSet0.Sends.emplace_back(&block);
+                block0.getCellIdx(box0, BaseCommSet0.Sends.back().Cells);
+                LatCommSet0.Sends.emplace_back(lat, BaseCommSet0.Sends.back());
+                getCommDirection<LatSet>(dir1, LatCommSet0.Sends.back().StreamDirections);
+
+                BaseCommSet0.Recvs.emplace_back(&block);
+                block0.getCellIdx(box0, BaseCommSet0.Recvs.back().Cells);
+                LatCommSet0.Recvs.emplace_back(lat, BaseCommSet0.Recvs.back());
+                getCommDirection<LatSet>(dir0, LatCommSet0.Recvs.back().StreamDirections);
+
+                BaseCommSet.Sends.emplace_back(&block0);
+                block.getCellIdx(box1, BaseCommSet.Sends.back().Cells);
+                LatCommSet.Sends.emplace_back(lat0, BaseCommSet.Sends.back());
+                getCommDirection<LatSet>(dir0, LatCommSet.Sends.back().StreamDirections);
+
+                BaseCommSet.Recvs.emplace_back(&block0);
+                block.getCellIdx(box1, BaseCommSet.Recvs.back().Cells);
+                LatCommSet.Recvs.emplace_back(lat0, BaseCommSet.Recvs.back());
+                getCommDirection<LatSet>(dir1, LatCommSet.Recvs.back().StreamDirections);
+
+                i = j;
+                break;
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+
+  void Apply() {
+#ifndef SingleBlock_OMP
+#pragma omp parallel for num_threads(Thread_Num)
+#endif
+    for (auto &bdBlock : BdBlocks) {
+      LatticeCommSet<LatSet, TypePack>& latcomm = bdBlock.getLatticeComm();
+      BLOCKLATTICE& recvblocklat = bdBlock.getLat();
+      for (const LatticeComm<LatSet, TypePack>& recvcomm : latcomm.Recvs) {
+        auto &sendbdBlock = BdBlocks[recvcomm.Comm.TargetBlockId];
+        BLOCKLATTICE& sendblocklat = sendbdBlock.getLat();
+        LatticeCommSet<LatSet, TypePack>& sendlatcomm = sendbdBlock.getLatticeComm();
+        const LatticeComm<LatSet, TypePack>& sendcomm = sendlatcomm.getSendComm(recvblocklat.getGeo().getBlockId());
+        for (std::size_t id = 0; id < recvcomm.Comm.Cells.size(); ++id) {
+          CELL recvcell(recvcomm.Comm.Cells[id], recvblocklat);
+          CELL sendcell(sendcomm.Comm.Cells[id], sendblocklat);
+          for (unsigned int k : recvcomm.StreamDirections) {
+            recvcell[k] = sendcell[k];
+          }
+        }
+      }
+    }
+  }
+};

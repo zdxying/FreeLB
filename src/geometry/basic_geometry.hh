@@ -520,6 +520,35 @@ void BasicBlock<T, D>::getCellIdx(const AABB<T, D>& AABB0, const AABB<T, D>& AAB
   }
 }
 
+template <typename T, unsigned int D>
+void BasicBlock<T, D>::getCellIdx(const AABB<T, D>& AABBs, std::vector<std::size_t>& cellIdx) const {
+  // get Mesh index range
+  Vector<int, D> idx_min;
+  Vector<int, D> idx_max;
+  getLocIdxRange(AABBs, idx_min, idx_max);
+  cellIdx.clear();
+  if constexpr (D == 2) {
+    cellIdx.reserve((idx_max[0] - idx_min[0] + 1) * (idx_max[1] - idx_min[1] + 1));
+    for (int j = idx_min[1]; j <= idx_max[1]; ++j) {
+      for (int i = idx_min[0]; i <= idx_max[0]; ++i) {
+        const Vector<int, 2> idx = Vector<int, 2>{i, j};
+        cellIdx.push_back(getIndex(idx));
+      }
+    }
+  } else if constexpr (D == 3) {
+    cellIdx.reserve((idx_max[0] - idx_min[0] + 1) * (idx_max[1] - idx_min[1] + 1) *
+                    (idx_max[2] - idx_min[2] + 1));
+    for (int k = idx_min[2]; k <= idx_max[2]; ++k) {
+      for (int j = idx_min[1]; j <= idx_max[1]; ++j) {
+        for (int i = idx_min[0]; i <= idx_max[0]; ++i) {
+          const Vector<int, 3> idx = Vector<int, 3>{i, j, k};
+          cellIdx.push_back(getIndex(idx));
+        }
+      }
+    }
+  }
+}
+
 
 template <typename T, unsigned int D>
 bool BasicBlock<T, D>::ExcludeCornerIdx(

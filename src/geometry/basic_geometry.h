@@ -286,13 +286,18 @@ class BasicBlock : public AABB<T, D> {
   template <typename ArrayType, typename Func>
   void forEach(const ArrayType& flag, std::uint8_t fromflag, const Func& func);
 
-  // get certain cells' indices(usually in an overlapped AABB) in the block
+  // get certain cells' indices(usually in an overlapped AABB) in the block.
   // similar to void getOverlappedCellIdx(const AABB<int, D>& aabb, std::vector<int>&
-  // cellIdx) const; but this function is designed to recieve an AABB<T, D> always call on
-  // extended BasicBlock base could be the base blockaabb or the extended blockaabb
+  // cellIdx) const; but this function is designed to recieve an AABB<T, D>.
+  // always call on extended BasicBlock
+  // intersection of 2 input AABBs will be used to get cell indices
   // cellIdx will be cleared before adding new indices
+  // may be deleted in the future, use getCellIdx(getIntersection(a,b), cellIdx) instead?
   void getCellIdx(const AABB<T, D>& base, const AABB<T, D>& AABBs,
                   std::vector<std::size_t>& cellIdx) const;
+
+  // more general version of getCellIdx(), cells inside both AABBs will be added to cellIdx
+  void getCellIdx(const AABB<T, D>& AABBs, std::vector<std::size_t>& cellIdx) const;
   
   // use the result of getCellIdx(), but will exclude corner(2d or 3d) cells
   bool ExcludeCornerIdx(std::vector<std::size_t>& cellIdxbase,
