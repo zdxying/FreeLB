@@ -196,22 +196,22 @@ class FixedPeriodicBoundaryManager {
           BaseCommSet.Recvs.emplace_back(&block);
           block.getCellIdx(box0, BaseCommSet.Recvs.back().Cells);
           LatCommSet.Recvs.emplace_back(lat, BaseCommSet.Recvs.back());
-          getCommDirection<LatSet>(dir0, LatCommSet.Recvs.back().StreamDirections);
+          getReconstPopDir<LatSet>(dir0, LatCommSet.Recvs.back().StreamDirections);
 
           BaseCommSet.Sends.emplace_back(&block);
           block.getCellIdx(box1, BaseCommSet.Sends.back().Cells);
           LatCommSet.Sends.emplace_back(lat, BaseCommSet.Sends.back());
-          getCommDirection<LatSet>(dir0, LatCommSet.Sends.back().StreamDirections);
+          getReconstPopDir<LatSet>(dir0, LatCommSet.Sends.back().StreamDirections);
 
           BaseCommSet.Recvs.emplace_back(&block);
           block.getCellIdx(box1, BaseCommSet.Recvs.back().Cells);
           LatCommSet.Recvs.emplace_back(lat, BaseCommSet.Recvs.back());
-          getCommDirection<LatSet>(dir1, LatCommSet.Recvs.back().StreamDirections);
+          getReconstPopDir<LatSet>(dir1, LatCommSet.Recvs.back().StreamDirections);
 
           BaseCommSet.Sends.emplace_back(&block);
           block.getCellIdx(box0, BaseCommSet.Sends.back().Cells);
           LatCommSet.Sends.emplace_back(lat, BaseCommSet.Sends.back());
-          getCommDirection<LatSet>(dir1, LatCommSet.Sends.back().StreamDirections);
+          getReconstPopDir<LatSet>(dir1, LatCommSet.Sends.back().StreamDirections);
 
         } else if (box0in) {
           // box0 is in the block
@@ -228,22 +228,22 @@ class FixedPeriodicBoundaryManager {
                 BaseCommSet1.Sends.emplace_back(&block);
                 block1.getCellIdx(box1, BaseCommSet1.Sends.back().Cells);
                 LatCommSet1.Sends.emplace_back(lat, BaseCommSet1.Sends.back());
-                getCommDirection<LatSet>(dir0, LatCommSet1.Sends.back().StreamDirections);
+                getReconstPopDir<LatSet>(dir0, LatCommSet1.Sends.back().StreamDirections);
 
                 BaseCommSet1.Recvs.emplace_back(&block);
                 block1.getCellIdx(box1, BaseCommSet1.Recvs.back().Cells);
                 LatCommSet1.Recvs.emplace_back(lat, BaseCommSet1.Recvs.back());
-                getCommDirection<LatSet>(dir1, LatCommSet1.Recvs.back().StreamDirections);
+                getReconstPopDir<LatSet>(dir1, LatCommSet1.Recvs.back().StreamDirections);
 
                 BaseCommSet.Sends.emplace_back(&block1);
                 block.getCellIdx(box0, BaseCommSet.Sends.back().Cells);
                 LatCommSet.Sends.emplace_back(lat1, BaseCommSet.Sends.back());
-                getCommDirection<LatSet>(dir1, LatCommSet.Sends.back().StreamDirections);
+                getReconstPopDir<LatSet>(dir1, LatCommSet.Sends.back().StreamDirections);
 
                 BaseCommSet.Recvs.emplace_back(&block1);
                 block.getCellIdx(box0, BaseCommSet.Recvs.back().Cells);
                 LatCommSet.Recvs.emplace_back(lat1, BaseCommSet.Recvs.back());
-                getCommDirection<LatSet>(dir0, LatCommSet.Recvs.back().StreamDirections);
+                getReconstPopDir<LatSet>(dir0, LatCommSet.Recvs.back().StreamDirections);
 
                 i = j;
                 break;
@@ -265,22 +265,22 @@ class FixedPeriodicBoundaryManager {
                 BaseCommSet0.Sends.emplace_back(&block);
                 block0.getCellIdx(box0, BaseCommSet0.Sends.back().Cells);
                 LatCommSet0.Sends.emplace_back(lat, BaseCommSet0.Sends.back());
-                getCommDirection<LatSet>(dir1, LatCommSet0.Sends.back().StreamDirections);
+                getReconstPopDir<LatSet>(dir1, LatCommSet0.Sends.back().StreamDirections);
 
                 BaseCommSet0.Recvs.emplace_back(&block);
                 block0.getCellIdx(box0, BaseCommSet0.Recvs.back().Cells);
                 LatCommSet0.Recvs.emplace_back(lat, BaseCommSet0.Recvs.back());
-                getCommDirection<LatSet>(dir0, LatCommSet0.Recvs.back().StreamDirections);
+                getReconstPopDir<LatSet>(dir0, LatCommSet0.Recvs.back().StreamDirections);
 
                 BaseCommSet.Sends.emplace_back(&block0);
                 block.getCellIdx(box1, BaseCommSet.Sends.back().Cells);
                 LatCommSet.Sends.emplace_back(lat0, BaseCommSet.Sends.back());
-                getCommDirection<LatSet>(dir0, LatCommSet.Sends.back().StreamDirections);
+                getReconstPopDir<LatSet>(dir0, LatCommSet.Sends.back().StreamDirections);
 
                 BaseCommSet.Recvs.emplace_back(&block0);
                 block.getCellIdx(box1, BaseCommSet.Recvs.back().Cells);
                 LatCommSet.Recvs.emplace_back(lat0, BaseCommSet.Recvs.back());
-                getCommDirection<LatSet>(dir1, LatCommSet.Recvs.back().StreamDirections);
+                getReconstPopDir<LatSet>(dir1, LatCommSet.Recvs.back().StreamDirections);
 
                 i = j;
                 break;

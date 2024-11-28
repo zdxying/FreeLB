@@ -36,7 +36,7 @@ struct BlockLatComm {
   BlockLatComm(BlockLattice<T, LatSet, TypePack>* sblock,
                BlockComm<T, LatSet::d>* blockcomm)
       : SendBlock(sblock), Comm(blockcomm) {
-    getCommDirection<LatSet>(Comm->Direction, CommDirection);
+    getReconstPopDir<LatSet>(Comm->Direction, CommDirection);
   }
 
   std::vector<std::size_t>& getSends() { return Comm->SendCells; }

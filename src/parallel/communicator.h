@@ -111,11 +111,12 @@ enum NbrDirection : std::uint8_t {
   ZP = 32
 };
 
+// find pop directions to be reconstructed after streaming
 template <typename LatSet>
-void getCommDirection(NbrDirection direction, std::vector<unsigned int>& commdirection) {
+void getReconstPopDir(NbrDirection direction, std::vector<unsigned int>& commdirection) {
   commdirection.clear();
   if (util::isFlag(direction, NbrDirection::NONE)) {
-    std::cerr << "[getCommDirection] Error: no neighbor direction" << std::endl;
+    std::cerr << "[getReconstPopDir] Error: no neighbor direction" << std::endl;
     exit(1);
   }
   // for(unsigned int i = 1; i < LatSet::q; ++i) {
@@ -692,4 +693,141 @@ void addtoBuffer(std::vector<T>& buffer, const PopulationField<T, q>& poparr,
       buffer.push_back(arrk[i]);
     }
   }
+}
+
+
+// --------------
+// new communication structure
+// --------------
+
+// communication structure for shared memory
+// this is similar to old BlockComm and could be used as IntpBlockComm
+struct SharedComm {
+  // indices of recv and send cells: 
+  // normal: Rcell0, Scell0; Rcell1, Scell1, ...
+  // average/interpolation: Rcell0, Scell00, Scell01, ...; ...
+  std::vector<std::size_t> RecvSendCells;
+  // nbr send block id
+  int SendBlockId;
+  // neighbor direction
+  NbrDirection Direction;
+
+  SharedComm(int blockid) : SendBlockId(blockid), Direction(NbrDirection::NONE) {}
+  // RecvSendCells[id*2]
+  std::size_t getRecvId(std::size_t id) const {
+    return RecvSendCells[id*2];
+  }
+  // RecvSendCells[id*2+1]
+  std::size_t getSendId(std::size_t id) const {
+    return RecvSendCells[id*2+1];
+  }
+};
+
+// communication structure for distributed memory
+// this is similar to old MPIBlockRecvStru/MPIBlockSendStru and could be used as MPIIntpBlockSendStru
+struct DistributedComm {
+  // indices of recv / send cells: 
+  std::vector<std::size_t> Cells;
+  // send / recv rank
+  int TargetRank;
+  // send / recv block id
+  int TargetBlockId;
+  // neighbor direction
+  NbrDirection Direction;
+
+  DistributedComm(int rank, int blockid) : TargetRank(rank), TargetBlockId(blockid), Direction(NbrDirection::NONE) {}
+};
+
+// a simple collection of SharedComm for one block
+struct BlockSharedComm {
+  std::vector<SharedComm> Comms;
+  std::vector<SharedComm> AverComm;
+  std::vector<SharedComm> IntpComm;
+};
+
+// a collection of DistributedComm for one block
+struct BlockDistributedComm
+{
+  std::vector<DistributedComm> Recvs;
+  std::vector<DistributedComm> Sends;
+
+  std::vector<DistributedComm> AverRecvs;
+  std::vector<DistributedComm> AverSends;
+
+  std::vector<DistributedComm> IntpRecvs;
+  std::vector<DistributedComm> IntpSends;
+};
+
+template <typename T>
+struct BlockDistributedCommBuffer {
+  std::vector<std::vector<T>> RecvBuffers;
+  std::vector<std::vector<T>> SendBuffers;
+
+  std::vector<std::vector<T>> AverRecvBuffers;
+  std::vector<std::vector<T>> AverSendBuffers; // SendCellNum / IntpNum
+
+  std::vector<std::vector<T>> IntpRecvBuffers;
+  std::vector<std::vector<T>> IntpSendBuffers; // SendCellNum / IntpNum
+
+  template<unsigned int D>
+  void Initbuffer(const BlockDistributedComm& comm, unsigned int size = 1) {
+    static constexpr unsigned int IntpNum = (D == 2) ? 4 : 8;
+    RecvBuffers.resize(comm.Recvs.size(), std::vector<T>{});
+    for(std::size_t i = 0; i < comm.Recvs.size(); ++i){
+      RecvBuffers[i].resize(size*comm.Recvs[i].Cells.size(), T{});
+    }
+    SendBuffers.resize(comm.Sends.size(), std::vector<T>{});
+    for(std::size_t i = 0; i < comm.Sends.size(); ++i){
+      SendBuffers[i].resize(size*comm.Sends[i].Cells.size(), T{});
+    }
+    AverRecvBuffers.resize(comm.AverRecvs.size(), std::vector<T>{});
+    for(std::size_t i = 0; i < comm.AverRecvs.size(); ++i){
+      AverRecvBuffers[i].resize(size*comm.AverRecvs[i].Cells.size(), T{});
+    }
+    AverSendBuffers.resize(comm.AverSends.size(), std::vector<T>{});
+    for(std::size_t i = 0; i < comm.AverSends.size(); ++i){
+      AverSendBuffers[i].resize(size*comm.AverSends[i].Cells.size()/IntpNum, T{});
+    }
+    IntpRecvBuffers.resize(comm.IntpRecvs.size(), std::vector<T>{});
+    for(std::size_t i = 0; i < comm.IntpRecvs.size(); ++i){
+      IntpRecvBuffers[i].resize(size*comm.IntpRecvs[i].Cells.size(), T{});
+    }
+    IntpSendBuffers.resize(comm.IntpSends.size(), std::vector<T>{});
+    for(std::size_t i = 0; i < comm.IntpSends.size(); ++i){
+      IntpSendBuffers[i].resize(size*comm.IntpSends[i].Cells.size()/IntpNum, T{});
+    }
+  }
+};
+
+
+// get predefined interp weight
+template <typename T, unsigned int D>
+static constexpr auto getIntpWeight() {
+  if constexpr (D == 2) {
+    return getIntpWeight2D<T>();
+  } else {
+    return getIntpWeight3D<T>();
+  }
+}
+
+template <typename T>
+static constexpr std::array<std::array<T, 4>, 4> getIntpWeight2D() {
+  return 
+   {{T{0.0625}, T{0.1875}, T{0.1875}, T{0.5625}},
+    {T{0.1875}, T{0.0625}, T{0.5625}, T{0.1875}},
+    {T{0.1875}, T{0.5625}, T{0.0625}, T{0.1875}},
+    {T{0.5625}, T{0.1875}, T{0.1875}, T{0.0625}}};
+}
+
+template <typename T>
+static constexpr std::array<std::array<T, 8>, 8> getIntpWeight3D() {
+  return 
+ {{T{0.015625}, T{0.046875}, T{0.046875}, T{0.140625}, T{0.046875}, T{0.140625}, T{0.140625}, T{0.421875}},
+  {T{0.046875}, T{0.015625}, T{0.140625}, T{0.046875}, T{0.140625}, T{0.046875}, T{0.421875}, T{0.140625}},
+  {T{0.046875}, T{0.140625}, T{0.015625}, T{0.046875}, T{0.140625}, T{0.421875}, T{0.046875}, T{0.140625}},
+  {T{0.140625}, T{0.046875}, T{0.046875}, T{0.015625}, T{0.421875}, T{0.140625}, T{0.140625}, T{0.046875}},
+  {T{0.046875}, T{0.140625}, T{0.140625}, T{0.421875}, T{0.015625}, T{0.046875}, T{0.046875}, T{0.140625}},
+  {T{0.140625}, T{0.046875}, T{0.421875}, T{0.140625}, T{0.046875}, T{0.015625}, T{0.140625}, T{0.046875}},
+  {T{0.140625}, T{0.421875}, T{0.046875}, T{0.140625}, T{0.046875}, T{0.140625}, T{0.015625}, T{0.046875}},
+  {T{0.421875}, T{0.140625}, T{0.140625}, T{0.046875}, T{0.140625}, T{0.046875}, T{0.046875}, T{0.015625}}};
 }
