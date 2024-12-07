@@ -27,36 +27,6 @@
 #include "lbm/unit_converter.h"
 
 
-template <typename T, typename LatSet, typename TypePack>
-struct BlockLatComm {
-  BlockLattice<T, LatSet, TypePack>* SendBlock;
-  BlockComm<T, LatSet::d>* Comm;
-  std::vector<unsigned int> CommDirection;
-
-  BlockLatComm(BlockLattice<T, LatSet, TypePack>* sblock,
-               BlockComm<T, LatSet::d>* blockcomm)
-      : SendBlock(sblock), Comm(blockcomm) {
-    getReconstPopDir<LatSet>(Comm->Direction, CommDirection);
-  }
-
-  std::vector<std::size_t>& getSends() { return Comm->SendCells; }
-  std::vector<std::size_t>& getRecvs() { return Comm->RecvCells; }
-};
-
-template <typename T, typename LatSet, typename TypePack>
-struct IntpBlockLatComm {
-  BlockLattice<T, LatSet, TypePack>* SendBlock;
-  IntpBlockComm<T, LatSet::d>* Comm;
-
-  IntpBlockLatComm(BlockLattice<T, LatSet, TypePack>* sblock,
-                   IntpBlockComm<T, LatSet::d>* interpcomm)
-      : SendBlock(sblock), Comm(interpcomm) {}
-
-  std::vector<std::size_t>& getRecvs() { return Comm->RecvCells; }
-  std::vector<IntpSource<LatSet::d>>& getSends() { return Comm->SendCells; }
-  // std::vector<InterpWeight<T, LatSet::d>>& getWeights() { return Comm->InterpWeights; }
-};
-
 // block structure for refined lattice
 template <typename T, typename LatSet, typename TypePack>
 class BlockLattice : public BlockLatticeBase<T, LatSet, TypePack> {
@@ -75,12 +45,11 @@ class BlockLattice : public BlockLatticeBase<T, LatSet, TypePack> {
 
  protected:
   // --- lattice communication structure ---
-  // conmmunicate with same level block
-  std::vector<BlockLatComm<T, LatSet, TypePack>> Communicators;
-  // average blocklat comm, get from higher level block
-  std::vector<IntpBlockLatComm<T, LatSet, TypePack>> AverageComm;
-  // interp blocklat comm, get from lower level block
-  std::vector<IntpBlockLatComm<T, LatSet, TypePack>> IntpComm;
+  std::vector<std::vector<unsigned int>> CommDirection;
+#ifdef MPI_ENABLED
+  std::vector<std::vector<unsigned int>> RecvDirection;
+  std::vector<std::vector<unsigned int>> SendDirection;
+#endif
 
   // omega = 1 / tau
   T Omega;
@@ -134,21 +103,11 @@ class BlockLattice : public BlockLatticeBase<T, LatSet, TypePack> {
   inline T get_Omega() const { return _Omega; }
   inline T getfOmega() const { return fOmega; }
 
-  std::vector<BlockLatComm<T, LatSet, TypePack>>& getCommunicators() {
-    return Communicators;
-  }
-  std::vector<IntpBlockLatComm<T, LatSet, TypePack>>& getAverageComm() {
-    return AverageComm;
-  }
-  std::vector<IntpBlockLatComm<T, LatSet, TypePack>>& getIntpComm() { return IntpComm; }
-
-  // normal communication, which can be done using normalcommunicate() in blockFM
-  void communicate();
-  void fulldirectioncommunicate();
-  // average communication
-  void avercommunicate();
-  // interp communication
-  void interpcommunicate();
+  const std::vector<std::vector<unsigned int>>& getCommDirection () const { return CommDirection; }
+#ifdef MPI_ENABLED
+  const std::vector<std::vector<unsigned int>>& getMPIRecvDirection() const { return RecvDirection; }
+  const std::vector<std::vector<unsigned int>>& getMPISendDirection() const { return SendDirection; }
+#endif
 
   void Stream();
 
@@ -190,6 +149,42 @@ class BlockLattice : public BlockLatticeBase<T, LatSet, TypePack> {
   // get inner block tolerance
   T getTolRho(int shift = 1);
   T getTolU(int shift = 1);
+
+#ifdef MPI_ENABLED
+
+  void mpiNormalSend(std::vector<MPI_Request>& SendRequests, 
+  std::vector<std::vector<T>>& SendBuffers, const std::vector<DistributedComm>& MPISends);
+
+  void mpiNormalFullSend(std::vector<MPI_Request>& SendRequests, 
+  std::vector<std::vector<T>>& SendBuffers, const std::vector<DistributedComm>& MPISends);
+
+  void mpiAverSend(std::vector<MPI_Request>& SendRequests,
+  std::vector<std::vector<T>>& SendBuffers, const std::vector<DistributedComm>& MPISends);
+
+  void mpiIntpSend(std::vector<MPI_Request>& SendRequests, 
+  std::vector<std::vector<T>>& SendBuffers, const std::vector<DistributedComm>& MPISends);
+
+  void mpiNormalRecv(std::vector<MPI_Request>& RecvRequests, 
+  std::vector<std::vector<T>>& RecvBuffers, const std::vector<DistributedComm>& MPIRecvs);
+
+  void mpiFullRecv(std::vector<MPI_Request>& RecvRequests, 
+  std::vector<std::vector<T>>& RecvBuffers, const std::vector<DistributedComm>& MPIRecvs);
+
+  void mpiNormalSet(int& reqidx, std::vector<MPI_Request>& RecvRequests,
+  const std::vector<std::vector<T>>& RecvBuffers, const std::vector<DistributedComm>& MPIRecvs);
+
+  void mpiNormalFullSet(int& reqidx, std::vector<MPI_Request>& RecvRequests,
+  const std::vector<std::vector<T>>& RecvBuffers, const std::vector<DistributedComm>& MPIRecvs);
+
+  void mpiAverIntpSet(int& reqidx, std::vector<MPI_Request>& RecvRequests,
+  const std::vector<std::vector<T>>& RecvBuffers, const std::vector<DistributedComm>& MPIRecvs);
+
+  template <unsigned int D>
+  void popIntp(T OmegaC, const std::vector<std::size_t>& sends, 
+  const GenericArray<T>& RhoArr, const GenericArray<Vector<T, LatSet::d>>& UArr, std::size_t i,
+  std::vector<T>& buffer, std::size_t& bufidx);
+  
+#endif
 };
 
 #ifdef __CUDACC__
@@ -287,14 +282,10 @@ class BlockLatticeManager : public BlockLatticeManagerBase<T, LatSet, TypePack> 
 
   AbstractConverter<T>& getConverter() { return Conv; }
 
-  void InitComm();
-  void InitAverComm();
-  void InitIntpComm();
-
   // get block lattice with block id
   BlockLattice<T, LatSet, ALLFIELDS>& findBlockLat(int blockid) {
     for (BlockLattice<T, LatSet, ALLFIELDS>& blocklat : BlockLats) {
-      if (blocklat.getGeo().getBlockId() == blockid) return blocklat;
+      if (blocklat.getBlock().getBlockId() == blockid) return blocklat;
     }
     std::cerr << "[BlockLatticeManager]: can't find blocklat with blockid " << blockid
               << std::endl;
@@ -381,18 +372,63 @@ class BlockLatticeManager : public BlockLatticeManagerBase<T, LatSet, TypePack> 
 
 
 #ifdef MPI_ENABLED
-  void MPIAverComm(std::int64_t count);
-  void MPIIntpComm(std::int64_t count);
+
+  void MPINormalCommunicate();
+  void MPINormalCommunicate(std::int64_t count);
+
+  void MPINormalFullCommunicate();
+  void MPINormalFullCommunicate(std::int64_t count);
+
+  void MPINormalAllCommunicate();
+  void MPINormalAllCommunicate(std::int64_t count);
+
+  void MPIAverageCommunicate();
+  void MPIAverageCommunicate(std::int64_t count);
+
+  void MPIInterpolateCommunicate();
+  void MPIInterpolateCommunicate(std::int64_t count);
+
 #endif
 
+  void NormalCommunicate();
+  void NormalCommunicate(std::int64_t count);
+
+  void NormalFullCommunicate();
+  void NormalFullCommunicate(std::int64_t count);
+
+  void NormalAllCommunicate();
+  void NormalAllCommunicate(std::int64_t count);
+
+  void AverageCommunicate();
+  void AverageCommunicate(std::int64_t count);
+
+  void InterpolateCommunicate();
+  void InterpolateCommunicate(std::int64_t count);
+
+  void Communicate();
   void Communicate(std::int64_t count);
-  void FullDirectionCommunicate(std::int64_t count);
+
+  void FullCommunicate();
+  void FullCommunicate(std::int64_t count);
+
+  void AllCommunicate();
+  void AllCommunicate(std::int64_t count);
 
   // tolerance
   void EnableToleranceRho(T rhores = T(1e-5));
   void EnableToleranceU(T ures = T(1e-5));
   T getToleranceRho(int shift = 0);
   T getToleranceU(int shift = 0);
+
+ private:
+  void normalCommunicate(BLOCKLATTICE& BLat);
+  void normalFullCommunicate(BLOCKLATTICE& BLat);
+  void normalAllCommunicate(BLOCKLATTICE& BLat);
+  void averCommunicate(BLOCKLATTICE& BLat, const std::vector<SharedComm>& comms);
+  void intpCommunicate(BLOCKLATTICE& BLat, const std::vector<SharedComm>& comms);
+  template <unsigned int D>
+  void popIntpCommunicate(BLOCKLATTICE& BLat, const BLOCKLATTICE& nBLat, T OmegaC, const SharedComm& comm, 
+  const GenericArray<T>& nRhoF, const GenericArray<Vector<T, LatSet::d>>& nUF, std::size_t i);
 };
 
 // coupling block lattice manager

@@ -36,32 +36,12 @@ class Block2D : public BasicBlock<T, 2> {
   BasicBlock<T, 2> _BaseBlock;
 
   // --- communication structure ---
+  Communicator _Comm;
   // neighbor block
   std::vector<Block2D<T>*> _Neighbors;
-  // conmmunicate with same level block
-  std::vector<BlockComm<T, 2>> Communicators;
-  // average block comm, get from higher level block
-  std::vector<IntpBlockComm<T, 2>> AverageComm;
-  // interp block comm, get from lower level block
-  std::vector<IntpBlockComm<T, 2>> IntpComm;
-  // inner cells' communicator, only for _overlap > 1
-  // Pops of inner cells are NOT intended to be communicated after initial communication
-  // so full communication is enough and will not damage the performance
-  // direction is set to None
-  std::vector<BlockComm<T, 2>> InnerCommunicators;
 
   // overlap
   int _overlap;
-
-#ifdef MPI_ENABLED
-  int _Rank;
-  // conmmunicate with same level block
-  MPIBlockComm MPIComm;
-  // average block comm, get from higher level block
-  MPIIntpBlockComm<T, 2> MPIAverComm;
-  // interp block comm, get from lower level block
-  MPIIntpBlockComm<T, 2> MPIIntpComm;
-#endif
 
  public:
   // construct directly from basicblock
@@ -90,28 +70,8 @@ class Block2D : public BasicBlock<T, 2> {
   std::vector<Block2D<T>*>& getNeighbors() { return _Neighbors; }
   const Block2D<T>& getNeighbor(int id) const { return *_Neighbors[id]; }
 
-  std::vector<BlockComm<T, 2>>& getCommunicators() { return Communicators; }
-
-  std::vector<IntpBlockComm<T, 2>>& getIntpBlockComm() { return IntpComm; }
-
-  std::vector<IntpBlockComm<T, 2>>& getAverageBlockComm() { return AverageComm; }
-
-  std::vector<BlockComm<T, 2>>& getInnerCommunicators() { return InnerCommunicators; }
-
-#ifdef MPI_ENABLED
-  int getRank() const { return _Rank; }
-  bool _NeedMPIComm = false;
-
-  MPIBlockComm& getMPIBlockComm() { return MPIComm; }
-  const MPIBlockComm& getMPIBlockComm() const { return MPIComm; }
-
-  MPIIntpBlockComm<T, 2>& getMPIIntpBlockComm() { return MPIIntpComm; }
-  const MPIIntpBlockComm<T, 2>& getMPIIntpBlockComm() const { return MPIIntpComm; }
-
-  MPIIntpBlockComm<T, 2>& getMPIAverBlockComm() { return MPIAverComm; }
-  const MPIIntpBlockComm<T, 2>& getMPIAverBlockComm() const { return MPIAverComm; }
-
-#endif
+  Communicator& getCommunicator() { return _Comm; }
+  const Communicator& getCommunicator() const { return _Comm; }
 };
 
 template <typename T>
@@ -127,6 +87,8 @@ class BlockGeometry2D : public BasicBlock<T, 2> {
   std::vector<AABB<int, 2>> _BlockAABBs;
   std::vector<BasicBlock<T, 2>> _BasicBlocks;
   std::vector<Block2D<T>> _Blocks;
+  // block id - element index in std::vector<Block2D<T>> _Blocks;
+  std::unordered_map<int, std::size_t> _BlockIndexMap;
 
   // ext(overlap) of the whole domain
   int _overlap;
@@ -157,6 +119,18 @@ class BlockGeometry2D : public BasicBlock<T, 2> {
   Block2D<T>& getBlock(int id) { return _Blocks[id]; }
   const Block2D<T>& getBlock(int id) const { return _Blocks[id]; }
 
+  // mpi: return _BlockIndexMap[id];
+  std::size_t findBlockIndex(int id) const {
+#ifdef MPI_ENABLED
+    return _BlockIndexMap.at(id); 
+#else
+    return id;
+#endif
+  }
+  bool hasBlock(int id) const {
+    return _BlockIndexMap.find(id) != _BlockIndexMap.end();
+  }
+
   inline std::uint8_t getMaxLevel() const { return _MaxLevel; }
 
   int getBlockNum() const { return _Blocks.size(); }
@@ -181,6 +155,10 @@ class BlockGeometry2D : public BasicBlock<T, 2> {
 
 // --- mpi communication ---
 #ifdef MPI_ENABLED
+  // construct uniform/ refined blockgeometry from GeoHelper and a vector of BasicBlock<T, 2>
+  // for mpi communication with direction info 
+  BlockGeometry2D(BlockGeometryHelper2D<T>& GeoHelper, 
+  std::vector<BasicBlock<T, 2>>& BasicBlocks);
 
   void InitMPIComm(BlockGeometryHelper2D<T>& GeoHelper);
   // Low level block(coarse) get info from High level block(fine) using average
@@ -193,8 +171,9 @@ class BlockGeometry2D : public BasicBlock<T, 2> {
 #endif
 
 private:
-  void SplitCommunictor(BlockComm<T, 2> & basecomm, Block2D<T>& block, Block2D<T> *nblock, 
-  std::vector<BlockComm<T, 2>> &Communicators);
+  void AddtoSharedAverComm(std::vector<SharedComm> &Comms, const BasicBlock<T, 2>& baseblock_extx, Block2D<T>& block, Block2D<T> *nblock);
+  void AddtoSharedIntpComm(std::vector<SharedComm> &Comms, Block2D<T>& block, Block2D<T> *nblock);
+  void BuildBlockIndexMap();
 };
 
 // especially designed for refine blockgeometry, uniform blockgeometry does not need this
@@ -239,6 +218,8 @@ class BlockGeometryHelper2D : public BasicBlock<T, 2> {
 #ifdef MPI_ENABLED
   // mpi neighbors: first: rank, second: blockid
   std::vector<std::vector<std::pair<int, int>>> _MPIBlockNbrs;
+  // for mpi direction communication init
+  std::unique_ptr<BlockGeometry2D<T>> _BlockGeometry2D;
 #endif
 
 
@@ -277,10 +258,8 @@ class BlockGeometryHelper2D : public BasicBlock<T, 2> {
 
   // get all new basic blocks
   std::vector<BasicBlock<T, 2>>& getAllBasicBlocks() {
-    if (_Exchanged)
-      return _BasicBlocks1;
-    else
-      return _BasicBlocks0;
+    if (_Exchanged) return _BasicBlocks1;
+    else return _BasicBlocks0;
   }
   BasicBlock<T, 2>& getAllBasicBlock(std::size_t id) { return getAllBasicBlocks()[id]; }
   const BasicBlock<T, 2>& getAllBasicBlock(std::size_t id) const {
@@ -288,10 +267,8 @@ class BlockGeometryHelper2D : public BasicBlock<T, 2> {
   }
   // get all old basic blocks
   std::vector<BasicBlock<T, 2>>& getAllOldBasicBlocks() {
-    if (_Exchanged)
-      return _BasicBlocks0;
-    else
-      return _BasicBlocks1;
+    if (_Exchanged) return _BasicBlocks0;
+    else return _BasicBlocks1;
   }
   BasicBlock<T, 2>& getAllOldBasicBlock(std::size_t id) { return getAllOldBasicBlocks()[id]; }
   const BasicBlock<T, 2>& getAllOldBasicBlock(std::size_t id) const {
@@ -300,24 +277,18 @@ class BlockGeometryHelper2D : public BasicBlock<T, 2> {
 
 
   std::vector<std::vector<int>>& getAllBlockIndices() {
-    if (_IndexExchanged)
-      return _BlockIndex1;
-    else
-      return _BlockIndex0;
+    if (_IndexExchanged) return _BlockIndex1;
+    else return _BlockIndex0;
   }
   std::vector<std::vector<int>>& getAllOldBlockIndices() {
-    if (_IndexExchanged)
-      return _BlockIndex0;
-    else
-      return _BlockIndex1;
+    if (_IndexExchanged) return _BlockIndex0;
+    else return _BlockIndex1;
   }
 
 
   std::vector<std::vector<BasicBlock<T, 2>*>>& getAllBlockIndexPtrs() {
-    if (_IndexExchanged)
-      return _BlockIndexPtr1;
-    else
-      return _BlockIndexPtr0;
+    if (_IndexExchanged) return _BlockIndexPtr1;
+    else return _BlockIndexPtr0;
   }
   // get basic blocks from std::vector<std::vector<BasicBlock<T, 2>*>> _BlockIndexPtr
   std::vector<BasicBlock<T, 2>*>& getBasicBlocks() {
@@ -327,10 +298,8 @@ class BlockGeometryHelper2D : public BasicBlock<T, 2> {
   const BasicBlock<T, 2>& getBasicBlock(int id) const { return *(getBasicBlocks()[id]); }
 
   std::vector<std::vector<BasicBlock<T, 2>*>>& getAllOldBlockIndexPtrs() {
-    if (_IndexExchanged)
-      return _BlockIndexPtr0;
-    else
-      return _BlockIndexPtr1;
+    if (_IndexExchanged) return _BlockIndexPtr0;
+    else return _BlockIndexPtr1;
   }
   std::vector<BasicBlock<T, 2>*>& getOldBasicBlocks() {
     return getAllOldBlockIndexPtrs()[mpi().getRank()];
@@ -344,6 +313,7 @@ class BlockGeometryHelper2D : public BasicBlock<T, 2> {
   std::vector<std::pair<int, int>>& getMPIBlockNbrs(int blockid) {
     return _MPIBlockNbrs[blockid];
   }
+  const BlockGeometry2D<T>& getBlockGeometry2D() const { return *_BlockGeometry2D; }
 #endif
 
   void CreateBlockCells();
@@ -375,5 +345,9 @@ class BlockGeometryHelper2D : public BasicBlock<T, 2> {
 #ifdef MPI_ENABLED
   // call this after LoadBalancing()
   void SetupMPINbrs();
+  // construct BlockGeometry2D from BlockGeometryHelper2D's this pointer
+  void InitBlockGeometry2D();
+  // find which rank the block belongs to
+  int whichRank(int blockid);
 #endif
 };

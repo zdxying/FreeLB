@@ -34,31 +34,12 @@ class Block3D : public BasicBlock<T, 3> {
   BasicBlock<T, 3> _BaseBlock;
 
   // --- communication structure ---
+  Communicator _Comm;
   // neighbor block
   std::vector<Block3D<T>*> _Neighbors;
-  // conmmunicate with same level block
-  std::vector<BlockComm<T, 3>> Communicators;
-  // average block comm, get from higher level block
-  std::vector<IntpBlockComm<T, 3>> AverageComm;
-  // interp block comm, get from lower level block
-  std::vector<IntpBlockComm<T, 3>> IntpComm;
-  // inner cells' communicator, only for _overlap > 1
-  // Pops of inner cells are NOT intended to be communicated after initial communication
-  // so full communication is enough and will not damage the performance
-  // direction is set to None
-  std::vector<BlockComm<T, 3>> InnerCommunicators;
+
   // overlap
   int _overlap;
-
-#ifdef MPI_ENABLED
-  int _Rank;
-  // conmmunicate with same level block
-  MPIBlockComm MPIComm;
-  // average block comm, get from higher level block
-  MPIIntpBlockComm<T, 3> MPIAverComm;
-  // interp block comm, get from lower level block
-  MPIIntpBlockComm<T, 3> MPIIntpComm;
-#endif
 
  public:
   // constructors
@@ -90,29 +71,12 @@ class Block3D : public BasicBlock<T, 3> {
   std::vector<Block3D<T>*>& getNeighbors() { return _Neighbors; }
   const Block3D<T>& getNeighbor(int id) const { return *_Neighbors[id]; }
 
-  std::vector<BlockComm<T, 3>>& getCommunicators() { return Communicators; }
-
-  std::vector<IntpBlockComm<T, 3>>& getIntpBlockComm() { return IntpComm; }
-
-  std::vector<IntpBlockComm<T, 3>>& getAverageBlockComm() { return AverageComm; }
-
-  std::vector<BlockComm<T, 3>>& getInnerCommunicators() { return InnerCommunicators; }
-
-#ifdef MPI_ENABLED
-  int getRank() const { return _Rank; }
-  bool _NeedMPIComm = false;
-
-  MPIBlockComm& getMPIBlockComm() { return MPIComm; }
-  const MPIBlockComm& getMPIBlockComm() const { return MPIComm; }
-
-  MPIIntpBlockComm<T, 3>& getMPIIntpBlockComm() { return MPIIntpComm; }
-  const MPIIntpBlockComm<T, 3>& getMPIIntpBlockComm() const { return MPIIntpComm; }
-
-  MPIIntpBlockComm<T, 3>& getMPIAverBlockComm() { return MPIAverComm; }
-  const MPIIntpBlockComm<T, 3>& getMPIAverBlockComm() const { return MPIAverComm; }
-
-#endif
+  Communicator& getCommunicator() { return _Comm; }
+  const Communicator& getCommunicator() const { return _Comm; }
 };
+
+template <typename T>
+class BlockGeometryHelper3D;
 
 template <typename T>
 class BlockGeometry3D : public BasicBlock<T, 3> {
@@ -125,6 +89,8 @@ class BlockGeometry3D : public BasicBlock<T, 3> {
   std::vector<BasicBlock<T, 3>> _BasicBlocks;
   // info of blockaabbs and basicblocks is contained in _Blocks
   std::vector<Block3D<T>> _Blocks;
+  // block id - element index in std::vector<Block3D<T>> _Blocks;
+  std::unordered_map<int, std::size_t> _BlockIndexMap;
 
   // ext(overlap) of the whole domain
   int _overlap;
@@ -157,6 +123,18 @@ class BlockGeometry3D : public BasicBlock<T, 3> {
   Block3D<T>& getBlock(int id) { return _Blocks[id]; }
   const Block3D<T>& getBlock(int id) const { return _Blocks[id]; }
 
+  // mpi: return _BlockIndexMap[id];
+  std::size_t findBlockIndex(int id) const { 
+#ifdef MPI_ENABLED
+    return _BlockIndexMap.at(id); 
+#else
+    return id;
+#endif
+  }
+  bool hasBlock(int id) const {
+    return _BlockIndexMap.find(id) != _BlockIndexMap.end();
+  }
+
   inline std::uint8_t getMaxLevel() const { return _MaxLevel; }
 
   int getBlockNum() const { return _Blocks.size(); }
@@ -181,6 +159,10 @@ class BlockGeometry3D : public BasicBlock<T, 3> {
 
 // --- mpi communication ---
 #ifdef MPI_ENABLED
+  // construct uniform/ refined blockgeometry from GeoHelper and a vector of BasicBlock<T, 2>
+  // for mpi communication with direction info 
+  BlockGeometry3D(BlockGeometryHelper3D<T>& GeoHelper, 
+  std::vector<BasicBlock<T, 3>>& BasicBlocks);
 
   void InitMPIComm(BlockGeometryHelper3D<T>& GeoHelper);
   // Low level block(coarse) get info from High level block(fine) using average
@@ -193,8 +175,9 @@ class BlockGeometry3D : public BasicBlock<T, 3> {
 #endif
 
 private:
-  void SplitCommunictor(BlockComm<T, 3> & basecomm, Block3D<T>& block, Block3D<T> *nblock, 
-  std::vector<BlockComm<T, 3>> &Communicators);
+  void AddtoSharedAverComm(std::vector<SharedComm> &Comms, const BasicBlock<T, 3>& baseblock_extx, Block3D<T>& block, Block3D<T> *nblock);
+  void AddtoSharedIntpComm(std::vector<SharedComm> &Comms, Block3D<T>& block, Block3D<T> *nblock);
+  void BuildBlockIndexMap();
 };
 
 template <typename T>
@@ -238,6 +221,8 @@ class BlockGeometryHelper3D : public BasicBlock<T, 3> {
 #ifdef MPI_ENABLED
   // mpi neighbors: first: rank, second: blockid
   std::vector<std::vector<std::pair<int, int>>> _MPIBlockNbrs;
+  // for mpi direction communication init
+  std::unique_ptr<BlockGeometry3D<T>> _BlockGeometry3D;
 #endif
 
 
@@ -267,6 +252,7 @@ class BlockGeometryHelper3D : public BasicBlock<T, 3> {
 
   int getCellsNx() const { return CellsNx; }
   int getCellsNy() const { return CellsNy; }
+  int getCellsNz() const { return CellsNz; }
 
   std::size_t getTotalBaseCellNum() {
     std::size_t sum = 0;
@@ -278,10 +264,8 @@ class BlockGeometryHelper3D : public BasicBlock<T, 3> {
 
   // get all new basic blocks
   std::vector<BasicBlock<T, 3>>& getAllBasicBlocks() {
-    if (_Exchanged)
-      return _BasicBlocks1;
-    else
-      return _BasicBlocks0;
+    if (_Exchanged) return _BasicBlocks1;
+    else return _BasicBlocks0;
   }
   BasicBlock<T, 3>& getAllBasicBlock(std::size_t id) { return getAllBasicBlocks()[id]; }
   const BasicBlock<T, 3>& getAllBasicBlock(std::size_t id) const {
@@ -289,10 +273,8 @@ class BlockGeometryHelper3D : public BasicBlock<T, 3> {
   }
   // get all old basic blocks
   std::vector<BasicBlock<T, 3>>& getAllOldBasicBlocks() {
-    if (_Exchanged)
-      return _BasicBlocks0;
-    else
-      return _BasicBlocks1;
+    if (_Exchanged) return _BasicBlocks0;
+    else return _BasicBlocks1;
   }
   BasicBlock<T, 3>& getAllOldBasicBlock(std::size_t id) { return getAllOldBasicBlocks()[id]; }
   const BasicBlock<T, 3>& getAllOldBasicBlock(std::size_t id) const {
@@ -301,24 +283,18 @@ class BlockGeometryHelper3D : public BasicBlock<T, 3> {
 
 
   std::vector<std::vector<int>>& getAllBlockIndices() {
-    if (_IndexExchanged)
-      return _BlockIndex1;
-    else
-      return _BlockIndex0;
+    if (_IndexExchanged) return _BlockIndex1;
+    else return _BlockIndex0;
   }
   std::vector<std::vector<int>>& getAllOldBlockIndices() {
-    if (_IndexExchanged)
-      return _BlockIndex0;
-    else
-      return _BlockIndex1;
+    if (_IndexExchanged) return _BlockIndex0;
+    else return _BlockIndex1;
   }
 
 
   std::vector<std::vector<BasicBlock<T, 3>*>>& getAllBlockIndexPtrs() {
-    if (_IndexExchanged)
-      return _BlockIndexPtr1;
-    else
-      return _BlockIndexPtr0;
+    if (_IndexExchanged) return _BlockIndexPtr1;
+    else return _BlockIndexPtr0;
   }
   // get basic blocks from std::vector<std::vector<BasicBlock<T, 3>*>> _BlockIndexPtr
   std::vector<BasicBlock<T, 3>*>& getBasicBlocks() {
@@ -328,10 +304,8 @@ class BlockGeometryHelper3D : public BasicBlock<T, 3> {
   const BasicBlock<T, 3>& getBasicBlock(int id) const { return *(getBasicBlocks()[id]); }
 
   std::vector<std::vector<BasicBlock<T, 3>*>>& getAllOldBlockIndexPtrs() {
-    if (_IndexExchanged)
-      return _BlockIndexPtr0;
-    else
-      return _BlockIndexPtr1;
+    if (_IndexExchanged) return _BlockIndexPtr0;
+    else return _BlockIndexPtr1;
   }
   std::vector<BasicBlock<T, 3>*>& getOldBasicBlocks() {
     return getAllOldBlockIndexPtrs()[mpi().getRank()];
@@ -345,6 +319,7 @@ class BlockGeometryHelper3D : public BasicBlock<T, 3> {
   std::vector<std::pair<int, int>>& getMPIBlockNbrs(int blockid) {
     return _MPIBlockNbrs[blockid];
   }
+  const BlockGeometry3D<T>& getBlockGeometry3D() const { return *_BlockGeometry3D; }
 #endif
 
   void CreateBlockCells();
@@ -380,6 +355,10 @@ class BlockGeometryHelper3D : public BasicBlock<T, 3> {
 #ifdef MPI_ENABLED
   // call this after LoadBalancing()
   void SetupMPINbrs();
+  // construct BlockGeometry2D from BlockGeometryHelper2D's this pointer
+  void InitBlockGeometry3D();
+  // find which rank the block belongs to
+  int whichRank(int blockid);
 #endif
 
 };

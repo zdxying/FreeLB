@@ -581,27 +581,9 @@ class BlockZhuStefanescu2DManager
     this->template getField<STATE>().NormalCommunicate();
     // Fs field
     this->template getField<FS<T>>().NormalCommunicate();
-    // ExcessC field
-    this->template getField<EXCESSC<T>>().NormalAddCommunicate();
+    // ExcessC field, this should be improved
+    // this->template getField<EXCESSC<T>>().NormalAddCommunicate();
     // ExcessC field post communication
-
-    // Reversed Communicate should only apply to newly solidified cells's neighbors
-
-    // #pragma omp parallel for num_threads(Thread_Num)
-    //     for (BlockField<ScalarField<T>, T, 2>& blockF : ExcessCFM.getBlockFields()) {
-    //       // data in Recvs is sent from blockF to Sends of nblockF
-    //       for (BlockFieldComm<ScalarField<T>, T, 2>& comm : blockF.getComms()) {
-    //         BlockField<ScalarField<T>, T, 2>* nblockF = comm.BlockF;
-    //         std::size_t size = comm.getRecvs().size();
-    //         for (int iArr = 0; iArr < blockF.Size(); ++iArr) {
-    //           auto& nArray = nblockF->getField(iArr);
-    //           const auto& Array = blockF.getField(iArr);
-    //           for (std::size_t id = 0; id < size; ++id) {
-    //             nArray[comm.getSend(id)] += Array[comm.getRecv(id)];
-    //           }
-    //         }
-    //       }
-    //     }
   }
 
   std::size_t getInterfaceNum() {

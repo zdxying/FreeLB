@@ -31,9 +31,6 @@
 #endif
 
 template <typename T, unsigned int D>
-struct BlockComm;
-
-template <typename T, unsigned int D>
 struct IntpBlockComm;
 
 template <typename FieldType, typename FloatType, unsigned int Dim>
@@ -41,42 +38,6 @@ class BlockField;
 
 template <typename T>
 class Octree;
-
-template <typename FieldType, typename FloatType, unsigned int Dim>
-struct BlockFieldComm {
-  BlockField<FieldType, FloatType, Dim>* BlockF;
-  BlockComm<FloatType, Dim>* Comm;
-
-  BlockFieldComm(BlockField<FieldType, FloatType, Dim>* blockF,
-                 BlockComm<FloatType, Dim>* comm)
-      : BlockF(blockF), Comm(comm) {}
-
-  const std::vector<std::size_t>& getSends() const { return Comm->SendCells; }
-  const std::size_t& getSend(std::size_t i) const { return (Comm->SendCells)[i]; }
-
-  const std::vector<std::size_t>& getRecvs() const { return Comm->RecvCells; }
-  const std::size_t& getRecv(std::size_t i) const { return (Comm->RecvCells)[i]; }
-};
-
-template <typename FieldType, typename FloatType, unsigned int Dim>
-struct IntpBlockFieldComm {
-  BlockField<FieldType, FloatType, Dim>* BlockF;
-  IntpBlockComm<FloatType, Dim>* Comm;
-
-  IntpBlockFieldComm(BlockField<FieldType, FloatType, Dim>* blockF,
-                     IntpBlockComm<FloatType, Dim>* comm)
-      : BlockF(blockF), Comm(comm) {}
-
-  const std::vector<IntpSource<Dim>>& getSends() const { return Comm->SendCells; }
-  const IntpSource<Dim>& getSend(std::size_t i) const { return (Comm->SendCells)[i]; }
-
-  const std::vector<std::size_t>& getRecvs() const { return Comm->RecvCells; }
-  const std::size_t& getRecv(std::size_t i) const { return (Comm->RecvCells)[i]; }
-
-  // const std::vector<InterpWeight<FloatType, Dim>>& getWeights() const {
-  //   return Comm->InterpWeights;
-  // }
-};
 
 // BlockField with communication structure
 template <typename FieldType, typename FloatType, unsigned int Dim>
@@ -90,14 +51,6 @@ class BlockField : public FieldType {
   // block(geometry) structure of the field
   Block<FloatType, Dim>& _Block;
 
-  std::vector<BlockFieldComm<FieldType, FloatType, Dim>> Comms;
-  // average block comm, get from higher level block
-  std::vector<IntpBlockFieldComm<FieldType, FloatType, Dim>> AverComms;
-  // interp block comm, get from lower level block
-  std::vector<IntpBlockFieldComm<FieldType, FloatType, Dim>> IntpComms;
-
-  std::vector<BlockFieldComm<FieldType, FloatType, Dim>> InnerComms;
-
 #ifdef __CUDACC__
   using cudev_FieldType = typename FieldType::cudev_FieldType;
   using cudev_BlockFieldType = cudev::BlockField<cudev_FieldType, FloatType, Dim>;
@@ -105,36 +58,23 @@ class BlockField : public FieldType {
   cudev_BlockFieldType* dev_BlockField;
 #endif
 
-#ifdef MPI_ENABLED
-  // MPI buffer
-  MPIBlockBuffer<datatype> MPIBuffer;
-  MPIBlockBuffer<datatype> MPIAverBuffer;
-  MPIBlockBuffer<datatype> MPIIntpBuffer;
-#endif
-
  public:
   BlockField() = default;
   BlockField(Block<FloatType, Dim>& block) : FieldType(block.getN()), _Block(block) {
-    MPIBufferInit();
     constructInDevice();
   }
   BlockField(Block<FloatType, Dim>& block, datatype initvalue)
       : FieldType(block.getN(), initvalue), _Block(block) {
-    MPIBufferInit();
     constructInDevice();
   }
   // copy constructor
   BlockField(const BlockField& blockF)
-      : FieldType(blockF), _Block(blockF._Block), Comms(blockF.Comms),
-        AverComms(blockF.AverComms), IntpComms(blockF.IntpComms), InnerComms(blockF.InnerComms) {
-    MPIBufferInit();
+      : FieldType(blockF), _Block(blockF._Block) {
     constructInDevice();
   }
   // move constructor
   BlockField(BlockField&& blockF) noexcept
-      : FieldType(std::move(blockF)), _Block(blockF._Block), Comms(std::move(blockF.Comms)),
-        AverComms(std::move(blockF.AverComms)), IntpComms(std::move(blockF.IntpComms)), InnerComms(std::move(blockF.InnerComms)) {
-    MPIBufferInit();
+      : FieldType(std::move(blockF)), _Block(blockF._Block) {
     constructInDevice();
   }
   // copy assignment operator
@@ -142,11 +82,6 @@ class BlockField : public FieldType {
     if (this != &blockF) {
       FieldType::operator=(blockF);
       _Block = blockF._Block;
-      Comms = blockF.Comms;
-      AverComms = blockF.AverComms;
-      IntpComms = blockF.IntpComms;
-      InnerComms = blockF.InnerComms;
-      MPIBufferInit();
     }
     return *this;
   }
@@ -155,11 +90,6 @@ class BlockField : public FieldType {
     if (this != &blockF) {
       FieldType::operator=(std::move(blockF));
       _Block = blockF._Block;
-      Comms = std::move(blockF.Comms);
-      AverComms = std::move(blockF.AverComms);
-      IntpComms = std::move(blockF.IntpComms);
-      InnerComms = std::move(blockF.InnerComms);
-      MPIBufferInit();
     }
     return *this;
   }
@@ -185,153 +115,23 @@ if (dev_BlockField) cuda_free(dev_BlockField);
   }
 #ifdef __CUDACC__
   cudev_BlockFieldType* get_devObj() { return dev_BlockField; }
-
 #endif
-
-  void MPIBufferInit() {
-#ifdef MPI_ENABLED
-    MPIBlockBufferInit(_Block.getMPIBlockComm(), MPIBuffer, array_dim);
-    MPIBlockBufferInit(_Block.getMPIAverBlockComm(), MPIAverBuffer, array_dim);
-    MPIBlockBufferInit(_Block.getMPIIntpBlockComm(), MPIIntpBuffer, array_dim);
-#endif
-  }
 
   Block<FloatType, Dim>& getBlock() { return _Block; }
   const Block<FloatType, Dim>& getBlock() const { return _Block; }
 
-  std::vector<BlockFieldComm<FieldType, FloatType, Dim>>& getComms() { return Comms; }
-  std::vector<IntpBlockFieldComm<FieldType, FloatType, Dim>>& getAverComms() {
-    return AverComms;
-  }
-  std::vector<IntpBlockFieldComm<FieldType, FloatType, Dim>>& getIntpComms() {
-    return IntpComms;
-  }
-  std::vector<BlockFieldComm<FieldType, FloatType, Dim>>& getInnerComms() { return InnerComms; }
 
-  void normalcommunicate() {
-    for (BlockFieldComm<FieldType, FloatType, Dim>& comm : Comms) {
-      BlockField<FieldType, FloatType, Dim>* nblockF = comm.BlockF;
-      std::size_t size = comm.getRecvs().size();
-      for (unsigned int iArr = 0; iArr < nblockF->Size(); ++iArr) {
-        const auto& nArray = nblockF->getField(iArr);
-        auto& Array = this->getField(iArr);
-        for (std::size_t id = 0; id < size; ++id) {
-          Array.set(comm.getRecv(id), nArray[comm.getSend(id)]);
-        }
-      }
-    }
-  }
-  void normalInnercommunicate() {
-    for (BlockFieldComm<FieldType, FloatType, Dim>& comm : InnerComms) {
-      BlockField<FieldType, FloatType, Dim>* nblockF = comm.BlockF;
-      std::size_t size = comm.getRecvs().size();
-      for (unsigned int iArr = 0; iArr < nblockF->Size(); ++iArr) {
-        const auto& nArray = nblockF->getField(iArr);
-        auto& Array = this->getField(iArr);
-        for (std::size_t id = 0; id < size; ++id) {
-          Array.set(comm.getRecv(id), nArray[comm.getSend(id)]);
-        }
-      }
-    }
-  }
-  // experimental
-  void normaladdcommunicate() {
-    for (BlockFieldComm<FieldType, FloatType, Dim>& comm : Comms) {
-      BlockField<FieldType, FloatType, Dim>* nblockF = comm.BlockF;
-      std::size_t size = comm.getRecvs().size();
-      for (unsigned int iArr = 0; iArr < nblockF->Size(); ++iArr) {
-        const auto& nArray = nblockF->getField(iArr);
-        auto& Array = this->getField(iArr);
-        for (std::size_t id = 0; id < size; ++id) {
-          Array[comm.getRecv(id)] += nArray[comm.getSend(id)];
-          // Array.set(comm.getRecv(id), nArray[comm.getSend(id)]);
-        }
-      }
-    }
-  }
-  //
-  void avercommunicate() {
-    for (IntpBlockFieldComm<FieldType, FloatType, Dim>& comm : AverComms) {
-      BlockField<FieldType, FloatType, Dim>* nblockF = comm.BlockF;
-      std::size_t size = comm.getRecvs().size();
-      for (unsigned int iArr = 0; iArr < FieldType::Size(); ++iArr) {
-        const auto& nArray = nblockF->getField(iArr);
-        auto& Array = FieldType::getField(iArr);
-        for (std::size_t id = 0; id < size; ++id) {
-          const IntpSource<Dim>& sends = comm.getSend(id);
-          auto sum = nArray[sends[0]];
-          if constexpr (Dim == 2) {
-            sum += nArray[sends[1]] + nArray[sends[2]] + nArray[sends[3]];
-          } else if constexpr (Dim == 3) {
-            sum += nArray[sends[1]] + nArray[sends[2]] + nArray[sends[3]] +
-                   nArray[sends[4]] + nArray[sends[5]] + nArray[sends[6]] +
-                   nArray[sends[7]];
-          }
-          Array.set(comm.getRecv(id), sum * comm.Comm->getUniformWeight());
-        }
-      }
-    }
-  }
-  void interpcommunicate() {
-    for (IntpBlockFieldComm<FieldType, FloatType, Dim>& comm : IntpComms) {
-      BlockField<FieldType, FloatType, Dim>* nblockF = comm.BlockF;
-      std::size_t size = comm.getRecvs().size();
-      for (unsigned int iArr = 0; iArr < FieldType::Size(); ++iArr) {
-        const auto& nArray = nblockF->getField(iArr);
-        auto& Array = FieldType::getField(iArr);
-        const auto& sends = comm.getSends();
-        const auto& recvs = comm.getRecvs();
-        std::size_t idx = 0;
-        for (std::size_t id = 0; id < size;) {
-          Interpolation<FloatType, Dim>(Array, nArray, sends, recvs, id, idx);
-          // {
-          //   const IntpSource<Dim>& sends = comm.getSend(id);
-          //   auto value = nArray[sends[0]] * comm.Comm->getIntpWeight()[0][0] +
-          //                nArray[sends[1]] * comm.Comm->getIntpWeight()[0][1] +
-          //                nArray[sends[2]] * comm.Comm->getIntpWeight()[0][2] +
-          //                nArray[sends[3]] * comm.Comm->getIntpWeight()[0][3];
-          //   Array.set(comm.getRecv(id), value);
-          // }
-          // {
-          //   const IntpSource<Dim>& sends = comm.getSend(id + 1);
-          //   auto value = nArray[sends[0]] * comm.Comm->getIntpWeight()[1][0] +
-          //                nArray[sends[1]] * comm.Comm->getIntpWeight()[1][1] +
-          //                nArray[sends[2]] * comm.Comm->getIntpWeight()[1][2] +
-          //                nArray[sends[3]] * comm.Comm->getIntpWeight()[1][3];
-          //   Array.set(comm.getRecv(id + 1), value);
-          // }
-          // {
-          //   const IntpSource<Dim>& sends = comm.getSend(id + 2);
-          //   auto value = nArray[sends[0]] * comm.Comm->getIntpWeight()[2][0] +
-          //                nArray[sends[1]] * comm.Comm->getIntpWeight()[2][1] +
-          //                nArray[sends[2]] * comm.Comm->getIntpWeight()[2][2] +
-          //                nArray[sends[3]] * comm.Comm->getIntpWeight()[2][3];
-          //   Array.set(comm.getRecv(id + 2), value);
-          // }
-          // {
-          //   const IntpSource<Dim>& sends = comm.getSend(id + 3);
-          //   auto value = nArray[sends[0]] * comm.Comm->getIntpWeight()[3][0] +
-          //                nArray[sends[1]] * comm.Comm->getIntpWeight()[3][1] +
-          //                nArray[sends[2]] * comm.Comm->getIntpWeight()[3][2] +
-          //                nArray[sends[3]] * comm.Comm->getIntpWeight()[3][3];
-          //   Array.set(comm.getRecv(id + 3), value);
-          // }
-        }
-      }
-    }
-  }
 #ifdef MPI_ENABLED
-  MPIBlockBuffer<datatype>& getMPIBuffer() { return MPIBuffer; }
-  MPIBlockBuffer<datatype>& getMPIAverBuffer() { return MPIAverBuffer; }
-  MPIBlockBuffer<datatype>& getMPIIntpBuffer() { return MPIIntpBuffer; }
-  // send data for normal communication
-  void mpiNormalSend(std::vector<MPI_Request>& SendRequests) {
-    const MPIBlockComm& MPIComm = _Block.getMPIBlockComm();
+  // send data for mpi normal communication
+  void mpiNormalSend(std::vector<MPI_Request>& SendRequests, 
+  std::vector<std::vector<datatype>>& SendBuffers, const std::vector<DistributedComm>& MPISends) {
     // add to send buffer
-    for (std::size_t i = 0; i < MPIComm.Senders.size(); ++i) {
-      std::vector<datatype>& buffer = MPIBuffer.SendBuffers[i];
-      const std::vector<std::size_t>& sends = MPIComm.Senders[i].SendCells;
-      std::size_t bufidx = 0;
+    for (std::size_t i = 0; i < MPISends.size(); ++i) {
+      const DistributedComm& comm = MPISends[i];
+      std::vector<datatype>& buffer = SendBuffers[i];
+      buffer.resize(comm.Cells.size() * array_dim);
+      const std::vector<std::size_t>& sends = comm.Cells;
+      std::size_t bufidx{};
       for (unsigned int iArr = 0; iArr < array_dim; ++iArr) {
         const auto& Array = FieldType::getField(iArr);
         for (std::size_t id : sends) {
@@ -339,37 +139,86 @@ if (dev_BlockField) cuda_free(dev_BlockField);
           ++bufidx;
         }
       }
-    }
-    // non-blocking send
-    for (std::size_t i = 0; i < MPIComm.Senders.size(); ++i) {
+      // non-blocking send
       MPI_Request request;
-      std::vector<datatype>& buffer = MPIBuffer.SendBuffers[i];
-      mpi().iSend(buffer.data(), buffer.size(), MPIComm.Senders[i].RecvRank, &request,
-                  MPIComm.Senders[i].RecvBlockid);
+      mpi().iSend(buffer.data(), buffer.size(), comm.TargetRank, &request, comm.TargetBlockId);
       SendRequests.push_back(request);
     }
   }
-  // recv data for normal communication
-  void mpiNormalRecv(std::vector<MPI_Request>& RecvRequests) {
-    const MPIBlockComm& MPIComm = _Block.getMPIBlockComm();
-    // non-blocking recv
-    for (std::size_t i = 0; i < MPIComm.Recvers.size(); ++i) {
+
+  // send data for mpi average communication
+  void mpiAverSend(std::vector<MPI_Request>& SendRequests,
+  std::vector<std::vector<datatype>>& SendBuffers, const std::vector<DistributedComm>& MPISends) {
+    static constexpr std::size_t SendSize = Dim == 2 ? 4 : 8;
+    // add to send buffer
+    for (std::size_t i = 0; i < MPISends.size(); ++i) {
+      const DistributedComm& comm = MPISends[i];
+      std::vector<datatype>& buffer = SendBuffers[i];
+      buffer.resize(comm.Cells.size() / SendSize * array_dim );
+      const std::vector<std::size_t>& sends = comm.Cells;
+      std::size_t bufidx{};
+      for (unsigned int iArr = 0; iArr < array_dim; ++iArr) {
+        const auto& Array = FieldType::getField(iArr);
+        for (std::size_t id = 0; id < sends.size(); id += SendSize) {
+          buffer[bufidx] = getAverage<FloatType, Dim>(Array, id, sends);
+          ++bufidx;
+        }
+      }
+      // non-blocking send
       MPI_Request request;
-      std::vector<datatype>& buffer = MPIBuffer.RecvBuffers[i];
-      mpi().iRecv(buffer.data(), buffer.size(), MPIComm.Recvers[i].SendRank, &request,
-                  _Block.getBlockId());
+      mpi().iSend(buffer.data(), buffer.size(), comm.TargetRank, &request, comm.TargetBlockId);
+      SendRequests.push_back(request);
+    }
+  }
+
+  // send data for mpi interp communication
+  void mpiIntpSend(std::vector<MPI_Request>& SendRequests, 
+  std::vector<std::vector<datatype>>& SendBuffers, const std::vector<DistributedComm>& MPISends) {
+    static constexpr std::size_t SendSize = Dim == 2 ? 4 : 8;
+    // add to send buffer
+    for (int i = 0; i < MPISends.size(); ++i) {
+      const DistributedComm& comm = MPISends[i];
+      std::vector<datatype>& buffer = SendBuffers[i];
+      buffer.resize(comm.Cells.size() / SendSize * array_dim );
+      const std::vector<std::size_t>& sends = comm.Cells;
+      std::size_t bufidx{};
+      for (unsigned int iArr = 0; iArr < array_dim; ++iArr) {
+        const auto& Array = FieldType::getField(iArr);
+        for (std::size_t id = 0; id < sends.size();) {
+          Interpolation<FloatType, Dim>(buffer, bufidx, Array, sends, id);
+        }
+      }
+      // non-blocking send
+      MPI_Request request;
+      mpi().iSend(buffer.data(), buffer.size(), comm.TargetRank, &request, comm.TargetBlockId);
+      SendRequests.push_back(request);
+    }
+  }
+  
+  // recv data for mpi communication
+  void mpiRecv(std::vector<MPI_Request>& RecvRequests, 
+  std::vector<std::vector<datatype>>& RecvBuffers, const std::vector<DistributedComm>& MPIRecvs) {
+    // non-blocking recv
+    for (std::size_t i = 0; i < MPIRecvs.size(); ++i) {
+      const DistributedComm& comm = MPIRecvs[i];
+      std::vector<datatype>& buffer = RecvBuffers[i];
+      buffer.resize(comm.Cells.size() * array_dim);
+      MPI_Request request;
+      mpi().iRecv(buffer.data(), buffer.size(), comm.TargetRank, &request, _Block.getBlockId());
       RecvRequests.push_back(request);
     }
   }
-  // set data for normal communication
-  void mpiNormalSet(int& reqidx, std::vector<MPI_Request>& RecvRequests) {
-    const MPIBlockComm& MPIComm = _Block.getMPIBlockComm();
+
+  // set data for mpi communication
+  void mpiSet(int& reqidx, std::vector<MPI_Request>& RecvRequests,
+  const std::vector<std::vector<datatype>>& RecvBuffers, const std::vector<DistributedComm>& MPIRecvs) {
     // wait and set field data
-    for (std::size_t i = 0; i < MPIComm.Recvers.size(); ++i) {
+    for (std::size_t i = 0; i < MPIRecvs.size(); ++i) {
       MPI_Wait(&RecvRequests[i + reqidx], MPI_STATUS_IGNORE);
-      const std::vector<datatype>& buffer = MPIBuffer.RecvBuffers[i];
-      const std::vector<std::size_t>& recvs = MPIComm.Recvers[i].RecvCells;
-      std::size_t bufidx = 0;
+      const DistributedComm& comm = MPIRecvs[i];
+      const std::vector<datatype>& buffer = RecvBuffers[i];
+      const std::vector<std::size_t>& recvs = comm.Cells;
+      std::size_t bufidx{};
       for (unsigned int iArr = 0; iArr < array_dim; ++iArr) {
         auto& Array = FieldType::getField(iArr);
         for (std::size_t id : recvs) {
@@ -378,122 +227,7 @@ if (dev_BlockField) cuda_free(dev_BlockField);
         }
       }
     }
-    reqidx += MPIComm.Recvers.size();
-  }
-
-  // send data for average communication
-  void mpiAverSend(std::vector<MPI_Request>& SendRequests) {
-    const MPIIntpBlockComm<FloatType, Dim>& MPIComm = _Block.getMPIAverBlockComm();
-    // add to send buffer
-    for (std::size_t i = 0; i < MPIComm.Senders.size(); ++i) {
-      std::vector<datatype>& buffer = MPIAverBuffer.SendBuffers[i];
-      const std::vector<IntpSource<Dim>>& sendcells = MPIComm.Senders[i].SendCells;
-      constexpr FloatType weight = IntpBlockComm<FloatType, Dim>::getUniformWeight();
-      std::size_t bufidx = 0;
-      for (unsigned int iArr = 0; iArr < array_dim; ++iArr) {
-        const auto& Array = FieldType::getField(iArr);
-        for (const IntpSource<Dim>& sends : sendcells) {
-          buffer[bufidx] = getAverage<FloatType, Dim>(Array, sends);
-          ++bufidx;
-        }
-      }
-    }
-    // non-blocking send
-    for (std::size_t i = 0; i < MPIComm.Senders.size(); ++i) {
-      MPI_Request request;
-      std::vector<datatype>& buffer = MPIAverBuffer.SendBuffers[i];
-      mpi().iSend(buffer.data(), buffer.size(), MPIComm.Senders[i].RecvRank, &request,
-                  MPIComm.Senders[i].RecvBlockid);
-      SendRequests.push_back(request);
-    }
-  }
-  // recv data for average communication
-  void mpiAverRecv(std::vector<MPI_Request>& RecvRequests) {
-    const MPIIntpBlockComm<FloatType, Dim>& MPIComm = _Block.getMPIAverBlockComm();
-    // non-blocking recv
-    for (std::size_t i = 0; i < MPIComm.Recvers.size(); ++i) {
-      MPI_Request request;
-      std::vector<datatype>& buffer = MPIAverBuffer.RecvBuffers[i];
-      mpi().iRecv(buffer.data(), buffer.size(), MPIComm.Recvers[i].SendRank, &request,
-                  _Block.getBlockId());
-      RecvRequests.push_back(request);
-    }
-  }
-  // set data for average communication
-  void mpiAverSet(int& reqidx, std::vector<MPI_Request>& RecvRequests) {
-    const MPIIntpBlockComm<FloatType, Dim>& MPIComm = _Block.getMPIAverBlockComm();
-    // wait and set field data
-    for (std::size_t i = 0; i < MPIComm.Recvers.size(); ++i) {
-      MPI_Wait(&RecvRequests[i + reqidx], MPI_STATUS_IGNORE);
-      const std::vector<datatype>& buffer = MPIAverBuffer.RecvBuffers[i];
-      const std::vector<std::size_t>& recvcells = MPIComm.Recvers[i].RecvCells;
-      std::size_t bufidx = 0;
-      for (unsigned int iArr = 0; iArr < array_dim; ++iArr) {
-        auto& Array = FieldType::getField(iArr);
-        for (std::size_t id : recvcells) {
-          Array[id] = buffer[bufidx];
-          ++bufidx;
-        }
-      }
-    }
-    reqidx += MPIComm.Recvers.size();
-  }
-
-  // send data for interp communication
-  void mpiIntpSend(std::vector<MPI_Request>& SendRequests) {
-    const MPIIntpBlockComm<FloatType, Dim>& MPIComm = _Block.getMPIIntpBlockComm();
-    // add to send buffer
-    for (int i = 0; i < MPIComm.Senders.size(); ++i) {
-      std::vector<datatype>& buffer = MPIIntpBuffer.SendBuffers[i];
-      const std::vector<IntpSource<Dim>>& sendcells = MPIComm.Senders[i].SendCells;
-      const std::size_t size = sendcells.size();
-      std::size_t bufidx = 0;
-      for (unsigned int iArr = 0; iArr < array_dim; ++iArr) {
-        const auto& Array = FieldType::getField(iArr);
-        for (std::size_t i = 0; i < size;) {
-          Interpolation<FloatType, Dim>(Array, sendcells, i, buffer, bufidx);
-        }
-      }
-    }
-    // non-blocking send
-    for (std::size_t i = 0; i < MPIComm.Senders.size(); ++i) {
-      MPI_Request request;
-      std::vector<datatype>& buffer = MPIIntpBuffer.SendBuffers[i];
-      mpi().iSend(buffer.data(), buffer.size(), MPIComm.Senders[i].RecvRank, &request,
-                  MPIComm.Senders[i].RecvBlockid);
-      SendRequests.push_back(request);
-    }
-  }
-  // recv data for interp communication
-  void mpiIntpRecv(std::vector<MPI_Request>& RecvRequests) {
-    const MPIIntpBlockComm<FloatType, Dim>& MPIComm = _Block.getMPIIntpBlockComm();
-    // non-blocking recv
-    for (std::size_t i = 0; i < MPIComm.Recvers.size(); ++i) {
-      MPI_Request request;
-      std::vector<datatype>& buffer = MPIIntpBuffer.RecvBuffers[i];
-      mpi().iRecv(buffer.data(), buffer.size(), MPIComm.Recvers[i].SendRank, &request,
-                  _Block.getBlockId());
-      RecvRequests.push_back(request);
-    }
-  }
-  // set data for interp communication
-  void mpiIntpSet(int& reqidx, std::vector<MPI_Request>& RecvRequests) {
-    const MPIIntpBlockComm<FloatType, Dim>& MPIComm = _Block.getMPIIntpBlockComm();
-    // wait and set field data
-    for (std::size_t i = 0; i < MPIComm.Recvers.size(); ++i) {
-      MPI_Wait(&RecvRequests[i + reqidx], MPI_STATUS_IGNORE);
-      const std::vector<datatype>& buffer = MPIIntpBuffer.RecvBuffers[i];
-      const std::vector<std::size_t>& recvcells = MPIComm.Recvers[i].RecvCells;
-      std::size_t bufidx = 0;
-      for (unsigned int iArr = 0; iArr < array_dim; ++iArr) {
-        auto& Array = FieldType::getField(iArr);
-        for (std::size_t id : recvcells) {
-          Array[id] = buffer[bufidx];
-          ++bufidx;
-        }
-      }
-    }
-    reqidx += MPIComm.Recvers.size();
+    reqidx += MPIRecvs.size();
   }
 
 #endif
@@ -532,7 +266,6 @@ class BlockFieldManager {
     for (Block<FloatType, Dim>& block : _BlockGeo.getBlocks()) {
       _Fields.emplace_back(block);
     }
-    InitComm();
     InitDeviceData();
   }
   BlockFieldManager(BlockGeometry<FloatType, Dim>& blockgeometry, datatype initvalue)
@@ -540,7 +273,6 @@ class BlockFieldManager {
     for (Block<FloatType, Dim>& block : _BlockGeo.getBlocks()) {
       _Fields.emplace_back(block, initvalue);
     }
-    InitComm();
     InitDeviceData();
   }
   // copy constructor
@@ -619,19 +351,19 @@ class BlockFieldManager {
 
   void InitAndComm() {
     Init();
-    CommunicateAll();
+    AllCommunicate();
   }
   void InitAndComm(datatype initvalue) {
     Init(initvalue);
-    CommunicateAll();
+    AllCommunicate();
   }
   void InitAndComm(BlockGeometryHelper<FloatType, Dim>& GeoHelper) {
     Init(GeoHelper);
-    CommunicateAll();
+    AllCommunicate();
   }
   void InitAndComm(BlockGeometryHelper<FloatType, Dim>& GeoHelper, datatype initvalue) {
     Init(GeoHelper, initvalue);
-    CommunicateAll();
+    AllCommunicate();
   }
   // pure init
   void Init() {
@@ -639,7 +371,6 @@ class BlockFieldManager {
     for (Block<FloatType, Dim>& block : _BlockGeo.getBlocks()) {
       _Fields.emplace_back(block);
     }
-    InitComm();
   }
   // pure init with initvalue
   void Init(datatype initvalue) {
@@ -647,7 +378,6 @@ class BlockFieldManager {
     for (Block<FloatType, Dim>& block : _BlockGeo.getBlocks()) {
       _Fields.emplace_back(block, initvalue);
     }
-    InitComm();
   }
   void NonFieldInit(datatype initvalue) {
     _Fields.clear();
@@ -664,7 +394,6 @@ class BlockFieldManager {
     // data transfer
     FieldDataTransfer(GeoHelper, NewFields);
     _Fields.swap(NewFields);
-    InitComm();
   }
   // init with initvalue and data transfer
   void Init(BlockGeometryHelper<FloatType, Dim>& GeoHelper, datatype initvalue) {
@@ -675,7 +404,6 @@ class BlockFieldManager {
     // data transfer
     FieldDataTransfer(GeoHelper, NewFields);
     _Fields.swap(NewFields);
-    InitComm();
   }
   // init with initvalue and data transfer
   template <typename FlagFieldType, typename Func>
@@ -699,7 +427,6 @@ class BlockFieldManager {
     // data transfer
     FieldDataCopyTransfer(GeoHelper, NewFields);
     _Fields.swap(NewFields);
-    InitComm();
   }
 
   BlockGeometry<FloatType, Dim>& getGeo() { return _BlockGeo; }
@@ -724,42 +451,6 @@ class BlockFieldManager {
     std::cerr << "[BlockFieldManager]: can't find blockF with blockid " << blockid
               << std::endl;
     exit(1);
-  }
-
-  void InitComm() {
-    if constexpr (!FieldType::isField) {
-      return;
-    }
-    for (BlockField<FieldType, FloatType, Dim>& blockF : _Fields) {
-      Block<FloatType, Dim>& block = blockF.getBlock();
-      // normal communication
-      std::vector<BlockFieldComm<FieldType, FloatType, Dim>>& Fcomms = blockF.getComms();
-      Fcomms.clear();
-      for (BlockComm<FloatType, Dim>& comm : block.getCommunicators()) {
-        Fcomms.emplace_back(findBlockField(comm.getSendId()), &comm);
-      }
-      // average communication
-      std::vector<IntpBlockFieldComm<FieldType, FloatType, Dim>>& Avercomms =
-        blockF.getAverComms();
-      Avercomms.clear();
-      for (IntpBlockComm<FloatType, Dim>& comm : block.getAverageBlockComm()) {
-        Avercomms.emplace_back(findBlockField(comm.getSendId()), &comm);
-      }
-      // interp communication
-      std::vector<IntpBlockFieldComm<FieldType, FloatType, Dim>>& Interpcomms =
-        blockF.getIntpComms();
-      Interpcomms.clear();
-      for (IntpBlockComm<FloatType, Dim>& comm : block.getIntpBlockComm()) {
-        Interpcomms.emplace_back(findBlockField(comm.getSendId()), &comm);
-      }
-      // inner communication
-      std::vector<BlockFieldComm<FieldType, FloatType, Dim>>& Innercomms =
-        blockF.getInnerComms();
-      Innercomms.clear();
-      for (BlockComm<FloatType, Dim>& comm : block.getInnerCommunicators()) {
-        Innercomms.emplace_back(findBlockField(comm.getSendId()), &comm);
-      }
-    }
   }
 
   // construct new field with Geohelper and copy data from old field, then swap
@@ -1000,84 +691,83 @@ class BlockFieldManager {
     }
   }
 
-  // communication
-  void NormalCommunicate(std::int64_t count) {
-#pragma omp parallel for num_threads(Thread_Num)
-    for (BlockField<FieldType, FloatType, Dim>& blockF : _Fields) {
-      const int deLevel =
-        static_cast<int>(_BlockGeo.getMaxLevel() - blockF.getBlock().getLevel());
-      if (count % (static_cast<int>(std::pow(2, deLevel))) == 0) {
-        blockF.normalcommunicate();
-        blockF.normalInnercommunicate();
-      }
-    }
-  }
-
-  // average communicate, do not use this function for pop field communication
-  void AverCommunicate(std::int64_t count) {
-#pragma omp parallel for num_threads(Thread_Num)
-    for (BlockField<FieldType, FloatType, Dim>& blockF : _Fields) {
-      const int deLevel =
-        static_cast<int>(_BlockGeo.getMaxLevel() - blockF.getBlock().getLevel());
-      if (count % (static_cast<int>(std::pow(2, deLevel))) == 0) {
-        blockF.avercommunicate();
-      }
-    }
-  }
-
-  // interp communicate, do not use this function for pop field communication
-  void IntpCommunicate(std::int64_t count) {
-#pragma omp parallel for num_threads(Thread_Num)
-    for (BlockField<FieldType, FloatType, Dim>& blockF : _Fields) {
-      const int deLevel =
-        static_cast<int>(_BlockGeo.getMaxLevel() - blockF.getBlock().getLevel());
-      if (count % (static_cast<int>(std::pow(2, deLevel))) == 0) {
-        blockF.interpcommunicate();
-      }
-    }
-  }
-
-  void CommunicateAll(std::int64_t count) {
-    NormalCommunicate(count);
-#ifdef MPI_ENABLED
-    MPINormalCommunicate(count);
-#endif
-    AverCommunicate(count);
-#ifdef MPI_ENABLED
-    MPIAverCommunicate(count);
-#endif
-    IntpCommunicate(count);
-#ifdef MPI_ENABLED
-    MPIIntpCommunicate(count);
-#endif
-  }
+  // ------ communication ------
 
   void NormalCommunicate() {
+    static constexpr unsigned int ArrayDim = FieldType::array_dim;
 #pragma omp parallel for num_threads(Thread_Num)
     for (BlockField<FieldType, FloatType, Dim>& blockF : _Fields) {
-      blockF.normalcommunicate();
-      blockF.normalInnercommunicate();
+      // normal communicate
+      const Block<FloatType, Dim>& block = blockF.getBlock();
+      const Communicator& communicator = block.getCommunicator();
+      const std::vector<SharedComm>& comms = communicator.Comm.Comms;
+
+      for (const SharedComm& comm : comms) {
+        const BlockField<FieldType, FloatType, Dim>& nblockF = _Fields[_BlockGeo.findBlockIndex(comm.SendBlockId)];
+        const std::size_t size = comm.SendRecvCells.size();
+        for (unsigned int iArr = 0; iArr < ArrayDim; ++iArr) {
+          const auto& nArray = nblockF.getField(iArr);
+          auto& Array = blockF.getField(iArr);
+          for (std::size_t i = 0; i < size; i += 2) {
+            Array[comm.SendRecvCells[i+1]] = nArray[comm.SendRecvCells[i]];
+          }
+        }
+      }
     }
   }
-  void NormalAddCommunicate() {
-#pragma omp parallel for num_threads(Thread_Num)
-    for (BlockField<FieldType, FloatType, Dim>& blockF : _Fields) {
-      blockF.normaladdcommunicate();
-    }
-  }
+
   void AverCommunicate() {
+static constexpr unsigned int ArrayDim = FieldType::array_dim;
+    static constexpr std::size_t SendRecvPairSize = Dim == 2 ? 5 : 9;
+    static constexpr std::size_t RecvOffset = Dim == 2 ? 4 : 8;
 #pragma omp parallel for num_threads(Thread_Num)
     for (BlockField<FieldType, FloatType, Dim>& blockF : _Fields) {
-      blockF.avercommunicate();
+      // average communicate
+      const Block<FloatType, Dim>& block = blockF.getBlock();
+      const Communicator& communicator = block.getCommunicator();
+      const std::vector<SharedComm>& comms = communicator.Comm.AverComm;
+
+      for (const SharedComm& comm : comms) {
+        const BlockField<FieldType, FloatType, Dim>& nblockF = _Fields[_BlockGeo.findBlockIndex(comm.SendBlockId)];
+        const std::size_t size = comm.SendRecvCells.size();
+        for (unsigned int iArr = 0; iArr < ArrayDim; ++iArr) {
+          const auto& nArray = nblockF.getField(iArr);
+          auto& Array = blockF.getField(iArr);
+          for (std::size_t i = 0; i < size; i += SendRecvPairSize) {
+            Array[comm.SendRecvCells[i + RecvOffset]] = 
+            getAverage<FloatType, Dim>(nArray, i, comm.SendRecvCells);
+          }
+        }
+      }
     }
   }
+
   void IntpCommunicate() {
+static constexpr unsigned int ArrayDim = FieldType::array_dim;
+    static constexpr std::size_t SendRecvPairSize = Dim == 2 ? 5 : 9;
+    static constexpr std::size_t RecvOffset = Dim == 2 ? 4 : 8;
 #pragma omp parallel for num_threads(Thread_Num)
     for (BlockField<FieldType, FloatType, Dim>& blockF : _Fields) {
-      blockF.interpcommunicate();
+      // interp communicate
+      const Block<FloatType, Dim>& block = blockF.getBlock();
+      const Communicator& communicator = block.getCommunicator();
+      const std::vector<SharedComm>& comms = communicator.Comm.IntpComm;
+
+      for (const SharedComm& comm : comms) {
+        const BlockField<FieldType, FloatType, Dim>& nblockF = _Fields[_BlockGeo.findBlockIndex(comm.SendBlockId)];
+        const std::size_t size = comm.SendRecvCells.size();
+        for (unsigned int iArr = 0; iArr < ArrayDim; ++iArr) {
+          const auto& nArray = nblockF.getField(iArr);
+          auto& Array = blockF.getField(iArr);
+          for (std::size_t id = 0; id < size;) {
+            Interpolation<FloatType, Dim>(Array, nArray, comm.SendRecvCells, id);
+          }
+        }
+      }
     }
   }
-  void CommunicateAll() {
+  
+  void Communicate() {
     NormalCommunicate();
 #ifdef MPI_ENABLED
     MPINormalCommunicate();
@@ -1092,220 +782,852 @@ class BlockFieldManager {
 #endif
   }
 
+  void NormalCommunicate(std::int64_t count) {
+    static constexpr unsigned int ArrayDim = FieldType::array_dim;
+#pragma omp parallel for num_threads(Thread_Num)
+    for (BlockField<FieldType, FloatType, Dim>& blockF : _Fields) {
+      const int deLevel = static_cast<int>(_BlockGeo.getMaxLevel() - blockF.getBlock().getLevel());
+      if (count % (static_cast<int>(std::pow(2, deLevel))) == 0) {
+        // normal communicate
+        const Block<FloatType, Dim>& block = blockF.getBlock();
+        const Communicator& communicator = block.getCommunicator();
+        const std::vector<SharedComm>& comms = communicator.Comm.Comms;
+
+        for (const SharedComm& comm : comms) {
+          const BlockField<FieldType, FloatType, Dim>& nblockF = _Fields[_BlockGeo.findBlockIndex(comm.SendBlockId)];
+          const std::size_t size = comm.SendRecvCells.size();
+          for (unsigned int iArr = 0; iArr < ArrayDim; ++iArr) {
+            const auto& nArray = nblockF.getField(iArr);
+            auto& Array = blockF.getField(iArr);
+            for (std::size_t i = 0; i < size; i += 2) {
+              Array[comm.SendRecvCells[i+1]] = nArray[comm.SendRecvCells[i]];
+            }
+          }
+        }
+      }
+    }
+  }
+
+  void AverCommunicate(std::int64_t count) {
+    static constexpr unsigned int ArrayDim = FieldType::array_dim;
+    static constexpr std::size_t SendRecvPairSize = Dim == 2 ? 5 : 9;
+    static constexpr std::size_t RecvOffset = Dim == 2 ? 4 : 8;
+    static constexpr FloatType weight = Dim == 2 ? FloatType(0.25) : FloatType(0.125);
+#pragma omp parallel for num_threads(Thread_Num)
+    for (BlockField<FieldType, FloatType, Dim>& blockF : _Fields) {
+      const int deLevel = static_cast<int>(_BlockGeo.getMaxLevel() - blockF.getBlock().getLevel());
+      if (count % (static_cast<int>(std::pow(2, deLevel))) == 0) {
+        // average communicate
+        const Block<FloatType, Dim>& block = blockF.getBlock();
+        const Communicator& communicator = block.getCommunicator();
+        const std::vector<SharedComm>& comms = communicator.Comm.AverComm;
+
+        for (const SharedComm& comm : comms) {
+          const BlockField<FieldType, FloatType, Dim>& nblockF = _Fields[_BlockGeo.findBlockIndex(comm.SendBlockId)];
+          const std::size_t size = comm.SendRecvCells.size();
+          for (unsigned int iArr = 0; iArr < ArrayDim; ++iArr) {
+            const auto& nArray = nblockF.getField(iArr);
+            auto& Array = blockF.getField(iArr);
+            for (std::size_t i = 0; i < size; i += SendRecvPairSize) {
+              Array[comm.SendRecvCells[i + RecvOffset]] = 
+              getAverage<FloatType, Dim>(nArray, i ,comm.SendRecvCells);
+            }
+          }
+        }
+      }
+    }
+  }
+
+  void IntpCommunicate(std::int64_t count) {
+    static constexpr unsigned int ArrayDim = FieldType::array_dim;
+    static constexpr std::size_t SendRecvPairSize = Dim == 2 ? 5 : 9;
+    static constexpr std::size_t RecvOffset = Dim == 2 ? 4 : 8;
+#pragma omp parallel for num_threads(Thread_Num)
+    for (BlockField<FieldType, FloatType, Dim>& blockF : _Fields) {
+      const int deLevel = static_cast<int>(_BlockGeo.getMaxLevel() - blockF.getBlock().getLevel());
+      if (count % (static_cast<int>(std::pow(2, deLevel))) == 0) {
+        // interp communicate
+        const Block<FloatType, Dim>& block = blockF.getBlock();
+        const Communicator& communicator = block.getCommunicator();
+        const std::vector<SharedComm>& comms = communicator.Comm.IntpComm;
+
+        for (const SharedComm& comm : comms) {
+          const BlockField<FieldType, FloatType, Dim>& nblockF = _Fields[_BlockGeo.findBlockIndex(comm.SendBlockId)];
+          const std::size_t size = comm.SendRecvCells.size();
+          for (unsigned int iArr = 0; iArr < ArrayDim; ++iArr) {
+            const auto& nArray = nblockF.getField(iArr);
+            auto& Array = blockF.getField(iArr);
+            for (std::size_t id = 0; id < size;) {
+              Interpolation<FloatType, Dim>(Array, nArray, comm.SendRecvCells, id);
+            }
+          }
+        }
+      }
+    }
+  }
+
+  void Communicate(std::int64_t count) {
+    NormalCommunicate(count);
+#ifdef MPI_ENABLED
+    MPINormalCommunicate(count);
+#endif
+    AverCommunicate(count);
+#ifdef MPI_ENABLED
+    MPIAverCommunicate(count);
+#endif
+    IntpCommunicate(count);
+#ifdef MPI_ENABLED
+    MPIIntpCommunicate(count);
+#endif
+  }
+
+  void AllNormalCommunicate() {
+    static constexpr unsigned int ArrayDim = FieldType::array_dim;
+#pragma omp parallel for num_threads(Thread_Num)
+    for (BlockField<FieldType, FloatType, Dim>& blockF : _Fields) {
+      // normal communicate
+      const Block<FloatType, Dim>& block = blockF.getBlock();
+      const Communicator& communicator = block.getCommunicator();
+      const std::vector<SharedComm>& comms = communicator.AllComm.Comms;
+
+      for (const SharedComm& comm : comms) {
+        const BlockField<FieldType, FloatType, Dim>& nblockF = _Fields[_BlockGeo.findBlockIndex(comm.SendBlockId)];
+        const std::size_t size = comm.SendRecvCells.size();
+        for (unsigned int iArr = 0; iArr < ArrayDim; ++iArr) {
+          const auto& nArray = nblockF.getField(iArr);
+          auto& Array = blockF.getField(iArr);
+          for (std::size_t i = 0; i < size; i += 2) {
+            Array[comm.SendRecvCells[i+1]] = nArray[comm.SendRecvCells[i]];
+          }
+        }
+      }
+    }
+  }
+
+  void AllAverCommunicate() {
+static constexpr unsigned int ArrayDim = FieldType::array_dim;
+    static constexpr std::size_t SendRecvPairSize = Dim == 2 ? 5 : 9;
+    static constexpr std::size_t RecvOffset = Dim == 2 ? 4 : 8;
+#pragma omp parallel for num_threads(Thread_Num)
+    for (BlockField<FieldType, FloatType, Dim>& blockF : _Fields) {
+      // average communicate
+      const Block<FloatType, Dim>& block = blockF.getBlock();
+      const Communicator& communicator = block.getCommunicator();
+      const std::vector<SharedComm>& comms = communicator.AllComm.AverComm;
+
+      for (const SharedComm& comm : comms) {
+        const BlockField<FieldType, FloatType, Dim>& nblockF = _Fields[_BlockGeo.findBlockIndex(comm.SendBlockId)];
+        const std::size_t size = comm.SendRecvCells.size();
+        for (unsigned int iArr = 0; iArr < ArrayDim; ++iArr) {
+          const auto& nArray = nblockF.getField(iArr);
+          auto& Array = blockF.getField(iArr);
+          for (std::size_t i = 0; i < size; i += SendRecvPairSize) {
+            Array[comm.SendRecvCells[i + RecvOffset]] = 
+            getAverage<FloatType, Dim>(nArray, i ,comm.SendRecvCells);
+          }
+        }
+      }
+    }
+  }
+
+  void AllIntpCommunicate() {
+static constexpr unsigned int ArrayDim = FieldType::array_dim;
+    static constexpr std::size_t SendRecvPairSize = Dim == 2 ? 5 : 9;
+    static constexpr std::size_t RecvOffset = Dim == 2 ? 4 : 8;
+#pragma omp parallel for num_threads(Thread_Num)
+    for (BlockField<FieldType, FloatType, Dim>& blockF : _Fields) {
+      // interp communicate
+      const Block<FloatType, Dim>& block = blockF.getBlock();
+      const Communicator& communicator = block.getCommunicator();
+      const std::vector<SharedComm>& comms = communicator.AllComm.IntpComm;
+
+      for (const SharedComm& comm : comms) {
+        const BlockField<FieldType, FloatType, Dim>& nblockF = _Fields[_BlockGeo.findBlockIndex(comm.SendBlockId)];
+        const std::size_t size = comm.SendRecvCells.size();
+        for (unsigned int iArr = 0; iArr < ArrayDim; ++iArr) {
+          const auto& nArray = nblockF.getField(iArr);
+          auto& Array = blockF.getField(iArr);
+          for (std::size_t id = 0; id < size;) {
+            Interpolation<FloatType, Dim>(Array, nArray, comm.SendRecvCells, id);
+          }
+        }
+      }
+    }
+  }
+  
+  void AllCommunicate() {
+    AllNormalCommunicate();
+#ifdef MPI_ENABLED
+    AllMPINormalCommunicate();
+#endif
+    AllAverCommunicate();
+#ifdef MPI_ENABLED
+    AllMPIAverCommunicate();
+#endif
+    AllIntpCommunicate();
+#ifdef MPI_ENABLED
+    AllMPIIntpCommunicate();
+#endif
+  }
+
+  void AllNormalCommunicate(std::int64_t count) {
+    static constexpr unsigned int ArrayDim = FieldType::array_dim;
+#pragma omp parallel for num_threads(Thread_Num)
+    for (BlockField<FieldType, FloatType, Dim>& blockF : _Fields) {
+      const int deLevel = static_cast<int>(_BlockGeo.getMaxLevel() - blockF.getBlock().getLevel());
+      if (count % (static_cast<int>(std::pow(2, deLevel))) == 0) {
+        // normal communicate
+        const Block<FloatType, Dim>& block = blockF.getBlock();
+        const Communicator& communicator = block.getCommunicator();
+        const std::vector<SharedComm>& comms = communicator.AllComm.Comms;
+
+        for (const SharedComm& comm : comms) {
+          const BlockField<FieldType, FloatType, Dim>& nblockF = _Fields[_BlockGeo.findBlockIndex(comm.SendBlockId)];
+          const std::size_t size = comm.SendRecvCells.size();
+          for (unsigned int iArr = 0; iArr < ArrayDim; ++iArr) {
+            const auto& nArray = nblockF.getField(iArr);
+            auto& Array = blockF.getField(iArr);
+            for (std::size_t i = 0; i < size; i += 2) {
+              Array[comm.SendRecvCells[i+1]] = nArray[comm.SendRecvCells[i]];
+            }
+          }
+        }
+      }
+    }
+  }
+
+  void AllAverCommunicate(std::int64_t count) {
+    static constexpr unsigned int ArrayDim = FieldType::array_dim;
+    static constexpr std::size_t SendRecvPairSize = Dim == 2 ? 5 : 9;
+    static constexpr std::size_t RecvOffset = Dim == 2 ? 4 : 8;
+    static constexpr FloatType weight = Dim == 2 ? FloatType(0.25) : FloatType(0.125);
+#pragma omp parallel for num_threads(Thread_Num)
+    for (BlockField<FieldType, FloatType, Dim>& blockF : _Fields) {
+      const int deLevel = static_cast<int>(_BlockGeo.getMaxLevel() - blockF.getBlock().getLevel());
+      if (count % (static_cast<int>(std::pow(2, deLevel))) == 0) {
+        // average communicate
+        const Block<FloatType, Dim>& block = blockF.getBlock();
+        const Communicator& communicator = block.getCommunicator();
+        const std::vector<SharedComm>& comms = communicator.AllComm.AverComm;
+
+        for (const SharedComm& comm : comms) {
+          const BlockField<FieldType, FloatType, Dim>& nblockF = _Fields[_BlockGeo.findBlockIndex(comm.SendBlockId)];
+          const std::size_t size = comm.SendRecvCells.size();
+          for (unsigned int iArr = 0; iArr < ArrayDim; ++iArr) {
+            const auto& nArray = nblockF.getField(iArr);
+            auto& Array = blockF.getField(iArr);
+            for (std::size_t i = 0; i < size; i += SendRecvPairSize) {
+              Array[comm.SendRecvCells[i + RecvOffset]] = 
+              getAverage<FloatType, Dim>(nArray, i ,comm.SendRecvCells);
+            }
+          }
+        }
+      }
+    }
+  }
+
+  void AllIntpCommunicate(std::int64_t count) {
+    static constexpr unsigned int ArrayDim = FieldType::array_dim;
+    static constexpr std::size_t SendRecvPairSize = Dim == 2 ? 5 : 9;
+    static constexpr std::size_t RecvOffset = Dim == 2 ? 4 : 8;
+#pragma omp parallel for num_threads(Thread_Num)
+    for (BlockField<FieldType, FloatType, Dim>& blockF : _Fields) {
+      const int deLevel = static_cast<int>(_BlockGeo.getMaxLevel() - blockF.getBlock().getLevel());
+      if (count % (static_cast<int>(std::pow(2, deLevel))) == 0) {
+        // interp communicate
+        const Block<FloatType, Dim>& block = blockF.getBlock();
+        const Communicator& communicator = block.getCommunicator();
+        const std::vector<SharedComm>& comms = communicator.AllComm.IntpComm;
+
+        for (const SharedComm& comm : comms) {
+          const BlockField<FieldType, FloatType, Dim>& nblockF = _Fields[_BlockGeo.findBlockIndex(comm.SendBlockId)];
+          const std::size_t size = comm.SendRecvCells.size();
+          for (unsigned int iArr = 0; iArr < ArrayDim; ++iArr) {
+            const auto& nArray = nblockF.getField(iArr);
+            auto& Array = blockF.getField(iArr);
+            for (std::size_t id = 0; id < size;) {
+              Interpolation<FloatType, Dim>(Array, nArray, comm.SendRecvCells, id);
+            }
+          }
+        }
+      }
+    }
+  }
+
+  void AllCommunicate(std::int64_t count) {
+    AllNormalCommunicate(count);
+#ifdef MPI_ENABLED
+    AllMPINormalCommunicate(count);
+#endif
+    AllAverCommunicate(count);
+#ifdef MPI_ENABLED
+    AllMPIAverCommunicate(count);
+#endif
+    AllIntpCommunicate(count);
+#ifdef MPI_ENABLED
+    AllMPIIntpCommunicate(count);
+#endif
+  }
+
+
 #ifdef MPI_ENABLED
 
-  void MPINormalCommunicate(std::int64_t count) {
+  void MPINormalCommunicate() {
     mpi().barrier();
+    std::vector<std::vector<std::vector<datatype>>> SendBuffers(
+      _Fields.size(), std::vector<std::vector<datatype>>{});
+    std::vector<std::vector<std::vector<datatype>>> RecvBuffers(
+      _Fields.size(), std::vector<std::vector<datatype>>{});
+    std::size_t iblock{};
     // --- send data ---
     std::vector<MPI_Request> SendRequests;
     for (BlockField<FieldType, FloatType, Dim>& blockF : _Fields) {
-      const int deLevel =
-        static_cast<int>(_BlockGeo.getMaxLevel() - blockF.getBlock().getLevel());
-      if ((count % (static_cast<int>(std::pow(2, deLevel))) == 0) &&
-          blockF.getBlock()._NeedMPIComm) {
-        blockF.mpiNormalSend(SendRequests);
+      if (blockF.getBlock().getCommunicator()._NeedMPIComm) {
+        const std::vector<DistributedComm>& Sends = blockF.getBlock().getCommunicator().MPIComm.Sends;
+        SendBuffers[iblock].resize(Sends.size(), std::vector<datatype>{});
+        blockF.mpiNormalSend(SendRequests, SendBuffers[iblock], Sends);
       }
+      ++iblock;
     }
     // --- receive data ---
+    iblock = 0;
     std::vector<MPI_Request> RecvRequests;
     for (BlockField<FieldType, FloatType, Dim>& blockF : _Fields) {
-      const int deLevel =
-        static_cast<int>(_BlockGeo.getMaxLevel() - blockF.getBlock().getLevel());
-      if ((count % (static_cast<int>(std::pow(2, deLevel))) == 0) &&
-          blockF.getBlock()._NeedMPIComm) {
-        blockF.mpiNormalRecv(RecvRequests);
+      if (blockF.getBlock().getCommunicator()._NeedMPIComm) {
+        std::vector<DistributedComm>& Recvs = blockF.getBlock().getCommunicator().MPIComm.Recvs;
+        RecvBuffers[iblock].resize(Recvs.size(), std::vector<datatype>{});
+        blockF.mpiRecv(RecvRequests, RecvBuffers[iblock], Recvs);
       }
+      ++iblock;
     }
     // wait for all send requests to complete
     MPI_Waitall(SendRequests.size(), SendRequests.data(), MPI_STATUSES_IGNORE);
     // MPI_Waitall(RecvRequests.size(), RecvRequests.data(), MPI_STATUSES_IGNORE);
     // --- wait and set field data ---
-    int reqidx = 0;
+    iblock = 0;
+    int reqidx{};
     for (BlockField<FieldType, FloatType, Dim>& blockF : _Fields) {
-      const int deLevel =
-        static_cast<int>(_BlockGeo.getMaxLevel() - blockF.getBlock().getLevel());
-      if ((count % (static_cast<int>(std::pow(2, deLevel))) == 0) &&
-          blockF.getBlock()._NeedMPIComm) {
-        blockF.mpiNormalSet(reqidx, RecvRequests);
+      if (blockF.getBlock().getCommunicator()._NeedMPIComm) {
+        const std::vector<DistributedComm>& Recvs = blockF.getBlock().getCommunicator().MPIComm.Recvs;
+        blockF.mpiSet(reqidx, RecvRequests, RecvBuffers[iblock], Recvs);
       }
+      ++iblock;
     }
   }
 
-  // send data to lower level, deLevel+1
-  void MPIAverSend(std::int64_t count, std::vector<MPI_Request>& SendRequests) {
+  void MPIAverCommunicate() {
+    mpi().barrier();
+    std::vector<std::vector<std::vector<datatype>>> SendBuffers(
+      _Fields.size(), std::vector<std::vector<datatype>>{});
+    std::vector<std::vector<std::vector<datatype>>> RecvBuffers(
+      _Fields.size(), std::vector<std::vector<datatype>>{});
+    std::size_t iblock{};
+    // --- send data ---
+    std::vector<MPI_Request> SendRequests;
     for (BlockField<FieldType, FloatType, Dim>& blockF : _Fields) {
-      const int deLevel =
-        static_cast<int>(_BlockGeo.getMaxLevel() - blockF.getBlock().getLevel());
-      if (blockF.getBlock().getLevel() != std::uint8_t(0)) {
-        if ((count % (static_cast<int>(std::pow(2, deLevel + 1))) == 0) &&
-            blockF.getBlock()._NeedMPIComm) {
-          blockF.mpiAverSend(SendRequests);
-        }
+      if (blockF.getBlock().getCommunicator()._NeedMPIComm) {
+        const std::vector<DistributedComm>& Sends = blockF.getBlock().getCommunicator().MPIComm.AverSends;
+        SendBuffers[iblock].resize(Sends.size(), std::vector<datatype>{});
+        blockF.mpiAverSend(SendRequests, SendBuffers[iblock], Sends);
       }
+      ++iblock;
+    }
+    // --- receive data ---
+    iblock = 0;
+    std::vector<MPI_Request> RecvRequests;
+    for (BlockField<FieldType, FloatType, Dim>& blockF : _Fields) {
+      if (blockF.getBlock().getCommunicator()._NeedMPIComm) {
+        std::vector<DistributedComm>& Recvs = blockF.getBlock().getCommunicator().MPIComm.AverRecvs;
+        RecvBuffers[iblock].resize(Recvs.size(), std::vector<datatype>{});
+        blockF.mpiRecv(RecvRequests, RecvBuffers[iblock], Recvs);
+      }
+      ++iblock;
+    }
+    // wait for all send requests to complete
+    MPI_Waitall(SendRequests.size(), SendRequests.data(), MPI_STATUSES_IGNORE);
+    // MPI_Waitall(RecvRequests.size(), RecvRequests.data(), MPI_STATUSES_IGNORE);
+    // --- wait and set field data ---
+    iblock = 0;
+    int reqidx{};
+    for (BlockField<FieldType, FloatType, Dim>& blockF : _Fields) {
+      if (blockF.getBlock().getCommunicator()._NeedMPIComm) {
+        const std::vector<DistributedComm>& Recvs = blockF.getBlock().getCommunicator().MPIComm.AverRecvs;
+        blockF.mpiSet(reqidx, RecvRequests, RecvBuffers[iblock], Recvs);
+      }
+      ++iblock;
     }
   }
-  void MPIAverRecv(std::int64_t count, std::vector<MPI_Request>& RecvRequests) {
+
+  void MPIIntpCommunicate() {
+    mpi().barrier();
+    std::vector<std::vector<std::vector<datatype>>> SendBuffers(
+      _Fields.size(), std::vector<std::vector<datatype>>{});
+    std::vector<std::vector<std::vector<datatype>>> RecvBuffers(
+      _Fields.size(), std::vector<std::vector<datatype>>{});
+    std::size_t iblock{};
+    // --- send data ---
+    std::vector<MPI_Request> SendRequests;
     for (BlockField<FieldType, FloatType, Dim>& blockF : _Fields) {
-      const int deLevel =
-        static_cast<int>(_BlockGeo.getMaxLevel() - blockF.getBlock().getLevel());
-      if ((count % (static_cast<int>(std::pow(2, deLevel))) == 0) &&
-          blockF.getBlock()._NeedMPIComm) {
-        blockF.mpiAverRecv(RecvRequests);
+      if (blockF.getBlock().getCommunicator()._NeedMPIComm) {
+        const std::vector<DistributedComm>& Sends = blockF.getBlock().getCommunicator().MPIComm.IntpSends;
+        SendBuffers[iblock].resize(Sends.size(), std::vector<datatype>{});
+        blockF.mpiIntpSend(SendRequests, SendBuffers[iblock], Sends);
       }
+      ++iblock;
+    }
+    // --- receive data ---
+    iblock = 0;
+    std::vector<MPI_Request> RecvRequests;
+    for (BlockField<FieldType, FloatType, Dim>& blockF : _Fields) {
+      if (blockF.getBlock().getCommunicator()._NeedMPIComm) {
+        std::vector<DistributedComm>& Recvs = blockF.getBlock().getCommunicator().MPIComm.IntpRecvs;
+        RecvBuffers[iblock].resize(Recvs.size(), std::vector<datatype>{});
+        blockF.mpiRecv(RecvRequests, RecvBuffers[iblock], Recvs);
+      }
+      ++iblock;
+    }
+    // wait for all send requests to complete
+    MPI_Waitall(SendRequests.size(), SendRequests.data(), MPI_STATUSES_IGNORE);
+    // MPI_Waitall(RecvRequests.size(), RecvRequests.data(), MPI_STATUSES_IGNORE);
+    // --- wait and set field data ---
+    iblock = 0;
+    int reqidx{};
+    for (BlockField<FieldType, FloatType, Dim>& blockF : _Fields) {
+      if (blockF.getBlock().getCommunicator()._NeedMPIComm) {
+        const std::vector<DistributedComm>& Recvs = blockF.getBlock().getCommunicator().MPIComm.IntpRecvs;
+        blockF.mpiSet(reqidx, RecvRequests, RecvBuffers[iblock], Recvs);
+      }
+      ++iblock;
     }
   }
-  void MPIAverSet(std::int64_t count, std::vector<MPI_Request>& RecvRequests) {
-    int reqidx = 0;
+
+
+  void MPINormalCommunicate(std::int64_t count) {
+    mpi().barrier();
+    std::vector<std::vector<std::vector<datatype>>> SendBuffers(
+      _Fields.size(), std::vector<std::vector<datatype>>{});
+    std::vector<std::vector<std::vector<datatype>>> RecvBuffers(
+      _Fields.size(), std::vector<std::vector<datatype>>{});
+    std::size_t iblock{};
+    // --- send data ---
+    std::vector<MPI_Request> SendRequests;
     for (BlockField<FieldType, FloatType, Dim>& blockF : _Fields) {
-      const int deLevel =
-        static_cast<int>(_BlockGeo.getMaxLevel() - blockF.getBlock().getLevel());
-      if ((count % (static_cast<int>(std::pow(2, deLevel))) == 0) &&
-          blockF.getBlock()._NeedMPIComm) {
-        blockF.mpiAverSet(reqidx, RecvRequests);
+      const int deLevel = static_cast<int>(_BlockGeo.getMaxLevel() - blockF.getBlock().getLevel());
+      if ((count % (static_cast<int>(std::pow(2, deLevel))) == 0) && 
+      blockF.getBlock().getCommunicator()._NeedMPIComm) {
+        const std::vector<DistributedComm>& Sends = blockF.getBlock().getCommunicator().MPIComm.Sends;
+        SendBuffers[iblock].resize(Sends.size(), std::vector<datatype>{});
+        blockF.mpiNormalSend(SendRequests, SendBuffers[iblock], Sends);
       }
+      ++iblock;
+    }
+    // --- receive data ---
+    iblock = 0;
+    std::vector<MPI_Request> RecvRequests;
+    for (BlockField<FieldType, FloatType, Dim>& blockF : _Fields) {
+      const int deLevel = static_cast<int>(_BlockGeo.getMaxLevel() - blockF.getBlock().getLevel());
+      if ((count % (static_cast<int>(std::pow(2, deLevel))) == 0) && 
+      blockF.getBlock().getCommunicator()._NeedMPIComm) {
+        std::vector<DistributedComm>& Recvs = blockF.getBlock().getCommunicator().MPIComm.Recvs;
+        RecvBuffers[iblock].resize(Recvs.size(), std::vector<datatype>{});
+        blockF.mpiRecv(RecvRequests, RecvBuffers[iblock], Recvs);
+      }
+      ++iblock;
+    }
+    // wait for all send requests to complete
+    MPI_Waitall(SendRequests.size(), SendRequests.data(), MPI_STATUSES_IGNORE);
+    // MPI_Waitall(RecvRequests.size(), RecvRequests.data(), MPI_STATUSES_IGNORE);
+    // --- wait and set field data ---
+    iblock = 0;
+    int reqidx{};
+    for (BlockField<FieldType, FloatType, Dim>& blockF : _Fields) {
+      const int deLevel = static_cast<int>(_BlockGeo.getMaxLevel() - blockF.getBlock().getLevel());
+      if ((count % (static_cast<int>(std::pow(2, deLevel))) == 0) && 
+      blockF.getBlock().getCommunicator()._NeedMPIComm) {
+        const std::vector<DistributedComm>& Recvs = blockF.getBlock().getCommunicator().MPIComm.Recvs;
+        blockF.mpiSet(reqidx, RecvRequests, RecvBuffers[iblock], Recvs);
+      }
+      ++iblock;
     }
   }
 
   void MPIAverCommunicate(std::int64_t count) {
     mpi().barrier();
-    // --- send data ---
+    std::vector<std::vector<std::vector<datatype>>> SendBuffers(
+      _Fields.size(), std::vector<std::vector<datatype>>{});
+    std::vector<std::vector<std::vector<datatype>>> RecvBuffers(
+      _Fields.size(), std::vector<std::vector<datatype>>{});
+    std::size_t iblock{};
+    // --- send data --- send data to lower level, deLevel+1
     std::vector<MPI_Request> SendRequests;
-    MPIAverSend(count, SendRequests);
-    // --- receive data ---
-    std::vector<MPI_Request> RecvRequests;
-    MPIAverRecv(count, RecvRequests);
-    // wait for all send requests to complete
-    MPI_Waitall(SendRequests.size(), SendRequests.data(), MPI_STATUSES_IGNORE);
-    // --- wait and set field data ---
-    MPIAverSet(count, RecvRequests);
-  }
-  // send data to higher level, deLevel-1
-  void MPIIntpSend(std::int64_t count, std::vector<MPI_Request>& SendRequests) {
     for (BlockField<FieldType, FloatType, Dim>& blockF : _Fields) {
-      const int deLevel =
-        static_cast<int>(_BlockGeo.getMaxLevel() - blockF.getBlock().getLevel()) - 1;
-      if (deLevel != -1) {
-        if ((count % (static_cast<int>(std::pow(2, deLevel))) == 0) &&
-            blockF.getBlock()._NeedMPIComm) {
-          blockF.mpiIntpSend(SendRequests);
+      const int deLevel = static_cast<int>(_BlockGeo.getMaxLevel() - blockF.getBlock().getLevel()) + 1;
+      if (blockF.getBlock().getLevel() != std::uint8_t(0)) {
+        if ((count % (static_cast<int>(std::pow(2, deLevel))) == 0) && 
+        blockF.getBlock().getCommunicator()._NeedMPIComm) {
+          const std::vector<DistributedComm>& Sends = blockF.getBlock().getCommunicator().MPIComm.AverSends;
+          SendBuffers[iblock].resize(Sends.size(), std::vector<datatype>{});
+          blockF.mpiAverSend(SendRequests, SendBuffers[iblock], Sends);
         }
       }
+      ++iblock;
     }
-  }
-  void MPIInterpRecv(std::int64_t count, std::vector<MPI_Request>& RecvRequests) {
-    for (BlockField<FieldType, FloatType, Dim>& blockF : _Fields) {
-      const int deLevel =
-        static_cast<int>(_BlockGeo.getMaxLevel() - blockF.getBlock().getLevel());
-      if ((count % (static_cast<int>(std::pow(2, deLevel))) == 0) &&
-          blockF.getBlock()._NeedMPIComm) {
-        blockF.mpiIntpRecv(RecvRequests);
-      }
-    }
-  }
-  void MPIIntpSet(std::int64_t count, std::vector<MPI_Request>& RecvRequests) {
-    int reqidx = 0;
-    for (BlockField<FieldType, FloatType, Dim>& blockF : _Fields) {
-      const int deLevel =
-        static_cast<int>(_BlockGeo.getMaxLevel() - blockF.getBlock().getLevel());
-      if ((count % (static_cast<int>(std::pow(2, deLevel))) == 0) &&
-          blockF.getBlock()._NeedMPIComm) {
-        blockF.mpiIntpSet(reqidx, RecvRequests);
-      }
-    }
-  }
-  void MPIIntpCommunicate(std::int64_t count) {
-    mpi().barrier();
-    // --- send data ---
-    std::vector<MPI_Request> SendRequests;
-    MPIIntpSend(count, SendRequests);
     // --- receive data ---
+    iblock = 0;
     std::vector<MPI_Request> RecvRequests;
-    MPIInterpRecv(count, RecvRequests);
+    for (BlockField<FieldType, FloatType, Dim>& blockF : _Fields) {
+      const int deLevel = static_cast<int>(_BlockGeo.getMaxLevel() - blockF.getBlock().getLevel());
+      if ((count % (static_cast<int>(std::pow(2, deLevel))) == 0) && 
+      blockF.getBlock().getCommunicator()._NeedMPIComm) {
+        std::vector<DistributedComm>& Recvs = blockF.getBlock().getCommunicator().MPIComm.AverRecvs;
+        RecvBuffers[iblock].resize(Recvs.size(), std::vector<datatype>{});
+        blockF.mpiRecv(RecvRequests, RecvBuffers[iblock], Recvs);
+      }
+      ++iblock;
+    }
     // wait for all send requests to complete
     MPI_Waitall(SendRequests.size(), SendRequests.data(), MPI_STATUSES_IGNORE);
+    // MPI_Waitall(RecvRequests.size(), RecvRequests.data(), MPI_STATUSES_IGNORE);
     // --- wait and set field data ---
-    MPIIntpSet(count, RecvRequests);
+    iblock = 0;
+    int reqidx{};
+    for (BlockField<FieldType, FloatType, Dim>& blockF : _Fields) {
+      const int deLevel = static_cast<int>(_BlockGeo.getMaxLevel() - blockF.getBlock().getLevel());
+      if ((count % (static_cast<int>(std::pow(2, deLevel))) == 0) && 
+      blockF.getBlock().getCommunicator()._NeedMPIComm) {
+        const std::vector<DistributedComm>& Recvs = blockF.getBlock().getCommunicator().MPIComm.AverRecvs;
+        blockF.mpiSet(reqidx, RecvRequests, RecvBuffers[iblock], Recvs);
+      }
+      ++iblock;
+    }
   }
 
-  void MPINormalCommunicate() {
+  void MPIIntpCommunicate(std::int64_t count) {
     mpi().barrier();
-    // --- send data ---
+    std::vector<std::vector<std::vector<datatype>>> SendBuffers(
+      _Fields.size(), std::vector<std::vector<datatype>>{});
+    std::vector<std::vector<std::vector<datatype>>> RecvBuffers(
+      _Fields.size(), std::vector<std::vector<datatype>>{});
+    std::size_t iblock{};
+    // --- send data --- send data to higher level, deLevel-1
     std::vector<MPI_Request> SendRequests;
     for (BlockField<FieldType, FloatType, Dim>& blockF : _Fields) {
-      if (blockF.getBlock()._NeedMPIComm) {
-        blockF.mpiNormalSend(SendRequests);
+      const int deLevel = static_cast<int>(_BlockGeo.getMaxLevel() - blockF.getBlock().getLevel()) - 1;
+      if (deLevel != -1) {
+        if ((count % (static_cast<int>(std::pow(2, deLevel))) == 0) && 
+        blockF.getBlock().getCommunicator()._NeedMPIComm) {
+          const std::vector<DistributedComm>& Sends = blockF.getBlock().getCommunicator().MPIComm.IntpSends;
+          SendBuffers[iblock].resize(Sends.size(), std::vector<datatype>{});
+          blockF.mpiIntpSend(SendRequests, SendBuffers[iblock], Sends);
+        }
       }
+      ++iblock;
     }
     // --- receive data ---
+    iblock = 0;
     std::vector<MPI_Request> RecvRequests;
     for (BlockField<FieldType, FloatType, Dim>& blockF : _Fields) {
-      if (blockF.getBlock()._NeedMPIComm) {
-        blockF.mpiNormalRecv(RecvRequests);
+      const int deLevel = static_cast<int>(_BlockGeo.getMaxLevel() - blockF.getBlock().getLevel());
+      if ((count % (static_cast<int>(std::pow(2, deLevel))) == 0) && 
+      blockF.getBlock().getCommunicator()._NeedMPIComm) {
+        std::vector<DistributedComm>& Recvs = blockF.getBlock().getCommunicator().MPIComm.IntpRecvs;
+        RecvBuffers[iblock].resize(Recvs.size(), std::vector<datatype>{});
+        blockF.mpiRecv(RecvRequests, RecvBuffers[iblock], Recvs);
       }
+      ++iblock;
     }
     // wait for all send requests to complete
     MPI_Waitall(SendRequests.size(), SendRequests.data(), MPI_STATUSES_IGNORE);
     // MPI_Waitall(RecvRequests.size(), RecvRequests.data(), MPI_STATUSES_IGNORE);
     // --- wait and set field data ---
-    int reqidx = 0;
+    iblock = 0;
+    int reqidx{};
     for (BlockField<FieldType, FloatType, Dim>& blockF : _Fields) {
-      if (blockF.getBlock()._NeedMPIComm) {
-        blockF.mpiNormalSet(reqidx, RecvRequests);
+      const int deLevel = static_cast<int>(_BlockGeo.getMaxLevel() - blockF.getBlock().getLevel());
+      if ((count % (static_cast<int>(std::pow(2, deLevel))) == 0) && 
+      blockF.getBlock().getCommunicator()._NeedMPIComm) {
+        const std::vector<DistributedComm>& Recvs = blockF.getBlock().getCommunicator().MPIComm.IntpRecvs;
+        blockF.mpiSet(reqidx, RecvRequests, RecvBuffers[iblock], Recvs);
       }
+      ++iblock;
     }
   }
-  void MPIAverCommunicate() {
+
+
+  void AllMPINormalCommunicate() {
     mpi().barrier();
+    std::vector<std::vector<std::vector<datatype>>> SendBuffers(
+      _Fields.size(), std::vector<std::vector<datatype>>{});
+    std::vector<std::vector<std::vector<datatype>>> RecvBuffers(
+      _Fields.size(), std::vector<std::vector<datatype>>{});
+    std::size_t iblock{};
     // --- send data ---
     std::vector<MPI_Request> SendRequests;
     for (BlockField<FieldType, FloatType, Dim>& blockF : _Fields) {
-      if (blockF.getBlock()._NeedMPIComm) {
-        blockF.mpiAverSend(SendRequests);
+      if (blockF.getBlock().getCommunicator()._NeedMPIComm) {
+        const std::vector<DistributedComm>& Sends = blockF.getBlock().getCommunicator().AllMPIComm.Sends;
+        SendBuffers[iblock].resize(Sends.size(), std::vector<datatype>{});
+        blockF.mpiNormalSend(SendRequests, SendBuffers[iblock], Sends);
       }
+      ++iblock;
     }
     // --- receive data ---
+    iblock = 0;
     std::vector<MPI_Request> RecvRequests;
     for (BlockField<FieldType, FloatType, Dim>& blockF : _Fields) {
-      if (blockF.getBlock()._NeedMPIComm) {
-        blockF.mpiAverRecv(RecvRequests);
+      if (blockF.getBlock().getCommunicator()._NeedMPIComm) {
+        std::vector<DistributedComm>& Recvs = blockF.getBlock().getCommunicator().AllMPIComm.Recvs;
+        RecvBuffers[iblock].resize(Recvs.size(), std::vector<datatype>{});
+        blockF.mpiRecv(RecvRequests, RecvBuffers[iblock], Recvs);
       }
+      ++iblock;
     }
     // wait for all send requests to complete
     MPI_Waitall(SendRequests.size(), SendRequests.data(), MPI_STATUSES_IGNORE);
     // MPI_Waitall(RecvRequests.size(), RecvRequests.data(), MPI_STATUSES_IGNORE);
     // --- wait and set field data ---
-    int reqidx = 0;
+    iblock = 0;
+    int reqidx{};
     for (BlockField<FieldType, FloatType, Dim>& blockF : _Fields) {
-      if (blockF.getBlock()._NeedMPIComm) {
-        blockF.mpiAverSet(reqidx, RecvRequests);
+      if (blockF.getBlock().getCommunicator()._NeedMPIComm) {
+        const std::vector<DistributedComm>& Recvs = blockF.getBlock().getCommunicator().AllMPIComm.Recvs;
+        blockF.mpiSet(reqidx, RecvRequests, RecvBuffers[iblock], Recvs);
       }
+      ++iblock;
     }
   }
-  void MPIIntpCommunicate() {
+
+  void AllMPIAverCommunicate() {
     mpi().barrier();
+    std::vector<std::vector<std::vector<datatype>>> SendBuffers(
+      _Fields.size(), std::vector<std::vector<datatype>>{});
+    std::vector<std::vector<std::vector<datatype>>> RecvBuffers(
+      _Fields.size(), std::vector<std::vector<datatype>>{});
+    std::size_t iblock{};
     // --- send data ---
     std::vector<MPI_Request> SendRequests;
     for (BlockField<FieldType, FloatType, Dim>& blockF : _Fields) {
-      if (blockF.getBlock()._NeedMPIComm) {
-        blockF.mpiIntpSend(SendRequests);
+      if (blockF.getBlock().getCommunicator()._NeedMPIComm) {
+        const std::vector<DistributedComm>& Sends = blockF.getBlock().getCommunicator().AllMPIComm.AverSends;
+        SendBuffers[iblock].resize(Sends.size(), std::vector<datatype>{});
+        blockF.mpiAverSend(SendRequests, SendBuffers[iblock], Sends);
       }
+      ++iblock;
     }
     // --- receive data ---
+    iblock = 0;
     std::vector<MPI_Request> RecvRequests;
     for (BlockField<FieldType, FloatType, Dim>& blockF : _Fields) {
-      if (blockF.getBlock()._NeedMPIComm) {
-        blockF.mpiIntpRecv(RecvRequests);
+      if (blockF.getBlock().getCommunicator()._NeedMPIComm) {
+        std::vector<DistributedComm>& Recvs = blockF.getBlock().getCommunicator().AllMPIComm.AverRecvs;
+        RecvBuffers[iblock].resize(Recvs.size(), std::vector<datatype>{});
+        blockF.mpiRecv(RecvRequests, RecvBuffers[iblock], Recvs);
       }
+      ++iblock;
     }
     // wait for all send requests to complete
     MPI_Waitall(SendRequests.size(), SendRequests.data(), MPI_STATUSES_IGNORE);
     // MPI_Waitall(RecvRequests.size(), RecvRequests.data(), MPI_STATUSES_IGNORE);
     // --- wait and set field data ---
-    int reqidx = 0;
+    iblock = 0;
+    int reqidx{};
     for (BlockField<FieldType, FloatType, Dim>& blockF : _Fields) {
-      if (blockF.getBlock()._NeedMPIComm) {
-        blockF.mpiIntpSet(reqidx, RecvRequests);
+      if (blockF.getBlock().getCommunicator()._NeedMPIComm) {
+        const std::vector<DistributedComm>& Recvs = blockF.getBlock().getCommunicator().AllMPIComm.AverRecvs;
+        blockF.mpiSet(reqidx, RecvRequests, RecvBuffers[iblock], Recvs);
       }
+      ++iblock;
+    }
+  }
+
+  void AllMPIIntpCommunicate() {
+    mpi().barrier();
+    std::vector<std::vector<std::vector<datatype>>> SendBuffers(
+      _Fields.size(), std::vector<std::vector<datatype>>{});
+    std::vector<std::vector<std::vector<datatype>>> RecvBuffers(
+      _Fields.size(), std::vector<std::vector<datatype>>{});
+    std::size_t iblock{};
+    // --- send data ---
+    std::vector<MPI_Request> SendRequests;
+    for (BlockField<FieldType, FloatType, Dim>& blockF : _Fields) {
+      if (blockF.getBlock().getCommunicator()._NeedMPIComm) {
+        const std::vector<DistributedComm>& Sends = blockF.getBlock().getCommunicator().AllMPIComm.IntpSends;
+        SendBuffers[iblock].resize(Sends.size(), std::vector<datatype>{});
+        blockF.mpiIntpSend(SendRequests, SendBuffers[iblock], Sends);
+      }
+      ++iblock;
+    }
+    // --- receive data ---
+    iblock = 0;
+    std::vector<MPI_Request> RecvRequests;
+    for (BlockField<FieldType, FloatType, Dim>& blockF : _Fields) {
+      if (blockF.getBlock().getCommunicator()._NeedMPIComm) {
+        std::vector<DistributedComm>& Recvs = blockF.getBlock().getCommunicator().AllMPIComm.IntpRecvs;
+        RecvBuffers[iblock].resize(Recvs.size(), std::vector<datatype>{});
+        blockF.mpiRecv(RecvRequests, RecvBuffers[iblock], Recvs);
+      }
+      ++iblock;
+    }
+    // wait for all send requests to complete
+    MPI_Waitall(SendRequests.size(), SendRequests.data(), MPI_STATUSES_IGNORE);
+    // MPI_Waitall(RecvRequests.size(), RecvRequests.data(), MPI_STATUSES_IGNORE);
+    // --- wait and set field data ---
+    iblock = 0;
+    int reqidx{};
+    for (BlockField<FieldType, FloatType, Dim>& blockF : _Fields) {
+      if (blockF.getBlock().getCommunicator()._NeedMPIComm) {
+        const std::vector<DistributedComm>& Recvs = blockF.getBlock().getCommunicator().AllMPIComm.IntpRecvs;
+        blockF.mpiSet(reqidx, RecvRequests, RecvBuffers[iblock], Recvs);
+      }
+      ++iblock;
+    }
+  }
+
+
+  void AllMPINormalCommunicate(std::int64_t count) {
+    mpi().barrier();
+    std::vector<std::vector<std::vector<datatype>>> SendBuffers(
+      _Fields.size(), std::vector<std::vector<datatype>>{});
+    std::vector<std::vector<std::vector<datatype>>> RecvBuffers(
+      _Fields.size(), std::vector<std::vector<datatype>>{});
+    std::size_t iblock{};
+    // --- send data ---
+    std::vector<MPI_Request> SendRequests;
+    for (BlockField<FieldType, FloatType, Dim>& blockF : _Fields) {
+      const int deLevel = static_cast<int>(_BlockGeo.getMaxLevel() - blockF.getBlock().getLevel());
+      if ((count % (static_cast<int>(std::pow(2, deLevel))) == 0) && 
+      blockF.getBlock().getCommunicator()._NeedMPIComm) {
+        const std::vector<DistributedComm>& Sends = blockF.getBlock().getCommunicator().AllMPIComm.Sends;
+        SendBuffers[iblock].resize(Sends.size(), std::vector<datatype>{});
+        blockF.mpiNormalSend(SendRequests, SendBuffers[iblock], Sends);
+      }
+      ++iblock;
+    }
+    // --- receive data ---
+    iblock = 0;
+    std::vector<MPI_Request> RecvRequests;
+    for (BlockField<FieldType, FloatType, Dim>& blockF : _Fields) {
+      const int deLevel = static_cast<int>(_BlockGeo.getMaxLevel() - blockF.getBlock().getLevel());
+      if ((count % (static_cast<int>(std::pow(2, deLevel))) == 0) && 
+      blockF.getBlock().getCommunicator()._NeedMPIComm) {
+        std::vector<DistributedComm>& Recvs = blockF.getBlock().getCommunicator().AllMPIComm.Recvs;
+        RecvBuffers[iblock].resize(Recvs.size(), std::vector<datatype>{});
+        blockF.mpiRecv(RecvRequests, RecvBuffers[iblock], Recvs);
+      }
+      ++iblock;
+    }
+    // wait for all send requests to complete
+    MPI_Waitall(SendRequests.size(), SendRequests.data(), MPI_STATUSES_IGNORE);
+    // MPI_Waitall(RecvRequests.size(), RecvRequests.data(), MPI_STATUSES_IGNORE);
+    // --- wait and set field data ---
+    iblock = 0;
+    int reqidx{};
+    for (BlockField<FieldType, FloatType, Dim>& blockF : _Fields) {
+      const int deLevel = static_cast<int>(_BlockGeo.getMaxLevel() - blockF.getBlock().getLevel());
+      if ((count % (static_cast<int>(std::pow(2, deLevel))) == 0) && 
+      blockF.getBlock().getCommunicator()._NeedMPIComm) {
+        const std::vector<DistributedComm>& Recvs = blockF.getBlock().getCommunicator().AllMPIComm.Recvs;
+        blockF.mpiSet(reqidx, RecvRequests, RecvBuffers[iblock], Recvs);
+      }
+      ++iblock;
+    }
+  }
+
+  void AllMPIAverCommunicate(std::int64_t count) {
+    mpi().barrier();
+    std::vector<std::vector<std::vector<datatype>>> SendBuffers(
+      _Fields.size(), std::vector<std::vector<datatype>>{});
+    std::vector<std::vector<std::vector<datatype>>> RecvBuffers(
+      _Fields.size(), std::vector<std::vector<datatype>>{});
+    std::size_t iblock{};
+    // --- send data ---
+    std::vector<MPI_Request> SendRequests;
+    for (BlockField<FieldType, FloatType, Dim>& blockF : _Fields) {
+      const int deLevel = static_cast<int>(_BlockGeo.getMaxLevel() - blockF.getBlock().getLevel());
+      if ((count % (static_cast<int>(std::pow(2, deLevel))) == 0) && 
+      blockF.getBlock().getCommunicator()._NeedMPIComm) {
+        const std::vector<DistributedComm>& Sends = blockF.getBlock().getCommunicator().AllMPIComm.AverSends;
+        SendBuffers[iblock].resize(Sends.size(), std::vector<datatype>{});
+        blockF.mpiAverSend(SendRequests, SendBuffers[iblock], Sends);
+      }
+      ++iblock;
+    }
+    // --- receive data ---
+    iblock = 0;
+    std::vector<MPI_Request> RecvRequests;
+    for (BlockField<FieldType, FloatType, Dim>& blockF : _Fields) {
+      const int deLevel = static_cast<int>(_BlockGeo.getMaxLevel() - blockF.getBlock().getLevel());
+      if ((count % (static_cast<int>(std::pow(2, deLevel))) == 0) && 
+      blockF.getBlock().getCommunicator()._NeedMPIComm) {
+        std::vector<DistributedComm>& Recvs = blockF.getBlock().getCommunicator().AllMPIComm.AverRecvs;
+        RecvBuffers[iblock].resize(Recvs.size(), std::vector<datatype>{});
+        blockF.mpiRecv(RecvRequests, RecvBuffers[iblock], Recvs);
+      }
+      ++iblock;
+    }
+    // wait for all send requests to complete
+    MPI_Waitall(SendRequests.size(), SendRequests.data(), MPI_STATUSES_IGNORE);
+    // MPI_Waitall(RecvRequests.size(), RecvRequests.data(), MPI_STATUSES_IGNORE);
+    // --- wait and set field data ---
+    iblock = 0;
+    int reqidx{};
+    for (BlockField<FieldType, FloatType, Dim>& blockF : _Fields) {
+      const int deLevel = static_cast<int>(_BlockGeo.getMaxLevel() - blockF.getBlock().getLevel());
+      if ((count % (static_cast<int>(std::pow(2, deLevel))) == 0) && 
+      blockF.getBlock().getCommunicator()._NeedMPIComm) {
+        const std::vector<DistributedComm>& Recvs = blockF.getBlock().getCommunicator().AllMPIComm.AverRecvs;
+        blockF.mpiSet(reqidx, RecvRequests, RecvBuffers[iblock], Recvs);
+      }
+      ++iblock;
+    }
+  }
+
+  void AllMPIIntpCommunicate(std::int64_t count) {
+    mpi().barrier();
+    std::vector<std::vector<std::vector<datatype>>> SendBuffers(
+      _Fields.size(), std::vector<std::vector<datatype>>{});
+    std::vector<std::vector<std::vector<datatype>>> RecvBuffers(
+      _Fields.size(), std::vector<std::vector<datatype>>{});
+    std::size_t iblock{};
+    // --- send data ---
+    std::vector<MPI_Request> SendRequests;
+    for (BlockField<FieldType, FloatType, Dim>& blockF : _Fields) {
+      const int deLevel = static_cast<int>(_BlockGeo.getMaxLevel() - blockF.getBlock().getLevel());
+      if ((count % (static_cast<int>(std::pow(2, deLevel))) == 0) && 
+      blockF.getBlock().getCommunicator()._NeedMPIComm) {
+        const std::vector<DistributedComm>& Sends = blockF.getBlock().getCommunicator().AllMPIComm.IntpSends;
+        SendBuffers[iblock].resize(Sends.size(), std::vector<datatype>{});
+        blockF.mpiIntpSend(SendRequests, SendBuffers[iblock], Sends);
+      }
+      ++iblock;
+    }
+    // --- receive data ---
+    iblock = 0;
+    std::vector<MPI_Request> RecvRequests;
+    for (BlockField<FieldType, FloatType, Dim>& blockF : _Fields) {
+      const int deLevel = static_cast<int>(_BlockGeo.getMaxLevel() - blockF.getBlock().getLevel());
+      if ((count % (static_cast<int>(std::pow(2, deLevel))) == 0) && 
+      blockF.getBlock().getCommunicator()._NeedMPIComm) {
+        std::vector<DistributedComm>& Recvs = blockF.getBlock().getCommunicator().AllMPIComm.IntpRecvs;
+        RecvBuffers[iblock].resize(Recvs.size(), std::vector<datatype>{});
+        blockF.mpiRecv(RecvRequests, RecvBuffers[iblock], Recvs);
+      }
+      ++iblock;
+    }
+    // wait for all send requests to complete
+    MPI_Waitall(SendRequests.size(), SendRequests.data(), MPI_STATUSES_IGNORE);
+    // MPI_Waitall(RecvRequests.size(), RecvRequests.data(), MPI_STATUSES_IGNORE);
+    // --- wait and set field data ---
+    iblock = 0;
+    int reqidx{};
+    for (BlockField<FieldType, FloatType, Dim>& blockF : _Fields) {
+      const int deLevel = static_cast<int>(_BlockGeo.getMaxLevel() - blockF.getBlock().getLevel());
+      if ((count % (static_cast<int>(std::pow(2, deLevel))) == 0) && 
+      blockF.getBlock().getCommunicator()._NeedMPIComm) {
+        const std::vector<DistributedComm>& Recvs = blockF.getBlock().getCommunicator().AllMPIComm.IntpRecvs;
+        blockF.mpiSet(reqidx, RecvRequests, RecvBuffers[iblock], Recvs);
+      }
+      ++iblock;
     }
   }
 #endif

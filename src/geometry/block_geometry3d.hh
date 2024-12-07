@@ -25,8 +25,7 @@
 template <typename T>
 Block3D<T>::Block3D(const BasicBlock<T, 3> &baseblock, int olap)
     : BasicBlock<T, 3>(baseblock.getExtBlock(olap)), 
-    _BaseBlock(baseblock), _overlap(olap)
-       {}
+    _BaseBlock(baseblock), _overlap(olap) {}
 
 
 template <typename T>
@@ -129,6 +128,7 @@ BlockGeometry3D<T>::BlockGeometry3D(int Nx, int Ny, int Nz, int blocknum,
                  AABB<int, 3>(Vector<int, 3>{overlap}, Vector<int, 3>{Nx - 1 + overlap, Ny - 1 + overlap, Nz - 1 + overlap})),
       _overlap(overlap), _MaxLevel(std::uint8_t(0)) {
   CreateBlocks(blocknum);
+  BuildBlockIndexMap();
   SetupNbrs();
   InitComm();
 #ifndef MPI_ENABLED
@@ -146,9 +146,11 @@ BlockGeometry3D<T>::BlockGeometry3D(BlockGeometryHelper3D<T> &GeoHelper)
     _Blocks.emplace_back(*baseblock, overlap);
     _BasicBlocks.emplace_back(*baseblock);
   }
+  BuildBlockIndexMap();
   SetupNbrs();
   InitAllComm();
 #ifdef MPI_ENABLED
+  GeoHelper.InitBlockGeometry3D();
   InitAllMPIComm(GeoHelper);
 #else
   PrintInfo();
@@ -164,6 +166,7 @@ BlockGeometry3D<T>::BlockGeometry3D(const BlockReader3D<T>& blockreader)
     int overlap = (baseblock.getLevel() != std::uint8_t(0)) ? 2 : 1;
     _Blocks.emplace_back(baseblock, overlap);
   }
+  BuildBlockIndexMap();
   SetupNbrs();
   InitAllComm();
 #ifndef MPI_ENABLED
@@ -187,6 +190,7 @@ BlockGeometry3D<T>::BlockGeometry3D(const StlReader<T>& reader, int blocknum)
                                     int(std::ceil(reader.getMesh().getMax_Min()[2] / reader.getVoxelSize()))})), 
       _overlap(1), _MaxLevel(std::uint8_t(0)) {
   CreateBlocks(blocknum);
+  BuildBlockIndexMap();
   SetupNbrs();
   InitComm();
 #ifndef MPI_ENABLED
@@ -211,9 +215,11 @@ void BlockGeometry3D<T>::Init(BlockGeometryHelper3D<T> &GeoHelper) {
     _Blocks.emplace_back(*baseblock, overlap);
     _BasicBlocks.emplace_back(*baseblock);
   }
+  BuildBlockIndexMap();
   SetupNbrs();
   InitAllComm();
 #ifdef MPI_ENABLED
+// GeoHelper.InitBlockGeometry3D();
   InitAllMPIComm(GeoHelper);
 #else
   PrintInfo();
@@ -285,118 +291,75 @@ void BlockGeometry3D<T>::SetupNbrs() {
 
 template <typename T>
 void BlockGeometry3D<T>::InitComm() {
-  if (_overlap == 1) {
-    for (Block3D<T> &block : _Blocks) {
-      std::vector<BlockComm<T, 3>> &Communicators = block.getCommunicators();
-      Communicators.clear();
-      // get the first layer of overlapped cells(counted from inside to outside)
-      BasicBlock<T, 3> baseblock_exto = block.getBaseBlock().getExtBlock(_overlap);
-      std::uint8_t blocklevel = block.getLevel();
-      for (Block3D<T> *nblock : block.getNeighbors()) {
-        // check if 2 blocks are of the same level
-        if (nblock->getLevel() == blocklevel) {
-          Communicators.emplace_back(nblock);
-          BlockComm<T, 3> &comm = Communicators.back();
-          // blocks of the same level only communicate with the first layer of overlapped
-          // cells
-          block.getCellIdx(baseblock_exto, nblock->getBaseBlock(), comm.RecvCells);
-          nblock->getCellIdx(nblock->getBaseBlock(), baseblock_exto, comm.SendCells);
-          // exclude corner cells
-          std::vector<std::size_t> cornerRecvCells;
-          std::vector<std::size_t> cornerSendCells;
-          block.ExcludeCornerIdx(comm.RecvCells, comm.SendCells, cornerRecvCells, cornerSendCells);
-          // exclude edge cells
-          std::vector<std::vector<std::size_t>> edgeRecvCells;
-          std::vector<std::vector<std::size_t>> edgeSendCells;
-          block.ExcludeEdgeIdx(comm.RecvCells, comm.SendCells, edgeRecvCells, edgeSendCells);
-          // find direction for normal(face) cells
-          comm.Direction = getFaceNbrDirection(block.whichFace(comm.RecvCells[0]));
+  int Tag{};
+  for (Block3D<T> &block : _Blocks) {
+    // (inner) overlapped cell communicators
+    std::vector<SharedComm> &Comms = block.getCommunicator().Comm.Comms;
+    // all overlapped cell communicators
+    std::vector<SharedComm> &AllComms = block.getCommunicator().AllComm.Comms;
+    Comms.clear();
+    AllComms.clear();
+    // get block with overlap 1, for Comms
+    BasicBlock<T, 3> baseblock_ext1 = block.getBaseBlock().getExtBlock(1);
+    // get block with overlap = _overlap, for AllComms
+    BasicBlock<T, 3> baseblock_exto = block.getSelfBlock();
+
+    std::uint8_t blocklevel = block.getLevel();
+    for (Block3D<T> *nblock : block.getNeighbors()) {
+      // check if 2 blocks are of the same level
+      if (nblock->getLevel() == blocklevel) {
+        // ------ add to Comms
+        // get overlapped cells
+        std::vector<std::size_t> Recvs;
+        std::vector<std::size_t> Sends;
+        block.getCellIdx(baseblock_ext1, nblock->getBaseBlock(), Recvs);
+        nblock->getCellIdx(nblock->getBaseBlock(), baseblock_ext1, Sends);
+        // exclude corner cells
+        std::vector<std::size_t> CornerRecvs;
+        std::vector<std::size_t> CornerSends;
+        block.ExcludeCornerIdx(Recvs, Sends, CornerRecvs, CornerSends);
+        // exclude edge cells
+        std::vector<std::vector<std::size_t>> EdgeRecvs;
+        std::vector<std::vector<std::size_t>> EdgeSends;
+        block.ExcludeEdgeIdx(Recvs, Sends, EdgeRecvs, EdgeSends);
+        // avoid empty communicator
+        if (Recvs.size() > 0) {
+          Comms.emplace_back(nblock->getBlockId(), Tag);
+          ++Tag;
+          SharedComm &comm = Comms.back();
+          comm.setRecvSendIdx(Recvs, Sends);
+          comm.Direction = getFaceNbrDirection(block.whichFace(comm.SendRecvCells[1]));
+        }
+        if (CornerRecvs.size() > 0) {
           // add corner cells to communicators and find direction
-          for (std::size_t i = 0; i < cornerRecvCells.size(); ++i) {
-            Communicators.emplace_back(nblock);
-            BlockComm<T, 3> &commcorner = Communicators.back();
-            commcorner.RecvCells.push_back(cornerRecvCells[i]);
-            commcorner.SendCells.push_back(cornerSendCells[i]);
-            commcorner.Direction = getCornerNbrDirection<3>(block.whichCorner(cornerRecvCells[i]));
-          }
-          // add edge cells to communicators and find direction
-          for (std::size_t i = 0; i < edgeRecvCells.size(); ++i) {
-            if (edgeRecvCells[i].size() > 0) {
-              Communicators.emplace_back(nblock);
-              BlockComm<T, 3> &commedge = Communicators.back();
-              commedge.RecvCells = edgeRecvCells[i];
-              commedge.SendCells = edgeSendCells[i];
-              commedge.Direction = getEdgeNbrDirection<3>(block.whichEdge(edgeRecvCells[i][0]));
-            }
+          for (std::size_t i = 0; i < CornerRecvs.size(); ++i) {
+            Comms.emplace_back(nblock->getBlockId(), Tag);
+            ++Tag;
+            SharedComm &commcorner = Comms.back();
+            commcorner.SendRecvCells = {CornerSends[i], CornerRecvs[i]};
+            commcorner.Direction = getCornerNbrDirection<3>(block.whichCorner(CornerRecvs[i]));
           }
         }
-      }
-    }
-  } else {
-    // _overlap > 1
-    for (Block3D<T> &block : _Blocks) {
-      std::vector<BlockComm<T, 3>> &Communicators = block.getCommunicators();
-      Communicators.clear();
-      // reserve enough space
-      Communicators.reserve(block.getNeighbors().size() * 10 + 10);
-      // get the first layer of overlapped cells(counted from inside to outside)
-      BasicBlock<T, 3> baseblock_exto = block.getBaseBlock().getExtBlock(_overlap);
-      std::uint8_t blocklevel = block.getLevel();
-      for (Block3D<T> *nblock : block.getNeighbors()) {
-        // check if 2 blocks are of the same level
-        if (nblock->getLevel() == blocklevel) {
-          Communicators.emplace_back(nblock);
-          BlockComm<T, 3> &comm = Communicators.back();
-          // blocks of the same level only communicate with the first layer of overlapped
-          // cells
-          block.getCellIdx(baseblock_exto, nblock->getBaseBlock(), comm.RecvCells);
-          nblock->getCellIdx(nblock->getBaseBlock(), baseblock_exto, comm.SendCells);
-          // exclude inner cells
-          std::vector<std::size_t> InnerRecvCells;
-          std::vector<std::size_t> InnerSendCells;
-          block.ExcludeInnerIdx(comm.RecvCells, comm.SendCells, InnerRecvCells, InnerSendCells);
-          // exclude corner cells
-          std::vector<std::size_t> cornerRecvCells;
-          std::vector<std::size_t> cornerSendCells;
-          bool hasC = block.ExcludeCornerIdx(comm.RecvCells, comm.SendCells, cornerRecvCells, cornerSendCells);
-          // exclude edge cells
-          std::vector<std::vector<std::size_t>> edgeRecvCells;
-          std::vector<std::vector<std::size_t>> edgeSendCells;
-          bool hasE = block.ExcludeEdgeIdx(comm.RecvCells, comm.SendCells, edgeRecvCells, edgeSendCells);
-          // check if has corner or edge cells
-          if(hasC || hasE) {
-            SplitCommunictor(comm, block, nblock, Communicators);
-            // add corner cells to communicators and find direction
-            for (std::size_t i = 0; i < cornerRecvCells.size(); ++i) {
-              Communicators.emplace_back(nblock);
-              BlockComm<T, 3> &commcorner = Communicators.back();
-              commcorner.RecvCells.push_back(cornerRecvCells[i]);
-              commcorner.SendCells.push_back(cornerSendCells[i]);
-              commcorner.Direction = getCornerNbrDirection<3>(block.whichCorner(cornerRecvCells[i]));
-            }
-            // add edge cells to communicators and find direction
-            for (std::size_t i = 0; i < edgeRecvCells.size(); ++i) {
-              if (edgeRecvCells[i].size() > 0) {
-                Communicators.emplace_back(nblock);
-                BlockComm<T, 3> &commedge = Communicators.back();
-                commedge.RecvCells = edgeRecvCells[i];
-                commedge.SendCells = edgeSendCells[i];
-                commedge.Direction = getEdgeNbrDirection<3>(block.whichEdge(edgeRecvCells[i][0]));
-              }
-            }
-          } else {
-            // no corner and edge cells means uniform direction
-            // find direction for normal(face) cells
-            comm.Direction = getFaceNbrDirection(block.whichFace(comm.RecvCells[0]));
-          }
-           // add inner cells to communicators
-          if (InnerRecvCells.size() > 0) {
-            block.getInnerCommunicators().emplace_back(nblock);
-            BlockComm<T, 3> &commInner = block.getInnerCommunicators().back();
-            commInner.RecvCells = InnerRecvCells;
-            commInner.SendCells = InnerSendCells;
+        // add edge cells to communicators and find direction
+        for (std::size_t i = 0; i < EdgeRecvs.size(); ++i) {
+          if (EdgeRecvs[i].size() > 0) {
+            Comms.emplace_back(nblock->getBlockId(), Tag);
+            ++Tag;
+            SharedComm &commedge = Comms.back();
+            commedge.setRecvSendIdx(EdgeRecvs[i], EdgeSends[i]);
+            commedge.Direction = getEdgeNbrDirection<3>(block.whichEdge(EdgeRecvs[i][0]));
           }
         }
+        // ------ add to AllComms
+        // here we will NOT consider direction in ALLComms for now
+        std::vector<std::size_t> AllRecvs;
+        std::vector<std::size_t> AllSends;
+        block.getCellIdx(baseblock_exto, nblock->getBaseBlock(), AllRecvs);
+        nblock->getCellIdx(nblock->getBaseBlock(), baseblock_exto, AllSends);
+        // add cell index to communicator
+        AllComms.emplace_back(nblock->getBlockId());
+        SharedComm &allcomm = AllComms.back();
+        allcomm.setRecvSendIdx(AllRecvs, AllSends);
       }
     }
   }
@@ -405,59 +368,25 @@ void BlockGeometry3D<T>::InitComm() {
 template <typename T>
 void BlockGeometry3D<T>::InitAverComm() {
   for (Block3D<T> &block : _Blocks) {
-    std::vector<IntpBlockComm<T, 3>> &Communicators = block.getAverageBlockComm();
-    Communicators.clear();
-    // get the first layer of overlapped cells(counted from inside to outside)
+    // (inner) overlapped cell communicators
+    std::vector<SharedComm> &Comms = block.getCommunicator().Comm.AverComm;
+    // all overlapped cell communicators
+    std::vector<SharedComm> &AllComms = block.getCommunicator().AllComm.AverComm;
+    Comms.clear();
+    AllComms.clear();
+    // get block with overlap 1, for Comms
     BasicBlock<T, 3> baseblock_ext1 = block.getBaseBlock().getExtBlock(1);
+    // get block with overlap = _overlap, for AllComms
+    BasicBlock<T, 3> baseblock_exto = block.getSelfBlock();
+
     std::uint8_t blocklevel = block.getLevel();
-    std::size_t XY = block.getNx() * block.getNy();
     for (Block3D<T> *nblock : block.getNeighbors()) {
       // find block of blocklevel+1
       if (nblock->getLevel() == blocklevel + 1) {
-        Communicators.emplace_back(nblock);
-        IntpBlockComm<T, 3> &comm = Communicators.back();
-        // vox size
-        const T Cvoxsize = block.getVoxelSize();
-        const T Fvoxsize = nblock->getVoxelSize();
-        // get intersection
-        const AABB<T, 3> intsec = getIntersection(baseblock_ext1, nblock->getBaseBlock());
-        int CNx = static_cast<int>(std::round(intsec.getExtension()[0] / Cvoxsize));
-        int CNy = static_cast<int>(std::round(intsec.getExtension()[1] / Cvoxsize));
-        int CNz = static_cast<int>(std::round(intsec.getExtension()[2] / Cvoxsize));
-        // start index of intsec in block
-        Vector<T, 3> startC = intsec.getMin() - block.getMin();
-        int startCx = static_cast<int>(std::round(startC[0] / Cvoxsize));
-        int startCy = static_cast<int>(std::round(startC[1] / Cvoxsize));
-        int startCz = static_cast<int>(std::round(startC[2] / Cvoxsize));
-        // start index of intsec in nblock
-        Vector<T, 3> startF = intsec.getMin() - nblock->getMin();
-        int startFx = static_cast<int>(std::round(startF[0] / Fvoxsize));
-        int startFy = static_cast<int>(std::round(startF[1] / Fvoxsize));
-        int startFz = static_cast<int>(std::round(startF[2] / Fvoxsize));
-
-        std::size_t nXY = nblock->getNx() * nblock->getNy();
-        for (int iz = 0; iz < CNz; ++iz) {
-          for (int iy = 0; iy < CNy; ++iy) {
-            for (int ix = 0; ix < CNx; ++ix) {
-              std::size_t Cid =
-                (iz + startCz) * XY + (iy + startCy) * block.getNx() + ix + startCx;
-              std::size_t Fid0 = (iz * 2 + startFz) * nXY +
-                                 (iy * 2 + startFy) * nblock->getNx() + ix * 2 + startFx;
-              std::size_t Fid1 = Fid0 + 1;
-              std::size_t Fid2 = Fid0 + nblock->getNx();
-              std::size_t Fid3 = Fid2 + 1;
-
-              std::size_t Fid4 = Fid0 + nXY;
-              std::size_t Fid5 = Fid4 + 1;
-              std::size_t Fid6 = Fid4 + nblock->getNx();
-              std::size_t Fid7 = Fid6 + 1;
-
-              comm.RecvCells.push_back(Cid);
-              comm.SendCells.emplace_back(
-                IntpSource<3>{Fid0, Fid1, Fid2, Fid3, Fid4, Fid5, Fid6, Fid7});
-            }
-          }
-        }
+        // ------ add to Comms
+        AddtoSharedAverComm(Comms, baseblock_ext1, block, nblock);
+        // ------ add to AllComms
+        AddtoSharedAverComm(AllComms, baseblock_exto, block, nblock);
       } else if (nblock->getLevel() > blocklevel + 1) {
         std::cerr << "[BlockGeometry3D<T>::InitAverComm] Error: block level difference "
                      "larger than 1"
@@ -470,167 +399,21 @@ void BlockGeometry3D<T>::InitAverComm() {
 template <typename T>
 void BlockGeometry3D<T>::InitIntpComm() {
   for (Block3D<T> &block : _Blocks) {
+    // (inner) overlapped cell communicators
+    std::vector<SharedComm> &Comms = block.getCommunicator().Comm.IntpComm;
+    // all overlapped cell communicators
+    std::vector<SharedComm> &AllComms = block.getCommunicator().AllComm.IntpComm;
+    Comms.clear();
+    AllComms.clear();
+    // get block with overlap = _overlap, for both Comms and AllComms
     std::uint8_t blocklevel = block.getLevel();
-    std::vector<IntpBlockComm<T, 3>> &Communicators = block.getIntpBlockComm();
-    Communicators.clear();
-    std::size_t XY = block.getNx() * block.getNy();
     for (Block3D<T> *nblock : block.getNeighbors()) {
       // find block of blocklevel-1
       if (nblock->getLevel() == blocklevel - 1) {
-        Communicators.emplace_back(nblock);
-        IntpBlockComm<T, 3> &comm = Communicators.back();
-        // vox size
-        const T Cvoxsize = nblock->getVoxelSize();
-        const T Fvoxsize = block.getVoxelSize();
-        // get intersection
-        const AABB<T, 3> intsec = getIntersection(block, nblock->getBaseBlock());
-        int CNx = static_cast<int>(std::round(intsec.getExtension()[0] / Cvoxsize));
-        int CNy = static_cast<int>(std::round(intsec.getExtension()[1] / Cvoxsize));
-        int CNz = static_cast<int>(std::round(intsec.getExtension()[2] / Cvoxsize));
-        // get start index of intsec in nblock
-        Vector<T, 3> startC = intsec.getMin() - nblock->getMin();
-        // shift 1 voxel to left bottom for interpolation
-        int startCx = static_cast<int>(std::round(startC[0] / Cvoxsize)) - 1;
-        int startCy = static_cast<int>(std::round(startC[1] / Cvoxsize)) - 1;
-        int startCz = static_cast<int>(std::round(startC[2] / Cvoxsize)) - 1;
-        // start index of intsec in FBlock
-        Vector<T, 3> startF = intsec.getMin() - block.getMin();
-        int startFx = static_cast<int>(std::round(startF[0] / Fvoxsize));
-        int startFy = static_cast<int>(std::round(startF[1] / Fvoxsize));
-        int startFz = static_cast<int>(std::round(startF[2] / Fvoxsize));
-
-        std::size_t nXY = nblock->getNx() * nblock->getNy();
-        for (int iz = 0; iz < CNz; ++iz) {
-          for (int iy = 0; iy < CNy; ++iy) {
-            for (int ix = 0; ix < CNx; ++ix) {
-              // original
-              std::size_t Cid0 =
-                (iz + startCz) * nXY + (iy + startCy) * nblock->getNx() + ix + startCx;
-              std::size_t Cid1 = Cid0 + 1;
-              std::size_t Cid2 = Cid0 + nblock->getNx();
-              std::size_t Cid3 = Cid2 + 1;
-              std::size_t Cid4 = Cid0 + nXY;
-              std::size_t Cid5 = Cid4 + 1;
-              std::size_t Cid6 = Cid4 + nblock->getNx();
-              std::size_t Cid7 = Cid6 + 1;
-              std::size_t Fid = (iz * 2 + startFz) * XY + (iy * 2 + startFy) * block.getNx() + ix * 2 + startFx;
-
-              // shift 1 voxel along +x direction
-              std::size_t Cid0_x = Cid0 + 1;
-              std::size_t Cid1_x = Cid1 + 1;
-              std::size_t Cid2_x = Cid2 + 1;
-              std::size_t Cid3_x = Cid3 + 1;
-              std::size_t Cid4_x = Cid4 + 1;
-              std::size_t Cid5_x = Cid5 + 1;
-              std::size_t Cid6_x = Cid6 + 1;
-              std::size_t Cid7_x = Cid7 + 1;
-              std::size_t Fid_x = Fid + 1;
-
-              // shift 1 voxel along +y direction
-              std::size_t Cid0_y = Cid0 + nblock->getNx();
-              std::size_t Cid1_y = Cid1 + nblock->getNx();
-              std::size_t Cid2_y = Cid2 + nblock->getNx();
-              std::size_t Cid3_y = Cid3 + nblock->getNx();
-              std::size_t Cid4_y = Cid4 + nblock->getNx();
-              std::size_t Cid5_y = Cid5 + nblock->getNx();
-              std::size_t Cid6_y = Cid6 + nblock->getNx();
-              std::size_t Cid7_y = Cid7 + nblock->getNx();
-              std::size_t Fid_y = Fid + block.getNx();
-
-              // shift 1 voxel along +z direction
-              std::size_t Cid0_z = Cid0 + nXY;
-              std::size_t Cid1_z = Cid1 + nXY;
-              std::size_t Cid2_z = Cid2 + nXY;
-              std::size_t Cid3_z = Cid3 + nXY;
-              std::size_t Cid4_z = Cid4 + nXY;
-              std::size_t Cid5_z = Cid5 + nXY;
-              std::size_t Cid6_z = Cid6 + nXY;
-              std::size_t Cid7_z = Cid7 + nXY;
-              std::size_t Fid_z = Fid + XY;
-
-              // 0
-              comm.RecvCells.push_back(Fid);
-              comm.SendCells.emplace_back(
-                IntpSource<3>{Cid0, Cid1, Cid2, Cid3, Cid4, Cid5, Cid6, Cid7});
-
-              // 1
-              comm.RecvCells.push_back(Fid_x);
-              comm.SendCells.emplace_back(IntpSource<3>{
-                Cid0_x, Cid1_x, Cid2_x, Cid3_x, Cid4_x, Cid5_x, Cid6_x, Cid7_x});
-
-              // 2
-              comm.RecvCells.push_back(Fid_y);
-              comm.SendCells.emplace_back(IntpSource<3>{
-                Cid0_y, Cid1_y, Cid2_y, Cid3_y, Cid4_y, Cid5_y, Cid6_y, Cid7_y});
-
-              // 3
-              std::size_t Cid0_xy = Cid0_y + 1;
-              std::size_t Cid1_xy = Cid1_y + 1;
-              std::size_t Cid2_xy = Cid2_y + 1;
-              std::size_t Cid3_xy = Cid3_y + 1;
-              std::size_t Cid4_xy = Cid4_y + 1;
-              std::size_t Cid5_xy = Cid5_y + 1;
-              std::size_t Cid6_xy = Cid6_y + 1;
-              std::size_t Cid7_xy = Cid7_y + 1;
-              std::size_t Fid_xy = Fid_y + 1;
-
-              comm.RecvCells.push_back(Fid_xy);
-              comm.SendCells.emplace_back(IntpSource<3>{
-                Cid0_xy, Cid1_xy, Cid2_xy, Cid3_xy, Cid4_xy, Cid5_xy, Cid6_xy, Cid7_xy});
-
-              // 4
-              comm.RecvCells.push_back(Fid_z);
-              comm.SendCells.emplace_back(IntpSource<3>{
-                Cid0_z, Cid1_z, Cid2_z, Cid3_z, Cid4_z, Cid5_z, Cid6_z, Cid7_z});
-
-              // 5
-              std::size_t Cid0_xz = Cid0_z + 1;
-              std::size_t Cid1_xz = Cid1_z + 1;
-              std::size_t Cid2_xz = Cid2_z + 1;
-              std::size_t Cid3_xz = Cid3_z + 1;
-              std::size_t Cid4_xz = Cid4_z + 1;
-              std::size_t Cid5_xz = Cid5_z + 1;
-              std::size_t Cid6_xz = Cid6_z + 1;
-              std::size_t Cid7_xz = Cid7_z + 1;
-              std::size_t Fid_xz = Fid_z + XY;
-
-              comm.RecvCells.push_back(Fid_xz);
-              comm.SendCells.emplace_back(IntpSource<3>{
-                Cid0_xz, Cid1_xz, Cid2_xz, Cid3_xz, Cid4_xz, Cid5_xz, Cid6_xz, Cid7_xz});
-
-              // 6
-              std::size_t Cid0_yz = Cid0_z + nblock->getNx();
-              std::size_t Cid1_yz = Cid1_z + nblock->getNx();
-              std::size_t Cid2_yz = Cid2_z + nblock->getNx();
-              std::size_t Cid3_yz = Cid3_z + nblock->getNx();
-              std::size_t Cid4_yz = Cid4_z + nblock->getNx();
-              std::size_t Cid5_yz = Cid5_z + nblock->getNx();
-              std::size_t Cid6_yz = Cid6_z + nblock->getNx();
-              std::size_t Cid7_yz = Cid7_z + nblock->getNx();
-              std::size_t Fid_yz = Fid_z + XY;
-
-              comm.RecvCells.push_back(Fid_yz);
-              comm.SendCells.emplace_back(IntpSource<3>{
-                Cid0_yz, Cid1_yz, Cid2_yz, Cid3_yz, Cid4_yz, Cid5_yz, Cid6_yz, Cid7_yz});
-
-              // 7
-              std::size_t Cid0_xyz = Cid0_yz + 1;
-              std::size_t Cid1_xyz = Cid1_yz + 1;
-              std::size_t Cid2_xyz = Cid2_yz + 1;
-              std::size_t Cid3_xyz = Cid3_yz + 1;
-              std::size_t Cid4_xyz = Cid4_yz + 1;
-              std::size_t Cid5_xyz = Cid5_yz + 1;
-              std::size_t Cid6_xyz = Cid6_yz + 1;
-              std::size_t Cid7_xyz = Cid7_yz + 1;
-              std::size_t Fid_xyz = Fid_yz + 1;
-
-              comm.RecvCells.push_back(Fid_xyz);
-              comm.SendCells.emplace_back(IntpSource<3>{Cid0_xyz, Cid1_xyz, Cid2_xyz,
-                                                          Cid3_xyz, Cid4_xyz, Cid5_xyz,
-                                                          Cid6_xyz, Cid7_xyz});
-            }
-          }
-        }
+        // ------ add to Comms
+        AddtoSharedIntpComm(Comms, block, nblock);
+        // ------ add to AllComms, for now it is the same as Comms
+        AddtoSharedIntpComm(AllComms, block, nblock);
       } else if (nblock->getLevel() < blocklevel - 1) {
         std::cerr << "[BlockGeometry3D<T>::InitIntpComm] Error: block level difference "
                      "larger than 1"
@@ -649,122 +432,255 @@ void BlockGeometry3D<T>::InitAllComm() {
 #ifdef MPI_ENABLED
 
 template <typename T>
+BlockGeometry3D<T>::BlockGeometry3D(BlockGeometryHelper3D<T> &GeoHelper, 
+std::vector<BasicBlock<T, 3>>& BasicBlocks)
+    : BasicBlock<T, 3>(GeoHelper), _BaseBlock(GeoHelper.getBaseBlock()), 
+      _overlap(GeoHelper.getExt()), _MaxLevel(GeoHelper.getMaxLevel()) {
+  // create blocks from GeoHelper
+  for (BasicBlock<T, 3>& baseblock : BasicBlocks) {
+    int overlap = (baseblock.getLevel() != std::uint8_t(0)) ? 2 : 1;
+    _Blocks.emplace_back(baseblock, overlap);
+    _BasicBlocks.emplace_back(baseblock);
+  }
+  BuildBlockIndexMap();
+  SetupNbrs();
+  // this uses all blocks of the same level to init shared communicators
+  // for mpi communication with direction info 
+  InitComm();
+}
+
+template <typename T>
 void BlockGeometry3D<T>::InitMPIComm(BlockGeometryHelper3D<T> &GeoHelper) {
+  // mpi efficient send/recv using direction info for pop communication
+  const BlockGeometry3D<T>& HelperBlockGeometry = GeoHelper.getBlockGeometry3D();
   for (Block3D<T> &block : _Blocks) {
-    MPIBlockComm &MPIComm = block.getMPIBlockComm();
-    MPIComm.clear();
-    std::uint8_t blocklevel = block.getLevel();
+    // efficient MPI Recvs/Sends using direction info for pop communication
+    std::vector<DistributedComm>& Recvs = block.getCommunicator().DirRecvs;
+    std::vector<DistributedComm>& Sends = block.getCommunicator().DirSends;
+    Recvs.clear();
+    Sends.clear();
+    // find hblock in HelperBlockGeometry with:
+    // the same blockid as block or
+    // the same sendblockid in hblock's communicator
+    for (const Block3D<T> &hblock : HelperBlockGeometry.getBlocks()) {
+      // get all normal communicators of hblock
+      const std::vector<SharedComm>& hComms = hblock.getCommunicator().Comm.Comms;
+
+      if (hblock.getBlockId() == block.getBlockId()) {
+        // find if nbr block of hblock is NOT in _Blocks(not in this rank)
+        bool UseMPIComm = false;
+        std::vector<const SharedComm*> SendhComms;
+        for(const SharedComm& hComm : hComms) {
+          if (!hasBlock(hComm.SendBlockId)) {
+            UseMPIComm = true;
+            SendhComms.push_back(&hComm);
+          }
+        }
+        if (UseMPIComm) {
+          // init MPI communicators
+          for (const SharedComm* SendhComm : SendhComms) {
+            Recvs.emplace_back(GeoHelper.whichRank(SendhComm->SendBlockId), SendhComm->SendBlockId, SendhComm->Tag);
+            DistributedComm& mpirecv = Recvs.back();
+            mpirecv.Direction = SendhComm->Direction;
+            SendhComm->getRecvvector(mpirecv.Cells);
+          }
+        }
+      } else {
+        // find if hblock is NOT in _Blocks(not in this rank)
+        if (!hasBlock(hblock.getBlockId())) {
+          // find if block is the target of hblock's communicator
+          for(const SharedComm& hComm : hComms) {
+            if (hComm.SendBlockId == block.getBlockId()) {
+              Sends.emplace_back(GeoHelper.whichRank(hblock.getBlockId()), hblock.getBlockId(), hComm.Tag);
+              DistributedComm& mpisend = Sends.back();
+              mpisend.Direction = hComm.Direction;
+              hComm.getSendvector(mpisend.Cells);
+            }
+          }
+        }
+      }
+    }
+  }
+
+for (Block3D<T> &block : _Blocks) {
+    // (inner) overlapped cell communicators
+    DistributedCommSet &MPIComm = block.getCommunicator().MPIComm;
+    // all overlapped cell communicators
+    DistributedCommSet &AllMPIComm = block.getCommunicator().AllMPIComm;
+    MPIComm.Recvs.clear();
+    MPIComm.Sends.clear();
+    AllMPIComm.Recvs.clear();
+    AllMPIComm.Sends.clear();
     // base block of block
     const BasicBlock<T, 3> &baseblock = block.getBaseBlock();
-    // get the first layer of overlapped cells(counted from inside to outside)
-    // int overlap = (blocklevel != std::uint8_t(0)) ? 2 : 1;
+    // get block with overlap 1, for Comms
     BasicBlock<T, 3> baseblock_ext1 = baseblock.getExtBlock(1);
-    // find neighbors
-    std::vector<std::pair<int, int>> &nbrs =
-      GeoHelper.getMPIBlockNbrs(block.getBlockId());
+    // get block with overlap = _overlap, for AllComms
+    BasicBlock<T, 3> baseblock_exto = block.getSelfBlock();
+
+    std::uint8_t blocklevel = block.getLevel();
+    std::vector<std::pair<int, int>> &nbrs = GeoHelper.getMPIBlockNbrs(block.getBlockId());
+
     for (const std::pair<int, int> &nbr : nbrs) {
       // check if 2 blocks are of the same level
       const BasicBlock<T, 3> &nbaseblock = GeoHelper.getAllBasicBlock(static_cast<std::size_t>(nbr.second));
       if (nbaseblock.getLevel() == blocklevel) {
         BasicBlock<T, 3> nbaseblock_ext1 = nbaseblock.getExtBlock(1);
-        // init sender
-        MPIComm.Senders.emplace_back(nbr.first, nbaseblock.getBlockId());
-        MPIBlockSendStru &sender = MPIComm.Senders.back();
-        block.getCellIdx(baseblock, nbaseblock_ext1, sender.SendCells);
+        BasicBlock<T, 3> nbaseblock_exto = nbaseblock.getExtBlock(block.getOverlap());
+        // ------ add to Comms
         // init receiver
-        MPIComm.Recvers.emplace_back(nbr.first, nbaseblock.getBlockId());
-        MPIBlockRecvStru &recver = MPIComm.Recvers.back();
-        block.getCellIdx(nbaseblock, baseblock_ext1, recver.RecvCells);
+        MPIComm.Recvs.emplace_back(nbr.first, nbaseblock.getBlockId());
+        DistributedComm& mpirecv = MPIComm.Recvs.back();
+        // get overlapped recv/send cells
+        block.getCellIdx(baseblock_ext1, nbaseblock, mpirecv.Cells);
 
-        block._NeedMPIComm = true;
+        // init sender
+        MPIComm.Sends.emplace_back(nbr.first, nbaseblock.getBlockId());
+        DistributedComm& mpisend = MPIComm.Sends.back();
+        // get overlapped recv/send cells
+        block.getCellIdx(baseblock, nbaseblock_ext1, mpisend.Cells);
+
+        // ------ add to AllComms
+        // init receiver
+        AllMPIComm.Recvs.emplace_back(nbr.first, nbaseblock.getBlockId());
+        DistributedComm& allmpirecv = AllMPIComm.Recvs.back();
+        // get overlapped recv/send cells
+        block.getCellIdx(baseblock_exto, nbaseblock, allmpirecv.Cells);
+        // init sender
+        AllMPIComm.Sends.emplace_back(nbr.first, nbaseblock.getBlockId());
+        DistributedComm& allmpisend = AllMPIComm.Sends.back();
+        // get overlapped recv/send cells
+        block.getCellIdx(baseblock, nbaseblock_exto, allmpisend.Cells);
+
+        block.getCommunicator()._NeedMPIComm = true;
       }
     }
   }
+  // // add direction info for mpi send
+  // mpi().barrier();
+  // std::vector<std::vector<std::uint8_t>> SendBuffers(
+  //   _Blocks.size(), std::vector<std::uint8_t>{});
+  // std::vector<std::vector<std::uint8_t>> RecvBuffers(
+  //   _Blocks.size(), std::vector<std::uint8_t>{});
+  // std::size_t iblock{};
+  // // --- send data --- we send recv direction here
+  // std::vector<MPI_Request> SendRequests;
+  // for (Block3D<T> &block : _Blocks) {
+  //   const std::vector<DistributedComm> &Sends = block.getCommunicator().MPIComm.Recvs;
+  //   std::vector<std::uint8_t>& SendBuffer = SendBuffers[iblock];
+  //   SendBuffer.resize(Sends.size(), std::uint8_t{});
+  //   for (std::size_t i = 0; i < Sends.size(); ++i) {
+  //     const DistributedComm& mpisend = Sends[i];
+  //     std::uint8_t& buffer = SendBuffer[i];
+  //     buffer = static_cast<std::uint8_t>(mpisend.Direction);
+  //     // non-blocking send
+  //     MPI_Request request;
+  //     mpi().iSend(&buffer, 1, mpisend.TargetRank, &request, mpisend.TargetBlockId);
+  //     SendRequests.push_back(request);
+  //   }
+  //   ++iblock;
+  // }
+  // // --- receive data --- we receive send direction here
+  // iblock = 0;
+  // std::vector<MPI_Request> RecvRequests;
+  // for (Block3D<T> &block : _Blocks) {
+  //   const std::vector<DistributedComm> &Recvs = block.getCommunicator().MPIComm.Sends;
+  //   std::vector<std::uint8_t>& RecvBuffer = RecvBuffers[iblock];
+  //   RecvBuffer.resize(Recvs.size(), std::uint8_t{});
+  //   for (std::size_t i = 0; i < Recvs.size(); ++i) {
+  //     const DistributedComm& mpirecv = Recvs[i];
+  //     std::uint8_t& buffer = RecvBuffer[i];
+  //     // non-blocking recv
+  //     MPI_Request request;
+  //     mpi().iRecv(&buffer, 1, mpirecv.TargetRank, &request, block.getBlockId());
+  //     RecvRequests.push_back(request);
+  //   }
+  //   ++iblock;
+  // }
+  // // wait for all send and recv requests to complete
+  // MPI_Waitall(SendRequests.size(), SendRequests.data(), MPI_STATUSES_IGNORE);
+  // MPI_Waitall(RecvRequests.size(), RecvRequests.data(), MPI_STATUSES_IGNORE);
+  // // --- wait and set data ---
+  // iblock = 0;
+  // for (Block3D<T> &block : _Blocks) {
+  //   std::vector<DistributedComm> &Recvs = block.getCommunicator().MPIComm.Sends;
+  //   const std::vector<std::uint8_t>& RecvBuffer = RecvBuffers[iblock];
+  //   for (std::size_t i = 0; i < Recvs.size(); ++i) {
+  //     DistributedComm& mpirecv = Recvs[i];
+  //     mpirecv.Direction = static_cast<NbrDirection>(RecvBuffer[i]);
+  //   }
+  //   ++iblock;
+  // }
+  // mpi().barrier();
 }
 
 template <typename T>
 void BlockGeometry3D<T>::InitMPIAverComm(BlockGeometryHelper3D<T> &GeoHelper) {
   for (Block3D<T> &block : _Blocks) {
-    MPIIntpBlockComm<T, 3> &MPIComm = block.getMPIAverBlockComm();
-    MPIComm.clear();
-    std::uint8_t blocklevel = block.getLevel();
+    // (inner) overlapped cell communicators
+    DistributedCommSet &MPIComm = block.getCommunicator().MPIComm;
+    // all overlapped cell communicators
+    DistributedCommSet &AllMPIComm = block.getCommunicator().AllMPIComm;
+    MPIComm.AverRecvs.clear();
+    MPIComm.AverSends.clear();
+    AllMPIComm.AverRecvs.clear();
+    AllMPIComm.AverSends.clear();
+
+    // base block of block
     const BasicBlock<T, 3> &baseblock = block.getBaseBlock();
-    // first layer of overlapped cells(counted from inside to outside)
+    // get block with overlap 1, for Comms
     BasicBlock<T, 3> baseblock_ext1 = baseblock.getExtBlock(1);
-    std::vector<std::pair<int, int>> &nbrs =
-      GeoHelper.getMPIBlockNbrs(block.getBlockId());
-    std::size_t XY = block.getNx() * block.getNy();
+    // get block with overlap = _overlap, for AllComms
+    BasicBlock<T, 3> baseblock_exto = block.getSelfBlock();
+
+    std::uint8_t blocklevel = block.getLevel();
+    std::vector<std::pair<int, int>> &nbrs = GeoHelper.getMPIBlockNbrs(block.getBlockId());
+
     for (const std::pair<int, int> &nbr : nbrs) {
       const BasicBlock<T, 3> &nbaseblock = GeoHelper.getAllBasicBlock(static_cast<std::size_t>(nbr.second));
-      if (nbaseblock.getLevel() == blocklevel - 1) {
-        BasicBlock<T, 3> nbaseblock_ext1 = nbaseblock.getExtBlock(1);
-        // init sender
-        MPIComm.Senders.emplace_back(nbr.first, nbaseblock.getBlockId());
-        MPIIntpBlockSendStru<T, 3> &sender = MPIComm.Senders.back();
-        // vox size
-        const T Cvoxsize = nbaseblock.getVoxelSize();
-        const T Fvoxsize = block.getVoxelSize();
-        // init sender
-        // get intersection
-        const AABB<T, 3> intsec = getIntersection(baseblock, nbaseblock_ext1);
-        // use coarse grid size here, convient for calculating fine cell index
-        int CNx = static_cast<int>(std::round(intsec.getExtension()[0] / Cvoxsize));
-        int CNy = static_cast<int>(std::round(intsec.getExtension()[1] / Cvoxsize));
-        int CNz = static_cast<int>(std::round(intsec.getExtension()[2] / Cvoxsize));
-        // start index of intsec in block
-        Vector<T, 3> startF = intsec.getMin() - block.getMin();
-        int startFx = static_cast<int>(std::round(startF[0] / Fvoxsize));
-        int startFy = static_cast<int>(std::round(startF[1] / Fvoxsize));
-        int startFz = static_cast<int>(std::round(startF[2] / Fvoxsize));
-
-        for (int iz = 0; iz < CNz; ++iz) {
-          for (int iy = 0; iy < CNy; ++iy) {
-            for (int ix = 0; ix < CNx; ++ix) {
-              std::size_t Fid0 = (iz * 2 + startFz) * XY +
-                                 (iy * 2 + startFy) * block.getNx() + ix * 2 + startFx;
-              std::size_t Fid1 = Fid0 + 1;
-              std::size_t Fid2 = Fid0 + block.getNx();
-              std::size_t Fid3 = Fid2 + 1;
-
-              std::size_t Fid4 = Fid0 + XY;
-              std::size_t Fid5 = Fid4 + 1;
-              std::size_t Fid6 = Fid4 + block.getNx();
-              std::size_t Fid7 = Fid6 + 1;
-
-              sender.SendCells.emplace_back(
-                IntpSource<3>{Fid0, Fid1, Fid2, Fid3, Fid4, Fid5, Fid6, Fid7});
-            }
-          }
-        }
-        block._NeedMPIComm = true;
-      } else if (nbaseblock.getLevel() == blocklevel + 1) {
+      if (nbaseblock.getLevel() == blocklevel + 1) {
         // init receiver
-        MPIComm.Recvers.emplace_back(nbr.first, nbaseblock.getBlockId());
-        MPIBlockRecvStru &recver = MPIComm.Recvers.back();
-        // vox size
-        const T Cvoxsize = block.getVoxelSize();
-        // const T Fvoxsize = nbaseblock.getVoxelSize();
-        // get intersection
-        const AABB<T, 3> intsec = getIntersection(baseblock_ext1, nbaseblock);
-        int CNx = static_cast<int>(std::round(intsec.getExtension()[0] / Cvoxsize));
-        int CNy = static_cast<int>(std::round(intsec.getExtension()[1] / Cvoxsize));
-        int CNz = static_cast<int>(std::round(intsec.getExtension()[2] / Cvoxsize));
-        // start index of intsec in block
-        Vector<T, 3> startC = intsec.getMin() - block.getMin();
-        int startCx = static_cast<int>(std::round(startC[0] / Cvoxsize));
-        int startCy = static_cast<int>(std::round(startC[1] / Cvoxsize));
-        int startCz = static_cast<int>(std::round(startC[2] / Cvoxsize));
+        MPIComm.AverRecvs.emplace_back(nbr.first, nbaseblock.getBlockId());
+        DistributedComm &recver = MPIComm.AverRecvs.back();
+        block.getCellIdx(baseblock_ext1, nbaseblock, recver.Cells);
 
-        for (int iz = 0; iz < CNz; ++iz) {
-          for (int iy = 0; iy < CNy; ++iy) {
-            for (int ix = 0; ix < CNx; ++ix) {
-              std::size_t Cid =
-                (iz + startCz) * XY + (iy + startCy) * block.getNx() + ix + startCx;
-              recver.RecvCells.push_back(Cid);
-            }
-          }
+        AllMPIComm.AverRecvs.emplace_back(nbr.first, nbaseblock.getBlockId());
+        DistributedComm &Allrecver = AllMPIComm.AverRecvs.back();
+        block.getCellIdx(baseblock_exto, nbaseblock, Allrecver.Cells);
+
+        block.getCommunicator()._NeedMPIComm = true;
+      } else if (nbaseblock.getLevel() == blocklevel - 1) {
+        // init sender
+        // virtual coarse block
+        BasicBlock<T, 3> Cblock = block.getCoasenedBlock();
+
+        BasicBlock<T, 3> nbaseblock_ext1 = nbaseblock.getExtBlock(1);
+        int noverlap = nbaseblock.getLevel() == std::uint8_t(0) ? 1 : 2;
+        BasicBlock<T, 3> nbaseblock_exto = nbaseblock.getExtBlock(noverlap);
+
+        MPIComm.AverSends.emplace_back(nbr.first, nbaseblock.getBlockId());
+        DistributedComm &sender = MPIComm.AverSends.back();
+        std::vector<std::size_t> VSends;
+        Cblock.getCellIdx(baseblock, nbaseblock_ext1, VSends);
+        sender.Cells.reserve(VSends.size()*8);
+        for (std::size_t vid : VSends) {
+          std::vector<std::size_t> idxs;
+          Cblock.getRefinedCellIdx(vid, idxs);
+          sender.Cells.insert(sender.Cells.end(), idxs.begin(), idxs.end());          
         }
-        block._NeedMPIComm = true;
+
+        AllMPIComm.AverSends.emplace_back(nbr.first, nbaseblock.getBlockId());
+        DistributedComm &allsender = AllMPIComm.AverSends.back();
+        std::vector<std::size_t> AllVSends;
+        Cblock.getCellIdx(baseblock, nbaseblock_exto, AllVSends);
+        allsender.Cells.reserve(AllVSends.size()*8);
+        for (std::size_t vid : AllVSends) {
+          std::vector<std::size_t> idxs;
+          Cblock.getRefinedCellIdx(vid, idxs);
+          allsender.Cells.insert(allsender.Cells.end(), idxs.begin(), idxs.end());          
+        }
+
+        block.getCommunicator()._NeedMPIComm = true;
       } else if (nbaseblock.getLevel() > blocklevel + 1 ||
                  nbaseblock.getLevel() < blocklevel - 1) {
         std::cerr << "[BlockGeometry3D<T>::InitMPIAverComm] Error: block level "
@@ -778,26 +694,61 @@ void BlockGeometry3D<T>::InitMPIAverComm(BlockGeometryHelper3D<T> &GeoHelper) {
 template <typename T>
 void BlockGeometry3D<T>::InitMPIIntpComm(BlockGeometryHelper3D<T> &GeoHelper) {
   for (Block3D<T> &block : _Blocks) {
-    MPIIntpBlockComm<T, 3> &MPIComm = block.getMPIIntpBlockComm();
-    MPIComm.clear();
-    std::uint8_t blocklevel = block.getLevel();
+    // (inner) overlapped cell communicators
+    DistributedCommSet &MPIComm = block.getCommunicator().MPIComm;
+    // all overlapped cell communicators
+    DistributedCommSet &AllMPIComm = block.getCommunicator().AllMPIComm;
+    MPIComm.IntpRecvs.clear();
+    MPIComm.IntpSends.clear();
+    AllMPIComm.IntpRecvs.clear();
+    AllMPIComm.IntpSends.clear();
+
+    // base block of block
     const BasicBlock<T, 3> &baseblock = block.getBaseBlock();
-    // 2 layers of overlapped cells(counted from inside to outside)
-    // BasicBlock<T, 3> baseblock_ext2 = baseblock.getExtBlock(2);
-    std::vector<std::pair<int, int>> &nbrs =
-      GeoHelper.getMPIBlockNbrs(block.getBlockId());
-    std::size_t XY = block.getNx() * block.getNy();
+    // get block with overlap 1, for Comms
+    // BasicBlock<T, 3> baseblock_ext1 = baseblock.getExtBlock(1);
+    // get block with overlap = _overlap, for AllComms
+    // BasicBlock<T, 3> baseblock_exto = block.getSelfBlock();
+
+    std::uint8_t blocklevel = block.getLevel();
+    std::vector<std::pair<int, int>> &nbrs = GeoHelper.getMPIBlockNbrs(block.getBlockId());
+
     for (const std::pair<int, int> &nbr : nbrs) {
       const BasicBlock<T, 3> &nbaseblock = GeoHelper.getAllBasicBlock(static_cast<std::size_t>(nbr.second));
-      if (nbaseblock.getLevel() == blocklevel + 1) {
-        BasicBlock<T, 3> nbaseblock_ext2 = nbaseblock.getExtBlock(2);
+      if (nbaseblock.getLevel() == blocklevel - 1) {
+        // init receiver
+        // virtual coarse block
+        BasicBlock<T, 3> Cblock = block.getCoasenedBlock();
+
+        MPIComm.IntpRecvs.emplace_back(nbr.first, nbaseblock.getBlockId());
+        DistributedComm &recver = MPIComm.IntpRecvs.back();
+        AllMPIComm.IntpRecvs.emplace_back(nbr.first, nbaseblock.getBlockId());
+        DistributedComm &allrecver = AllMPIComm.IntpRecvs.back();
+
+        std::vector<std::size_t> VRecvs;
+        Cblock.getCellIdx(block, nbaseblock, VRecvs);
+
+        recver.Cells.reserve(VRecvs.size()*8);
+        allrecver.Cells.reserve(VRecvs.size()*8);
+        for (std::size_t vid : VRecvs) {
+          std::vector<std::size_t> idxs;
+          Cblock.getRefinedCellIdx(vid, idxs);
+          recver.Cells.insert(recver.Cells.end(), idxs.begin(), idxs.end());
+          allrecver.Cells.insert(allrecver.Cells.end(), idxs.begin(), idxs.end());        
+        }
+
+        block.getCommunicator()._NeedMPIComm = true;
+      } else if (nbaseblock.getLevel() == blocklevel + 1) {
         // init sender
-        MPIComm.Senders.emplace_back(nbr.first, nbaseblock.getBlockId());
-        MPIIntpBlockSendStru<T, 3> &sender = MPIComm.Senders.back();
+        BasicBlock<T, 3> nbaseblock_ext2 = nbaseblock.getExtBlock(2);
+        
+        MPIComm.IntpSends.emplace_back(nbr.first, nbaseblock.getBlockId());
+        DistributedComm &sender = MPIComm.IntpSends.back();
+        AllMPIComm.IntpSends.emplace_back(nbr.first, nbaseblock.getBlockId());
+        DistributedComm &allsender = AllMPIComm.IntpSends.back();
+
         // vox size
         const T Cvoxsize = block.getVoxelSize();
-        // const T Fvoxsize = nbaseblock.getVoxelSize();
-        // init sender
         // get intersection
         const AABB<T, 3> intsec = getIntersection(baseblock, nbaseblock_ext2);
         // use coarse grid size here, convient for calculating coarse cell index
@@ -811,12 +762,18 @@ void BlockGeometry3D<T>::InitMPIIntpComm(BlockGeometryHelper3D<T> &GeoHelper) {
         int startCy = static_cast<int>(std::round(startC[1] / Cvoxsize)) - 1;
         int startCz = static_cast<int>(std::round(startC[2] / Cvoxsize)) - 1;
 
+        std::vector<std::size_t>& Sends = sender.Cells;
+        std::vector<std::size_t>& AllSends = allsender.Cells;
+
+        Sends.reserve(CNx * CNy * CNz * 64);
+        AllSends.reserve(CNx * CNy * CNz * 64);
+
+        std::size_t XY = block.getNx() * block.getNy();
         for (int iz = 0; iz < CNz; ++iz) {
           for (int iy = 0; iy < CNy; ++iy) {
             for (int ix = 0; ix < CNx; ++ix) {
               // original
-              std::size_t Cid0 =
-                (iz + startCz) * XY + (iy + startCy) * block.getNx() + ix + startCx;
+              std::size_t Cid0 = (iz + startCz) * XY + (iy + startCy) * block.getNx() + ix + startCx;
               std::size_t Cid1 = Cid0 + 1;
               std::size_t Cid2 = Cid0 + block.getNx();
               std::size_t Cid3 = Cid2 + 1;
@@ -856,16 +813,16 @@ void BlockGeometry3D<T>::InitMPIIntpComm(BlockGeometryHelper3D<T> &GeoHelper) {
               std::size_t Cid7_z = Cid7 + XY;
 
               // 0
-              sender.SendCells.emplace_back(
-                IntpSource<3>{Cid0, Cid1, Cid2, Cid3, Cid4, Cid5, Cid6, Cid7});
+              Sends.insert(Sends.end(), {Cid0, Cid1, Cid2, Cid3, Cid4, Cid5, Cid6, Cid7});
+              AllSends.insert(AllSends.end(), {Cid0, Cid1, Cid2, Cid3, Cid4, Cid5, Cid6, Cid7});
 
               // 1
-              sender.SendCells.emplace_back(IntpSource<3>{
-                Cid0_x, Cid1_x, Cid2_x, Cid3_x, Cid4_x, Cid5_x, Cid6_x, Cid7_x});
+              Sends.insert(Sends.end(), {Cid0_x, Cid1_x, Cid2_x, Cid3_x, Cid4_x, Cid5_x, Cid6_x, Cid7_x});
+              AllSends.insert(AllSends.end(), {Cid0_x, Cid1_x, Cid2_x, Cid3_x, Cid4_x, Cid5_x, Cid6_x, Cid7_x});
 
               // 2
-              sender.SendCells.emplace_back(IntpSource<3>{
-                Cid0_y, Cid1_y, Cid2_y, Cid3_y, Cid4_y, Cid5_y, Cid6_y, Cid7_y});
+              Sends.insert(Sends.end(), {Cid0_y, Cid1_y, Cid2_y, Cid3_y, Cid4_y, Cid5_y, Cid6_y, Cid7_y});
+              AllSends.insert(AllSends.end(), {Cid0_y, Cid1_y, Cid2_y, Cid3_y, Cid4_y, Cid5_y, Cid6_y, Cid7_y});
 
               // 3
               std::size_t Cid0_xy = Cid0_y + 1;
@@ -877,12 +834,12 @@ void BlockGeometry3D<T>::InitMPIIntpComm(BlockGeometryHelper3D<T> &GeoHelper) {
               std::size_t Cid6_xy = Cid6_y + 1;
               std::size_t Cid7_xy = Cid7_y + 1;
 
-              sender.SendCells.emplace_back(IntpSource<3>{
-                Cid0_xy, Cid1_xy, Cid2_xy, Cid3_xy, Cid4_xy, Cid5_xy, Cid6_xy, Cid7_xy});
+              Sends.insert(Sends.end(), {Cid0_xy, Cid1_xy, Cid2_xy, Cid3_xy, Cid4_xy, Cid5_xy, Cid6_xy, Cid7_xy});
+              AllSends.insert(AllSends.end(), {Cid0_xy, Cid1_xy, Cid2_xy, Cid3_xy, Cid4_xy, Cid5_xy, Cid6_xy, Cid7_xy});
 
               // 4
-              sender.SendCells.emplace_back(IntpSource<3>{
-                Cid0_z, Cid1_z, Cid2_z, Cid3_z, Cid4_z, Cid5_z, Cid6_z, Cid7_z});
+              Sends.insert(Sends.end(), {Cid0_z, Cid1_z, Cid2_z, Cid3_z, Cid4_z, Cid5_z, Cid6_z, Cid7_z});
+              AllSends.insert(AllSends.end(), {Cid0_z, Cid1_z, Cid2_z, Cid3_z, Cid4_z, Cid5_z, Cid6_z, Cid7_z});
 
               // 5
               std::size_t Cid0_xz = Cid0_z + 1;
@@ -894,8 +851,8 @@ void BlockGeometry3D<T>::InitMPIIntpComm(BlockGeometryHelper3D<T> &GeoHelper) {
               std::size_t Cid6_xz = Cid6_z + 1;
               std::size_t Cid7_xz = Cid7_z + 1;
 
-              sender.SendCells.emplace_back(IntpSource<3>{
-                Cid0_xz, Cid1_xz, Cid2_xz, Cid3_xz, Cid4_xz, Cid5_xz, Cid6_xz, Cid7_xz});
+              Sends.insert(Sends.end(), {Cid0_xz, Cid1_xz, Cid2_xz, Cid3_xz, Cid4_xz, Cid5_xz, Cid6_xz, Cid7_xz});
+              AllSends.insert(AllSends.end(), {Cid0_xz, Cid1_xz, Cid2_xz, Cid3_xz, Cid4_xz, Cid5_xz, Cid6_xz, Cid7_xz});
 
               // 6
               std::size_t Cid0_yz = Cid0_z + block.getNx();
@@ -907,8 +864,8 @@ void BlockGeometry3D<T>::InitMPIIntpComm(BlockGeometryHelper3D<T> &GeoHelper) {
               std::size_t Cid6_yz = Cid6_z + block.getNx();
               std::size_t Cid7_yz = Cid7_z + block.getNx();
 
-              sender.SendCells.emplace_back(IntpSource<3>{
-                Cid0_yz, Cid1_yz, Cid2_yz, Cid3_yz, Cid4_yz, Cid5_yz, Cid6_yz, Cid7_yz});
+              Sends.insert(Sends.end(), {Cid0_yz, Cid1_yz, Cid2_yz, Cid3_yz, Cid4_yz, Cid5_yz, Cid6_yz, Cid7_yz});
+              AllSends.insert(AllSends.end(), {Cid0_yz, Cid1_yz, Cid2_yz, Cid3_yz, Cid4_yz, Cid5_yz, Cid6_yz, Cid7_yz});
 
               // 7
               std::size_t Cid0_xyz = Cid0_yz + 1;
@@ -920,56 +877,15 @@ void BlockGeometry3D<T>::InitMPIIntpComm(BlockGeometryHelper3D<T> &GeoHelper) {
               std::size_t Cid6_xyz = Cid6_yz + 1;
               std::size_t Cid7_xyz = Cid7_yz + 1;
 
-              sender.SendCells.emplace_back(IntpSource<3>{Cid0_xyz, Cid1_xyz, Cid2_xyz,
-                                                            Cid3_xyz, Cid4_xyz, Cid5_xyz,
-                                                            Cid6_xyz, Cid7_xyz});
+              Sends.insert(Sends.end(), {
+                Cid0_xyz, Cid1_xyz, Cid2_xyz, Cid3_xyz, Cid4_xyz, Cid5_xyz, Cid6_xyz, Cid7_xyz});
+              AllSends.insert(AllSends.end(), {
+                Cid0_xyz, Cid1_xyz, Cid2_xyz, Cid3_xyz, Cid4_xyz, Cid5_xyz, Cid6_xyz, Cid7_xyz});
+              
             }
           }
         }
-        block._NeedMPIComm = true;
-      } else if (nbaseblock.getLevel() == blocklevel - 1) {
-        // init receiver
-        MPIComm.Recvers.emplace_back(nbr.first, nbaseblock.getBlockId());
-        MPIBlockRecvStru &recver = MPIComm.Recvers.back();
-        // vox size
-        const T Cvoxsize = nbaseblock.getVoxelSize();
-        const T Fvoxsize = block.getVoxelSize();
-        // get intersection
-        const AABB<T, 3> intsec = getIntersection(block, nbaseblock);
-        // use coarse grid size here, convient for calculating fine cell index
-        int CNx = static_cast<int>(std::round(intsec.getExtension()[0] / Cvoxsize));
-        int CNy = static_cast<int>(std::round(intsec.getExtension()[1] / Cvoxsize));
-        int CNz = static_cast<int>(std::round(intsec.getExtension()[2] / Cvoxsize));
-        // start index of intsec in block
-        Vector<T, 3> startF = intsec.getMin() - block.getMin();
-        int startFx = static_cast<int>(std::round(startF[0] / Fvoxsize));
-        int startFy = static_cast<int>(std::round(startF[1] / Fvoxsize));
-        int startFz = static_cast<int>(std::round(startF[2] / Fvoxsize));
-
-        for (int iz = 0; iz < CNz; ++iz) {
-          for (int iy = 0; iy < CNy; ++iy) {
-            for (int ix = 0; ix < CNx; ++ix) {
-              std::size_t Fid0 = (iz * 2 + startFz) * XY +
-                                 (iy * 2 + startFy) * block.getNx() + ix * 2 + startFx;
-              std::size_t Fid1 = Fid0 + 1;
-              std::size_t Fid2 = Fid0 + block.getNx();
-              std::size_t Fid3 = Fid2 + 1;
-              std::size_t Fid4 = Fid0 + XY;
-              std::size_t Fid5 = Fid4 + 1;
-              std::size_t Fid6 = Fid4 + block.getNx();
-              std::size_t Fid7 = Fid6 + 1;
-              recver.RecvCells.push_back(Fid0);
-              recver.RecvCells.push_back(Fid1);
-              recver.RecvCells.push_back(Fid2);
-              recver.RecvCells.push_back(Fid3);
-              recver.RecvCells.push_back(Fid4);
-              recver.RecvCells.push_back(Fid5);
-              recver.RecvCells.push_back(Fid6);
-              recver.RecvCells.push_back(Fid7);
-            }
-          }
-        }
-        block._NeedMPIComm = true;
+        block.getCommunicator()._NeedMPIComm = true;
       } else if (nbaseblock.getLevel() > blocklevel + 1 ||
                  nbaseblock.getLevel() < blocklevel - 1) {
         std::cerr << "[BlockGeometry3D<T>::InitMPIIntpComm] Error: block level "
@@ -990,38 +906,191 @@ void BlockGeometry3D<T>::InitAllMPIComm(BlockGeometryHelper3D<T> &GeoHelper) {
 #endif
 
 template <typename T>
-void BlockGeometry3D<T>::SplitCommunictor(BlockComm<T, 3> &comm, Block3D<T>& block, Block3D<T> *nblock, std::vector<BlockComm<T, 3>> &Communicators) {
-  if(comm.RecvCells.size() == 0) return;
-  bool hasnextcomm = false;
-  // find direction for normal(edge) cells of this communicator
-  comm.Direction = getFaceNbrDirection(block.whichFace(comm.RecvCells[0]));
-  // check direction for each remaining cell
-  std::size_t i{};
-  for (i = 1; i < comm.RecvCells.size(); ++i) {
-    NbrDirection dir = getFaceNbrDirection(block.whichFace(comm.RecvCells[i]));
-    if (dir != comm.Direction) {
-      hasnextcomm = true;
-      break;
+void BlockGeometry3D<T>::AddtoSharedAverComm(std::vector<SharedComm> &Comms, 
+const BasicBlock<T, 3>& baseblock_extx, Block3D<T>& block, Block3D<T> *nblock){
+  // ------ add to Comms
+  Comms.emplace_back(nblock->getBlockId());
+  SharedComm &comm = Comms.back();
+  // virtual coarse nblock
+  BasicBlock<T, 3> nCblock = nblock->getCoasenedBlock();
+  // get overlapped coarse cells
+  std::vector<std::size_t> Recvs;
+  std::vector<std::size_t> VSends;
+  block.getCellIdx(baseblock_extx, nblock->getBaseBlock(), Recvs);
+  nCblock.getCellIdx(nblock->getBaseBlock(), baseblock_extx, VSends);
+  // get real send cell index
+  std::vector<std::size_t> RSends;
+  RSends.reserve(VSends.size()*8);
+  for(std::size_t vid : VSends){
+    std::vector<std::size_t> idxs;
+    nCblock.getRefinedCellIdx(vid, idxs);
+    RSends.insert(RSends.end(), idxs.begin(), idxs.end());
+  }
+  comm.setRecvSendIdx(Recvs, RSends);
+}
+
+template <typename T>
+void BlockGeometry3D<T>::AddtoSharedIntpComm(std::vector<SharedComm> &Comms, Block3D<T>& block, Block3D<T> *nblock){
+  // ------ add to Comms
+  Comms.emplace_back(nblock->getBlockId());
+  SharedComm &comm = Comms.back();
+  // vox size
+  const T Cvoxsize = nblock->getVoxelSize();
+  const T Fvoxsize = block.getVoxelSize();
+  // get intersection
+  const AABB<T, 3> intsec = getIntersection(block, nblock->getBaseBlock());
+  int CNx = static_cast<int>(std::round(intsec.getExtension()[0] / Cvoxsize));
+  int CNy = static_cast<int>(std::round(intsec.getExtension()[1] / Cvoxsize));
+  int CNz = static_cast<int>(std::round(intsec.getExtension()[2] / Cvoxsize));
+  // get start index of intsec in nblock
+  Vector<T, 3> startC = intsec.getMin() - nblock->getMin();
+  // shift 1 voxel to left bottom for interpolation
+  int startCx = static_cast<int>(std::round(startC[0] / Cvoxsize)) - 1;
+  int startCy = static_cast<int>(std::round(startC[1] / Cvoxsize)) - 1;
+  int startCz = static_cast<int>(std::round(startC[2] / Cvoxsize)) - 1;
+  // start index of intsec in FBlock
+  Vector<T, 3> startF = intsec.getMin() - block.getMin();
+  int startFx = static_cast<int>(std::round(startF[0] / Fvoxsize));
+  int startFy = static_cast<int>(std::round(startF[1] / Fvoxsize));
+  int startFz = static_cast<int>(std::round(startF[2] / Fvoxsize));
+
+  std::vector<std::size_t>& SendRecvs = comm.SendRecvCells;
+  // (8 + 1) * 8
+  SendRecvs.reserve(CNx*CNy*CNz*72);
+
+  std::size_t XY = block.getNx() * block.getNy();
+  std::size_t nXY = nblock->getNx() * nblock->getNy();
+  for (int iz = 0; iz < CNz; ++iz) {
+    for (int iy = 0; iy < CNy; ++iy) {
+      for (int ix = 0; ix < CNx; ++ix) {
+        // original
+        std::size_t Cid0 = (iz + startCz) * nXY + (iy + startCy) * nblock->getNx() + ix + startCx;
+        std::size_t Cid1 = Cid0 + 1;
+        std::size_t Cid2 = Cid0 + nblock->getNx();
+        std::size_t Cid3 = Cid2 + 1;
+        std::size_t Cid4 = Cid0 + nXY;
+        std::size_t Cid5 = Cid4 + 1;
+        std::size_t Cid6 = Cid4 + nblock->getNx();
+        std::size_t Cid7 = Cid6 + 1;
+        std::size_t Fid = (iz * 2 + startFz) * XY + (iy * 2 + startFy) * block.getNx() + ix * 2 + startFx;
+
+        // shift 1 voxel along +x direction
+        std::size_t Cid0_x = Cid0 + 1;
+        std::size_t Cid1_x = Cid1 + 1;
+        std::size_t Cid2_x = Cid2 + 1;
+        std::size_t Cid3_x = Cid3 + 1;
+        std::size_t Cid4_x = Cid4 + 1;
+        std::size_t Cid5_x = Cid5 + 1;
+        std::size_t Cid6_x = Cid6 + 1;
+        std::size_t Cid7_x = Cid7 + 1;
+        std::size_t Fid_x = Fid + 1;
+
+        // shift 1 voxel along +y direction
+        std::size_t Cid0_y = Cid0 + nblock->getNx();
+        std::size_t Cid1_y = Cid1 + nblock->getNx();
+        std::size_t Cid2_y = Cid2 + nblock->getNx();
+        std::size_t Cid3_y = Cid3 + nblock->getNx();
+        std::size_t Cid4_y = Cid4 + nblock->getNx();
+        std::size_t Cid5_y = Cid5 + nblock->getNx();
+        std::size_t Cid6_y = Cid6 + nblock->getNx();
+        std::size_t Cid7_y = Cid7 + nblock->getNx();
+        std::size_t Fid_y = Fid + block.getNx();
+
+        // shift 1 voxel along +z direction
+        std::size_t Cid0_z = Cid0 + nXY;
+        std::size_t Cid1_z = Cid1 + nXY;
+        std::size_t Cid2_z = Cid2 + nXY;
+        std::size_t Cid3_z = Cid3 + nXY;
+        std::size_t Cid4_z = Cid4 + nXY;
+        std::size_t Cid5_z = Cid5 + nXY;
+        std::size_t Cid6_z = Cid6 + nXY;
+        std::size_t Cid7_z = Cid7 + nXY;
+        std::size_t Fid_z = Fid + XY;
+
+        // 0
+        SendRecvs.insert(SendRecvs.end(), {Cid0, Cid1, Cid2, Cid3, Cid4, Cid5, Cid6, Cid7});
+        SendRecvs.push_back(Fid);
+
+        // 1
+        SendRecvs.insert(SendRecvs.end(), {Cid0_x, Cid1_x, Cid2_x, Cid3_x, Cid4_x, Cid5_x, Cid6_x, Cid7_x});
+        SendRecvs.push_back(Fid_x);
+
+        // 2
+        SendRecvs.insert(SendRecvs.end(), {Cid0_y, Cid1_y, Cid2_y, Cid3_y, Cid4_y, Cid5_y, Cid6_y, Cid7_y});
+        SendRecvs.push_back(Fid_y);
+
+        // 3
+        std::size_t Cid0_xy = Cid0_y + 1;
+        std::size_t Cid1_xy = Cid1_y + 1;
+        std::size_t Cid2_xy = Cid2_y + 1;
+        std::size_t Cid3_xy = Cid3_y + 1;
+        std::size_t Cid4_xy = Cid4_y + 1;
+        std::size_t Cid5_xy = Cid5_y + 1;
+        std::size_t Cid6_xy = Cid6_y + 1;
+        std::size_t Cid7_xy = Cid7_y + 1;
+        std::size_t Fid_xy = Fid_y + 1;
+
+        SendRecvs.insert(SendRecvs.end(), {Cid0_xy, Cid1_xy, Cid2_xy, Cid3_xy, Cid4_xy, Cid5_xy, Cid6_xy, Cid7_xy});
+        SendRecvs.push_back(Fid_xy);
+
+        // 4
+        SendRecvs.insert(SendRecvs.end(), {Cid0_z, Cid1_z, Cid2_z, Cid3_z, Cid4_z, Cid5_z, Cid6_z, Cid7_z});
+        SendRecvs.push_back(Fid_z);
+
+        // 5
+        std::size_t Cid0_xz = Cid0_z + 1;
+        std::size_t Cid1_xz = Cid1_z + 1;
+        std::size_t Cid2_xz = Cid2_z + 1;
+        std::size_t Cid3_xz = Cid3_z + 1;
+        std::size_t Cid4_xz = Cid4_z + 1;
+        std::size_t Cid5_xz = Cid5_z + 1;
+        std::size_t Cid6_xz = Cid6_z + 1;
+        std::size_t Cid7_xz = Cid7_z + 1;
+        std::size_t Fid_xz = Fid_z + XY;
+
+        SendRecvs.insert(SendRecvs.end(), {Cid0_xz, Cid1_xz, Cid2_xz, Cid3_xz, Cid4_xz, Cid5_xz, Cid6_xz, Cid7_xz});
+        SendRecvs.push_back(Fid_xz);
+
+        // 6
+        std::size_t Cid0_yz = Cid0_z + nblock->getNx();
+        std::size_t Cid1_yz = Cid1_z + nblock->getNx();
+        std::size_t Cid2_yz = Cid2_z + nblock->getNx();
+        std::size_t Cid3_yz = Cid3_z + nblock->getNx();
+        std::size_t Cid4_yz = Cid4_z + nblock->getNx();
+        std::size_t Cid5_yz = Cid5_z + nblock->getNx();
+        std::size_t Cid6_yz = Cid6_z + nblock->getNx();
+        std::size_t Cid7_yz = Cid7_z + nblock->getNx();
+        std::size_t Fid_yz = Fid_z + XY;
+
+        SendRecvs.insert(SendRecvs.end(), {Cid0_yz, Cid1_yz, Cid2_yz, Cid3_yz, Cid4_yz, Cid5_yz, Cid6_yz, Cid7_yz});
+        SendRecvs.push_back(Fid_yz);
+
+        // 7
+        std::size_t Cid0_xyz = Cid0_yz + 1;
+        std::size_t Cid1_xyz = Cid1_yz + 1;
+        std::size_t Cid2_xyz = Cid2_yz + 1;
+        std::size_t Cid3_xyz = Cid3_yz + 1;
+        std::size_t Cid4_xyz = Cid4_yz + 1;
+        std::size_t Cid5_xyz = Cid5_yz + 1;
+        std::size_t Cid6_xyz = Cid6_yz + 1;
+        std::size_t Cid7_xyz = Cid7_yz + 1;
+        std::size_t Fid_xyz = Fid_yz + 1;
+
+        SendRecvs.insert(SendRecvs.end(), {
+        Cid0_xyz, Cid1_xyz, Cid2_xyz, Cid3_xyz, Cid4_xyz, Cid5_xyz, Cid6_xyz, Cid7_xyz});
+        SendRecvs.push_back(Fid_xyz);
+      }
     }
   }
-  if (hasnextcomm) {
-    Communicators.emplace_back(nblock);
-    BlockComm<T, 3> &nextcomm = Communicators.back();
-    // get ref of the element before nextcomm in the vector Communicators
-    // we used emplace_back() here, which may invalidate the ref comm
-    // so we need to get the ref again
-    BlockComm<T, 3> &prevcomm = Communicators[Communicators.size() - 2];
-    // split the communicator and continue checking each remaining cell
-    // prevcomm.RecvCells and prevcomm.SendCells are cut off at i
-    // the rest of prevcomm.RecvCells and prevcomm.SendCells are moved to nextcomm
-    nextcomm.RecvCells.clear();
-    nextcomm.SendCells.clear();
-    nextcomm.RecvCells.insert(nextcomm.RecvCells.end(), prevcomm.RecvCells.begin() + i, prevcomm.RecvCells.end());
-    nextcomm.SendCells.insert(nextcomm.SendCells.end(), prevcomm.SendCells.begin() + i, prevcomm.SendCells.end());
-    prevcomm.RecvCells.resize(i);
-    prevcomm.SendCells.resize(i);
-    // recursively split communicator
-    SplitCommunictor(nextcomm, block, nblock, Communicators);
+}
+
+template <typename T>
+void BlockGeometry3D<T>::BuildBlockIndexMap() {
+  _BlockIndexMap.clear();
+  std::size_t count{};
+  for (const Block3D<T> &block : _Blocks) {
+    _BlockIndexMap[block.getBlockId()] = count;
+    ++count;
   }
 }
 
@@ -1535,6 +1604,21 @@ void BlockGeometryHelper3D<T>::SetupMPINbrs() {
       }
     }
   }
+}
+
+template <typename T>
+void BlockGeometryHelper3D<T>::InitBlockGeometry3D() {
+  _BlockGeometry3D = std::make_unique<BlockGeometry3D<T>>(*this, getAllBasicBlocks());
+}
+
+template <typename T>
+int BlockGeometryHelper3D<T>::whichRank(int blockid) {
+  for (std::size_t iRank = 0; iRank < getAllBlockIndices().size(); ++iRank) {
+    for (int id : getAllBlockIndices()[iRank]) {
+      if (id == blockid) return static_cast<int>(iRank);
+    }
+  }
+  return -1;
 }
 
 #endif

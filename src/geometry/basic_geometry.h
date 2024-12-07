@@ -300,23 +300,28 @@ class BasicBlock : public AABB<T, D> {
   void getCellIdx(const AABB<T, D>& AABBs, std::vector<std::size_t>& cellIdx) const;
   
   // use the result of getCellIdx(), but will exclude corner(2d or 3d) cells
-  bool ExcludeCornerIdx(std::vector<std::size_t>& cellIdxbase,
-                       std::vector<std::size_t>& cellIdxnbr, 
-                       std::vector<std::size_t>& excellIdxbase,
-                       std::vector<std::size_t>& excellIdxnbr) const; 
+  bool ExcludeCornerIdx(std::vector<std::size_t>& Idx,
+                       std::vector<std::size_t>& ExIdx) const; 
+  // use the result of getCellIdx(), but will exclude corner(2d or 3d) cells
+  // an extension of ExcludeCornerIdx(std::vector<std::size_t>& Idx, std::vector<std::size_t>& ExIdx)
+  // if corner cells are found at ith position, it will be removed from both Idxbase and Idxnbr
+  bool ExcludeCornerIdx(std::vector<std::size_t>& Idxbase,
+                       std::vector<std::size_t>& Idxnbr, 
+                       std::vector<std::size_t>& ExIdxbase,
+                       std::vector<std::size_t>& ExIdxnbr) const; 
 
   // use the result of getCellIdx(), but will exclude edge(3d) cells
-  bool ExcludeEdgeIdx(std::vector<std::size_t>& cellIdxbase,
-                      std::vector<std::size_t>& cellIdxnbr, 
-                      std::vector<std::vector<std::size_t>>& excellIdxbase, 
-                      std::vector<std::vector<std::size_t>>& excellIdxnbr) const;
+  bool ExcludeEdgeIdx(std::vector<std::size_t>& Idxbase,
+                      std::vector<std::size_t>& Idxnbr, 
+                      std::vector<std::vector<std::size_t>>& ExIdxbase, 
+                      std::vector<std::vector<std::size_t>>& ExIdxnbr) const;
                       
   // use the result of getCellIdx(), but will exclude inner cells
   // remain only edge|corner(2d)/ face|edge|corner(3d) cells
-  bool ExcludeInnerIdx(std::vector<std::size_t>& cellIdxbase,
-                      std::vector<std::size_t>& cellIdxnbr,
-                      std::vector<std::size_t>& excellIdxbase,
-                       std::vector<std::size_t>& excellIdxnbr) const; 
+  bool ExcludeInnerIdx(std::vector<std::size_t>& Idxbase,
+                      std::vector<std::size_t>& Idxnbr,
+                      std::vector<std::size_t>& ExIdxbase,
+                       std::vector<std::size_t>& ExIdxnbr) const; 
   
   // get corner index of the block, sorted by order(x->y->z, smallest->largest)
   // 4 for 2D, 8 for 3D
@@ -339,6 +344,10 @@ class BasicBlock : public AABB<T, D> {
   // find which face the point is in, return -1 if not on face
   int whichFace(const Vector<int, D>& pt) const;
   int whichFace(std::size_t idx) const;
+
+  // get indices of refined cells based on the current cell index
+  // delta level should be 1
+  void getRefinedCellIdx(std::size_t idx, std::vector<std::size_t>& refinedIdx) const;
 };
 
 

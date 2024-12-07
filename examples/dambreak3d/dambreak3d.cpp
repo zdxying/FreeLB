@@ -233,7 +233,7 @@ int main() {
 
   Printer::Print_BigBanner(std::string("Start Calculation..."));
 
-  Printer::PrintTitle("[Step: 0]");
+  Printer::PrintTitle("Step: 0");
   Printer::Print("Average Rho", RhoStat.getAverage());
   Printer::Print("Average Mass", MassStat.getAverage());
   Printer::Print("Max Mass", MassStat.getMax());
@@ -244,10 +244,10 @@ int main() {
     ++MainLoopTimer;
     ++OutputTimer;
 
-    NSLattice.ApplyCellDynamics<NSTaskSelector>(MainLoopTimer(), NSLattice.getField<olbfs::STATE>());
-    NSLattice.Stream(MainLoopTimer());
+    NSLattice.ApplyCellDynamics<NSTaskSelector>(NSLattice.getField<olbfs::STATE>());
+    NSLattice.Stream();
     // NS_BB.Apply(MainLoopTimer());
-    NSLattice.Communicate(MainLoopTimer());
+    NSLattice.NormalAllCommunicate();
 
     olbfs::FreeSurfaceApply<BlockLatticeManager<T, LatSet, ALLFIELDS>>::Apply(NSLattice, MainLoopTimer());
 

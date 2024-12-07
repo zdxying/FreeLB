@@ -33,179 +33,33 @@ BlockLattice<T, LatSet, TypePack>::BlockLattice(Block<T, LatSet::d>& block,
       Omega(RefineConverter<T>::getOmegaF(conv.getOMEGA(), block.getLevel())) {
   _Omega = T{1} - Omega;
   fOmega = T{1} - T{0.5} * Omega;
+
+  std::size_t i{};
+  CommDirection.resize(block.getCommunicator().Comm.Comms.size(), std::vector<unsigned int>{});
+  for (SharedComm& comm : block.getCommunicator().Comm.Comms) {
+    getCommPopDir<LatSet>(comm.Direction, CommDirection[i]);
+    ++i;
+  }
+#ifdef MPI_ENABLED
+  i = 0;
+  RecvDirection.resize(block.getCommunicator().DirRecvs.size(), std::vector<unsigned int>{});
+  for (DistributedComm& comm : block.getCommunicator().DirRecvs) {
+    getCommPopDir<LatSet>(comm.Direction, RecvDirection[i]);
+    ++i;
+  }
+  i = 0;
+  SendDirection.resize(block.getCommunicator().DirSends.size(), std::vector<unsigned int>{});
+  for (DistributedComm& comm : block.getCommunicator().DirSends) {
+    getCommPopDir<LatSet>(comm.Direction, SendDirection[i]);
+    ++i;
+  }
+#endif
+
 #ifdef __CUDACC__
   InitDeviceData();
 #endif
 }
 
-template <typename T, typename LatSet, typename TypePack>
-void BlockLattice<T, LatSet, TypePack>::communicate() {
-  // same level communication
-  for (BlockLatComm<T, LatSet, TypePack>& comm : Communicators) {
-    BlockLattice<T, LatSet, TypePack>* nBlockLat = comm.SendBlock;
-    std::size_t size = comm.getRecvs().size();
-    if (size > 1) {
-      // not corner cell
-      for (unsigned int k : comm.CommDirection) {
-        const auto& nPopsk =
-          nBlockLat->template getField<POP<T, LatSet::q>>().getField(k);
-        auto& Popsk = this->template getField<POP<T, LatSet::q>>().getField(k);
-        for (std::size_t i = 0; i < size; ++i) {
-          std::size_t idrecv = comm.getRecvs()[i];
-          std::size_t idsend = comm.getSends()[i];
-          Popsk.set(idrecv, nPopsk[idsend]);
-        }
-      }
-    } else {
-      for (unsigned int k = 1; k < LatSet::q; ++k) {
-        const auto& nPopsk =
-          nBlockLat->template getField<POP<T, LatSet::q>>().getField(k);
-        auto& Popsk = this->template getField<POP<T, LatSet::q>>().getField(k);
-        Popsk.set(comm.getRecvs()[0], nPopsk[comm.getSends()[0]]);
-      }
-    }
-  }
-}
-
-template <typename T, typename LatSet, typename TypePack>
-void BlockLattice<T, LatSet, TypePack>::fulldirectioncommunicate() {
-  // same level communication
-  for (BlockLatComm<T, LatSet, TypePack>& comm : Communicators) {
-    BlockLattice<T, LatSet, TypePack>* nBlockLat = comm.SendBlock;
-    std::size_t size = comm.getRecvs().size();
-
-    for (unsigned int k = 0; k < LatSet::q; ++k) {
-      const auto& nPopsk =
-        nBlockLat->template getField<POP<T, LatSet::q>>().getField(k);
-      auto& Popsk = this->template getField<POP<T, LatSet::q>>().getField(k);
-      for (std::size_t i = 0; i < size; ++i) {
-        std::size_t idrecv = comm.getRecvs()[i];
-        std::size_t idsend = comm.getSends()[i];
-        Popsk.set(idrecv, nPopsk[idsend]);
-      }
-    }
-  }
-}
-
-template <typename T, typename LatSet, typename TypePack>
-void BlockLattice<T, LatSet, TypePack>::avercommunicate() {
-  // average communication, low level get from high level
-  for (IntpBlockLatComm<T, LatSet, TypePack>& comm : AverageComm) {
-    BlockLattice<T, LatSet, TypePack>* nBlockLat = comm.SendBlock;
-    std::size_t size = comm.getRecvs().size();
-    const T OmegaF = nBlockLat->getOmega();
-    GenericArray<T>& nRhoF = nBlockLat->template getField<GenericRho>().getField(0);
-    GenericArray<Vector<T, LatSet::d>>& nUF =
-      nBlockLat->template getField<VELOCITY<T, LatSet::d>>().getField(0);
-    for (std::size_t i = 0; i < size; ++i) {
-      const IntpSource<LatSet::d>& sends = comm.getSends()[i];
-      // get averaged(interpolated) rho and u
-      T averRho = getAverage<T, LatSet::d>(nRhoF, sends);
-      Vector<T, LatSet::d> averU = getAverage<T, LatSet::d>(nUF, sends);
-      // get feq, peparing for pop conversion
-      std::array<T, LatSet::q> feq{};
-      Equilibrium<T, LatSet>::SecondOrder(feq, averU, averRho);
-
-      std::array<T*, LatSet::q> CellPop =
-        this->template getField<POP<T, LatSet::q>>().getArray(comm.getRecvs()[i]);
-      for (unsigned int k = 0; k < LatSet::q; ++k) {
-        T averpop = getAverage<T, LatSet::d>(
-          nBlockLat->template getField<POP<T, LatSet::q>>().getField(k), sends);
-        // convert from fine to coarse
-        *(CellPop[k]) = RefineConverter<T>::getPopC(averpop, feq[k], OmegaF);
-      }
-    }
-  }
-}
-
-template <typename T, typename LatSet, typename TypePack>
-void BlockLattice<T, LatSet, TypePack>::interpcommunicate() {
-  // interp communication, high level get from low level
-  for (IntpBlockLatComm<T, LatSet, TypePack>& comm : IntpComm) {
-    BlockLattice<T, LatSet, TypePack>* nBlockLat = comm.SendBlock;
-    std::size_t size = comm.getRecvs().size();
-    const T OmegaC = nBlockLat->getOmega();
-    GenericArray<T>& nRhoF = nBlockLat->template getField<GenericRho>().getField(0);
-    GenericArray<Vector<T, LatSet::d>>& nUF =
-      nBlockLat->template getField<VELOCITY<T, LatSet::d>>().getField(0);
-    if constexpr (LatSet::d == 2) {
-      for (std::size_t i = 0; i < size; i += 4) {
-        {
-          const IntpSource<LatSet::d>& sends = comm.getSends()[i];
-          // get averaged(interpolated) rho and u
-          T averRho = getInterpolation<0, T, LatSet::d>(nRhoF, sends);
-          Vector<T, LatSet::d> averU = getInterpolation<0, T, LatSet::d>(nUF, sends);
-          // get feq, peparing for pop conversion
-          std::array<T, LatSet::q> feq{};
-          Equilibrium<T, LatSet>::SecondOrder(feq, averU, averRho);
-
-          std::array<T*, LatSet::q> CellPop =
-            this->template getField<POP<T, LatSet::q>>().getArray(comm.getRecvs()[i]);
-          for (unsigned int k = 0; k < LatSet::q; ++k) {
-            T averpop = getInterpolation<0, T, LatSet::d>(
-              nBlockLat->template getField<POP<T, LatSet::q>>().getField(k), sends);
-            // convert from coarse to fine
-            *(CellPop[k]) = RefineConverter<T>::getPopF(averpop, feq[k], OmegaC);
-          }
-        }
-        {
-          const IntpSource<LatSet::d>& sends = comm.getSends()[i + 1];
-          // get averaged(interpolated) rho and u
-          T averRho = getInterpolation<1, T, LatSet::d>(nRhoF, sends);
-          Vector<T, LatSet::d> averU = getInterpolation<1, T, LatSet::d>(nUF, sends);
-          // get feq, peparing for pop conversion
-          std::array<T, LatSet::q> feq{};
-          Equilibrium<T, LatSet>::SecondOrder(feq, averU, averRho);
-
-          std::array<T*, LatSet::q> CellPop =
-            this->template getField<POP<T, LatSet::q>>().getArray(comm.getRecvs()[i + 1]);
-          for (unsigned int k = 0; k < LatSet::q; ++k) {
-            T averpop = getInterpolation<1, T, LatSet::d>(
-              nBlockLat->template getField<POP<T, LatSet::q>>().getField(k), sends);
-            // convert from coarse to fine
-            *(CellPop[k]) = RefineConverter<T>::getPopF(averpop, feq[k], OmegaC);
-          }
-        }
-        {
-          const IntpSource<LatSet::d>& sends = comm.getSends()[i + 2];
-          // get averaged(interpolated) rho and u
-          T averRho = getInterpolation<2, T, LatSet::d>(nRhoF, sends);
-          Vector<T, LatSet::d> averU = getInterpolation<2, T, LatSet::d>(nUF, sends);
-          // get feq, peparing for pop conversion
-          std::array<T, LatSet::q> feq{};
-          Equilibrium<T, LatSet>::SecondOrder(feq, averU, averRho);
-
-          std::array<T*, LatSet::q> CellPop =
-            this->template getField<POP<T, LatSet::q>>().getArray(comm.getRecvs()[i + 2]);
-          for (unsigned int k = 0; k < LatSet::q; ++k) {
-            T averpop = getInterpolation<2, T, LatSet::d>(
-              nBlockLat->template getField<POP<T, LatSet::q>>().getField(k), sends);
-            // convert from coarse to fine
-            *(CellPop[k]) = RefineConverter<T>::getPopF(averpop, feq[k], OmegaC);
-          }
-        }
-        {
-          const IntpSource<LatSet::d>& sends = comm.getSends()[i + 3];
-          // get averaged(interpolated) rho and u
-          T averRho = getInterpolation<3, T, LatSet::d>(nRhoF, sends);
-          Vector<T, LatSet::d> averU = getInterpolation<3, T, LatSet::d>(nUF, sends);
-          // get feq, peparing for pop conversion
-          std::array<T, LatSet::q> feq{};
-          Equilibrium<T, LatSet>::SecondOrder(feq, averU, averRho);
-
-          std::array<T*, LatSet::q> CellPop =
-            this->template getField<POP<T, LatSet::q>>().getArray(comm.getRecvs()[i + 3]);
-          for (unsigned int k = 0; k < LatSet::q; ++k) {
-            T averpop = getInterpolation<3, T, LatSet::d>(
-              nBlockLat->template getField<POP<T, LatSet::q>>().getField(k), sends);
-            // convert from coarse to fine
-            *(CellPop[k]) = RefineConverter<T>::getPopF(averpop, feq[k], OmegaC);
-          }
-        }
-      }
-    }
-  }
-}
 
 template <typename T, typename LatSet, typename TypePack>
 void BlockLattice<T, LatSet, TypePack>::Stream() {
@@ -495,6 +349,251 @@ T BlockLattice<T, LatSet, TypePack>::getTolU(int shift) {
   return maxres;
 }
 
+
+#ifdef MPI_ENABLED
+
+template <typename T, typename LatSet, typename TypePack>
+void BlockLattice<T, LatSet, TypePack>::mpiNormalSend(std::vector<MPI_Request>& SendRequests, 
+std::vector<std::vector<T>>& SendBuffers, const std::vector<DistributedComm>& MPISends) {
+  // add to send buffer
+  for (std::size_t i = 0; i < MPISends.size(); ++i) {
+    const DistributedComm& comm = MPISends[i];
+    std::vector<T>& buffer = SendBuffers[i];
+    buffer.resize(comm.Cells.size() * SendDirection[i].size());
+    const std::vector<std::size_t>& sends = comm.Cells;
+    std::size_t bufidx{};
+    for (unsigned int iArr : SendDirection[i]) {
+      const auto& Array = this->template getField<POP<T, LatSet::q>>().getField(iArr);
+      for (std::size_t id : sends) {
+        buffer[bufidx] = Array[id];
+        ++bufidx;
+      }
+    }
+    // non-blocking send
+    MPI_Request request;
+    mpi().iSend(buffer.data(), buffer.size(), comm.TargetRank, &request, comm.Tag);
+    SendRequests.push_back(request);
+  }
+}
+
+template <typename T, typename LatSet, typename TypePack>
+void BlockLattice<T, LatSet, TypePack>::mpiNormalFullSend(std::vector<MPI_Request>& SendRequests, 
+std::vector<std::vector<T>>& SendBuffers, const std::vector<DistributedComm>& MPISends) {
+  // add to send buffer
+  for (std::size_t i = 0; i < MPISends.size(); ++i) {
+    const DistributedComm& comm = MPISends[i];
+    std::vector<T>& buffer = SendBuffers[i];
+    buffer.resize(comm.Cells.size() * LatSet::q);
+    const std::vector<std::size_t>& sends = comm.Cells;
+    std::size_t bufidx{};
+    for (unsigned int iArr = 0; iArr < LatSet::q; ++iArr) {
+      const auto& Array = this->template getField<POP<T, LatSet::q>>().getField(iArr);
+      for (std::size_t id : sends) {
+        buffer[bufidx] = Array[id];
+        ++bufidx;
+      }
+    }
+    // non-blocking send
+    MPI_Request request;
+    mpi().iSend(buffer.data(), buffer.size(), comm.TargetRank, &request, comm.TargetBlockId);
+    SendRequests.push_back(request);
+  }
+}
+
+template <typename T, typename LatSet, typename TypePack>
+void BlockLattice<T, LatSet, TypePack>::mpiAverSend(std::vector<MPI_Request>& SendRequests,
+std::vector<std::vector<T>>& SendBuffers, const std::vector<DistributedComm>& MPISends) {
+  static constexpr std::size_t SendSize = LatSet::d == 2 ? 4 : 8;
+
+  const T OmegaF = this->getOmega();
+  const GenericArray<T>& RhoArr = this->template getField<GenericRho>().getField(0);
+  const GenericArray<Vector<T, LatSet::d>>& UArr = this->template getField<VELOCITY<T, LatSet::d>>().getField(0);
+
+  // add to send buffer
+  for (std::size_t i = 0; i < MPISends.size(); ++i) {
+    const DistributedComm& comm = MPISends[i];
+    std::vector<T>& buffer = SendBuffers[i];
+    buffer.resize(comm.Cells.size() / SendSize * LatSet::q);
+    const std::vector<std::size_t>& sends = comm.Cells;
+    const std::size_t size = sends.size();
+    std::size_t bufidx{};
+
+    for (std::size_t i = 0; i < size; i += SendSize) {
+      T averRho = getAverage<T, LatSet::d>(RhoArr, i, sends);
+      Vector<T, LatSet::d> averU = getAverage<T, LatSet::d>(UArr, i, sends);
+
+      std::array<T, LatSet::q> feq{};
+      equilibrium::SecondOrder<CellType>::apply(feq, averRho, averU);
+
+      for (unsigned int iArr = 0; iArr < LatSet::q; ++iArr) {
+        T averPop = getAverage<T, LatSet::d>(this->template getField<POP<T, LatSet::q>>().getField(iArr), i, sends);
+        buffer[bufidx] = RefineConverter<T>::getPopC(averPop, feq[iArr], OmegaF);
+        ++bufidx;
+      }
+    }
+    // non-blocking send
+    MPI_Request request;
+    mpi().iSend(buffer.data(), buffer.size(), comm.TargetRank, &request, comm.TargetBlockId);
+    SendRequests.push_back(request);
+  }
+}
+
+template <typename T, typename LatSet, typename TypePack>
+void BlockLattice<T, LatSet, TypePack>::mpiIntpSend(std::vector<MPI_Request>& SendRequests, 
+std::vector<std::vector<T>>& SendBuffers, const std::vector<DistributedComm>& MPISends) {
+  static constexpr std::size_t SendSize = LatSet::d == 2 ? 4 : 8;
+
+  const T OmegaC = this->getOmega();
+  const GenericArray<T>& RhoArr = this->template getField<GenericRho>().getField(0);
+  const GenericArray<Vector<T, LatSet::d>>& UArr = this->template getField<VELOCITY<T, LatSet::d>>().getField(0);
+
+  // add to send buffer
+  for (std::size_t i = 0; i < MPISends.size(); ++i) {
+    const DistributedComm& comm = MPISends[i];
+    std::vector<T>& buffer = SendBuffers[i];
+    buffer.resize(comm.Cells.size() / SendSize * LatSet::q);
+    const std::vector<std::size_t>& sends = comm.Cells;
+    const std::size_t size = sends.size();
+    std::size_t bufidx{};
+    for (std::size_t i = 0; i < size;) {
+      if constexpr (LatSet::d == 2) {
+        popIntp<0>(OmegaC, sends, RhoArr, UArr, i            , buffer, bufidx); 
+        popIntp<1>(OmegaC, sends, RhoArr, UArr, i += SendSize, buffer, bufidx); 
+        popIntp<2>(OmegaC, sends, RhoArr, UArr, i += SendSize, buffer, bufidx); 
+        popIntp<3>(OmegaC, sends, RhoArr, UArr, i += SendSize, buffer, bufidx); 
+        i += SendSize;
+      } else if constexpr (LatSet::d == 3) {
+        popIntp<0>(OmegaC, sends, RhoArr, UArr, i            , buffer, bufidx); 
+        popIntp<1>(OmegaC, sends, RhoArr, UArr, i += SendSize, buffer, bufidx); 
+        popIntp<2>(OmegaC, sends, RhoArr, UArr, i += SendSize, buffer, bufidx); 
+        popIntp<3>(OmegaC, sends, RhoArr, UArr, i += SendSize, buffer, bufidx); 
+        popIntp<4>(OmegaC, sends, RhoArr, UArr, i += SendSize, buffer, bufidx); 
+        popIntp<5>(OmegaC, sends, RhoArr, UArr, i += SendSize, buffer, bufidx); 
+        popIntp<6>(OmegaC, sends, RhoArr, UArr, i += SendSize, buffer, bufidx); 
+        popIntp<7>(OmegaC, sends, RhoArr, UArr, i += SendSize, buffer, bufidx); 
+        i += SendSize;
+      }
+    }
+    // non-blocking send
+    MPI_Request request;
+    mpi().iSend(buffer.data(), buffer.size(), comm.TargetRank, &request, comm.TargetBlockId);
+    SendRequests.push_back(request);
+  }
+}
+
+template <typename T, typename LatSet, typename TypePack>
+void BlockLattice<T, LatSet, TypePack>::mpiNormalRecv(std::vector<MPI_Request>& RecvRequests, 
+std::vector<std::vector<T>>& RecvBuffers, const std::vector<DistributedComm>& MPIRecvs) {
+  // non-blocking recv
+  for (std::size_t i = 0; i < MPIRecvs.size(); ++i) {
+    const DistributedComm& comm = MPIRecvs[i];
+    std::vector<T>& buffer = RecvBuffers[i];
+    buffer.resize(comm.Cells.size() * RecvDirection[i].size());
+    MPI_Request request;
+    mpi().iRecv(buffer.data(), buffer.size(), comm.TargetRank, &request, comm.Tag);
+    RecvRequests.push_back(request);
+  }
+}
+
+template <typename T, typename LatSet, typename TypePack>
+void BlockLattice<T, LatSet, TypePack>::mpiFullRecv(std::vector<MPI_Request>& RecvRequests, 
+std::vector<std::vector<T>>& RecvBuffers, const std::vector<DistributedComm>& MPIRecvs) {
+  // non-blocking recv
+  for (std::size_t i = 0; i < MPIRecvs.size(); ++i) {
+    const DistributedComm& comm = MPIRecvs[i];
+    std::vector<T>& buffer = RecvBuffers[i];
+    buffer.resize(comm.Cells.size() * LatSet::q);
+    MPI_Request request;
+    mpi().iRecv(buffer.data(), buffer.size(), comm.TargetRank, &request, this->BlockGeo.getBlockId());
+    RecvRequests.push_back(request);
+  }
+}
+
+template <typename T, typename LatSet, typename TypePack>
+void BlockLattice<T, LatSet, TypePack>::mpiNormalSet(int& reqidx, std::vector<MPI_Request>& RecvRequests,
+const std::vector<std::vector<T>>& RecvBuffers, const std::vector<DistributedComm>& MPIRecvs) {
+  // wait and set field data
+  for (std::size_t i = 0; i < MPIRecvs.size(); ++i) {
+    MPI_Wait(&RecvRequests[i + reqidx], MPI_STATUS_IGNORE);
+    const DistributedComm& comm = MPIRecvs[i];
+    const std::vector<T>& buffer = RecvBuffers[i];
+    const std::vector<std::size_t>& recvs = comm.Cells;
+    std::size_t bufidx{};
+    for (unsigned int iArr : RecvDirection[i]) {
+      auto& Array = this->template getField<POP<T, LatSet::q>>().getField(iArr);
+      for (std::size_t id : recvs) {
+        Array[id] = buffer[bufidx];
+        ++bufidx;
+      }
+    }
+  }
+  reqidx += MPIRecvs.size();
+}
+
+template <typename T, typename LatSet, typename TypePack>
+void BlockLattice<T, LatSet, TypePack>::mpiNormalFullSet(int& reqidx, std::vector<MPI_Request>& RecvRequests,
+const std::vector<std::vector<T>>& RecvBuffers, const std::vector<DistributedComm>& MPIRecvs) {
+  // wait and set field data
+  for (std::size_t i = 0; i < MPIRecvs.size(); ++i) {
+    MPI_Wait(&RecvRequests[i + reqidx], MPI_STATUS_IGNORE);
+    const DistributedComm& comm = MPIRecvs[i];
+    const std::vector<T>& buffer = RecvBuffers[i];
+    const std::vector<std::size_t>& recvs = comm.Cells;
+    std::size_t bufidx{};
+    for (unsigned int iArr = 0; iArr < LatSet::q; ++iArr) {
+      auto& Array = this->template getField<POP<T, LatSet::q>>().getField(iArr);
+      for (std::size_t id : recvs) {
+        Array[id] = buffer[bufidx];
+        ++bufidx;
+      }
+    }
+  }
+  reqidx += MPIRecvs.size();
+}
+
+template <typename T, typename LatSet, typename TypePack>
+void BlockLattice<T, LatSet, TypePack>::mpiAverIntpSet(int& reqidx, std::vector<MPI_Request>& RecvRequests,
+const std::vector<std::vector<T>>& RecvBuffers, const std::vector<DistributedComm>& MPIRecvs) {
+  // wait and set field data
+  for (std::size_t i = 0; i < MPIRecvs.size(); ++i) {
+    MPI_Wait(&RecvRequests[i + reqidx], MPI_STATUS_IGNORE);
+    const DistributedComm& comm = MPIRecvs[i];
+    const std::vector<T>& buffer = RecvBuffers[i];
+    const std::vector<std::size_t>& recvs = comm.Cells;
+    std::size_t bufidx{};
+    for (std::size_t id : recvs) {
+      std::array<T*, LatSet::q> CellPop = this->template getField<POP<T, LatSet::q>>().getArray(id);
+      for (unsigned int iArr = 0; iArr < LatSet::q; ++iArr) {
+        *(CellPop[iArr]) = buffer[bufidx];
+        ++bufidx;
+      }
+    }
+  }
+  reqidx += MPIRecvs.size();
+}
+
+
+template <typename T, typename LatSet, typename TypePack>
+template <unsigned int D>
+void BlockLattice<T, LatSet, TypePack>::popIntp(T OmegaC, const std::vector<std::size_t>& sends, 
+const GenericArray<T>& RhoArr, const GenericArray<Vector<T, LatSet::d>>& UArr, std::size_t i, 
+std::vector<T>& buffer, std::size_t& bufidx) {
+  
+  T averRho = getInterpolation<D, T, LatSet::d>(RhoArr, i, sends);
+  Vector<T, LatSet::d> averU = getInterpolation<D, T, LatSet::d>(UArr, i, sends);
+
+  std::array<T, LatSet::q> feq{};
+  equilibrium::SecondOrder<CellType>::apply(feq, averRho, averU);
+
+  for (unsigned int iArr = 0; iArr < LatSet::q; ++iArr) {
+    T averPop = getInterpolation<D, T, LatSet::d>(this->template getField<POP<T, LatSet::q>>().getField(iArr), i, sends);
+    buffer[bufidx] = RefineConverter<T>::getPopF(averPop, feq[iArr], OmegaC);
+    ++bufidx;
+  }
+}
+
+#endif
+
 // BlockLatticeManager
 
 template <typename T, typename LatSet, typename TypePack>
@@ -530,9 +629,6 @@ BlockLatticeManager<T, LatSet, TypePack>::BlockLatticeManager(
       }
     });
   }
-  InitComm();
-  InitAverComm();
-  InitIntpComm();
 }
 
 template <typename T, typename LatSet, typename TypePack>
@@ -565,9 +661,6 @@ BlockLatticeManager<T, LatSet, TypePack>::BlockLatticeManager(
       }
     });
   }
-  InitComm();
-  InitAverComm();
-  InitIntpComm();
 }
 
 
@@ -587,9 +680,6 @@ void BlockLatticeManager<T, LatSet, TypePack>::Init() {
       }
     });
   }
-  InitComm();
-  InitAverComm();
-  InitIntpComm();
 }
 
 template <typename T, typename LatSet, typename TypePack>
@@ -623,49 +713,6 @@ void BlockLatticeManager<T, LatSet, TypePack>::Init(
         field.getField(i).setOffset(blocklat.getDelta_Index()[i]);
       }
     });
-  }
-  InitComm();
-  InitAverComm();
-  InitIntpComm();
-}
-
-template <typename T, typename LatSet, typename TypePack>
-void BlockLatticeManager<T, LatSet, TypePack>::InitComm() {
-  // init based on block geometry
-  for (auto& BlockLat : BlockLats) {
-    Block<T, LatSet::d>& block = BlockLat.getGeo();
-    std::vector<BlockLatComm<T, LatSet, ALLFIELDS>>& latcomm =
-      BlockLat.getCommunicators();
-    latcomm.clear();
-    for (BlockComm<T, LatSet::d>& comm : block.getCommunicators()) {
-      latcomm.emplace_back(&findBlockLat(comm.getSendId()), &comm);
-    }
-  }
-}
-
-template <typename T, typename LatSet, typename TypePack>
-void BlockLatticeManager<T, LatSet, TypePack>::InitAverComm() {
-  for (auto& BlockLat : BlockLats) {
-    Block<T, LatSet::d>& block = BlockLat.getGeo();
-    std::vector<IntpBlockLatComm<T, LatSet, ALLFIELDS>>& latcomm =
-      BlockLat.getAverageComm();
-    latcomm.clear();
-    for (IntpBlockComm<T, LatSet::d>& comm : block.getAverageBlockComm()) {
-      latcomm.emplace_back(&findBlockLat(comm.getSendId()), &comm);
-    }
-  }
-}
-
-template <typename T, typename LatSet, typename TypePack>
-void BlockLatticeManager<T, LatSet, TypePack>::InitIntpComm() {
-  for (auto& BlockLat : BlockLats) {
-    Block<T, LatSet::d>& block = BlockLat.getGeo();
-    std::vector<IntpBlockLatComm<T, LatSet, ALLFIELDS>>& latcomm =
-      BlockLat.getIntpComm();
-    latcomm.clear();
-    for (IntpBlockComm<T, LatSet::d>& comm : block.getIntpBlockComm()) {
-      latcomm.emplace_back(&findBlockLat(comm.getSendId()), &comm);
-    }
   }
 }
 
@@ -876,192 +923,465 @@ void BlockLatticeManager<T, LatSet, TypePack>::CuDevApplyCellDynamics(){
 #endif
 
 #ifdef MPI_ENABLED
+
 template <typename T, typename LatSet, typename TypePack>
-void BlockLatticeManager<T, LatSet, TypePack>::MPIAverComm(std::int64_t count) {
+void BlockLatticeManager<T, LatSet, TypePack>::MPINormalCommunicate() {
   mpi().barrier();
-  // pop conversion before communication
-  std::vector<MPI_Request> SendRequestsPop;
-  int ifield = 0;
-  for (auto& BLat : BlockLats) {
-    // send data to lower level, deLevel+1
-    const int deLevel = static_cast<int>(getMaxLevel() - BLat.getLevel()) + 1;
-    if (BLat.getLevel() != std::uint8_t(0)) {
-      if ((count % (static_cast<int>(std::pow(2, deLevel))) == 0) &&
-          BLat.getGeo()._NeedMPIComm) {
-        const MPIIntpBlockComm<T, LatSet::d>& MPIComm =
-          BLat.getGeo().getMPIAverBlockComm();
-
-        const T OmegaF = BLat.getOmega();
-
-        for (std::size_t i = 0; i < MPIComm.Senders.size(); ++i) {
-          const std::vector<IntpSource<LatSet::d>>& sendcells =
-            MPIComm.Senders[i].SendCells;
-
-          std::vector<T>& rhobuffer = this->template getField<GenericRho>()
-                                        .getBlockField(ifield)
-                                        .getMPIAverBuffer()
-                                        .SendBuffers[i];
-          std::vector<Vector<T, LatSet::d>>& ubuffer =
-            this->template getField<VELOCITY<T, LatSet::d>>()
-              .getBlockField(ifield)
-              .getMPIAverBuffer()
-              .SendBuffers[i];
-          std::vector<T>& popbuffer = this->template getField<POP<T, LatSet::q>>()
-                                        .getBlockField(ifield)
-                                        .getMPIAverBuffer()
-                                        .SendBuffers[i];
-
-          const auto& RhoArray =
-            this->template getField<GenericRho>().getBlockField(ifield).getField(0);
-          const auto& UArray = this->template getField<VELOCITY<T, LatSet::d>>()
-                                 .getBlockField(ifield)
-                                 .getField(0);
-
-          std::size_t bufidx = 0;
-          for (const IntpSource<LatSet::d>& sends : sendcells) {
-            rhobuffer[bufidx] = getAverage<T, LatSet::d>(RhoArray, sends);
-            ubuffer[bufidx] = getAverage<T, LatSet::d>(UArray, sends);
-            ++bufidx;
-          }
-          bufidx = 0;
-          for (unsigned int iArr = 0; iArr < LatSet::q; ++iArr) {
-            const auto& PopArray =
-              this->template getField<POP<T, LatSet::q>>().getBlockField(ifield).getField(
-                iArr);
-            for (const IntpSource<LatSet::d>& sends : sendcells) {
-              popbuffer[bufidx] = getAverage<T, LatSet::d>(PopArray, sends);
-              ++bufidx;
-            }
-          }
-
-          // pop conversion
-          const std::size_t shift = sendcells.size();
-          for (std::size_t id = 0; id < shift; ++id) {
-            std::array<T, LatSet::q> feq{};
-            Equilibrium<T, LatSet>::SecondOrder(feq, ubuffer[id], rhobuffer[id]);
-            for (unsigned int k = 0; k < LatSet::q; ++k) {
-              popbuffer[id + shift * k] =
-                RefineConverter<T>::getPopC(popbuffer[id + shift * k], feq[k], OmegaF);
-            }
-          }
-        }
-        // non-blocking send pop buffer
-        for (std::size_t i = 0; i < MPIComm.Senders.size(); ++i) {
-          MPI_Request request;
-          std::vector<T>& popbuffer = this->template getField<POP<T, LatSet::q>>()
-                                        .getBlockField(ifield)
-                                        .getMPIAverBuffer()
-                                        .SendBuffers[i];
-          mpi().iSend(popbuffer.data(), popbuffer.size(), MPIComm.Senders[i].RecvRank,
-                      &request, MPIComm.Senders[i].RecvBlockid);
-          SendRequestsPop.push_back(request);
-        }
-      }
+  std::vector<std::vector<std::vector<T>>> SendBuffers(
+    BlockLats.size(), std::vector<std::vector<T>>{});
+  std::vector<std::vector<std::vector<T>>> RecvBuffers(
+    BlockLats.size(), std::vector<std::vector<T>>{});
+  std::size_t iblock{};
+  // --- send data ---
+  std::vector<MPI_Request> SendRequests;
+  for (BLOCKLATTICE& blat : BlockLats) {
+    if (blat.getBlock().getCommunicator()._NeedMPIComm) {
+      const std::vector<DistributedComm>& Sends = blat.getBlock().getCommunicator().DirSends;
+      SendBuffers[iblock].resize(Sends.size(), std::vector<T>{});
+      blat.mpiNormalSend(SendRequests, SendBuffers[iblock], Sends);
     }
-    ++ifield;
+    ++iblock;
   }
-  // recv pop buffer
-  std::vector<MPI_Request> RecvRequestsPop;
-  this->template getField<POP<T, LatSet::q>>().MPIAverRecv(count, RecvRequestsPop);
-  // wait for all requests
-  MPI_Waitall(SendRequestsPop.size(), SendRequestsPop.data(), MPI_STATUSES_IGNORE);
-  // MPI_Waitall(RecvRequestsPop.size(), RecvRequestsPop.data(), MPI_STATUSES_IGNORE);
-  this->template getField<POP<T, LatSet::q>>().MPIAverSet(count, RecvRequestsPop);
+  // --- receive data ---
+  iblock = 0;
+  std::vector<MPI_Request> RecvRequests;
+  for (BLOCKLATTICE& blat : BlockLats) {
+    if (blat.getBlock().getCommunicator()._NeedMPIComm) {
+      std::vector<DistributedComm>& Recvs = blat.getBlock().getCommunicator().DirRecvs;
+      RecvBuffers[iblock].resize(Recvs.size(), std::vector<T>{});
+      blat.mpiNormalRecv(RecvRequests, RecvBuffers[iblock], Recvs);
+    }
+    ++iblock;
+  }
+  // wait for all send requests to complete
+  MPI_Waitall(SendRequests.size(), SendRequests.data(), MPI_STATUSES_IGNORE);
+  // MPI_Waitall(RecvRequests.size(), RecvRequests.data(), MPI_STATUSES_IGNORE);
+  // --- wait and set field data ---
+  iblock = 0;
+  int reqidx{};
+  for (BLOCKLATTICE& blat : BlockLats) {
+    if (blat.getBlock().getCommunicator()._NeedMPIComm) {
+      const std::vector<DistributedComm>& Recvs = blat.getBlock().getCommunicator().DirRecvs;
+      blat.mpiNormalSet(reqidx, RecvRequests, RecvBuffers[iblock], Recvs);
+    }
+    ++iblock;
+  }
 }
 
 template <typename T, typename LatSet, typename TypePack>
-void BlockLatticeManager<T, LatSet, TypePack>::MPIIntpComm(std::int64_t count) {
+void BlockLatticeManager<T, LatSet, TypePack>::MPINormalFullCommunicate() {
   mpi().barrier();
-  // pop conversion before communication
-  std::vector<MPI_Request> SendRequestsPop;
-  int ifield = 0;
-  for (auto& BLat : BlockLats) {
-    // send data to higher level, deLevel-1
-    const int deLevel = static_cast<int>(getMaxLevel() - BLat.getLevel()) - 1;
-    if (deLevel != -1) {
-      if ((count % (static_cast<int>(std::pow(2, deLevel))) == 0) &&
-          BLat.getGeo()._NeedMPIComm) {
-        const MPIIntpBlockComm<T, LatSet::d>& MPIComm =
-          BLat.getGeo().getMPIIntpBlockComm();
+  std::vector<std::vector<std::vector<T>>> SendBuffers(
+    BlockLats.size(), std::vector<std::vector<T>>{});
+  std::vector<std::vector<std::vector<T>>> RecvBuffers(
+    BlockLats.size(), std::vector<std::vector<T>>{});
+  std::size_t iblock{};
+  // --- send data ---
+  std::vector<MPI_Request> SendRequests;
+  for (BLOCKLATTICE& blat : BlockLats) {
+    if (blat.getBlock().getCommunicator()._NeedMPIComm) {
+      const std::vector<DistributedComm>& Sends = blat.getBlock().getCommunicator().MPIComm.Sends;
+      SendBuffers[iblock].resize(Sends.size(), std::vector<T>{});
+      blat.mpiNormalFullSend(SendRequests, SendBuffers[iblock], Sends);
+    }
+    ++iblock;
+  }
+  // --- receive data ---
+  iblock = 0;
+  std::vector<MPI_Request> RecvRequests;
+  for (BLOCKLATTICE& blat : BlockLats) {
+    if (blat.getBlock().getCommunicator()._NeedMPIComm) {
+      std::vector<DistributedComm>& Recvs = blat.getBlock().getCommunicator().MPIComm.Recvs;
+      RecvBuffers[iblock].resize(Recvs.size(), std::vector<T>{});
+      blat.mpiFullRecv(RecvRequests, RecvBuffers[iblock], Recvs);
+    }
+    ++iblock;
+  }
+  // wait for all send requests to complete
+  MPI_Waitall(SendRequests.size(), SendRequests.data(), MPI_STATUSES_IGNORE);
+  // MPI_Waitall(RecvRequests.size(), RecvRequests.data(), MPI_STATUSES_IGNORE);
+  // --- wait and set field data ---
+  iblock = 0;
+  int reqidx{};
+  for (BLOCKLATTICE& blat : BlockLats) {
+    if (blat.getBlock().getCommunicator()._NeedMPIComm) {
+      const std::vector<DistributedComm>& Recvs = blat.getBlock().getCommunicator().MPIComm.Recvs;
+      blat.mpiNormalFullSet(reqidx, RecvRequests, RecvBuffers[iblock], Recvs);
+    }
+    ++iblock;
+  }
+}
 
-        const T OmegaC = BLat.getOmega();
+template <typename T, typename LatSet, typename TypePack>
+void BlockLatticeManager<T, LatSet, TypePack>::MPINormalAllCommunicate() {
+  mpi().barrier();
+  std::vector<std::vector<std::vector<T>>> SendBuffers(
+    BlockLats.size(), std::vector<std::vector<T>>{});
+  std::vector<std::vector<std::vector<T>>> RecvBuffers(
+    BlockLats.size(), std::vector<std::vector<T>>{});
+  std::size_t iblock{};
+  // --- send data ---
+  std::vector<MPI_Request> SendRequests;
+  for (BLOCKLATTICE& blat : BlockLats) {
+    if (blat.getBlock().getCommunicator()._NeedMPIComm) {
+      const std::vector<DistributedComm>& Sends = blat.getBlock().getCommunicator().AllMPIComm.Sends;
+      SendBuffers[iblock].resize(Sends.size(), std::vector<T>{});
+      blat.mpiNormalFullSend(SendRequests, SendBuffers[iblock], Sends);
+    }
+    ++iblock;
+  }
+  // --- receive data ---
+  iblock = 0;
+  std::vector<MPI_Request> RecvRequests;
+  for (BLOCKLATTICE& blat : BlockLats) {
+    if (blat.getBlock().getCommunicator()._NeedMPIComm) {
+      std::vector<DistributedComm>& Recvs = blat.getBlock().getCommunicator().AllMPIComm.Recvs;
+      RecvBuffers[iblock].resize(Recvs.size(), std::vector<T>{});
+      blat.mpiFullRecv(RecvRequests, RecvBuffers[iblock], Recvs);
+    }
+    ++iblock;
+  }
+  // wait for all send requests to complete
+  MPI_Waitall(SendRequests.size(), SendRequests.data(), MPI_STATUSES_IGNORE);
+  // MPI_Waitall(RecvRequests.size(), RecvRequests.data(), MPI_STATUSES_IGNORE);
+  // --- wait and set field data ---
+  iblock = 0;
+  int reqidx{};
+  for (BLOCKLATTICE& blat : BlockLats) {
+    if (blat.getBlock().getCommunicator()._NeedMPIComm) {
+      const std::vector<DistributedComm>& Recvs = blat.getBlock().getCommunicator().AllMPIComm.Recvs;
+      blat.mpiNormalFullSet(reqidx, RecvRequests, RecvBuffers[iblock], Recvs);
+    }
+    ++iblock;
+  }
+}
 
-        for (std::size_t i = 0; i < MPIComm.Senders.size(); ++i) {
-          const std::vector<IntpSource<LatSet::d>>& sendcells =
-            MPIComm.Senders[i].SendCells;
+template <typename T, typename LatSet, typename TypePack>
+void BlockLatticeManager<T, LatSet, TypePack>::MPIAverageCommunicate() {
+  mpi().barrier();
+  std::vector<std::vector<std::vector<T>>> SendBuffers(
+    BlockLats.size(), std::vector<std::vector<T>>{});
+  std::vector<std::vector<std::vector<T>>> RecvBuffers(
+    BlockLats.size(), std::vector<std::vector<T>>{});
+  std::size_t iblock{};
+  // --- send data ---
+  std::vector<MPI_Request> SendRequests;
+  for (BLOCKLATTICE& blat : BlockLats) {
+    if (blat.getBlock().getCommunicator()._NeedMPIComm) {
+      const std::vector<DistributedComm>& Sends = blat.getBlock().getCommunicator().MPIComm.AverSends;
+      SendBuffers[iblock].resize(Sends.size(), std::vector<T>{});
+      blat.mpiAverSend(SendRequests, SendBuffers[iblock], Sends);
+    }
+    ++iblock;
+  }
+  // --- receive data ---
+  iblock = 0;
+  std::vector<MPI_Request> RecvRequests;
+  for (BLOCKLATTICE& blat : BlockLats) {
+    if (blat.getBlock().getCommunicator()._NeedMPIComm) {
+      std::vector<DistributedComm>& Recvs = blat.getBlock().getCommunicator().MPIComm.AverRecvs;
+      RecvBuffers[iblock].resize(Recvs.size(), std::vector<T>{});
+      blat.mpiFullRecv(RecvRequests, RecvBuffers[iblock], Recvs);
+    }
+    ++iblock;
+  }
+  // wait for all send requests to complete
+  MPI_Waitall(SendRequests.size(), SendRequests.data(), MPI_STATUSES_IGNORE);
+  // MPI_Waitall(RecvRequests.size(), RecvRequests.data(), MPI_STATUSES_IGNORE);
+  // --- wait and set field data ---
+  iblock = 0;
+  int reqidx{};
+  for (BLOCKLATTICE& blat : BlockLats) {
+    if (blat.getBlock().getCommunicator()._NeedMPIComm) {
+      const std::vector<DistributedComm>& Recvs = blat.getBlock().getCommunicator().MPIComm.AverRecvs;
+      blat.mpiAverIntpSet(reqidx, RecvRequests, RecvBuffers[iblock], Recvs);
+    }
+    ++iblock;
+  }
+}
 
-          std::vector<T>& rhobuffer = this->template getField<GenericRho>()
-                                        .getBlockField(ifield)
-                                        .getMPIIntpBuffer()
-                                        .SendBuffers[i];
-          std::vector<Vector<T, LatSet::d>>& ubuffer =
-            this->template getField<VELOCITY<T, LatSet::d>>()
-              .getBlockField(ifield)
-              .getMPIIntpBuffer()
-              .SendBuffers[i];
-          std::vector<T>& popbuffer = this->template getField<POP<T, LatSet::q>>()
-                                        .getBlockField(ifield)
-                                        .getMPIIntpBuffer()
-                                        .SendBuffers[i];
+template <typename T, typename LatSet, typename TypePack>
+void BlockLatticeManager<T, LatSet, TypePack>::MPIInterpolateCommunicate() {
+  mpi().barrier();
+  std::vector<std::vector<std::vector<T>>> SendBuffers(
+    BlockLats.size(), std::vector<std::vector<T>>{});
+  std::vector<std::vector<std::vector<T>>> RecvBuffers(
+    BlockLats.size(), std::vector<std::vector<T>>{});
+  std::size_t iblock{};
+  // --- send data ---
+  std::vector<MPI_Request> SendRequests;
+  for (BLOCKLATTICE& blat : BlockLats) {
+    if (blat.getBlock().getCommunicator()._NeedMPIComm) {
+      const std::vector<DistributedComm>& Sends = blat.getBlock().getCommunicator().MPIComm.IntpSends;
+      SendBuffers[iblock].resize(Sends.size(), std::vector<T>{});
+      blat.mpiIntpSend(SendRequests, SendBuffers[iblock], Sends);
+    }
+    ++iblock;
+  }
+  // --- receive data ---
+  iblock = 0;
+  std::vector<MPI_Request> RecvRequests;
+  for (BLOCKLATTICE& blat : BlockLats) {
+    if (blat.getBlock().getCommunicator()._NeedMPIComm) {
+      std::vector<DistributedComm>& Recvs = blat.getBlock().getCommunicator().MPIComm.IntpRecvs;
+      RecvBuffers[iblock].resize(Recvs.size(), std::vector<T>{});
+      blat.mpiFullRecv(RecvRequests, RecvBuffers[iblock], Recvs);
+    }
+    ++iblock;
+  }
+  // wait for all send requests to complete
+  MPI_Waitall(SendRequests.size(), SendRequests.data(), MPI_STATUSES_IGNORE);
+  // MPI_Waitall(RecvRequests.size(), RecvRequests.data(), MPI_STATUSES_IGNORE);
+  // --- wait and set field data ---
+  iblock = 0;
+  int reqidx{};
+  for (BLOCKLATTICE& blat : BlockLats) {
+    if (blat.getBlock().getCommunicator()._NeedMPIComm) {
+      const std::vector<DistributedComm>& Recvs = blat.getBlock().getCommunicator().MPIComm.IntpRecvs;
+      blat.mpiAverIntpSet(reqidx, RecvRequests, RecvBuffers[iblock], Recvs);
+    }
+    ++iblock;
+  }
+}
 
-          const auto& RhoArray =
-            this->template getField<GenericRho>().getBlockField(ifield).getField(0);
-          const auto& UArray = this->template getField<VELOCITY<T, LatSet::d>>()
-                                 .getBlockField(ifield)
-                                 .getField(0);
 
-          const std::size_t size = sendcells.size();
-          std::size_t bufidx = 0;
-          for (std::size_t i = 0; i < size;) {
-            Interpolation<T, LatSet::d>(RhoArray, sendcells, i, rhobuffer, bufidx);
-          }
-          bufidx = 0;
-          for (std::size_t i = 0; i < size;) {
-            Interpolation<T, LatSet::d>(UArray, sendcells, i, ubuffer, bufidx);
-          }
-          bufidx = 0;
-          for (unsigned int iArr = 0; iArr < LatSet::q; ++iArr) {
-            const auto& PopArray =
-              this->template getField<POP<T, LatSet::q>>().getBlockField(ifield).getField(
-                iArr);
-            for (std::size_t i = 0; i < size;) {
-              Interpolation<T, LatSet::d>(PopArray, sendcells, i, popbuffer, bufidx);
-            }
-          }
-          // pop conversion
-          const std::size_t shift = sendcells.size();
-          for (std::size_t id = 0; id < shift; ++id) {
-            std::array<T, LatSet::q> feq{};
-            Equilibrium<T, LatSet>::SecondOrder(feq, ubuffer[id], rhobuffer[id]);
-            for (unsigned int k = 0; k < LatSet::q; ++k) {
-              popbuffer[id + shift * k] =
-                RefineConverter<T>::getPopF(popbuffer[id + shift * k], feq[k], OmegaC);
-            }
-          }
-        }
-        // non-blocking send pop buffer
-        for (std::size_t i = 0; i < MPIComm.Senders.size(); ++i) {
-          MPI_Request request;
-          std::vector<T>& popbuffer = this->template getField<POP<T, LatSet::q>>()
-                                        .getBlockField(ifield)
-                                        .getMPIIntpBuffer()
-                                        .SendBuffers[i];
-          mpi().iSend(popbuffer.data(), popbuffer.size(), MPIComm.Senders[i].RecvRank,
-                      &request, MPIComm.Senders[i].RecvBlockid);
-          SendRequestsPop.push_back(request);
-        }
+template <typename T, typename LatSet, typename TypePack>
+void BlockLatticeManager<T, LatSet, TypePack>::MPINormalCommunicate(std::int64_t count) {
+  mpi().barrier();
+  std::vector<std::vector<std::vector<T>>> SendBuffers(
+    BlockLats.size(), std::vector<std::vector<T>>{});
+  std::vector<std::vector<std::vector<T>>> RecvBuffers(
+    BlockLats.size(), std::vector<std::vector<T>>{});
+  std::size_t iblock{};
+  // --- send data ---
+  std::vector<MPI_Request> SendRequests;
+  for (BLOCKLATTICE& blat : BlockLats) {
+    const int deLevel = static_cast<int>(getMaxLevel() - blat.getLevel());
+    if ((count % (static_cast<int>(std::pow(2, deLevel))) == 0) && blat.getBlock().getCommunicator()._NeedMPIComm) {
+      const std::vector<DistributedComm>& Sends = blat.getBlock().getCommunicator().DirSends;
+      SendBuffers[iblock].resize(Sends.size(), std::vector<T>{});
+      blat.mpiNormalSend(SendRequests, SendBuffers[iblock], Sends);
+    }
+    ++iblock;
+  }
+  // --- receive data ---
+  iblock = 0;
+  std::vector<MPI_Request> RecvRequests;
+  for (BLOCKLATTICE& blat : BlockLats) {
+    const int deLevel = static_cast<int>(getMaxLevel() - blat.getLevel());
+    if ((count % (static_cast<int>(std::pow(2, deLevel))) == 0) && blat.getBlock().getCommunicator()._NeedMPIComm) {
+      std::vector<DistributedComm>& Recvs = blat.getBlock().getCommunicator().DirRecvs;
+      RecvBuffers[iblock].resize(Recvs.size(), std::vector<T>{});
+      blat.mpiNormalRecv(RecvRequests, RecvBuffers[iblock], Recvs);
+    }
+    ++iblock;
+  }
+  // wait for all send requests to complete
+  MPI_Waitall(SendRequests.size(), SendRequests.data(), MPI_STATUSES_IGNORE);
+  // MPI_Waitall(RecvRequests.size(), RecvRequests.data(), MPI_STATUSES_IGNORE);
+  // --- wait and set field data ---
+  iblock = 0;
+  int reqidx{};
+  for (BLOCKLATTICE& blat : BlockLats) {
+    const int deLevel = static_cast<int>(getMaxLevel() - blat.getLevel());
+    if ((count % (static_cast<int>(std::pow(2, deLevel))) == 0) && blat.getBlock().getCommunicator()._NeedMPIComm) {
+      const std::vector<DistributedComm>& Recvs = blat.getBlock().getCommunicator().DirRecvs;
+      blat.mpiNormalSet(reqidx, RecvRequests, RecvBuffers[iblock], Recvs);
+    }
+    ++iblock;
+  }
+}
+
+template <typename T, typename LatSet, typename TypePack>
+void BlockLatticeManager<T, LatSet, TypePack>::MPINormalFullCommunicate(std::int64_t count) {
+  mpi().barrier();
+  std::vector<std::vector<std::vector<T>>> SendBuffers(
+    BlockLats.size(), std::vector<std::vector<T>>{});
+  std::vector<std::vector<std::vector<T>>> RecvBuffers(
+    BlockLats.size(), std::vector<std::vector<T>>{});
+  std::size_t iblock{};
+  // --- send data ---
+  std::vector<MPI_Request> SendRequests;
+  for (BLOCKLATTICE& blat : BlockLats) {
+    const int deLevel = static_cast<int>(getMaxLevel() - blat.getLevel());
+    if ((count % (static_cast<int>(std::pow(2, deLevel))) == 0) && blat.getBlock().getCommunicator()._NeedMPIComm) {
+      const std::vector<DistributedComm>& Sends = blat.getBlock().getCommunicator().MPIComm.Sends;
+      SendBuffers[iblock].resize(Sends.size(), std::vector<T>{});
+      blat.mpiNormalFullSend(SendRequests, SendBuffers[iblock], Sends);
+    }
+    ++iblock;
+  }
+  // --- receive data ---
+  iblock = 0;
+  std::vector<MPI_Request> RecvRequests;
+  for (BLOCKLATTICE& blat : BlockLats) {
+    const int deLevel = static_cast<int>(getMaxLevel() - blat.getLevel());
+    if ((count % (static_cast<int>(std::pow(2, deLevel))) == 0) && blat.getBlock().getCommunicator()._NeedMPIComm) {
+      std::vector<DistributedComm>& Recvs = blat.getBlock().getCommunicator().MPIComm.Recvs;
+      RecvBuffers[iblock].resize(Recvs.size(), std::vector<T>{});
+      blat.mpiFullRecv(RecvRequests, RecvBuffers[iblock], Recvs);
+    }
+    ++iblock;
+  }
+  // wait for all send requests to complete
+  MPI_Waitall(SendRequests.size(), SendRequests.data(), MPI_STATUSES_IGNORE);
+  // MPI_Waitall(RecvRequests.size(), RecvRequests.data(), MPI_STATUSES_IGNORE);
+  // --- wait and set field data ---
+  iblock = 0;
+  int reqidx{};
+  for (BLOCKLATTICE& blat : BlockLats) {
+    const int deLevel = static_cast<int>(getMaxLevel() - blat.getLevel());
+    if ((count % (static_cast<int>(std::pow(2, deLevel))) == 0) && blat.getBlock().getCommunicator()._NeedMPIComm) {
+      const std::vector<DistributedComm>& Recvs = blat.getBlock().getCommunicator().MPIComm.Recvs;
+      blat.mpiNormalFullSet(reqidx, RecvRequests, RecvBuffers[iblock], Recvs);
+    }
+    ++iblock;
+  }
+}
+
+template <typename T, typename LatSet, typename TypePack>
+void BlockLatticeManager<T, LatSet, TypePack>::MPINormalAllCommunicate(std::int64_t count) {
+  mpi().barrier();
+  std::vector<std::vector<std::vector<T>>> SendBuffers(
+    BlockLats.size(), std::vector<std::vector<T>>{});
+  std::vector<std::vector<std::vector<T>>> RecvBuffers(
+    BlockLats.size(), std::vector<std::vector<T>>{});
+  std::size_t iblock{};
+  // --- send data ---
+  std::vector<MPI_Request> SendRequests;
+  for (BLOCKLATTICE& blat : BlockLats) {
+    const int deLevel = static_cast<int>(getMaxLevel() - blat.getLevel());
+    if ((count % (static_cast<int>(std::pow(2, deLevel))) == 0) && blat.getBlock().getCommunicator()._NeedMPIComm) {
+      const std::vector<DistributedComm>& Sends = blat.getBlock().getCommunicator().AllMPIComm.Sends;
+      SendBuffers[iblock].resize(Sends.size(), std::vector<T>{});
+      blat.mpiNormalFullSend(SendRequests, SendBuffers[iblock], Sends);
+    }
+    ++iblock;
+  }
+  // --- receive data ---
+  iblock = 0;
+  std::vector<MPI_Request> RecvRequests;
+  for (BLOCKLATTICE& blat : BlockLats) {
+    const int deLevel = static_cast<int>(getMaxLevel() - blat.getLevel());
+    if ((count % (static_cast<int>(std::pow(2, deLevel))) == 0) && blat.getBlock().getCommunicator()._NeedMPIComm) {
+      std::vector<DistributedComm>& Recvs = blat.getBlock().getCommunicator().AllMPIComm.Recvs;
+      RecvBuffers[iblock].resize(Recvs.size(), std::vector<T>{});
+      blat.mpiFullRecv(RecvRequests, RecvBuffers[iblock], Recvs);
+    }
+    ++iblock;
+  }
+  // wait for all send requests to complete
+  MPI_Waitall(SendRequests.size(), SendRequests.data(), MPI_STATUSES_IGNORE);
+  // MPI_Waitall(RecvRequests.size(), RecvRequests.data(), MPI_STATUSES_IGNORE);
+  // --- wait and set field data ---
+  iblock = 0;
+  int reqidx{};
+  for (BLOCKLATTICE& blat : BlockLats) {
+    const int deLevel = static_cast<int>(getMaxLevel() - blat.getLevel());
+    if ((count % (static_cast<int>(std::pow(2, deLevel))) == 0) && blat.getBlock().getCommunicator()._NeedMPIComm) {
+      const std::vector<DistributedComm>& Recvs = blat.getBlock().getCommunicator().AllMPIComm.Recvs;
+      blat.mpiNormalFullSet(reqidx, RecvRequests, RecvBuffers[iblock], Recvs);
+    }
+    ++iblock;
+  }
+}
+
+template <typename T, typename LatSet, typename TypePack>
+void BlockLatticeManager<T, LatSet, TypePack>::MPIAverageCommunicate(std::int64_t count) {
+  mpi().barrier();
+  std::vector<std::vector<std::vector<T>>> SendBuffers(
+    BlockLats.size(), std::vector<std::vector<T>>{});
+  std::vector<std::vector<std::vector<T>>> RecvBuffers(
+    BlockLats.size(), std::vector<std::vector<T>>{});
+  std::size_t iblock{};
+  // --- send data --- send data to lower level, deLevel+1
+  std::vector<MPI_Request> SendRequests;
+  for (BLOCKLATTICE& blat : BlockLats) {
+    const int deLevel = static_cast<int>(getMaxLevel() - blat.getLevel()) + 1;
+    if (blat.getLevel() != std::uint8_t(0)) {
+      if ((count % (static_cast<int>(std::pow(2, deLevel))) == 0) && blat.getBlock().getCommunicator()._NeedMPIComm) {
+        const std::vector<DistributedComm>& Sends = blat.getBlock().getCommunicator().MPIComm.AverSends;
+        SendBuffers[iblock].resize(Sends.size(), std::vector<T>{});
+        blat.mpiAverSend(SendRequests, SendBuffers[iblock], Sends);
       }
     }
-    ++ifield;
+    ++iblock;
   }
-  // recv pop buffer
-  std::vector<MPI_Request> RecvRequestsPop;
-  this->template getField<POP<T, LatSet::q>>().MPIInterpRecv(count, RecvRequestsPop);
-  // wait for all requests
-  MPI_Waitall(SendRequestsPop.size(), SendRequestsPop.data(), MPI_STATUSES_IGNORE);
-  // MPI_Waitall(RecvRequestsPop.size(), RecvRequestsPop.data(), MPI_STATUSES_IGNORE);
-  // set
-  this->template getField<POP<T, LatSet::q>>().MPIIntpSet(count, RecvRequestsPop);
+  // --- receive data ---
+  iblock = 0;
+  std::vector<MPI_Request> RecvRequests;
+  for (BLOCKLATTICE& blat : BlockLats) {
+    const int deLevel = static_cast<int>(getMaxLevel() - blat.getLevel());
+    if ((count % (static_cast<int>(std::pow(2, deLevel))) == 0) && blat.getBlock().getCommunicator()._NeedMPIComm) {
+      std::vector<DistributedComm>& Recvs = blat.getBlock().getCommunicator().MPIComm.AverRecvs;
+      RecvBuffers[iblock].resize(Recvs.size(), std::vector<T>{});
+      blat.mpiFullRecv(RecvRequests, RecvBuffers[iblock], Recvs);
+    }
+    ++iblock;
+  }
+  // wait for all send requests to complete
+  MPI_Waitall(SendRequests.size(), SendRequests.data(), MPI_STATUSES_IGNORE);
+  // MPI_Waitall(RecvRequests.size(), RecvRequests.data(), MPI_STATUSES_IGNORE);
+  // --- wait and set field data ---
+  iblock = 0;
+  int reqidx{};
+  for (BLOCKLATTICE& blat : BlockLats) {
+    const int deLevel = static_cast<int>(getMaxLevel() - blat.getLevel());
+    if ((count % (static_cast<int>(std::pow(2, deLevel))) == 0) && blat.getBlock().getCommunicator()._NeedMPIComm) {
+      const std::vector<DistributedComm>& Recvs = blat.getBlock().getCommunicator().MPIComm.AverRecvs;
+      blat.mpiAverIntpSet(reqidx, RecvRequests, RecvBuffers[iblock], Recvs);
+    }
+    ++iblock;
+  }
+}
+
+template <typename T, typename LatSet, typename TypePack>
+void BlockLatticeManager<T, LatSet, TypePack>::MPIInterpolateCommunicate(std::int64_t count) {
+  mpi().barrier();
+  std::vector<std::vector<std::vector<T>>> SendBuffers(
+    BlockLats.size(), std::vector<std::vector<T>>{});
+  std::vector<std::vector<std::vector<T>>> RecvBuffers(
+    BlockLats.size(), std::vector<std::vector<T>>{});
+  std::size_t iblock{};
+  // --- send data --- send data to higher level, deLevel-1
+  std::vector<MPI_Request> SendRequests;
+  for (BLOCKLATTICE& blat : BlockLats) {
+    const int deLevel = static_cast<int>(getMaxLevel() - blat.getLevel()) - 1;
+    if (deLevel != -1) {
+      if ((count % (static_cast<int>(std::pow(2, deLevel))) == 0) && blat.getBlock().getCommunicator()._NeedMPIComm) {
+        const std::vector<DistributedComm>& Sends = blat.getBlock().getCommunicator().MPIComm.IntpSends;
+        SendBuffers[iblock].resize(Sends.size(), std::vector<T>{});
+        blat.mpiIntpSend(SendRequests, SendBuffers[iblock], Sends);
+      }
+    }
+    ++iblock;
+  }
+  // --- receive data ---
+  iblock = 0;
+  std::vector<MPI_Request> RecvRequests;
+  for (BLOCKLATTICE& blat : BlockLats) {
+    const int deLevel = static_cast<int>(getMaxLevel() - blat.getLevel());
+    if ((count % (static_cast<int>(std::pow(2, deLevel))) == 0) && blat.getBlock().getCommunicator()._NeedMPIComm) {
+      std::vector<DistributedComm>& Recvs = blat.getBlock().getCommunicator().MPIComm.IntpRecvs;
+      RecvBuffers[iblock].resize(Recvs.size(), std::vector<T>{});
+      blat.mpiFullRecv(RecvRequests, RecvBuffers[iblock], Recvs);
+    }
+    ++iblock;
+  }
+  // wait for all send requests to complete
+  MPI_Waitall(SendRequests.size(), SendRequests.data(), MPI_STATUSES_IGNORE);
+  // MPI_Waitall(RecvRequests.size(), RecvRequests.data(), MPI_STATUSES_IGNORE);
+  // --- wait and set field data ---
+  iblock = 0;
+  int reqidx{};
+  for (BLOCKLATTICE& blat : BlockLats) {
+    const int deLevel = static_cast<int>(getMaxLevel() - blat.getLevel());
+    if ((count % (static_cast<int>(std::pow(2, deLevel))) == 0) && blat.getBlock().getCommunicator()._NeedMPIComm) {
+      const std::vector<DistributedComm>& Recvs = blat.getBlock().getCommunicator().MPIComm.IntpRecvs;
+      blat.mpiAverIntpSet(reqidx, RecvRequests, RecvBuffers[iblock], Recvs);
+    }
+    ++iblock;
+  }
 }
 
 #endif
@@ -1071,95 +1391,201 @@ void BlockLatticeManager<T, LatSet, TypePack>::MPIIntpComm(std::int64_t count) {
 // when you use other post-stream processors(after stream and before communication) in cells to be communicated, 
 // if they might use invalid pop in one direction to get pop in anohter direction which will not be communicated
 // e.g. the half-way bounce-back boundary condition, 
-// then you should use Lattice.getField<POP<T, LatSet::q>>().CommunicateAll() instead
+// then you should use Lattice.getField<POP<T, LatSet::q>>().Communicate() instead
+template <typename T, typename LatSet, typename TypePack>
+void BlockLatticeManager<T, LatSet, TypePack>::NormalCommunicate() {
+#ifndef SingleBlock_OMP
+#pragma omp parallel for num_threads(Thread_Num)
+#endif
+  for (BLOCKLATTICE& BLat : BlockLats) {
+    normalCommunicate(BLat);
+  }
+#ifdef MPI_ENABLED
+  MPINormalCommunicate();
+#endif
+}
+
+template <typename T, typename LatSet, typename TypePack>
+void BlockLatticeManager<T, LatSet, TypePack>::NormalCommunicate(std::int64_t count) {
+#ifndef SingleBlock_OMP
+#pragma omp parallel for num_threads(Thread_Num)
+#endif
+  for (auto& BLat : BlockLats) {
+    if (count % (static_cast<int>(std::pow(2, int(getMaxLevel() - BLat.getLevel())))) == 0){
+      normalCommunicate(BLat);
+    }
+  }
+#ifdef MPI_ENABLED
+  MPINormalCommunicate(count);
+#endif
+}
+
+
+template <typename T, typename LatSet, typename TypePack>
+void BlockLatticeManager<T, LatSet, TypePack>::NormalFullCommunicate() {
+#ifndef SingleBlock_OMP
+#pragma omp parallel for num_threads(Thread_Num)
+#endif
+  for (BLOCKLATTICE& BLat : BlockLats) {
+    normalFullCommunicate(BLat);
+  }
+#ifdef MPI_ENABLED
+  MPINormalFullCommunicate();
+#endif
+}
+
+template <typename T, typename LatSet, typename TypePack>
+void BlockLatticeManager<T, LatSet, TypePack>::NormalFullCommunicate(std::int64_t count) {
+#ifndef SingleBlock_OMP
+#pragma omp parallel for num_threads(Thread_Num)
+#endif
+  for (auto& BLat : BlockLats) {
+    if (count % (static_cast<int>(std::pow(2, int(getMaxLevel() - BLat.getLevel())))) == 0){
+      normalFullCommunicate(BLat);
+    }
+  }
+#ifdef MPI_ENABLED
+  MPINormalFullCommunicate(count);
+#endif
+}
+
+
+template <typename T, typename LatSet, typename TypePack>
+void BlockLatticeManager<T, LatSet, TypePack>::NormalAllCommunicate() {
+#ifndef SingleBlock_OMP
+#pragma omp parallel for num_threads(Thread_Num)
+#endif
+  for (BLOCKLATTICE& BLat : BlockLats) {
+    normalAllCommunicate(BLat);
+  }
+#ifdef MPI_ENABLED
+  MPINormalAllCommunicate();
+#endif
+}
+
+template <typename T, typename LatSet, typename TypePack>
+void BlockLatticeManager<T, LatSet, TypePack>::NormalAllCommunicate(std::int64_t count) {
+#ifndef SingleBlock_OMP
+#pragma omp parallel for num_threads(Thread_Num)
+#endif
+  for (auto& BLat : BlockLats) {
+    if (count % (static_cast<int>(std::pow(2, int(getMaxLevel() - BLat.getLevel())))) == 0){
+      normalAllCommunicate(BLat);
+    }
+  }
+#ifdef MPI_ENABLED
+  MPINormalAllCommunicate(count);
+#endif
+}
+
+
+template <typename T, typename LatSet, typename TypePack>
+void BlockLatticeManager<T, LatSet, TypePack>::AverageCommunicate() {
+#ifndef SingleBlock_OMP
+#pragma omp parallel for num_threads(Thread_Num)
+#endif
+  for (auto& BLat : BlockLats) {
+    averCommunicate(BLat, BLat.getBlock().getCommunicator().Comm.AverComm);
+  }
+#ifdef MPI_ENABLED
+  MPIAverageCommunicate();
+#endif
+}
+
+template <typename T, typename LatSet, typename TypePack>
+void BlockLatticeManager<T, LatSet, TypePack>::AverageCommunicate(std::int64_t count) {
+#ifndef SingleBlock_OMP
+#pragma omp parallel for num_threads(Thread_Num)
+#endif
+  for (auto& BLat : BlockLats) {
+    if (count % (static_cast<int>(std::pow(2, int(getMaxLevel() - BLat.getLevel())))) == 0){
+      averCommunicate(BLat, BLat.getBlock().getCommunicator().Comm.AverComm);
+    }
+  }
+#ifdef MPI_ENABLED
+  MPIAverageCommunicate(count);
+#endif
+}
+
+
+template <typename T, typename LatSet, typename TypePack>
+void BlockLatticeManager<T, LatSet, TypePack>::InterpolateCommunicate() {
+#ifndef SingleBlock_OMP
+#pragma omp parallel for num_threads(Thread_Num)
+#endif
+  for (auto& BLat : BlockLats) {
+    intpCommunicate(BLat, BLat.getBlock().getCommunicator().Comm.IntpComm);
+  }
+#ifdef MPI_ENABLED
+  MPIInterpolateCommunicate();
+#endif
+}
+
+template <typename T, typename LatSet, typename TypePack>
+void BlockLatticeManager<T, LatSet, TypePack>::InterpolateCommunicate(std::int64_t count) {
+#ifndef SingleBlock_OMP
+#pragma omp parallel for num_threads(Thread_Num)
+#endif
+  for (auto& BLat : BlockLats) {
+    if (count % (static_cast<int>(std::pow(2, int(getMaxLevel() - BLat.getLevel())))) == 0) {
+      intpCommunicate(BLat, BLat.getBlock().getCommunicator().Comm.IntpComm);
+    }
+  }
+#ifdef MPI_ENABLED
+  MPIInterpolateCommunicate(count);
+#endif
+}
+
+
+template <typename T, typename LatSet, typename TypePack>
+void BlockLatticeManager<T, LatSet, TypePack>::Communicate() {
+  NormalCommunicate();
+  AverageCommunicate();
+  InterpolateCommunicate();
+  mpi().barrier();
+}
 
 template <typename T, typename LatSet, typename TypePack>
 void BlockLatticeManager<T, LatSet, TypePack>::Communicate(std::int64_t count) {
-  // --- noraml communication ---
-#ifndef SingleBlock_OMP
-#pragma omp parallel for num_threads(Thread_Num)
-#endif
-  for (auto& BLat : BlockLats) {
-    if (count % (static_cast<int>(std::pow(2, int(getMaxLevel() - BLat.getLevel())))) == 0)
-      BLat.communicate();
-  }
+  NormalCommunicate(count);
+  AverageCommunicate(count);
+  InterpolateCommunicate(count);
+  mpi().barrier();
+}
 
-#ifdef MPI_ENABLED
-  this->template getField<POP<T, LatSet::q>>().MPINormalCommunicate(count);
-#endif
 
-  // --- average communication ---
-#ifndef SingleBlock_OMP
-#pragma omp parallel for num_threads(Thread_Num)
-#endif
-  for (auto& BLat : BlockLats) {
-    if (count % (static_cast<int>(std::pow(2, int(getMaxLevel() - BLat.getLevel())))) == 0)
-      BLat.avercommunicate();
-  }
-
-#ifdef MPI_ENABLED
-  MPIAverComm(count);
-#endif
-
-  // --- interpolation communication ---
-#ifndef SingleBlock_OMP
-#pragma omp parallel for num_threads(Thread_Num)
-#endif
-  for (auto& BLat : BlockLats) {
-    if (count % (static_cast<int>(std::pow(2, int(getMaxLevel() - BLat.getLevel())))) == 0)
-      BLat.interpcommunicate();
-  }
-
-#ifdef MPI_ENABLED
-  MPIIntpComm(count);
-#endif
-
+template <typename T, typename LatSet, typename TypePack>
+void BlockLatticeManager<T, LatSet, TypePack>::FullCommunicate() {
+  NormalFullCommunicate();
+  AverageCommunicate();
+  InterpolateCommunicate();
   mpi().barrier();
 }
 
 template <typename T, typename LatSet, typename TypePack>
-void BlockLatticeManager<T, LatSet, TypePack>::FullDirectionCommunicate(std::int64_t count) {
-  // --- noraml communication ---
-#ifndef SingleBlock_OMP
-#pragma omp parallel for num_threads(Thread_Num)
-#endif
-  for (auto& BLat : BlockLats) {
-    if (count % (static_cast<int>(std::pow(2, int(getMaxLevel() - BLat.getLevel())))) == 0)
-      BLat.fulldirectioncommunicate();
-  }
-
-#ifdef MPI_ENABLED
-  this->template getField<POP<T, LatSet::q>>().MPINormalCommunicate(count);
-#endif
-
-  // --- average communication ---
-#ifndef SingleBlock_OMP
-#pragma omp parallel for num_threads(Thread_Num)
-#endif
-  for (auto& BLat : BlockLats) {
-    if (count % (static_cast<int>(std::pow(2, int(getMaxLevel() - BLat.getLevel())))) == 0)
-      BLat.avercommunicate();
-  }
-
-#ifdef MPI_ENABLED
-  MPIAverComm(count);
-#endif
-
-  // --- interpolation communication ---
-#ifndef SingleBlock_OMP
-#pragma omp parallel for num_threads(Thread_Num)
-#endif
-  for (auto& BLat : BlockLats) {
-    if (count % (static_cast<int>(std::pow(2, int(getMaxLevel() - BLat.getLevel())))) == 0)
-      BLat.interpcommunicate();
-  }
-
-#ifdef MPI_ENABLED
-  MPIIntpComm(count);
-#endif
-
+void BlockLatticeManager<T, LatSet, TypePack>::FullCommunicate(std::int64_t count) {
+  NormalFullCommunicate(count);
+  AverageCommunicate(count);
+  InterpolateCommunicate(count);
   mpi().barrier();
 }
+
+template <typename T, typename LatSet, typename TypePack>
+void BlockLatticeManager<T, LatSet, TypePack>::AllCommunicate() {
+  NormalAllCommunicate();
+  AverageCommunicate();
+  InterpolateCommunicate();
+  mpi().barrier();
+}
+
+template <typename T, typename LatSet, typename TypePack>
+void BlockLatticeManager<T, LatSet, TypePack>::AllCommunicate(std::int64_t count) {
+  NormalAllCommunicate(count);
+  AverageCommunicate(count);
+  InterpolateCommunicate(count);
+  mpi().barrier();
+}
+
 
 template <typename T, typename LatSet, typename TypePack>
 void BlockLatticeManager<T, LatSet, TypePack>::EnableToleranceRho(T rhores) {
@@ -1218,6 +1644,153 @@ T BlockLatticeManager<T, LatSet, TypePack>::getToleranceU(int shift) {
   mpi().reduceAndBcast(maxres, MPI_MAX);
 #endif
   return maxres;
+}
+
+
+template <typename T, typename LatSet, typename TypePack>
+void BlockLatticeManager<T, LatSet, TypePack>::normalCommunicate(BLOCKLATTICE& BLat) {
+  const Communicator& communicator = BLat.getBlock().getCommunicator();
+
+  std::size_t icomm{};
+  for (const SharedComm& comm : communicator.Comm.Comms) {
+    const BLOCKLATTICE& nBLat = BlockLats[this->BlockGeo.findBlockIndex(comm.SendBlockId)];
+    const std::size_t size = comm.SendRecvCells.size();
+    for (unsigned int k : BLat.getCommDirection()[icomm]){
+      const auto& nPopsk = nBLat.template getField<POP<T, LatSet::q>>().getField(k);
+      auto& Popsk = BLat.template getField<POP<T, LatSet::q>>().getField(k);
+      for (std::size_t i = 0; i < size; i+=2) {
+        Popsk.set(comm.SendRecvCells[i+1], nPopsk[comm.SendRecvCells[i]]);
+      }
+    }
+    ++icomm;
+  }
+}
+
+template <typename T, typename LatSet, typename TypePack>
+void BlockLatticeManager<T, LatSet, TypePack>::normalFullCommunicate(BLOCKLATTICE& BLat) {
+  const Communicator& communicator = BLat.getBlock().getCommunicator();
+
+  for (const SharedComm& comm : communicator.Comm.Comms) {
+    const BLOCKLATTICE& nBLat = BlockLats[this->BlockGeo.findBlockIndex(comm.SendBlockId)];
+    const std::size_t size = comm.SendRecvCells.size();
+
+    for (unsigned int k = 0; k < LatSet::q; ++k){
+      const auto& nPopsk = nBLat.template getField<POP<T, LatSet::q>>().getField(k);
+      auto& Popsk = BLat.template getField<POP<T, LatSet::q>>().getField(k);
+      for (std::size_t i = 0; i < size; i+=2) {
+        Popsk.set(comm.SendRecvCells[i+1], nPopsk[comm.SendRecvCells[i]]);
+      }
+    }
+  }
+}
+
+template <typename T, typename LatSet, typename TypePack>
+void BlockLatticeManager<T, LatSet, TypePack>::normalAllCommunicate(BLOCKLATTICE& BLat) {
+  const Communicator& communicator = BLat.getBlock().getCommunicator();
+
+  for (const SharedComm& comm : communicator.AllComm.Comms) {
+    const BLOCKLATTICE& nBLat = BlockLats[this->BlockGeo.findBlockIndex(comm.SendBlockId)];
+    const std::size_t size = comm.SendRecvCells.size();
+
+    for (unsigned int k = 0; k < LatSet::q; ++k){
+      const auto& nPopsk = nBLat.template getField<POP<T, LatSet::q>>().getField(k);
+      auto& Popsk = BLat.template getField<POP<T, LatSet::q>>().getField(k);
+      for (std::size_t i = 0; i < size; i+=2) {
+        Popsk.set(comm.SendRecvCells[i+1], nPopsk[comm.SendRecvCells[i]]);
+      }
+    }
+  }
+}
+
+template <typename T, typename LatSet, typename TypePack>
+void BlockLatticeManager<T, LatSet, TypePack>::averCommunicate(BLOCKLATTICE& BLat, const std::vector<SharedComm>& comms) {
+  static constexpr std::size_t RecvOffset = LatSet::d == 2 ? 4 : 8;
+  static constexpr std::size_t SendRecvOffset = RecvOffset + 1;
+
+  for (const SharedComm& comm : comms) {
+    const BLOCKLATTICE& nBLat = BlockLats[this->BlockGeo.findBlockIndex(comm.SendBlockId)];
+    const std::size_t size = comm.SendRecvCells.size();
+    const T OmegaF = nBLat.getOmega();
+    const GenericArray<T>& nRhoF = nBLat.template getField<GenericRho>().getField(0);
+    const GenericArray<Vector<T, LatSet::d>>& nUF =
+      nBLat.template getField<VELOCITY<T, LatSet::d>>().getField(0);
+
+    for (std::size_t i = 0; i < size; i += SendRecvOffset) {
+      // get averaged(interpolated) rho and u
+      T averRho = getAverage<T, LatSet::d>(nRhoF, i, comm.SendRecvCells);
+      Vector<T, LatSet::d> averU = getAverage<T, LatSet::d>(nUF, i, comm.SendRecvCells);
+      // get feq, peparing for pop conversion
+      std::array<T, LatSet::q> feq{};
+      Equilibrium<T, LatSet>::SecondOrder(feq, averU, averRho);
+
+      std::array<T*, LatSet::q> CellPop =
+        BLat.template getField<POP<T, LatSet::q>>().getArray(comm.SendRecvCells[i+RecvOffset]);
+      for (unsigned int k = 0; k < LatSet::q; ++k) {
+        T averpop = getAverage<T, LatSet::d>(
+          nBLat.template getField<POP<T, LatSet::q>>().getField(k), i, comm.SendRecvCells);
+        // convert from fine to coarse
+        *(CellPop[k]) = RefineConverter<T>::getPopC(averpop, feq[k], OmegaF);
+      }
+    }
+  }
+}
+
+template <typename T, typename LatSet, typename TypePack>
+void BlockLatticeManager<T, LatSet, TypePack>::intpCommunicate(BLOCKLATTICE& BLat, const std::vector<SharedComm>& comms) {
+  static constexpr std::size_t RecvOffset = LatSet::d == 2 ? 4 : 8;
+  static constexpr std::size_t SendRecvOffset = RecvOffset + 1;
+
+  for (const SharedComm& comm : comms) {
+    const BLOCKLATTICE& nBLat = BlockLats[this->BlockGeo.findBlockIndex(comm.SendBlockId)];
+    const std::size_t size = comm.SendRecvCells.size();
+    const T OmegaC = nBLat.getOmega();
+    const GenericArray<T>& nRhoF = nBLat.template getField<GenericRho>().getField(0);
+    const GenericArray<Vector<T, LatSet::d>>& nUF =
+      nBLat.template getField<VELOCITY<T, LatSet::d>>().getField(0);
+
+    for (std::size_t i = 0; i < size;) {
+      if constexpr (LatSet::d == 2) {
+        popIntpCommunicate<0>(BLat, nBLat, OmegaC, comm, nRhoF, nUF, i                  );
+        popIntpCommunicate<1>(BLat, nBLat, OmegaC, comm, nRhoF, nUF, i += SendRecvOffset);
+        popIntpCommunicate<2>(BLat, nBLat, OmegaC, comm, nRhoF, nUF, i += SendRecvOffset);
+        popIntpCommunicate<3>(BLat, nBLat, OmegaC, comm, nRhoF, nUF, i += SendRecvOffset);
+        i += SendRecvOffset;
+      } else if constexpr (LatSet::d == 3) {
+        popIntpCommunicate<0>(BLat, nBLat, OmegaC, comm, nRhoF, nUF, i                  );
+        popIntpCommunicate<1>(BLat, nBLat, OmegaC, comm, nRhoF, nUF, i += SendRecvOffset);
+        popIntpCommunicate<2>(BLat, nBLat, OmegaC, comm, nRhoF, nUF, i += SendRecvOffset);
+        popIntpCommunicate<3>(BLat, nBLat, OmegaC, comm, nRhoF, nUF, i += SendRecvOffset);
+        popIntpCommunicate<4>(BLat, nBLat, OmegaC, comm, nRhoF, nUF, i += SendRecvOffset);
+        popIntpCommunicate<5>(BLat, nBLat, OmegaC, comm, nRhoF, nUF, i += SendRecvOffset);
+        popIntpCommunicate<6>(BLat, nBLat, OmegaC, comm, nRhoF, nUF, i += SendRecvOffset);
+        popIntpCommunicate<7>(BLat, nBLat, OmegaC, comm, nRhoF, nUF, i += SendRecvOffset);
+        i += SendRecvOffset;
+      }
+    }
+  }
+}
+
+template <typename T, typename LatSet, typename TypePack>
+template <unsigned int D>
+void BlockLatticeManager<T, LatSet, TypePack>::popIntpCommunicate(BLOCKLATTICE& BLat, const BLOCKLATTICE& nBLat, T OmegaC, const SharedComm& comm, 
+const GenericArray<T>& nRhoF, const GenericArray<Vector<T, LatSet::d>>& nUF, std::size_t i) {
+  static constexpr std::size_t RecvOffset = LatSet::d == 2 ? 4 : 8;
+  // static constexpr std::size_t SendRecvOffset = RecvOffset + 1;
+
+  T averRho = getInterpolation<D, T, LatSet::d>(nRhoF, i, comm.SendRecvCells);
+  Vector<T, LatSet::d> averU = getInterpolation<D, T, LatSet::d>(nUF, i, comm.SendRecvCells);
+
+  std::array<T, LatSet::q> feq{};
+  Equilibrium<T, LatSet>::SecondOrder(feq, averU, averRho);
+
+  std::array<T*, LatSet::q> CellPop =
+    BLat.template getField<POP<T, LatSet::q>>().getArray(comm.SendRecvCells[i+RecvOffset]);
+  for (unsigned int k = 0; k < LatSet::q; ++k) {
+    T averpop = getInterpolation<D, T, LatSet::d>(
+      nBLat.template getField<POP<T, LatSet::q>>().getField(k), i, comm.SendRecvCells);
+    // convert from coarse to fine
+    *(CellPop[k]) = RefineConverter<T>::getPopF(averpop, feq[k], OmegaC);
+  }
 }
 
 // DynamicBlockLatticeHelper2D
@@ -1372,7 +1945,7 @@ void DynamicBlockLatticeHelper2D<T, LatSet, TypePack>::PopFieldInit() {
       }
     }
   }
-  BlockLatMan.template getField<POP<T, LatSet::q>>().CommunicateAll();
+  BlockLatMan.template getField<POP<T, LatSet::q>>().Communicate();
 }
 
 template <typename T, typename LatSet, typename TypePack>

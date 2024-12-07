@@ -182,8 +182,8 @@ class BlockLatticeBase {
 
   std::size_t getNbrId(std::size_t id, int dir) const { return id + Delta_Index[dir]; }
 
-  Block<T, LatSet::d>& getGeo() { return BlockGeo; }
-  const Block<T, LatSet::d>& getGeo() const { return BlockGeo; }
+  Block<T, LatSet::d>& getBlock() { return BlockGeo; }
+  const Block<T, LatSet::d>& getBlock() const { return BlockGeo; }
   int getNx() const { return BlockGeo.getNx(); }
   int getNy() const { return BlockGeo.getNy(); }
   int getNz() const { return BlockGeo.getNz(); }

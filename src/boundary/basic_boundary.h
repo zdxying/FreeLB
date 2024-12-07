@@ -271,7 +271,7 @@ class BlockMovingBoundary {
   // update boundary cells
   void UpdateBdCells() {
     Ids.clear();
-    for (std::size_t id = 0; id < Lat.getGeo().getN(); ++id) {
+    for (std::size_t id = 0; id < Lat.getBlock().getN(); ++id) {
       if (util::isFlag(Field[id], BdCellFlag)) Ids.push_back(id);
     }
   }

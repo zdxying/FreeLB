@@ -113,10 +113,10 @@ enum NbrDirection : std::uint8_t {
 
 // find pop directions to be reconstructed after streaming
 template <typename LatSet>
-void getReconstPopDir(NbrDirection direction, std::vector<unsigned int>& commdirection) {
+void getCommPopDir(NbrDirection direction, std::vector<unsigned int>& commdirection) {
   commdirection.clear();
   if (util::isFlag(direction, NbrDirection::NONE)) {
-    std::cerr << "[getReconstPopDir] Error: no neighbor direction" << std::endl;
+    std::cerr << "[getCommPopDir] Error: no neighbor direction" << std::endl;
     exit(1);
   }
   // for(unsigned int i = 1; i < LatSet::q; ++i) {
@@ -190,6 +190,9 @@ void getReconstPopDir(NbrDirection direction, std::vector<unsigned int>& commdir
       }
     }
   }
+  // remove repeated direction
+  std::sort(commdirection.begin(), commdirection.end());
+  commdirection.erase(std::unique(commdirection.begin(), commdirection.end()), commdirection.end());
 }
 
 template <unsigned int D>
@@ -703,23 +706,66 @@ void addtoBuffer(std::vector<T>& buffer, const PopulationField<T, q>& poparr,
 // communication structure for shared memory
 // this is similar to old BlockComm and could be used as IntpBlockComm
 struct SharedComm {
-  // indices of recv and send cells: 
-  // normal: Rcell0, Scell0; Rcell1, Scell1, ...
-  // average/interpolation: Rcell0, Scell00, Scell01, ...; ...
-  std::vector<std::size_t> RecvSendCells;
+  // indices of send and recv cells: 
+  // normal: Scell0, Rcell0; Scell1, Rcell1, ...
+  // average/interpolation: Scell00, Scell01, ..., Rcell0; ...
+  std::vector<std::size_t> SendRecvCells;
   // nbr send block id
   int SendBlockId;
   // neighbor direction
   NbrDirection Direction;
+  // tag for efficient MPI send/recv with direction info
+  int Tag;
 
-  SharedComm(int blockid) : SendBlockId(blockid), Direction(NbrDirection::NONE) {}
-  // RecvSendCells[id*2]
-  std::size_t getRecvId(std::size_t id) const {
-    return RecvSendCells[id*2];
+  SharedComm(int blockid) : SendBlockId(blockid), Direction(NbrDirection::NONE), Tag(0) {}
+  SharedComm(int blockid, int tag) : SendBlockId(blockid), Direction(NbrDirection::NONE), Tag(tag) {}
+
+  void setRecvSendIdx(const std::vector<std::size_t>& recvs, const std::vector<std::size_t>& sends) {
+    const std::size_t RecvCellNum = recvs.size();
+    if (RecvCellNum == 0 || sends.size() == 0) {
+      std::cerr << "[SharedComm]: recvs or sends size is 0" << std::endl;
+      exit(-1);
+    }
+    SendRecvCells.clear();
+    if (RecvCellNum == sends.size()) {
+      SendRecvCells.reserve(RecvCellNum * 2);
+      for (std::size_t i = 0; i < RecvCellNum; ++i) {
+        SendRecvCells.push_back(sends[i]);
+        SendRecvCells.push_back(recvs[i]);
+      }
+    } else if (RecvCellNum * 4 == sends.size()) {
+      SendRecvCells.reserve(RecvCellNum * 5);
+      for (std::size_t i = 0; i < RecvCellNum; ++i) {
+        SendRecvCells.insert(SendRecvCells.end(), sends.begin() + i*4, sends.begin() + (i+1)*4);
+        SendRecvCells.push_back(recvs[i]);
+      }
+    } else if (RecvCellNum * 8 == sends.size()) {
+      SendRecvCells.reserve(RecvCellNum * 9);
+      for (std::size_t i = 0; i < RecvCellNum; ++i) {
+        SendRecvCells.insert(SendRecvCells.end(), sends.begin() + i*8, sends.begin() + (i+1)*8);
+        SendRecvCells.push_back(recvs[i]);
+      }
+    } else {
+      std::cerr << "[SharedComm]: recvs and sends size not match" << std::endl;
+      exit(-1);
+    }
   }
-  // RecvSendCells[id*2+1]
-  std::size_t getSendId(std::size_t id) const {
-    return RecvSendCells[id*2+1];
+
+  void getSendvector(std::vector<std::size_t>& sends) const {
+    const std::size_t RecvCellNum = SendRecvCells.size() / 2;
+    sends.clear();
+    sends.reserve(RecvCellNum);
+    for (std::size_t i = 0; i < RecvCellNum; ++i) {
+      sends.push_back(SendRecvCells[i*2]);
+    }
+  }
+  void getRecvvector(std::vector<std::size_t>& recvs) const {
+    const std::size_t RecvCellNum = SendRecvCells.size() / 2;
+    recvs.clear();
+    recvs.reserve(RecvCellNum);
+    for (std::size_t i = 0; i < RecvCellNum; ++i) {
+      recvs.push_back(SendRecvCells[i*2+1]);
+    }
   }
 };
 
@@ -730,23 +776,30 @@ struct DistributedComm {
   std::vector<std::size_t> Cells;
   // send / recv rank
   int TargetRank;
-  // send / recv block id
+  // send / recv block id, could be used as mpi tag when 2 blocks has only 2 send/recv pairs
   int TargetBlockId;
   // neighbor direction
   NbrDirection Direction;
+  // tag for efficient MPI send/recv with direction info
+  int Tag;
 
-  DistributedComm(int rank, int blockid) : TargetRank(rank), TargetBlockId(blockid), Direction(NbrDirection::NONE) {}
+  DistributedComm(int rank, int blockid) : TargetRank(rank), TargetBlockId(blockid), Direction(NbrDirection::NONE), Tag(0) {}
+  DistributedComm(int rank, int blockid, int tag) : 
+  TargetRank(rank), TargetBlockId(blockid), Direction(NbrDirection::NONE), Tag(tag) {}
 };
 
 // a simple collection of SharedComm for one block
-struct BlockSharedComm {
+struct SharedCommSet {
+  // revc from same level blocks
   std::vector<SharedComm> Comms;
+  // revc from level+1 blocks
   std::vector<SharedComm> AverComm;
+  // revc from level-1 blocks
   std::vector<SharedComm> IntpComm;
 };
 
 // a collection of DistributedComm for one block
-struct BlockDistributedComm
+struct DistributedCommSet
 {
   std::vector<DistributedComm> Recvs;
   std::vector<DistributedComm> Sends;
@@ -758,48 +811,52 @@ struct BlockDistributedComm
   std::vector<DistributedComm> IntpSends;
 };
 
-template <typename T>
-struct BlockDistributedCommBuffer {
-  std::vector<std::vector<T>> RecvBuffers;
-  std::vector<std::vector<T>> SendBuffers;
 
-  std::vector<std::vector<T>> AverRecvBuffers;
-  std::vector<std::vector<T>> AverSendBuffers; // SendCellNum / IntpNum
-
-  std::vector<std::vector<T>> IntpRecvBuffers;
-  std::vector<std::vector<T>> IntpSendBuffers; // SendCellNum / IntpNum
-
-  template<unsigned int D>
-  void Initbuffer(const BlockDistributedComm& comm, unsigned int size = 1) {
-    static constexpr unsigned int IntpNum = (D == 2) ? 4 : 8;
-    RecvBuffers.resize(comm.Recvs.size(), std::vector<T>{});
-    for(std::size_t i = 0; i < comm.Recvs.size(); ++i){
-      RecvBuffers[i].resize(size*comm.Recvs[i].Cells.size(), T{});
-    }
-    SendBuffers.resize(comm.Sends.size(), std::vector<T>{});
-    for(std::size_t i = 0; i < comm.Sends.size(); ++i){
-      SendBuffers[i].resize(size*comm.Sends[i].Cells.size(), T{});
-    }
-    AverRecvBuffers.resize(comm.AverRecvs.size(), std::vector<T>{});
-    for(std::size_t i = 0; i < comm.AverRecvs.size(); ++i){
-      AverRecvBuffers[i].resize(size*comm.AverRecvs[i].Cells.size(), T{});
-    }
-    AverSendBuffers.resize(comm.AverSends.size(), std::vector<T>{});
-    for(std::size_t i = 0; i < comm.AverSends.size(); ++i){
-      AverSendBuffers[i].resize(size*comm.AverSends[i].Cells.size()/IntpNum, T{});
-    }
-    IntpRecvBuffers.resize(comm.IntpRecvs.size(), std::vector<T>{});
-    for(std::size_t i = 0; i < comm.IntpRecvs.size(); ++i){
-      IntpRecvBuffers[i].resize(size*comm.IntpRecvs[i].Cells.size(), T{});
-    }
-    IntpSendBuffers.resize(comm.IntpSends.size(), std::vector<T>{});
-    for(std::size_t i = 0; i < comm.IntpSends.size(); ++i){
-      IntpSendBuffers[i].resize(size*comm.IntpSends[i].Cells.size()/IntpNum, T{});
-    }
-  }
+// a collection of all kinds of communicators for one block
+struct Communicator {
+  // shared communicators
+  // first layer of overlapped cells' communicator, from inside to outside
+  SharedCommSet Comm;
+  // all overlapped cells' communicator
+  SharedCommSet AllComm;
+  
+#ifdef MPI_ENABLED
+  // distributed communicators
+  bool _NeedMPIComm = false;
+  // MPI rank
+  int _Rank;
+  // first layer of overlapped cells' MPI communicator, from inside to outside
+  DistributedCommSet MPIComm;
+  // all overlapped cells' MPI communicator
+  DistributedCommSet AllMPIComm;
+  // efficient MPI Recvs using direction info for pop communication
+  std::vector<DistributedComm> DirRecvs;
+  // efficient MPI Sends using direction info for pop communication
+  std::vector<DistributedComm> DirSends;
+#endif
 };
 
+template <typename T>
+static constexpr std::array<std::array<T, 4>, 4> getIntpWeight2D() {
+  return 
+  {{{T{0.0625}, T{0.1875}, T{0.1875}, T{0.5625}},
+    {T{0.1875}, T{0.0625}, T{0.5625}, T{0.1875}},
+    {T{0.1875}, T{0.5625}, T{0.0625}, T{0.1875}},
+    {T{0.5625}, T{0.1875}, T{0.1875}, T{0.0625}}}};
+}
 
+template <typename T>
+static constexpr std::array<std::array<T, 8>, 8> getIntpWeight3D() {
+  return 
+{{{T{0.015625}, T{0.046875}, T{0.046875}, T{0.140625}, T{0.046875}, T{0.140625}, T{0.140625}, T{0.421875}},
+  {T{0.046875}, T{0.015625}, T{0.140625}, T{0.046875}, T{0.140625}, T{0.046875}, T{0.421875}, T{0.140625}},
+  {T{0.046875}, T{0.140625}, T{0.015625}, T{0.046875}, T{0.140625}, T{0.421875}, T{0.046875}, T{0.140625}},
+  {T{0.140625}, T{0.046875}, T{0.046875}, T{0.015625}, T{0.421875}, T{0.140625}, T{0.140625}, T{0.046875}},
+  {T{0.046875}, T{0.140625}, T{0.140625}, T{0.421875}, T{0.015625}, T{0.046875}, T{0.046875}, T{0.140625}},
+  {T{0.140625}, T{0.046875}, T{0.421875}, T{0.140625}, T{0.046875}, T{0.015625}, T{0.140625}, T{0.046875}},
+  {T{0.140625}, T{0.421875}, T{0.046875}, T{0.140625}, T{0.046875}, T{0.140625}, T{0.015625}, T{0.046875}},
+  {T{0.421875}, T{0.140625}, T{0.140625}, T{0.046875}, T{0.140625}, T{0.046875}, T{0.046875}, T{0.015625}}}};
+}
 // get predefined interp weight
 template <typename T, unsigned int D>
 static constexpr auto getIntpWeight() {
@@ -810,24 +867,85 @@ static constexpr auto getIntpWeight() {
   }
 }
 
-template <typename T>
-static constexpr std::array<std::array<T, 4>, 4> getIntpWeight2D() {
-  return 
-   {{T{0.0625}, T{0.1875}, T{0.1875}, T{0.5625}},
-    {T{0.1875}, T{0.0625}, T{0.5625}, T{0.1875}},
-    {T{0.1875}, T{0.5625}, T{0.0625}, T{0.1875}},
-    {T{0.5625}, T{0.1875}, T{0.1875}, T{0.0625}}};
+template <typename FloatType, unsigned int Dim, typename ArrayType>
+typename ArrayType::value_type getAverage(const ArrayType& Arr, std::size_t id,
+                                          const std::vector<std::size_t>& src) {
+  using datatype = typename ArrayType::value_type;
+  datatype Aver = datatype{};
+  if constexpr (Dim == 2) {
+    Aver = (Arr[src[id]] + Arr[src[id+1]] + Arr[src[id+2]] + Arr[src[id+3]]) * FloatType(0.25);
+  } else if constexpr (Dim == 3) {
+    Aver = (Arr[src[id  ]] + Arr[src[id+1]] + Arr[src[id+2]] + Arr[src[id+3]] + Arr[src[id+4]] +
+            Arr[src[id+5]] + Arr[src[id+6]] + Arr[src[id+7]]) * FloatType(0.125);
+  }
+  return Aver;
 }
 
-template <typename T>
-static constexpr std::array<std::array<T, 8>, 8> getIntpWeight3D() {
-  return 
- {{T{0.015625}, T{0.046875}, T{0.046875}, T{0.140625}, T{0.046875}, T{0.140625}, T{0.140625}, T{0.421875}},
-  {T{0.046875}, T{0.015625}, T{0.140625}, T{0.046875}, T{0.140625}, T{0.046875}, T{0.421875}, T{0.140625}},
-  {T{0.046875}, T{0.140625}, T{0.015625}, T{0.046875}, T{0.140625}, T{0.421875}, T{0.046875}, T{0.140625}},
-  {T{0.140625}, T{0.046875}, T{0.046875}, T{0.015625}, T{0.421875}, T{0.140625}, T{0.140625}, T{0.046875}},
-  {T{0.046875}, T{0.140625}, T{0.140625}, T{0.421875}, T{0.015625}, T{0.046875}, T{0.046875}, T{0.140625}},
-  {T{0.140625}, T{0.046875}, T{0.421875}, T{0.140625}, T{0.046875}, T{0.015625}, T{0.140625}, T{0.046875}},
-  {T{0.140625}, T{0.421875}, T{0.046875}, T{0.140625}, T{0.046875}, T{0.140625}, T{0.015625}, T{0.046875}},
-  {T{0.421875}, T{0.140625}, T{0.140625}, T{0.046875}, T{0.140625}, T{0.046875}, T{0.046875}, T{0.015625}}};
+template <unsigned int D, typename FloatType, unsigned int Dim, typename ArrayType>
+typename ArrayType::value_type getInterpolation(const ArrayType& Arr, std::size_t id,
+                                                const std::vector<std::size_t>& src) {
+  using datatype = typename ArrayType::value_type;
+  datatype Intp = datatype{};
+  if constexpr (Dim == 2) {
+    Intp = Arr[src[id  ]] * getIntpWeight<FloatType, Dim>()[D][0] +
+           Arr[src[id+1]] * getIntpWeight<FloatType, Dim>()[D][1] +
+           Arr[src[id+2]] * getIntpWeight<FloatType, Dim>()[D][2] +
+           Arr[src[id+3]] * getIntpWeight<FloatType, Dim>()[D][3];
+  } else if constexpr (Dim == 3) {
+    Intp = Arr[src[id  ]] * getIntpWeight<FloatType, Dim>()[D][0] +
+           Arr[src[id+1]] * getIntpWeight<FloatType, Dim>()[D][1] +
+           Arr[src[id+2]] * getIntpWeight<FloatType, Dim>()[D][2] +
+           Arr[src[id+3]] * getIntpWeight<FloatType, Dim>()[D][3] +
+           Arr[src[id+4]] * getIntpWeight<FloatType, Dim>()[D][4] +
+           Arr[src[id+5]] * getIntpWeight<FloatType, Dim>()[D][5] +
+           Arr[src[id+6]] * getIntpWeight<FloatType, Dim>()[D][6] +
+           Arr[src[id+7]] * getIntpWeight<FloatType, Dim>()[D][7];
+  }
+  return Intp;
+}
+
+template <typename FloatType, unsigned int Dim, typename ArrayType>
+void Interpolation(ArrayType& Arr, const ArrayType& nArr,
+                   const std::vector<std::size_t>& SendRecvs, std::size_t& idx) {
+  if constexpr (Dim == 2) {
+    std::size_t recvidx = idx;
+    Arr.set(SendRecvs[recvidx+4 ], getInterpolation<0, FloatType, Dim>(nArr, idx     , SendRecvs));
+    Arr.set(SendRecvs[recvidx+9 ], getInterpolation<1, FloatType, Dim>(nArr, idx += 5, SendRecvs));
+    Arr.set(SendRecvs[recvidx+14], getInterpolation<2, FloatType, Dim>(nArr, idx += 5, SendRecvs));
+    Arr.set(SendRecvs[recvidx+19], getInterpolation<3, FloatType, Dim>(nArr, idx += 5, SendRecvs));
+    idx += 5;
+  } else if constexpr (Dim == 3) {
+    std::size_t recvidx = idx;
+    Arr.set(SendRecvs[recvidx+8 ], getInterpolation<0, FloatType, Dim>(nArr, idx     , SendRecvs));
+    Arr.set(SendRecvs[recvidx+17], getInterpolation<1, FloatType, Dim>(nArr, idx += 9, SendRecvs));
+    Arr.set(SendRecvs[recvidx+26], getInterpolation<2, FloatType, Dim>(nArr, idx += 9, SendRecvs));
+    Arr.set(SendRecvs[recvidx+35], getInterpolation<3, FloatType, Dim>(nArr, idx += 9, SendRecvs));
+    Arr.set(SendRecvs[recvidx+44], getInterpolation<4, FloatType, Dim>(nArr, idx += 9, SendRecvs));
+    Arr.set(SendRecvs[recvidx+53], getInterpolation<5, FloatType, Dim>(nArr, idx += 9, SendRecvs));
+    Arr.set(SendRecvs[recvidx+62], getInterpolation<6, FloatType, Dim>(nArr, idx += 9, SendRecvs));
+    Arr.set(SendRecvs[recvidx+71], getInterpolation<7, FloatType, Dim>(nArr, idx += 9, SendRecvs));
+    idx += 9;
+  }
+}
+
+template <typename FloatType, unsigned int Dim, typename ArrayType>
+void Interpolation(std::vector<typename ArrayType::value_type>& Buffer, std::size_t& Bidx, 
+ArrayType& Arr, const std::vector<std::size_t>& Sends, std::size_t& idx) {
+  if constexpr (Dim == 2) {
+    Buffer[Bidx++] = getInterpolation<0, FloatType, Dim>(Arr, idx     , Sends);
+    Buffer[Bidx++] = getInterpolation<1, FloatType, Dim>(Arr, idx += 4, Sends);
+    Buffer[Bidx++] = getInterpolation<2, FloatType, Dim>(Arr, idx += 4, Sends);
+    Buffer[Bidx++] = getInterpolation<3, FloatType, Dim>(Arr, idx += 4, Sends);
+    idx += 4;
+  } else if constexpr (Dim == 3) {
+    Buffer[Bidx++] = getInterpolation<0, FloatType, Dim>(Arr, idx     , Sends);
+    Buffer[Bidx++] = getInterpolation<1, FloatType, Dim>(Arr, idx += 8, Sends);
+    Buffer[Bidx++] = getInterpolation<2, FloatType, Dim>(Arr, idx += 8, Sends);
+    Buffer[Bidx++] = getInterpolation<3, FloatType, Dim>(Arr, idx += 8, Sends);
+    Buffer[Bidx++] = getInterpolation<4, FloatType, Dim>(Arr, idx += 8, Sends);
+    Buffer[Bidx++] = getInterpolation<5, FloatType, Dim>(Arr, idx += 8, Sends);
+    Buffer[Bidx++] = getInterpolation<6, FloatType, Dim>(Arr, idx += 8, Sends);
+    Buffer[Bidx++] = getInterpolation<7, FloatType, Dim>(Arr, idx += 8, Sends);
+    idx += 8;
+  }
 }

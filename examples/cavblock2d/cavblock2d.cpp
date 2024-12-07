@@ -203,7 +203,7 @@ int main() {
 
     // BM.Apply(MainLoopTimer());
 
-    NSLattice.Communicate(MainLoopTimer());
+    NSLattice.NormalCommunicate();
 
     ++MainLoopTimer;
     ++OutputTimer;

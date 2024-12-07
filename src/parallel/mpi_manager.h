@@ -63,8 +63,8 @@ class Vector;
 #ifdef MPI_DEBUG
 #define MPI_DEBUG_WAIT        \
   if (mpi().getRank() == 0) { \
-    int i = 1;                \
-    while (i == 1) {          \
+    int mpiwait = 1;                \
+    while (mpiwait == 1) {          \
       sleep(1);               \
     }                         \
   }                           \

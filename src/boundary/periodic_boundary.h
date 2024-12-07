@@ -185,7 +185,7 @@ class FixedPeriodicBoundaryManager {
         LatticeCommSet<LatSet, TypePack>& LatCommSet = bdBlock.getLatticeComm();
 
         auto &lat = bdBlock.getLat();
-        auto &block = bdBlock.getLat().getGeo();
+        auto &block = bdBlock.getLat().getBlock();
         auto &baseblock = block.getBaseBlock();
         // find which box is in the base block
         bool box0in = isOverlapped(baseblock, box0);
@@ -196,22 +196,22 @@ class FixedPeriodicBoundaryManager {
           BaseCommSet.Recvs.emplace_back(&block);
           block.getCellIdx(box0, BaseCommSet.Recvs.back().Cells);
           LatCommSet.Recvs.emplace_back(lat, BaseCommSet.Recvs.back());
-          getReconstPopDir<LatSet>(dir0, LatCommSet.Recvs.back().StreamDirections);
+          getCommPopDir<LatSet>(dir0, LatCommSet.Recvs.back().StreamDirections);
 
           BaseCommSet.Sends.emplace_back(&block);
           block.getCellIdx(box1, BaseCommSet.Sends.back().Cells);
           LatCommSet.Sends.emplace_back(lat, BaseCommSet.Sends.back());
-          getReconstPopDir<LatSet>(dir0, LatCommSet.Sends.back().StreamDirections);
+          getCommPopDir<LatSet>(dir0, LatCommSet.Sends.back().StreamDirections);
 
           BaseCommSet.Recvs.emplace_back(&block);
           block.getCellIdx(box1, BaseCommSet.Recvs.back().Cells);
           LatCommSet.Recvs.emplace_back(lat, BaseCommSet.Recvs.back());
-          getReconstPopDir<LatSet>(dir1, LatCommSet.Recvs.back().StreamDirections);
+          getCommPopDir<LatSet>(dir1, LatCommSet.Recvs.back().StreamDirections);
 
           BaseCommSet.Sends.emplace_back(&block);
           block.getCellIdx(box0, BaseCommSet.Sends.back().Cells);
           LatCommSet.Sends.emplace_back(lat, BaseCommSet.Sends.back());
-          getReconstPopDir<LatSet>(dir1, LatCommSet.Sends.back().StreamDirections);
+          getCommPopDir<LatSet>(dir1, LatCommSet.Sends.back().StreamDirections);
 
         } else if (box0in) {
           // box0 is in the block
@@ -222,28 +222,28 @@ class FixedPeriodicBoundaryManager {
               BasicCommSet<T, D>& BaseCommSet1 = bdBlock1.getBaseCommSet();
               LatticeCommSet<LatSet, TypePack>& LatCommSet1 = bdBlock1.getLatticeComm();
               auto &lat1 = bdBlock1.getLat();
-              auto &block1 = bdBlock1.getLat().getGeo();
+              auto &block1 = bdBlock1.getLat().getBlock();
               auto &baseblock1 = block1.getBaseBlock();
               if (isOverlapped(baseblock1, box1)) {
                 BaseCommSet1.Sends.emplace_back(&block);
                 block1.getCellIdx(box1, BaseCommSet1.Sends.back().Cells);
                 LatCommSet1.Sends.emplace_back(lat, BaseCommSet1.Sends.back());
-                getReconstPopDir<LatSet>(dir0, LatCommSet1.Sends.back().StreamDirections);
+                getCommPopDir<LatSet>(dir0, LatCommSet1.Sends.back().StreamDirections);
 
                 BaseCommSet1.Recvs.emplace_back(&block);
                 block1.getCellIdx(box1, BaseCommSet1.Recvs.back().Cells);
                 LatCommSet1.Recvs.emplace_back(lat, BaseCommSet1.Recvs.back());
-                getReconstPopDir<LatSet>(dir1, LatCommSet1.Recvs.back().StreamDirections);
+                getCommPopDir<LatSet>(dir1, LatCommSet1.Recvs.back().StreamDirections);
 
                 BaseCommSet.Sends.emplace_back(&block1);
                 block.getCellIdx(box0, BaseCommSet.Sends.back().Cells);
                 LatCommSet.Sends.emplace_back(lat1, BaseCommSet.Sends.back());
-                getReconstPopDir<LatSet>(dir1, LatCommSet.Sends.back().StreamDirections);
+                getCommPopDir<LatSet>(dir1, LatCommSet.Sends.back().StreamDirections);
 
                 BaseCommSet.Recvs.emplace_back(&block1);
                 block.getCellIdx(box0, BaseCommSet.Recvs.back().Cells);
                 LatCommSet.Recvs.emplace_back(lat1, BaseCommSet.Recvs.back());
-                getReconstPopDir<LatSet>(dir0, LatCommSet.Recvs.back().StreamDirections);
+                getCommPopDir<LatSet>(dir0, LatCommSet.Recvs.back().StreamDirections);
 
                 i = j;
                 break;
@@ -259,28 +259,28 @@ class FixedPeriodicBoundaryManager {
               BasicCommSet<T, D>& BaseCommSet0 = bdBlock0.getBaseCommSet();
               LatticeCommSet<LatSet, TypePack>& LatCommSet0 = bdBlock0.getLatticeComm();
               auto &lat0 = bdBlock0.getLat();
-              auto &block0 = bdBlock0.getLat().getGeo();
+              auto &block0 = bdBlock0.getLat().getBlock();
               auto &baseblock0 = block0.getBaseBlock();
               if (isOverlapped(baseblock0, box1)) {
                 BaseCommSet0.Sends.emplace_back(&block);
                 block0.getCellIdx(box0, BaseCommSet0.Sends.back().Cells);
                 LatCommSet0.Sends.emplace_back(lat, BaseCommSet0.Sends.back());
-                getReconstPopDir<LatSet>(dir1, LatCommSet0.Sends.back().StreamDirections);
+                getCommPopDir<LatSet>(dir1, LatCommSet0.Sends.back().StreamDirections);
 
                 BaseCommSet0.Recvs.emplace_back(&block);
                 block0.getCellIdx(box0, BaseCommSet0.Recvs.back().Cells);
                 LatCommSet0.Recvs.emplace_back(lat, BaseCommSet0.Recvs.back());
-                getReconstPopDir<LatSet>(dir0, LatCommSet0.Recvs.back().StreamDirections);
+                getCommPopDir<LatSet>(dir0, LatCommSet0.Recvs.back().StreamDirections);
 
                 BaseCommSet.Sends.emplace_back(&block0);
                 block.getCellIdx(box1, BaseCommSet.Sends.back().Cells);
                 LatCommSet.Sends.emplace_back(lat0, BaseCommSet.Sends.back());
-                getReconstPopDir<LatSet>(dir0, LatCommSet.Sends.back().StreamDirections);
+                getCommPopDir<LatSet>(dir0, LatCommSet.Sends.back().StreamDirections);
 
                 BaseCommSet.Recvs.emplace_back(&block0);
                 block.getCellIdx(box1, BaseCommSet.Recvs.back().Cells);
                 LatCommSet.Recvs.emplace_back(lat0, BaseCommSet.Recvs.back());
-                getReconstPopDir<LatSet>(dir1, LatCommSet.Recvs.back().StreamDirections);
+                getCommPopDir<LatSet>(dir1, LatCommSet.Recvs.back().StreamDirections);
 
                 i = j;
                 break;
@@ -303,7 +303,7 @@ class FixedPeriodicBoundaryManager {
         auto &sendbdBlock = BdBlocks[recvcomm.Comm.TargetBlockId];
         BLOCKLATTICE& sendblocklat = sendbdBlock.getLat();
         LatticeCommSet<LatSet, TypePack>& sendlatcomm = sendbdBlock.getLatticeComm();
-        const LatticeComm<LatSet, TypePack>& sendcomm = sendlatcomm.getSendComm(recvblocklat.getGeo().getBlockId());
+        const LatticeComm<LatSet, TypePack>& sendcomm = sendlatcomm.getSendComm(recvblocklat.getBlock().getBlockId());
         for (std::size_t id = 0; id < recvcomm.Comm.Cells.size(); ++id) {
           CELL recvcell(recvcomm.Comm.Cells[id], recvblocklat);
           CELL sendcell(sendcomm.Comm.Cells[id], sendblocklat);

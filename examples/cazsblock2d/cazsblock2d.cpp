@@ -400,7 +400,7 @@ int main() {
     NS_Inlet.Apply(MainLoopTimer());
     NS_Outlet.Apply(MainLoopTimer());
     // NSLattice.Communicate(MainLoopTimer());
-    NSLattice.getField<POP<T, LatSet0::q>>().CommunicateAll(MainLoopTimer());
+    NSLattice.getField<POP<T, LatSet0::q>>().Communicate(MainLoopTimer());
 
     // SO task
     SOLattice.ApplyCellDynamics<SOTaskSelector>(MainLoopTimer(),
@@ -410,7 +410,7 @@ int main() {
     SO_MBB.Apply(MainLoopTimer());
     SO_IOBB.Apply(MainLoopTimer());
     // SOLattice.Communicate(MainLoopTimer());
-    SOLattice.getField<POP<T, LatSet1::q>>().CommunicateAll(MainLoopTimer());
+    SOLattice.getField<POP<T, LatSet1::q>>().Communicate(MainLoopTimer());
 
     CA.Apply_SimpleCapture();
 
@@ -418,8 +418,8 @@ int main() {
     ++OutputTimer;
 
     if (MainLoopTimer() % OutputStep == 0) {
-      NSLattice.getField<VELOCITY<T, 2>>().CommunicateAll();
-      SOLattice.getField<CONC<T>>().CommunicateAll();
+      NSLattice.getField<VELOCITY<T, 2>>().Communicate();
+      SOLattice.getField<CONC<T>>().Communicate();
       CA.Communicate();
 
       OutputTimer.Print_InnerLoopPerformance(Geo.getTotalCellNum(), OutputStep);

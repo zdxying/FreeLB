@@ -107,4 +107,8 @@ class Printer {
     MPI_RANK(0)
     std::cout << std::endl;
   }
+  static void Flush() {
+    MPI_RANK(0)
+    std::cout << std::flush;
+  }
 };

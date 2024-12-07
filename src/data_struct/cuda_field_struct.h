@@ -29,48 +29,6 @@
 
 namespace cudev {
 
-template <typename T, unsigned int D>
-struct BlockComm;
-
-template <typename T, unsigned int D>
-struct IntpBlockComm;
-
-template <typename FieldType, typename FloatType, unsigned int Dim>
-class BlockField;
-
-template <typename FieldType, typename FloatType, unsigned int Dim>
-struct BlockFieldComm {
-  BlockField<FieldType, FloatType, Dim>* BlockF;
-  BlockComm<FloatType, Dim>* Comm;
-
-  __any__ BlockFieldComm(BlockField<FieldType, FloatType, Dim>* blockF,
-                         BlockComm<FloatType, Dim>* comm)
-      : BlockF(blockF), Comm(comm) {}
-
-  __device__ const std::size_t* getSends() const { return Comm->SendCells; }
-  __device__ std::size_t getSend(std::size_t i) const { return (Comm->SendCells)[i]; }
-
-  __device__ const std::size_t* getRecvs() const { return Comm->RecvCells; }
-  __device__ std::size_t getRecv(std::size_t i) const { return (Comm->RecvCells)[i]; }
-};
-
-template <typename FieldType, typename FloatType, unsigned int Dim>
-struct IntpBlockFieldComm {
-  BlockField<FieldType, FloatType, Dim>* BlockF;
-  IntpBlockComm<FloatType, Dim>* Comm;
-
-  __any__ IntpBlockFieldComm(BlockField<FieldType, FloatType, Dim>* blockF,
-                               IntpBlockComm<FloatType, Dim>* comm)
-      : BlockF(blockF), Comm(comm) {}
-
-  __device__ const std::size_t* getSends() const { return Comm->SendCells; }
-  __device__ std::size_t getSend(std::size_t i) const { return (Comm->SendCells)[i]; }
-
-  __device__ const std::size_t* getRecvs() const { return Comm->RecvCells; }
-  __device__ std::size_t getRecv(std::size_t i) const { return (Comm->RecvCells)[i]; }
-};
-
-
 template <typename FieldType, typename FloatType, unsigned int Dim>
 class BlockField : public FieldType {
  public:
@@ -79,20 +37,11 @@ class BlockField : public FieldType {
   static constexpr bool isField = FieldType::isField;
   using ArrayType = typename FieldType::array_type;
 
- private:
-  // BlockFieldComm<FieldType, FloatType, Dim>* Comms;
-  // IntpBlockFieldComm<FieldType, FloatType, Dim>* AverComms;
-  // IntpBlockFieldComm<FieldType, FloatType, Dim>* IntpComms;
-
  public:
   __any__ BlockField(ArrayType** data) : FieldType(data) {}
 
   FieldType& getFieldType() { return *this; }
   const FieldType& getFieldType() const { return *this; }
-
-  // BlockFieldComm<FieldType, FloatType, Dim>* getComms() { return Comms; }
-  // IntpBlockFieldComm<FieldType, FloatType, Dim>* getAverComms() { return AverComms; }
-  // IntpBlockFieldComm<FieldType, FloatType, Dim>* getIntpComms() { return IntpComms; }
 };
 
 

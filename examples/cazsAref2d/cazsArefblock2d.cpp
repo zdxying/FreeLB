@@ -406,8 +406,8 @@ int main() {
 
     if (MainLoopTimer() % OutputStep == 0) {
       // Velocity and Conc Field Communication
-      NSLattice.getField<VELOCITY<T, 2>>().CommunicateAll();
-      SOLattice.getField<CONC<T>>().CommunicateAll();
+      NSLattice.getField<VELOCITY<T, 2>>().Communicate();
+      SOLattice.getField<CONC<T>>().Communicate();
       CA.Communicate();
 
       OutputTimer.Print_InnerLoopPerformance(Geo.getTotalCellNum(), OutputStep);

@@ -437,12 +437,12 @@ struct FreeSurfaceApply {
 #ifdef MPI_ENABLED
     latManager.template getField<FLAG>().MPINormalCommunicate(count);
 #endif
-    latManager.template getField<MASS<T>>().CommunicateAll(count);
+    latManager.template getField<MASS<T>>().AllCommunicate(count);
 
     // communicate reconstructed pops streamed in from a gas cell
     // this is NOT a post-stream process, so we must communicate fi in each direction
-		// latManager.FullDirectionCommunicate(count);
-    latManager.template getField<POP<T, LatSet::q>>().CommunicateAll(count);
+		// latManager.FullCommunicate(count);
+    latManager.template getField<POP<T, LatSet::q>>().AllCommunicate(count);
 
 
     // to fluid neighbor conversion
@@ -455,8 +455,8 @@ struct FreeSurfaceApply {
 
     // communicate equilibrium fi from nbr Fluid/Interface cells' rho and u for a Gas->Interface cell
     // this is NOT a post-stream process, so we must communicate fi in each direction
-    // latManager.FullDirectionCommunicate(count);
-    latManager.template getField<POP<T, LatSet::q>>().CommunicateAll(count);
+    // latManager.FullCommunicate(count);
+    latManager.template getField<POP<T, LatSet::q>>().AllCommunicate(count);
 
 
     // to gas neighbor conversion
@@ -466,14 +466,14 @@ struct FreeSurfaceApply {
 #ifdef MPI_ENABLED
     latManager.template getField<FLAG>().MPINormalCommunicate(count);
 #endif
-		latManager.template getField<MASS<T>>().CommunicateAll(count);
+		latManager.template getField<MASS<T>>().AllCommunicate(count);
 
 
     // interface excess mass
     latManager.template ApplyInnerCellDynamics<InterfaceExcessMass<CELL>>(count);
 
-    latManager.template getField<MASS<T>>().CommunicateAll(count);
-    latManager.template getField<MASSEX<T, LatSet::q>>().CommunicateAll(count);
+    latManager.template getField<MASS<T>>().AllCommunicate(count);
+    latManager.template getField<MASSEX<T, LatSet::q>>().AllCommunicate(count);
 
 
     // finalize conversion
@@ -483,9 +483,9 @@ struct FreeSurfaceApply {
 #ifdef MPI_ENABLED
     latManager.template getField<STATE>().MPINormalCommunicate(count);
 #endif
-    latManager.template getField<MASS<T>>().CommunicateAll(count);
-    latManager.template getField<VOLUMEFRAC<T>>().CommunicateAll(count);
-    latManager.template getField<PREVIOUS_VELOCITY<T,LatSet::d>>().CommunicateAll(count);
+    latManager.template getField<MASS<T>>().AllCommunicate(count);
+    latManager.template getField<VOLUMEFRAC<T>>().AllCommunicate(count);
+    latManager.template getField<PREVIOUS_VELOCITY<T,LatSet::d>>().AllCommunicate(count);
 
 
     // clear EXCESSMASS<T,LatSet::q>
@@ -819,7 +819,7 @@ struct FreeSurfaceApply {
 #ifdef MPI_ENABLED
     latManager.template getField<STATE>().MPINormalCommunicate(count);
 #endif
-    latManager.template getField<MASS<T>>().CommunicateAll(count);
+    latManager.template getField<MASS<T>>().AllCommunicate(count);
 
     // to fluid neighbor conversion
     latManager.template ApplyInnerCellDynamics<surface_post_process1<CELL>>(count);
@@ -849,9 +849,9 @@ struct FreeSurfaceApply {
     latManager.template getField<STATE>().MPINormalCommunicate(count);
 #endif
 
-    latManager.template getField<MASS<T>>().CommunicateAll(count);
-    latManager.template getField<MASSEX<T>>().CommunicateAll(count);
-    latManager.template getField<VOLUMEFRAC<T>>().CommunicateAll(count);
+    latManager.template getField<MASS<T>>().AllCommunicate(count);
+    latManager.template getField<MASSEX<T>>().AllCommunicate(count);
+    latManager.template getField<VOLUMEFRAC<T>>().AllCommunicate(count);
   }
 };
 

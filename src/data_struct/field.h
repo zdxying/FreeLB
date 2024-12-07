@@ -1936,6 +1936,8 @@ typename ArrayType::value_type getAverage(const ArrayType& Arr,
   return Aver;
 }
 
+
+
 template <typename T, unsigned int D>
 struct IntpBlockComm;
 
@@ -1961,6 +1963,7 @@ typename ArrayType::value_type getInterpolation(const ArrayType& Arr,
   }
   return Intp;
 }
+
 
 template <typename FloatType, unsigned int Dim, typename ArrayType>
 void Interpolation(const ArrayType& Arr, const std::vector<IntpSource<Dim>>& srcs,
@@ -2017,3 +2020,5 @@ void Interpolation(ArrayType& Arr, const ArrayType& nArr,
             getInterpolation<7, FloatType, Dim>(nArr, sends[sendidx++]));
   }
 }
+
+

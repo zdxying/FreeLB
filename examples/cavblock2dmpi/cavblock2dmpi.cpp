@@ -50,7 +50,6 @@ int BlockCellNx;
 
 // physical properties
 T rho_ref;    // g/mm^3
-T Dyna_Visc;  // Pa·s Dynamic viscosity of the liquid
 T Kine_Visc;  // mm^2/s kinematic viscosity of the liquid
 // init conditions
 Vector<T, 2> U_Ini;  // mm/s
@@ -79,7 +78,6 @@ void readParam() {
   BlockCellNx = param_reader.getValue<int>("Mesh", "BlockCellNx");
   // physical properties
   rho_ref = param_reader.getValue<T>("Physical_Property", "rho_ref");
-  Dyna_Visc = param_reader.getValue<T>("Physical_Property", "Dyna_Visc");
   Kine_Visc = param_reader.getValue<T>("Physical_Property", "Kine_Visc");
   // init conditions
   U_Ini[0] = param_reader.getValue<T>("Init_Conditions", "U_Ini0");
@@ -130,7 +128,7 @@ int main(int argc, char* argv[]) {
                     Vector<T, 2>(T(Ni * Cell_Len), T(Nj * Cell_Len)));
   // use 0.5 for refined block
   AABB<T, 2> toplid(Vector<T, 2>(Cell_Len / 2, T((Nj - 1) * Cell_Len)),
-                    Vector<T, 2>(T((Ni - 0.5) * Cell_Len), T(Nj * Cell_Len)));
+                    Vector<T, 2>(T((Ni - 1) * Cell_Len), T(Nj * Cell_Len))); //(Ni - 0.5) * Cell_Len
   // for refined block
   AABB<T, 2> innercavity(
     Vector<T, 2>(T(Ni * Cell_Len) / BlockCellNx, T(Nj * Cell_Len) / BlockCellNx),
@@ -138,11 +136,11 @@ int main(int argc, char* argv[]) {
                  T(Nj * Cell_Len) * (BlockCellNx - 1) / BlockCellNx));
 
   BlockGeometryHelper2D<T> GeoHelper(Ni, Nj, cavity, Cell_Len, Ni / BlockCellNx);
-  GeoHelper.forEachBlockCell([&](BasicBlock<T, 2>& block) {
-    if (!isOverlapped(block, innercavity)) {
-      block.refine();
-    }
-  });
+  // GeoHelper.forEachBlockCell([&](BasicBlock<T, 2>& block) {
+  //   if (!isOverlapped(block, innercavity)) {
+  //     block.refine();
+  //   }
+  // });
   GeoHelper.CreateBlocks();
   GeoHelper.AdaptiveOptimization(mpi().getSize());
   GeoHelper.LoadBalancing(mpi().getSize());
@@ -190,17 +188,19 @@ int main(int argc, char* argv[]) {
 
   // define task/ dynamics:
   // bulk task
-  using BulkTask =
-    tmp::Key_TypePair<AABBFlag, collision::BGK<moment::rhou<CELL, true>, equilibrium::SecondOrder<CELL>>>;
+  // using BulkTask = tmp::Key_TypePair<AABBFlag, collision::BGK<moment::rhou<CELL, true>, equilibrium::SecondOrder<CELL>>>;
+  using BulkTask = tmp::Key_TypePair<AABBFlag, collision::BGK<moment::rhou<CELL>, equilibrium::SecondOrder<CELL>>>;
   // wall task
-  using WallTask = tmp::Key_TypePair<BouncebackFlag | BBMovingWallFlag,
-                                     collision::BGK<moment::UseFieldRhoU<CELL>, equilibrium::SecondOrder<CELL>>>;
+  // using WallTask = tmp::Key_TypePair<BouncebackFlag | BBMovingWallFlag, collision::BGK<moment::UseFieldRhoU<CELL>, equilibrium::SecondOrder<CELL>>>;
+  using BBTask = tmp::Key_TypePair<BouncebackFlag, collision::BounceBack<CELL>>;
+  using BBMVTask = tmp::Key_TypePair<BBMovingWallFlag, collision::BounceBackMovingWall<CELL>>;
   // task collection
-  using TaskCollection = tmp::TupleWrapper<BulkTask, WallTask>;
+  // using TaskCollection = tmp::TupleWrapper<BulkTask, WallTask>;
+   using TaskCollection = tmp::TupleWrapper<BulkTask, BBTask, BBMVTask>;
   // task executor
   using TaskSelector = tmp::TaskSelector<TaskCollection, std::uint8_t, CELL>;
   // task: update rho and u
-  using RhoUTask = tmp::Key_TypePair<AABBFlag, moment::rhou<CELL>>;
+  using RhoUTask = tmp::Key_TypePair<AABBFlag, moment::rhou<CELL, true>>;
   using TaskCollectionRhoU = tmp::TupleWrapper<RhoUTask>;
   using TaskSelectorRhoU = tmp::TaskSelector<TaskCollectionRhoU, std::uint8_t, CELL>;
 
@@ -220,15 +220,17 @@ int main(int argc, char* argv[]) {
   while (MainLoopTimer() < MaxStep && res > tol) {
     NSLattice.ApplyCellDynamics<TaskSelector>(MainLoopTimer(), FlagFM);
     NSLattice.Stream(MainLoopTimer());
-    BM.Apply(MainLoopTimer());
+    // BM.Apply(MainLoopTimer());
 
-    NSLattice.Communicate(MainLoopTimer());
+    // NSLattice.FullCommunicate(MainLoopTimer());
+    NSLattice.NormalCommunicate();
 
     ++MainLoopTimer;
     ++OutputTimer;
 
     if (MainLoopTimer() % OutputStep == 0) {
-      // NSLattice.ApplyCellDynamics<TaskSelectorRhoU>(MainLoopTimer(), FlagFM);
+      NSLattice.ApplyCellDynamics<TaskSelectorRhoU>(MainLoopTimer(), FlagFM);
+
       res = NSLattice.getToleranceU(-1);
       OutputTimer.Print_InnerLoopPerformance(GeoHelper.getTotalBaseCellNum(), OutputStep);
       Printer::Print_Res<T>(res);

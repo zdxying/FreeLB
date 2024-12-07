@@ -9,6 +9,7 @@ FLAGS += -O3 -Wall -Wdisabled-optimization -Wno-unknown-pragmas -Wno-unused-loca
 # FLAGS += -pg
 FLAGS += -DFLOAT_TYPE=double
 FLAGS += -DMPI_ENABLED
+FLAGS += -D_UNROLLFOR
 
 OUTPUT += vtkoutput
 

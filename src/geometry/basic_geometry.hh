@@ -552,26 +552,48 @@ void BasicBlock<T, D>::getCellIdx(const AABB<T, D>& AABBs, std::vector<std::size
 
 template <typename T, unsigned int D>
 bool BasicBlock<T, D>::ExcludeCornerIdx(
-  std::vector<std::size_t>& cellIdxbase, std::vector<std::size_t>& cellIdxnbr, 
-  std::vector<std::size_t>& excellIdxbase, std::vector<std::size_t>& excellIdxnbr) const {
-  
+  std::vector<std::size_t>& Idx, std::vector<std::size_t>& ExIdx) const {
   bool hasCorner = false;
+  ExIdx.clear();
+  auto it = Idx.begin();
 
-  excellIdxbase.clear();
-  excellIdxnbr.clear();
-
-  auto it = cellIdxbase.begin();
-  auto it_nbr = cellIdxnbr.begin();
-
-  while (it != cellIdxbase.end()) {
+  while (it != Idx.end()) {
     if (whichCorner(*it) != -1) {
       // if is corner cell
       // add to excluded cell list
-      excellIdxbase.push_back(*it);
-      excellIdxnbr.push_back(*it_nbr);
+      ExIdx.push_back(*it);
       // remove from original list
-      it = cellIdxbase.erase(it);
-      it_nbr = cellIdxnbr.erase(it_nbr);
+      it = Idx.erase(it);
+      hasCorner = true;
+    } else {
+      ++it;
+    }
+  }
+  return hasCorner;
+}
+
+template <typename T, unsigned int D>
+bool BasicBlock<T, D>::ExcludeCornerIdx(
+  std::vector<std::size_t>& Idxbase, std::vector<std::size_t>& Idxnbr, 
+  std::vector<std::size_t>& ExIdxbase, std::vector<std::size_t>& ExIdxnbr) const {
+  
+  bool hasCorner = false;
+
+  ExIdxbase.clear();
+  ExIdxnbr.clear();
+
+  auto it = Idxbase.begin();
+  auto it_nbr = Idxnbr.begin();
+
+  while (it != Idxbase.end()) {
+    if (whichCorner(*it) != -1) {
+      // if is corner cell
+      // add to excluded cell list
+      ExIdxbase.push_back(*it);
+      ExIdxnbr.push_back(*it_nbr);
+      // remove from original list
+      it = Idxbase.erase(it);
+      it_nbr = Idxnbr.erase(it_nbr);
       hasCorner = true;
     } else {
       ++it;
@@ -583,34 +605,34 @@ bool BasicBlock<T, D>::ExcludeCornerIdx(
 
 template <typename T, unsigned int D>
 bool BasicBlock<T, D>::ExcludeEdgeIdx(
-  std::vector<std::size_t>& cellIdxbase, std::vector<std::size_t>& cellIdxnbr,
-  std::vector<std::vector<std::size_t>>& excellIdxbase, std::vector<std::vector<std::size_t>>& excellIdxnbr) const {
+  std::vector<std::size_t>& Idxbase, std::vector<std::size_t>& Idxnbr,
+  std::vector<std::vector<std::size_t>>& ExIdxbase, std::vector<std::vector<std::size_t>>& ExIdxnbr) const {
   static_assert(D == 3, "ExcludeEdgeIdx is only for 3D block");
 
   bool hasEdge = false;
 
-  excellIdxbase.clear();
-  excellIdxnbr.clear();
+  ExIdxbase.clear();
+  ExIdxnbr.clear();
   // 12 edges for 3D block
-  excellIdxbase.resize(12);
-  excellIdxnbr.resize(12);
+  ExIdxbase.resize(12);
+  ExIdxnbr.resize(12);
 
-  auto it = cellIdxbase.begin();
-  auto it_nbr = cellIdxnbr.begin();
+  auto it = Idxbase.begin();
+  auto it_nbr = Idxnbr.begin();
 
-  while (it != cellIdxbase.end()) {
+  while (it != Idxbase.end()) {
     if (whichEdge(*it) != -1) {
       for (int i = 0; i < 12; ++i) {
         // if is edge cell, add to excluded cell list
         if (whichEdge(*it) == i) {
-          excellIdxbase[i].push_back(*it);
-          excellIdxnbr[i].push_back(*it_nbr);
+          ExIdxbase[i].push_back(*it);
+          ExIdxnbr[i].push_back(*it_nbr);
           break;
         }
       }
       // remove from original list
-      it = cellIdxbase.erase(it);
-      it_nbr = cellIdxnbr.erase(it_nbr);
+      it = Idxbase.erase(it);
+      it_nbr = Idxnbr.erase(it_nbr);
       hasEdge = true;
     } else {
       ++it;
@@ -622,19 +644,19 @@ bool BasicBlock<T, D>::ExcludeEdgeIdx(
 
 template <typename T, unsigned int D>
 bool BasicBlock<T, D>::ExcludeInnerIdx(
-  std::vector<std::size_t>& cellIdxbase, std::vector<std::size_t>& cellIdxnbr,
-  std::vector<std::size_t>& excellIdxbase, std::vector<std::size_t>& excellIdxnbr) const {
+  std::vector<std::size_t>& Idxbase, std::vector<std::size_t>& Idxnbr,
+  std::vector<std::size_t>& ExIdxbase, std::vector<std::size_t>& ExIdxnbr) const {
   
   bool hasInner = false;
 
-  excellIdxbase.clear();
-  excellIdxnbr.clear();
+  ExIdxbase.clear();
+  ExIdxnbr.clear();
 
-  auto it = cellIdxbase.begin();
-  auto it_nbr = cellIdxnbr.begin();
+  auto it = Idxbase.begin();
+  auto it_nbr = Idxnbr.begin();
 
   if constexpr (D == 2) {
-    while (it != cellIdxbase.end()) {
+    while (it != Idxbase.end()) {
       if (whichEdge(*it) != -1) {
         // if is edge cell, continue
         ++it;
@@ -650,16 +672,16 @@ bool BasicBlock<T, D>::ExcludeInnerIdx(
       else {
         // if is inner cell
         // add to excluded cell list
-        excellIdxbase.push_back(*it);
-        excellIdxnbr.push_back(*it_nbr);
+        ExIdxbase.push_back(*it);
+        ExIdxnbr.push_back(*it_nbr);
         // remove from original list
-        it = cellIdxbase.erase(it);
-        it_nbr = cellIdxnbr.erase(it_nbr);
+        it = Idxbase.erase(it);
+        it_nbr = Idxnbr.erase(it_nbr);
         hasInner = true;
       }
     }
   } else if constexpr (D == 3) {
-    while (it != cellIdxbase.end()) {
+    while (it != Idxbase.end()) {
       if (whichFace(*it) != -1) {
         // if is face cell, continue
         ++it;
@@ -680,11 +702,11 @@ bool BasicBlock<T, D>::ExcludeInnerIdx(
        else {
         // if is inner cell
         // add to excluded cell list
-        excellIdxbase.push_back(*it);
-        excellIdxnbr.push_back(*it_nbr);
+        ExIdxbase.push_back(*it);
+        ExIdxnbr.push_back(*it_nbr);
         // remove from original list
-        it = cellIdxbase.erase(it);
-        it_nbr = cellIdxnbr.erase(it_nbr);
+        it = Idxbase.erase(it);
+        it_nbr = Idxnbr.erase(it_nbr);
         hasInner = true;
       }
     }
@@ -1037,4 +1059,33 @@ template <typename T, unsigned int D>
 int BasicBlock<T, D>::whichFace(std::size_t idx) const {
   const Vector<int, D> pt = getLoc(idx);
   return whichFace(pt);
+}
+
+template <typename T, unsigned int D>
+void BasicBlock<T, D>::getRefinedCellIdx(std::size_t idx, std::vector<std::size_t>& refinedIdx) const {
+  refinedIdx.clear();
+  const Vector<int, D> LocIdx = getLoc(idx);
+  // delta level = 1
+  const Vector<int, D> RefinedLocIdx = LocIdx * 2;
+  const Vector<int, D> RefinedMesh = Mesh * 2;
+  if constexpr (D == 2) {
+    std::size_t id0 = RefinedLocIdx[0] + RefinedLocIdx[1] * RefinedMesh[0];
+    std::size_t id1 = id0 + 1;
+    std::size_t id2 = id0 + RefinedMesh[0];
+    std::size_t id3 = id2 + 1;
+    refinedIdx = {id0, id1, id2, id3};
+  } else if constexpr (D == 3) {
+    std::size_t XY = RefinedMesh[0] * RefinedMesh[1];
+    std::size_t id0 = RefinedLocIdx[0] + RefinedLocIdx[1] * RefinedMesh[0] + RefinedLocIdx[2] * XY;
+    std::size_t id1 = id0 + 1;
+    std::size_t id2 = id0 + RefinedMesh[0];
+    std::size_t id3 = id2 + 1;
+
+    std::size_t id4 = id0 + XY;
+    std::size_t id5 = id1 + XY; 
+    std::size_t id6 = id2 + XY;
+    std::size_t id7 = id3 + XY;
+    
+    refinedIdx = {id0, id1, id2, id3, id4, id5, id6, id7};
+  }
 }

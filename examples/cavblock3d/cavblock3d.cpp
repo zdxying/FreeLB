@@ -200,13 +200,13 @@ int main() {
 
   while (MainLoopTimer() < MaxStep && res > tol) {
 
-    NSLattice.ApplyCellDynamics<NSTask>(MainLoopTimer(), FlagFM);
+    NSLattice.ApplyCellDynamics<NSTask>(FlagFM);
     
-    NSLattice.Stream(MainLoopTimer());
+    NSLattice.Stream();
 
     // BM.Apply(MainLoopTimer());
 
-    NSLattice.Communicate(MainLoopTimer());
+    NSLattice.NormalCommunicate();
 
     ++MainLoopTimer;
     ++OutputTimer;

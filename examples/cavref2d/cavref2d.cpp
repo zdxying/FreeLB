@@ -217,7 +217,7 @@ int main() {
     // boundary conditions
     BM.Apply(MainLoopTimer());
     // block communication
-    NSLattice.FullDirectionCommunicate(MainLoopTimer());
+    NSLattice.FullCommunicate(MainLoopTimer());
 
     ++MainLoopTimer;
     ++OutputTimer;
