@@ -188,6 +188,11 @@ int main() {
   vtmwriter::vtmWriter<T, LatSet::d> NSWriter("cavblock2d", Geo);
   NSWriter.addWriterSet(RhoWriter, VecWriter);
 
+  vtmo::ScalarWriter physRhoWriter("Rho", NSLattice.getField<RHO<T>>(), std::bind(&BaseConverter<T>::getPhysRho, &BaseConv, std::placeholders::_1));
+  vtmo::VectorWriter physVecWriter("Velocity", NSLattice.getField<VELOCITY<T, 2>>(), std::bind(&BaseConverter<T>::getPhysU<2>, &BaseConv, std::placeholders::_1));
+  vtmo::vtmWriter<T, LatSet::d> physNSWriter("cavblock2dconv", Geo);
+  physNSWriter.addWriterSet(physRhoWriter, physVecWriter);
+
   // count and timer
   Timer MainLoopTimer;
   Timer OutputTimer;
@@ -216,6 +221,7 @@ int main() {
       Printer::Print_Res<T>(res);
       Printer::Endl();
       NSWriter.WriteBinary(MainLoopTimer());
+      physNSWriter.WriteConvertedBinary(MainLoopTimer());
     }
   }
 

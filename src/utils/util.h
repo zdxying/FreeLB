@@ -31,6 +31,8 @@
 // numeric_limits
 #include <limits>
 #include <vector>
+// store any callable object and used in unit converter
+#include <functional>
 
 #include "head.h"
 #include "utils/tmp.h"
@@ -444,6 +446,34 @@ void CopyFromFieldArray(const Vector<int, Dim> &Mesh, int Overlap, const ArrayTy
         std::size_t start = Overlap + j * Mesh[0] + k * XY;
         std::copy(Array.getdataPtr(start), Array.getdataPtr(start + delta_x), dst + id);
         id += delta_x;
+      }
+    }
+  }
+}
+
+// copy data from field with unit conversion
+template <typename ArrayType, unsigned int Dim>
+void CopyFromFieldArray(const Vector<int, Dim> &Mesh, int Overlap, const ArrayType &Array, typename ArrayType::value_type *dst, 
+std::function<typename ArrayType::value_type(typename ArrayType::value_type)> f) {
+  int delta_x = Mesh[0] - 2 * Overlap;
+  std::size_t id{};
+  if constexpr (Dim == 2) {
+    for (int j = Overlap; j < Mesh[1] - Overlap; ++j) {
+      std::size_t start = Overlap + j * Mesh[0];
+      for (int i = 0; i < delta_x; ++i) {
+        dst[id] = f(Array[start + i]);
+        ++id;
+      }
+    }
+  } else if constexpr (Dim == 3) {
+    std::size_t XY = Mesh[0] * Mesh[1];
+    for (int k = Overlap; k < Mesh[2] - Overlap; ++k) {
+      for (int j = Overlap; j < Mesh[1] - Overlap; ++j) {
+        std::size_t start = Overlap + j * Mesh[0] + k * XY;
+        for (int i = 0; i < delta_x; ++i) {
+          dst[id] = f(Array[start + i]);
+          ++id;
+        }
       }
     }
   }
