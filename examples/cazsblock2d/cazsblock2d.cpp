@@ -305,12 +305,12 @@ int main() {
   // bulk task
   using NSBulkTask =
     tmp::Key_TypePair<CA::CAType::Fluid,
-                      collision::BGKForce<moment::forceRhou<NSCELL, force::ScalarForce<NSCELL>, true>, 
+                      collision::BGKForce<moment::forcerhoU<NSCELL, force::ScalarForce<NSCELL>, true>, 
                       equilibrium::SecondOrder<NSCELL>, force::ScalarForce<NSCELL>>>;
   // wall task
   using NSWallTask =
     tmp::Key_TypePair<CA::CAType::Interface,
-    collision::BGKForce<moment::UseFieldRhoU<NSCELL>, equilibrium::SecondOrder<NSCELL>, force::ScalarForce<NSCELL>>>;
+    collision::BGKForce<moment::useFieldrhoU<NSCELL>, equilibrium::SecondOrder<NSCELL>, force::ScalarForce<NSCELL>>>;
 
   using NSTaskSelector = TaskSelector<std::uint8_t, NSCELL, NSBulkTask, NSWallTask>;
 
@@ -347,9 +347,9 @@ int main() {
 
   // T res{1};
   // T tol = T(1e-5);
-  // using RhoUTask = tmp::Key_TypePair<AABBFlag|OutletFlag, moment::rhou<NSCELL>>;
+  // using RhoUTask = tmp::Key_TypePair<AABBFlag|OutletFlag, moment::rhoU<NSCELL>>;
   // using RhoUTaskSelector = TaskSelector<std::uint8_t, NSCELL, RhoUTask>;
-  // using collisionTask = collision::BGK<moment::UseFieldRhoU<NSCELL>, equilibrium::SecondOrder<NSCELL>>;
+  // using collisionTask = collision::BGK<moment::useFieldrhoU<NSCELL>, equilibrium::SecondOrder<NSCELL>>;
   // NSLattice.EnableToleranceU();
 
 

@@ -157,7 +157,7 @@ struct MRT_Feq_RhoU {
     // update macroscopic variables
     T rho{};
     Vector<T, LatSet::d> u{};
-    moment::template rhou<CELL, WriteToField>::apply(cell, rho, u);
+    moment::template rhoU<CELL, WriteToField>::apply(cell, rho, u);
 
     // compute Momenta
     T momenta[LatSet::q] {};

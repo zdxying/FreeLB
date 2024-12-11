@@ -1000,7 +1000,6 @@ static constexpr unsigned int ArrayDim = FieldType::array_dim;
     static constexpr unsigned int ArrayDim = FieldType::array_dim;
     static constexpr std::size_t SendRecvPairSize = Dim == 2 ? 5 : 9;
     static constexpr std::size_t RecvOffset = Dim == 2 ? 4 : 8;
-    static constexpr FloatType weight = Dim == 2 ? FloatType(0.25) : FloatType(0.125);
 #pragma omp parallel for num_threads(Thread_Num)
     for (BlockField<FieldType, FloatType, Dim>& blockF : _Fields) {
       const int deLevel = static_cast<int>(_BlockGeo.getMaxLevel() - blockF.getBlock().getLevel());
@@ -1028,8 +1027,6 @@ static constexpr unsigned int ArrayDim = FieldType::array_dim;
 
   void AllIntpCommunicate(std::int64_t count) {
     static constexpr unsigned int ArrayDim = FieldType::array_dim;
-    static constexpr std::size_t SendRecvPairSize = Dim == 2 ? 5 : 9;
-    static constexpr std::size_t RecvOffset = Dim == 2 ? 4 : 8;
 #pragma omp parallel for num_threads(Thread_Num)
     for (BlockField<FieldType, FloatType, Dim>& blockF : _Fields) {
       const int deLevel = static_cast<int>(_BlockGeo.getMaxLevel() - blockF.getBlock().getLevel());

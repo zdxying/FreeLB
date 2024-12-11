@@ -185,15 +185,15 @@ int main() {
   // define task/ dynamics:
   // to use refined/multi-level block structure, macroscopic fields should be updated each time step for pop conversion
   // bulk task
-  using BulkTask = tmp::Key_TypePair<AABBFlag, collision::BGK<moment::rhou<CELL, true>, equilibrium::SecondOrder<CELL>>>;
+  using BulkTask = tmp::Key_TypePair<AABBFlag, collision::BGK<moment::rhoU<CELL, true>, equilibrium::SecondOrder<CELL>>>;
   // wall task
-  using WallTask = tmp::Key_TypePair<BouncebackFlag | BBMovingWallFlag, collision::BGK<moment::UseFieldRhoU<CELL>, equilibrium::SecondOrder<CELL>>>;
+  using WallTask = tmp::Key_TypePair<BouncebackFlag | BBMovingWallFlag, collision::BGK<moment::useFieldrhoU<CELL>, equilibrium::SecondOrder<CELL>>>;
   // task collection
   using TaskCollection = tmp::TupleWrapper<BulkTask, WallTask>;
   // task executor
   using TaskSelector = tmp::TaskSelector<TaskCollection, std::uint8_t, CELL>;
   // task: update rho and u
-  // using RhoUTask = tmp::Key_TypePair<AABBFlag, moment::rhou<CELL>>;
+  // using RhoUTask = tmp::Key_TypePair<AABBFlag, moment::rhoU<CELL>>;
   // using TaskCollectionRhoU = tmp::TupleWrapper<RhoUTask>;
   // using TaskSelectorRhoU = tmp::TaskSelector<TaskCollectionRhoU, std::uint8_t, CELL>;
 

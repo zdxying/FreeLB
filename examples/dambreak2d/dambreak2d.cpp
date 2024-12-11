@@ -127,9 +127,9 @@ int getOutputStep(const Timer& timer) {
 }
 
 int main() {
-  constexpr std::uint8_t VoidFlag = std::uint8_t(1);
-  constexpr std::uint8_t AABBFlag = std::uint8_t(2);
-  constexpr std::uint8_t BouncebackFlag = std::uint8_t(4);
+  // constexpr std::uint8_t VoidFlag = std::uint8_t(1);
+  // constexpr std::uint8_t AABBFlag = std::uint8_t(2);
+  // constexpr std::uint8_t BouncebackFlag = std::uint8_t(4);
 
   Printer::Print_BigBanner(std::string("Initializing..."));
 
@@ -210,14 +210,14 @@ int main() {
   // openlb used BGK dynamics for Gas cells
   using NSBulkTask =
     tmp::Key_TypePair<olbfs::FSType::Fluid | olbfs::FSType::Interface | olbfs::FSType::Gas,
-                      collision::SmagorinskyForceBGK<moment::forceRhou<NSCELL, force::ConstForce<NSCELL>, true>, 
+                      collision::SmagorinskyForceBGK<moment::forcerhoU<NSCELL, force::ConstForce<NSCELL>, true>, 
                       equilibrium::SecondOrder<NSCELL>, force::ConstForce<NSCELL>>>;
   using NSWallTask = tmp::Key_TypePair<olbfs::FSType::Wall, collision::BounceBack<NSCELL>>;
 
   using NSTaskSelector = TaskSelector<std::uint8_t, NSCELL, NSBulkTask, NSWallTask>;
 
   using ForceRhoUTask = tmp::Key_TypePair<olbfs::FSType::Fluid | olbfs::FSType::Interface,
-                                          moment::rhou<NSCELL, true>>;
+                                          moment::rhoU<NSCELL, true>>;
   using RhoUTaskSelector = TaskSelector<std::uint8_t, NSCELL, ForceRhoUTask>;
 
   // bcs

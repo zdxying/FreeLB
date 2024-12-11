@@ -188,10 +188,10 @@ int main(int argc, char* argv[]) {
 
   // define task/ dynamics:
   // bulk task
-  // using BulkTask = tmp::Key_TypePair<AABBFlag, collision::BGK<moment::rhou<CELL, true>, equilibrium::SecondOrder<CELL>>>;
-  using BulkTask = tmp::Key_TypePair<AABBFlag, collision::BGK<moment::rhou<CELL>, equilibrium::SecondOrder<CELL>>>;
+  // using BulkTask = tmp::Key_TypePair<AABBFlag, collision::BGK<moment::rhoU<CELL, true>, equilibrium::SecondOrder<CELL>>>;
+  using BulkTask = tmp::Key_TypePair<AABBFlag, collision::BGK<moment::rhoU<CELL>, equilibrium::SecondOrder<CELL>>>;
   // wall task
-  // using WallTask = tmp::Key_TypePair<BouncebackFlag | BBMovingWallFlag, collision::BGK<moment::UseFieldRhoU<CELL>, equilibrium::SecondOrder<CELL>>>;
+  // using WallTask = tmp::Key_TypePair<BouncebackFlag | BBMovingWallFlag, collision::BGK<moment::useFieldrhoU<CELL>, equilibrium::SecondOrder<CELL>>>;
   using BBTask = tmp::Key_TypePair<BouncebackFlag, collision::BounceBack<CELL>>;
   using BBMVTask = tmp::Key_TypePair<BBMovingWallFlag, collision::BounceBackMovingWall<CELL>>;
   // task collection
@@ -200,7 +200,7 @@ int main(int argc, char* argv[]) {
   // task executor
   using TaskSelector = tmp::TaskSelector<TaskCollection, std::uint8_t, CELL>;
   // task: update rho and u
-  using RhoUTask = tmp::Key_TypePair<AABBFlag, moment::rhou<CELL, true>>;
+  using RhoUTask = tmp::Key_TypePair<AABBFlag, moment::rhoU<CELL, true>>;
   using TaskCollectionRhoU = tmp::TupleWrapper<RhoUTask>;
   using TaskSelectorRhoU = tmp::TaskSelector<TaskCollectionRhoU, std::uint8_t, CELL>;
 

@@ -158,11 +158,11 @@ int main() {
 
   // define task/ dynamics:
   // rho u
-  using RhoUTask = tmp::Key_TypePair<AABBFlag|OutletFlag, moment::rhou<CELL, true>>;
+  using RhoUTask = tmp::Key_TypePair<AABBFlag|OutletFlag, moment::rhoU<CELL, true>>;
   using rhoTask = tmp::Key_TypePair<InletFlag, moment::rho<CELL>>;
   using RhoUTaskSelector = TaskSelector<std::uint8_t, CELL, RhoUTask>;
   // collision
-  using collisionTask = collision::BGK<moment::UseFieldRhoU<CELL>, equilibrium::SecondOrder<CELL>>;
+  using collisionTask = collision::BGK<moment::useFieldrhoU<CELL>, equilibrium::SecondOrder<CELL>>;
 
   // writers
   vtmwriter::ScalarWriter RhoWriter("Rho", NSLattice.getField<RHO<T>>());

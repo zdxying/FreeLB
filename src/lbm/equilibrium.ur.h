@@ -37,146 +37,253 @@ template <typename T, typename LatSet, typename TypePack>
 using CELL = Cell<T, LatSet, TypePack>;
 #endif
 
+
+//------------------------------------
+
 template <typename T, typename TypePack>
-struct SecondOrder<CELL<T, D2Q9<T>, TypePack>> {
-  using LatSet = typename CELL<T, D2Q9<T>, TypePack>::LatticeSet;
-  using CELLTYPE = CELL<T, D2Q9<T>, TypePack>;
+struct SecondOrderImpl<CELL<T, D2Q5<T>, TypePack>>{
+using CELLTYPE = CELL<T, D2Q5<T>, TypePack>;
+using LatSet = D2Q5<T>;
 
-
-  __any__ static inline T get(int k, const Vector<T, LatSet::d> &u, T rho, T u2) {
-    const T uc = u * latset::c<LatSet>(k);
-    return latset::w<LatSet>(k) * rho *
-           (T{1} + LatSet::InvCs2 * uc + uc * uc * T{0.5} * LatSet::InvCs4 -
-            LatSet::InvCs2 * u2 * T{0.5});
-  }
-
-  __any__ static void apply(std::array<T, LatSet::q> &feq, T rho,
-                            const Vector<T, LatSet::d> &u) {
-    constexpr T InvCs4_ = T{0.5} * LatSet::InvCs4;
-    const T u0 = u[0];
-    const T u1 = u[1];
-
-    const T u0p1 = u0 + u1;
-    const T u0m1 = u0 - u1;
-    const T InvCs4_u0p1_2 = InvCs4_ * u0p1 * u0p1;
-    const T InvCs4_u0m1_2 = InvCs4_ * u0m1 * u0m1;
-
-    const T u0_2 = u0 * u0;
-    const T u1_2 = u1 * u1;
-
-    const T _InvCs2_u2_ = T{1} - LatSet::InvCs2 * (u0_2 + u1_2) * T{0.5};
-
-    const T InvCs2u0 = LatSet::InvCs2 * u0;
-    const T InvCs2u1 = LatSet::InvCs2 * u1;
-    const T InvCs2u0p1 = LatSet::InvCs2 * u0p1;
-    const T InvCs2u0m1 = LatSet::InvCs2 * u0m1;
-    const T InvCs4_u0_2 = InvCs4_ * u0_2;
-    const T InvCs4_u1_2 = InvCs4_ * u1_2;
-
-    feq[0] = latset::w<LatSet>(0) * rho * _InvCs2_u2_;
-    feq[1] = latset::w<LatSet>(1) * rho * (_InvCs2_u2_ + InvCs2u0 + InvCs4_u0_2);
-    feq[2] = latset::w<LatSet>(2) * rho * (_InvCs2_u2_ - InvCs2u0 + InvCs4_u0_2);
-    feq[3] = latset::w<LatSet>(3) * rho * (_InvCs2_u2_ + InvCs2u1 + InvCs4_u1_2);
-    feq[4] = latset::w<LatSet>(4) * rho * (_InvCs2_u2_ - InvCs2u1 + InvCs4_u1_2);
-    feq[5] = latset::w<LatSet>(5) * rho * (_InvCs2_u2_ + InvCs2u0p1 + InvCs4_u0p1_2);
-    feq[6] = latset::w<LatSet>(6) * rho * (_InvCs2_u2_ - InvCs2u0p1 + InvCs4_u0p1_2);
-    feq[7] = latset::w<LatSet>(7) * rho * (_InvCs2_u2_ + InvCs2u0m1 + InvCs4_u0m1_2);
-    feq[8] = latset::w<LatSet>(8) * rho * (_InvCs2_u2_ - InvCs2u0m1 + InvCs4_u0m1_2);
-  }
-
-  using GenericRho = typename CELLTYPE::GenericRho;
-  __any__ static void apply(std::array<T, LatSet::q> &feq, const CELLTYPE &cell) {
-    const T rho = cell.template get<GenericRho>();
-    const Vector<T, LatSet::d> &u = cell.template get<VELOCITY<T, LatSet::d>>();
-    apply(feq, rho, u);
-  }
+__any__ static void apply(std::array<T, LatSet::q> &feq, const T rho, const Vector<T, LatSet::d> &u){
+constexpr T InvCs2x = T{0.5} * LatSet::InvCs2;
+const T var0 = T{1} - (u[0]*u[0] + u[1]*u[1]) * InvCs2x;
+const T rhowk0 = latset::w<LatSet>(0) * rho;
+const T rhowk1 = latset::w<LatSet>(1) * rho;
+const T InvCs2uck1 = LatSet::InvCs2 * (u[0]);
+const T var0InvCs4uc2k1 = var0 + InvCs2uck1*InvCs2uck1*T{0.5};
+const T InvCs2uck3 = LatSet::InvCs2 * (u[1]);
+const T var0InvCs4uc2k3 = var0 + InvCs2uck3*InvCs2uck3*T{0.5};
+feq[0] = rhowk0 * var0;
+feq[1] = rhowk1 * (var0InvCs4uc2k1 + InvCs2uck1);
+feq[2] = rhowk1 * (var0InvCs4uc2k1 - InvCs2uck1);
+feq[3] = rhowk1 * (var0InvCs4uc2k3 + InvCs2uck3);
+feq[4] = rhowk1 * (var0InvCs4uc2k3 - InvCs2uck3);
+}
 };
 
 template <typename T, typename TypePack>
-struct SecondOrder<CELL<T, D3Q19<T>, TypePack>> {
-  using LatSet = typename CELL<T, D3Q19<T>, TypePack>::LatticeSet;
-  using CELLTYPE = CELL<T, D3Q19<T>, TypePack>;
+struct SecondOrderImpl<CELL<T, D2Q9<T>, TypePack>>{
+using CELLTYPE = CELL<T, D2Q9<T>, TypePack>;
+using LatSet = D2Q9<T>;
 
-
-  __any__ static inline T get(int k, const Vector<T, LatSet::d> &u, T rho, T u2) {
-    const T uc = u * latset::c<LatSet>(k);
-    return latset::w<LatSet>(k) * rho *
-           (T{1} + LatSet::InvCs2 * uc + uc * uc * T{0.5} * LatSet::InvCs4 -
-            LatSet::InvCs2 * u2 * T{0.5});
-  }
-
-  __any__ static void apply(std::array<T, LatSet::q> &feq, T rho,
-                            const Vector<T, LatSet::d> &u) {
-    constexpr T InvCs4_ = T{0.5} * LatSet::InvCs4;
-    const T u0 = u[0];
-    const T u1 = u[1];
-    const T u2 = u[2];
-
-    const T u0p1 = u0 + u1;
-    const T u0p2 = u0 + u2;
-    const T u1p2 = u1 + u2;
-    const T u0m1 = u0 - u1;
-    const T u0m2 = u0 - u2;
-    const T u1m2 = u1 - u2;
-
-    const T u0_2 = u0 * u0;
-    const T u1_2 = u1 * u1;
-    const T u2_2 = u2 * u2;
-
-    const T _InvCs2_u2_ = T{1} - LatSet::InvCs2 * (u0_2 + u1_2 + u2_2) * T{0.5};
-
-    const T InvCs2u0 = LatSet::InvCs2 * u0;
-    const T InvCs2u1 = LatSet::InvCs2 * u1;
-    const T InvCs2u2 = LatSet::InvCs2 * u2;
-
-    const T InvCs2u0p1 = LatSet::InvCs2 * u0p1;
-    const T InvCs2u0p2 = LatSet::InvCs2 * u0p2;
-    const T InvCs2u1p2 = LatSet::InvCs2 * u1p2;
-    const T InvCs2u0m1 = LatSet::InvCs2 * u0m1;
-    const T InvCs2u0m2 = LatSet::InvCs2 * u0m2;
-    const T InvCs2u1m2 = LatSet::InvCs2 * u1m2;
-
-    const T InvCs4_u0_2 = InvCs4_ * u0_2;
-    const T InvCs4_u1_2 = InvCs4_ * u1_2;
-    const T InvCs4_u2_2 = InvCs4_ * u2_2;
-    const T InvCs4_u0p1_2 = InvCs4_ * u0p1 * u0p1;
-    const T InvCs4_u0p2_2 = InvCs4_ * u0p2 * u0p2;
-    const T InvCs4_u1p2_2 = InvCs4_ * u1p2 * u1p2;
-    const T InvCs4_u0m1_2 = InvCs4_ * u0m1 * u0m1;
-    const T InvCs4_u0_2_2 = InvCs4_ * u0m2 * u0m2;
-    const T InvCs4_u1_2_2 = InvCs4_ * u1m2 * u1m2;
-
-    feq[0] = latset::w<LatSet>(0) * rho * _InvCs2_u2_;
-
-    feq[1] = latset::w<LatSet>(1) * rho * (_InvCs2_u2_ + InvCs2u0 + InvCs4_u0_2);
-    feq[2] = latset::w<LatSet>(2) * rho * (_InvCs2_u2_ - InvCs2u0 + InvCs4_u0_2);
-    feq[3] = latset::w<LatSet>(3) * rho * (_InvCs2_u2_ + InvCs2u1 + InvCs4_u1_2);
-    feq[4] = latset::w<LatSet>(4) * rho * (_InvCs2_u2_ - InvCs2u1 + InvCs4_u1_2);
-    feq[5] = latset::w<LatSet>(5) * rho * (_InvCs2_u2_ + InvCs2u2 + InvCs4_u2_2);
-    feq[6] = latset::w<LatSet>(6) * rho * (_InvCs2_u2_ - InvCs2u2 + InvCs4_u2_2);
-
-    feq[7] = latset::w<LatSet>(7) * rho * (_InvCs2_u2_ + InvCs2u0p1 + InvCs4_u0p1_2);
-    feq[8] = latset::w<LatSet>(8) * rho * (_InvCs2_u2_ - InvCs2u0p1 + InvCs4_u0p1_2);
-    feq[9] = latset::w<LatSet>(9) * rho * (_InvCs2_u2_ + InvCs2u0p2 + InvCs4_u0p2_2);
-    feq[10] = latset::w<LatSet>(10) * rho * (_InvCs2_u2_ - InvCs2u0p2 + InvCs4_u0p2_2);
-    feq[11] = latset::w<LatSet>(11) * rho * (_InvCs2_u2_ + InvCs2u1p2 + InvCs4_u1p2_2);
-    feq[12] = latset::w<LatSet>(12) * rho * (_InvCs2_u2_ - InvCs2u1p2 + InvCs4_u1p2_2);
-
-    feq[13] = latset::w<LatSet>(13) * rho * (_InvCs2_u2_ + InvCs2u0m1 + InvCs4_u0m1_2);
-    feq[14] = latset::w<LatSet>(14) * rho * (_InvCs2_u2_ - InvCs2u0m1 + InvCs4_u0m1_2);
-    feq[15] = latset::w<LatSet>(15) * rho * (_InvCs2_u2_ + InvCs2u0m2 + InvCs4_u0_2_2);
-    feq[16] = latset::w<LatSet>(16) * rho * (_InvCs2_u2_ - InvCs2u0m2 + InvCs4_u0_2_2);
-    feq[17] = latset::w<LatSet>(17) * rho * (_InvCs2_u2_ + InvCs2u1m2 + InvCs4_u1_2_2);
-    feq[18] = latset::w<LatSet>(18) * rho * (_InvCs2_u2_ - InvCs2u1m2 + InvCs4_u1_2_2);
-  }
-
-  using GenericRho = typename CELLTYPE::GenericRho;
-  __any__ static void apply(std::array<T, LatSet::q> &feq, const CELLTYPE &cell) {
-    const T rho = cell.template get<GenericRho>();
-    const Vector<T, LatSet::d> &u = cell.template get<VELOCITY<T, LatSet::d>>();
-    apply(feq, rho, u);
-  }
+__any__ static void apply(std::array<T, LatSet::q> &feq, const T rho, const Vector<T, LatSet::d> &u){
+constexpr T InvCs2x = T{0.5} * LatSet::InvCs2;
+const T var0 = T{1} - (u[0]*u[0] + u[1]*u[1]) * InvCs2x;
+const T rhowk0 = latset::w<LatSet>(0) * rho;
+const T rhowk1 = latset::w<LatSet>(1) * rho;
+const T rhowk5 = latset::w<LatSet>(5) * rho;
+const T InvCs2uck1 = LatSet::InvCs2 * (u[0]);
+const T var0InvCs4uc2k1 = var0 + InvCs2uck1*InvCs2uck1*T{0.5};
+const T InvCs2uck3 = LatSet::InvCs2 * (u[1]);
+const T var0InvCs4uc2k3 = var0 + InvCs2uck3*InvCs2uck3*T{0.5};
+const T InvCs2uck5 = LatSet::InvCs2 * (u[0]+u[1]);
+const T var0InvCs4uc2k5 = var0 + InvCs2uck5*InvCs2uck5*T{0.5};
+const T InvCs2uck7 = LatSet::InvCs2 * (u[0]-u[1]);
+const T var0InvCs4uc2k7 = var0 + InvCs2uck7*InvCs2uck7*T{0.5};
+feq[0] = rhowk0 * var0;
+feq[1] = rhowk1 * (var0InvCs4uc2k1 + InvCs2uck1);
+feq[2] = rhowk1 * (var0InvCs4uc2k1 - InvCs2uck1);
+feq[3] = rhowk1 * (var0InvCs4uc2k3 + InvCs2uck3);
+feq[4] = rhowk1 * (var0InvCs4uc2k3 - InvCs2uck3);
+feq[5] = rhowk5 * (var0InvCs4uc2k5 + InvCs2uck5);
+feq[6] = rhowk5 * (var0InvCs4uc2k5 - InvCs2uck5);
+feq[7] = rhowk5 * (var0InvCs4uc2k7 + InvCs2uck7);
+feq[8] = rhowk5 * (var0InvCs4uc2k7 - InvCs2uck7);
+}
 };
+
+template <typename T, typename TypePack>
+struct SecondOrderImpl<CELL<T, D3Q7<T>, TypePack>>{
+using CELLTYPE = CELL<T, D3Q7<T>, TypePack>;
+using LatSet = D3Q7<T>;
+
+__any__ static void apply(std::array<T, LatSet::q> &feq, const T rho, const Vector<T, LatSet::d> &u){
+constexpr T InvCs2x = T{0.5} * LatSet::InvCs2;
+const T var0 = T{1} - (u[0]*u[0] + u[1]*u[1] + u[2]*u[2]) * InvCs2x;
+const T rhowk0 = latset::w<LatSet>(0) * rho;
+const T rhowk1 = latset::w<LatSet>(1) * rho;
+const T InvCs2uck1 = LatSet::InvCs2 * (u[0]);
+const T var0InvCs4uc2k1 = var0 + InvCs2uck1*InvCs2uck1*T{0.5};
+const T InvCs2uck3 = LatSet::InvCs2 * (u[1]);
+const T var0InvCs4uc2k3 = var0 + InvCs2uck3*InvCs2uck3*T{0.5};
+const T InvCs2uck5 = LatSet::InvCs2 * (u[2]);
+const T var0InvCs4uc2k5 = var0 + InvCs2uck5*InvCs2uck5*T{0.5};
+feq[0] = rhowk0 * var0;
+feq[1] = rhowk1 * (var0InvCs4uc2k1 + InvCs2uck1);
+feq[2] = rhowk1 * (var0InvCs4uc2k1 - InvCs2uck1);
+feq[3] = rhowk1 * (var0InvCs4uc2k3 + InvCs2uck3);
+feq[4] = rhowk1 * (var0InvCs4uc2k3 - InvCs2uck3);
+feq[5] = rhowk1 * (var0InvCs4uc2k5 + InvCs2uck5);
+feq[6] = rhowk1 * (var0InvCs4uc2k5 - InvCs2uck5);
+}
+};
+
+template <typename T, typename TypePack>
+struct SecondOrderImpl<CELL<T, D3Q15<T>, TypePack>>{
+using CELLTYPE = CELL<T, D3Q15<T>, TypePack>;
+using LatSet = D3Q15<T>;
+
+__any__ static void apply(std::array<T, LatSet::q> &feq, const T rho, const Vector<T, LatSet::d> &u){
+constexpr T InvCs2x = T{0.5} * LatSet::InvCs2;
+const T var0 = T{1} - (u[0]*u[0] + u[1]*u[1] + u[2]*u[2]) * InvCs2x;
+const T rhowk0 = latset::w<LatSet>(0) * rho;
+const T rhowk1 = latset::w<LatSet>(1) * rho;
+const T rhowk7 = latset::w<LatSet>(7) * rho;
+const T InvCs2uck1 = LatSet::InvCs2 * (u[0]);
+const T var0InvCs4uc2k1 = var0 + InvCs2uck1*InvCs2uck1*T{0.5};
+const T InvCs2uck3 = LatSet::InvCs2 * (u[1]);
+const T var0InvCs4uc2k3 = var0 + InvCs2uck3*InvCs2uck3*T{0.5};
+const T InvCs2uck5 = LatSet::InvCs2 * (u[2]);
+const T var0InvCs4uc2k5 = var0 + InvCs2uck5*InvCs2uck5*T{0.5};
+const T InvCs2uck7 = LatSet::InvCs2 * (u[0]+u[1]+u[2]);
+const T var0InvCs4uc2k7 = var0 + InvCs2uck7*InvCs2uck7*T{0.5};
+const T InvCs2uck9 = LatSet::InvCs2 * (u[0]+u[1]-u[2]);
+const T var0InvCs4uc2k9 = var0 + InvCs2uck9*InvCs2uck9*T{0.5};
+const T InvCs2uck11 = LatSet::InvCs2 * (u[0]-u[1]+u[2]);
+const T var0InvCs4uc2k11 = var0 + InvCs2uck11*InvCs2uck11*T{0.5};
+const T InvCs2uck13 = LatSet::InvCs2 * (-u[0]+u[1]+u[2]);
+const T var0InvCs4uc2k13 = var0 + InvCs2uck13*InvCs2uck13*T{0.5};
+feq[0] = rhowk0 * var0;
+feq[1] = rhowk1 * (var0InvCs4uc2k1 + InvCs2uck1);
+feq[2] = rhowk1 * (var0InvCs4uc2k1 - InvCs2uck1);
+feq[3] = rhowk1 * (var0InvCs4uc2k3 + InvCs2uck3);
+feq[4] = rhowk1 * (var0InvCs4uc2k3 - InvCs2uck3);
+feq[5] = rhowk1 * (var0InvCs4uc2k5 + InvCs2uck5);
+feq[6] = rhowk1 * (var0InvCs4uc2k5 - InvCs2uck5);
+feq[7] = rhowk7 * (var0InvCs4uc2k7 + InvCs2uck7);
+feq[8] = rhowk7 * (var0InvCs4uc2k7 - InvCs2uck7);
+feq[9] = rhowk7 * (var0InvCs4uc2k9 + InvCs2uck9);
+feq[10] = rhowk7 * (var0InvCs4uc2k9 - InvCs2uck9);
+feq[11] = rhowk7 * (var0InvCs4uc2k11 + InvCs2uck11);
+feq[12] = rhowk7 * (var0InvCs4uc2k11 - InvCs2uck11);
+feq[13] = rhowk7 * (var0InvCs4uc2k13 + InvCs2uck13);
+feq[14] = rhowk7 * (var0InvCs4uc2k13 - InvCs2uck13);
+}
+};
+
+template <typename T, typename TypePack>
+struct SecondOrderImpl<CELL<T, D3Q19<T>, TypePack>>{
+using CELLTYPE = CELL<T, D3Q19<T>, TypePack>;
+using LatSet = D3Q19<T>;
+
+__any__ static void apply(std::array<T, LatSet::q> &feq, const T rho, const Vector<T, LatSet::d> &u){
+constexpr T InvCs2x = T{0.5} * LatSet::InvCs2;
+const T var0 = T{1} - (u[0]*u[0] + u[1]*u[1] + u[2]*u[2]) * InvCs2x;
+const T rhowk0 = latset::w<LatSet>(0) * rho;
+const T rhowk1 = latset::w<LatSet>(1) * rho;
+const T rhowk7 = latset::w<LatSet>(7) * rho;
+const T InvCs2uck1 = LatSet::InvCs2 * (u[0]);
+const T var0InvCs4uc2k1 = var0 + InvCs2uck1*InvCs2uck1*T{0.5};
+const T InvCs2uck3 = LatSet::InvCs2 * (u[1]);
+const T var0InvCs4uc2k3 = var0 + InvCs2uck3*InvCs2uck3*T{0.5};
+const T InvCs2uck5 = LatSet::InvCs2 * (u[2]);
+const T var0InvCs4uc2k5 = var0 + InvCs2uck5*InvCs2uck5*T{0.5};
+const T InvCs2uck7 = LatSet::InvCs2 * (u[0]+u[1]);
+const T var0InvCs4uc2k7 = var0 + InvCs2uck7*InvCs2uck7*T{0.5};
+const T InvCs2uck9 = LatSet::InvCs2 * (u[0]+u[2]);
+const T var0InvCs4uc2k9 = var0 + InvCs2uck9*InvCs2uck9*T{0.5};
+const T InvCs2uck11 = LatSet::InvCs2 * (u[1]+u[2]);
+const T var0InvCs4uc2k11 = var0 + InvCs2uck11*InvCs2uck11*T{0.5};
+const T InvCs2uck13 = LatSet::InvCs2 * (u[0]-u[1]);
+const T var0InvCs4uc2k13 = var0 + InvCs2uck13*InvCs2uck13*T{0.5};
+const T InvCs2uck15 = LatSet::InvCs2 * (u[0]-u[2]);
+const T var0InvCs4uc2k15 = var0 + InvCs2uck15*InvCs2uck15*T{0.5};
+const T InvCs2uck17 = LatSet::InvCs2 * (u[1]-u[2]);
+const T var0InvCs4uc2k17 = var0 + InvCs2uck17*InvCs2uck17*T{0.5};
+feq[0] = rhowk0 * var0;
+feq[1] = rhowk1 * (var0InvCs4uc2k1 + InvCs2uck1);
+feq[2] = rhowk1 * (var0InvCs4uc2k1 - InvCs2uck1);
+feq[3] = rhowk1 * (var0InvCs4uc2k3 + InvCs2uck3);
+feq[4] = rhowk1 * (var0InvCs4uc2k3 - InvCs2uck3);
+feq[5] = rhowk1 * (var0InvCs4uc2k5 + InvCs2uck5);
+feq[6] = rhowk1 * (var0InvCs4uc2k5 - InvCs2uck5);
+feq[7] = rhowk7 * (var0InvCs4uc2k7 + InvCs2uck7);
+feq[8] = rhowk7 * (var0InvCs4uc2k7 - InvCs2uck7);
+feq[9] = rhowk7 * (var0InvCs4uc2k9 + InvCs2uck9);
+feq[10] = rhowk7 * (var0InvCs4uc2k9 - InvCs2uck9);
+feq[11] = rhowk7 * (var0InvCs4uc2k11 + InvCs2uck11);
+feq[12] = rhowk7 * (var0InvCs4uc2k11 - InvCs2uck11);
+feq[13] = rhowk7 * (var0InvCs4uc2k13 + InvCs2uck13);
+feq[14] = rhowk7 * (var0InvCs4uc2k13 - InvCs2uck13);
+feq[15] = rhowk7 * (var0InvCs4uc2k15 + InvCs2uck15);
+feq[16] = rhowk7 * (var0InvCs4uc2k15 - InvCs2uck15);
+feq[17] = rhowk7 * (var0InvCs4uc2k17 + InvCs2uck17);
+feq[18] = rhowk7 * (var0InvCs4uc2k17 - InvCs2uck17);
+}
+};
+
+template <typename T, typename TypePack>
+struct SecondOrderImpl<CELL<T, D3Q27<T>, TypePack>>{
+using CELLTYPE = CELL<T, D3Q27<T>, TypePack>;
+using LatSet = D3Q27<T>;
+
+__any__ static void apply(std::array<T, LatSet::q> &feq, const T rho, const Vector<T, LatSet::d> &u){
+constexpr T InvCs2x = T{0.5} * LatSet::InvCs2;
+const T var0 = T{1} - (u[0]*u[0] + u[1]*u[1] + u[2]*u[2]) * InvCs2x;
+const T rhowk0 = latset::w<LatSet>(0) * rho;
+const T rhowk1 = latset::w<LatSet>(1) * rho;
+const T rhowk7 = latset::w<LatSet>(7) * rho;
+const T rhowk19 = latset::w<LatSet>(19) * rho;
+const T InvCs2uck1 = LatSet::InvCs2 * (u[0]);
+const T var0InvCs4uc2k1 = var0 + InvCs2uck1*InvCs2uck1*T{0.5};
+const T InvCs2uck3 = LatSet::InvCs2 * (u[1]);
+const T var0InvCs4uc2k3 = var0 + InvCs2uck3*InvCs2uck3*T{0.5};
+const T InvCs2uck5 = LatSet::InvCs2 * (u[2]);
+const T var0InvCs4uc2k5 = var0 + InvCs2uck5*InvCs2uck5*T{0.5};
+const T InvCs2uck7 = LatSet::InvCs2 * (u[0]+u[1]);
+const T var0InvCs4uc2k7 = var0 + InvCs2uck7*InvCs2uck7*T{0.5};
+const T InvCs2uck9 = LatSet::InvCs2 * (u[0]+u[2]);
+const T var0InvCs4uc2k9 = var0 + InvCs2uck9*InvCs2uck9*T{0.5};
+const T InvCs2uck11 = LatSet::InvCs2 * (u[1]+u[2]);
+const T var0InvCs4uc2k11 = var0 + InvCs2uck11*InvCs2uck11*T{0.5};
+const T InvCs2uck13 = LatSet::InvCs2 * (u[0]-u[1]);
+const T var0InvCs4uc2k13 = var0 + InvCs2uck13*InvCs2uck13*T{0.5};
+const T InvCs2uck15 = LatSet::InvCs2 * (u[0]-u[2]);
+const T var0InvCs4uc2k15 = var0 + InvCs2uck15*InvCs2uck15*T{0.5};
+const T InvCs2uck17 = LatSet::InvCs2 * (u[1]-u[2]);
+const T var0InvCs4uc2k17 = var0 + InvCs2uck17*InvCs2uck17*T{0.5};
+const T InvCs2uck19 = LatSet::InvCs2 * (u[0]+u[1]+u[2]);
+const T var0InvCs4uc2k19 = var0 + InvCs2uck19*InvCs2uck19*T{0.5};
+const T InvCs2uck21 = LatSet::InvCs2 * (u[0]+u[1]-u[2]);
+const T var0InvCs4uc2k21 = var0 + InvCs2uck21*InvCs2uck21*T{0.5};
+const T InvCs2uck23 = LatSet::InvCs2 * (u[0]-u[1]+u[2]);
+const T var0InvCs4uc2k23 = var0 + InvCs2uck23*InvCs2uck23*T{0.5};
+const T InvCs2uck25 = LatSet::InvCs2 * (-u[0]+u[1]+u[2]);
+const T var0InvCs4uc2k25 = var0 + InvCs2uck25*InvCs2uck25*T{0.5};
+feq[0] = rhowk0 * var0;
+feq[1] = rhowk1 * (var0InvCs4uc2k1 + InvCs2uck1);
+feq[2] = rhowk1 * (var0InvCs4uc2k1 - InvCs2uck1);
+feq[3] = rhowk1 * (var0InvCs4uc2k3 + InvCs2uck3);
+feq[4] = rhowk1 * (var0InvCs4uc2k3 - InvCs2uck3);
+feq[5] = rhowk1 * (var0InvCs4uc2k5 + InvCs2uck5);
+feq[6] = rhowk1 * (var0InvCs4uc2k5 - InvCs2uck5);
+feq[7] = rhowk7 * (var0InvCs4uc2k7 + InvCs2uck7);
+feq[8] = rhowk7 * (var0InvCs4uc2k7 - InvCs2uck7);
+feq[9] = rhowk7 * (var0InvCs4uc2k9 + InvCs2uck9);
+feq[10] = rhowk7 * (var0InvCs4uc2k9 - InvCs2uck9);
+feq[11] = rhowk7 * (var0InvCs4uc2k11 + InvCs2uck11);
+feq[12] = rhowk7 * (var0InvCs4uc2k11 - InvCs2uck11);
+feq[13] = rhowk7 * (var0InvCs4uc2k13 + InvCs2uck13);
+feq[14] = rhowk7 * (var0InvCs4uc2k13 - InvCs2uck13);
+feq[15] = rhowk7 * (var0InvCs4uc2k15 + InvCs2uck15);
+feq[16] = rhowk7 * (var0InvCs4uc2k15 - InvCs2uck15);
+feq[17] = rhowk7 * (var0InvCs4uc2k17 + InvCs2uck17);
+feq[18] = rhowk7 * (var0InvCs4uc2k17 - InvCs2uck17);
+feq[19] = rhowk19 * (var0InvCs4uc2k19 + InvCs2uck19);
+feq[20] = rhowk19 * (var0InvCs4uc2k19 - InvCs2uck19);
+feq[21] = rhowk19 * (var0InvCs4uc2k21 + InvCs2uck21);
+feq[22] = rhowk19 * (var0InvCs4uc2k21 - InvCs2uck21);
+feq[23] = rhowk19 * (var0InvCs4uc2k23 + InvCs2uck23);
+feq[24] = rhowk19 * (var0InvCs4uc2k23 - InvCs2uck23);
+feq[25] = rhowk19 * (var0InvCs4uc2k25 + InvCs2uck25);
+feq[26] = rhowk19 * (var0InvCs4uc2k25 - InvCs2uck25);
+}
+};
+
+
+//------------------------------------
+
 
 }  // namespace equilibrium
 

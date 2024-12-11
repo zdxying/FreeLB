@@ -85,8 +85,8 @@ class ScalarFieldIsoSurface {
   const auto& getBlock() const { return scalarfield.getBlock(); }
 
  private:
-  T isoValue;
   const BlockField<FieldType, T, 3>& scalarfield;
+  T isoValue;
 };
 
 
@@ -101,7 +101,7 @@ class MarchingCubeSurface {
   void generateIsoSurface(std::vector<Triangle<T>>& tvecs) {
     tvecs.clear();
     for (const BlockField<FieldType, T, 3>& blockfield : scalarBFM.getBlockFields()) {
-      const auto& field = blockfield.getFieldType().getField(0);
+      // const auto& field = blockfield.getFieldType().getField(0);
       const auto& blockxd = blockfield.getBlock();
       const int overlap = blockxd.getOverlap();
       const int Nx = blockxd.getNx();
@@ -165,7 +165,7 @@ class MarchingCubeSurface {
 
     const int Nx = isoSurface.getNx();
     const int Ny = isoSurface.getNy();
-    const int Nz = isoSurface.getNz();
+    // const int Nz = isoSurface.getNz();
     const auto& block = isoSurface.getBlock();
 
     std::size_t id0 = id + Nx;
@@ -272,8 +272,8 @@ class MarchingCubeSurface {
   }
 
  private:
-  T isoValue;
   const BlockFieldManager<FieldType, T, 3>& scalarBFM;
+  T isoValue;
 };
 
 }  // namespace offlat

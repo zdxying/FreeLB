@@ -42,7 +42,7 @@ struct BGK {
     T rho{};
     Vector<T, LatSet::d> u{};
     MomentaScheme::apply(cell, rho, u);
-    // moment::template rhou<CELL, WriteToField>::apply(cell);
+    // moment::template rhoU<CELL, WriteToField>::apply(cell);
     // equilibrium distribution function
     std::array<T, LatSet::q> feq{};
     EquilibriumScheme::apply(feq, rho, u);
@@ -107,7 +107,7 @@ struct BGKSource_Feq_Rho {
     T rho{};
     const Vector<T, LatSet::d>& u = cell.template get<VELOCITY<T, LatSet::d>>();
     const auto source = cell.template get<SOURCE>();
-    moment::template sourceRho<CELL, SOURCE, WriteToField>::apply(cell, rho, source);
+    moment::template sourcerho<CELL, SOURCE, WriteToField>::apply(cell, source, rho);
     // equilibrium distribution function
     std::array<T, LatSet::q> feq{};
     EquilibriumScheme::apply(feq, rho, u);

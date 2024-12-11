@@ -218,13 +218,13 @@ int main() {
   // NS task  PowerLaw_BGKForce
   // using NSBulkTask = tmp::Key_TypePair<olbfs::FSType::Fluid | olbfs::FSType::Interface,
   using NSBulkTask = tmp::Key_TypePair<olbfs::FSType::Fluid | olbfs::FSType::Interface,
-    collision::BGK<moment::rhou<NSCELL, true>, equilibrium::SecondOrder<NSCELL>>>;
+    collision::BGK<moment::rhoU<NSCELL, true>, equilibrium::SecondOrder<NSCELL>>>;
   using NSWallTask = tmp::Key_TypePair<olbfs::FSType::Wall, collision::BounceBack<NSCELL>>;
 
   using NSTaskSelector = TaskSelector<std::uint8_t, NSCELL, NSBulkTask, NSWallTask>;
 
   // inlet u task
-  using InletTask = tmp::Key_TypePair<InletFlag, moment::constu<NSCELL>>;
+  using InletTask = tmp::Key_TypePair<InletFlag, moment::constU<NSCELL>>;
   using InletTaskSelector = TaskSelector<std::uint8_t, NSCELL, InletTask>;
 
   // bcs

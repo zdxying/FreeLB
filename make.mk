@@ -6,7 +6,7 @@ else
     RM = rm -rf
 endif
 
-OUTPUT ?= vtkoutput
+OUTPUT ?= output
 
 # use g++ as default c++ compiler
 CXXC ?= g++

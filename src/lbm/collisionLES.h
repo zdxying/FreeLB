@@ -42,7 +42,7 @@ struct SmagorinskyBGK {
     // get Smagorinsky Effective Omega
     // second moment of non-equilibrium part of the distribution function
     std::array<T, util::SymmetricMatrixSize<LatSet::d>()> Pi_ab{};
-    moment::template Pi_ab_neq<CELL>::get(cell, Pi_ab, rho, u);
+    moment::template Pi_ab_neq<CELL>::apply(cell, rho, u, Pi_ab);
     // nrom of Pi_ab
     T Pi_ab_norm = std::sqrt(util::NormSquare<T, LatSet::d>(Pi_ab));
     // coefficient
@@ -86,7 +86,7 @@ struct SmagorinskyForceBGK {
     // get Smagorinsky Effective Omega
     // second moment of non-equilibrium part of the distribution function
     std::array<T, util::SymmetricMatrixSize<LatSet::d>()> Pi_ab{};
-    moment::template forcePi_ab_neq<CELL>::get(cell, Pi_ab, rho, u, force);
+    moment::template forcePi_ab_neq<CELL>::apply(cell, rho, u, force, Pi_ab);
     // nrom of Pi_ab
     T Pi_ab_norm = std::sqrt(util::NormSquare<T, LatSet::d>(Pi_ab));
     // coefficient
@@ -125,7 +125,7 @@ struct PalabosSmagorinskyForceBGK_Feq_RhoU {
     // update macroscopic variables
     T rho{};
     Vector<T, LatSet::d> u{};
-    moment::template forceRhou<CELL, ForceScheme, WriteToField>::apply(cell, ForceScheme::getForce(cell), rho, u);
+    moment::template forcerhoU<CELL, ForceScheme, WriteToField>::apply(cell, ForceScheme::getForce(cell), rho, u);
     // compute force term
     std::array<T, LatSet::q> fi{};
     ForceScheme::apply(u, ForceScheme::getForce(cell), fi);
@@ -133,7 +133,7 @@ struct PalabosSmagorinskyForceBGK_Feq_RhoU {
     // get Smagorinsky Effective Omega
     // second moment of non-equilibrium part of the distribution function
     std::array<T, util::SymmetricMatrixSize<LatSet::d>()> Pi_ab{};
-    moment::template Pi_ab_neq<CELL>::get(cell, Pi_ab, rho, u);
+    moment::template Pi_ab_neq<CELL>::apply(cell, rho, u, Pi_ab);
     // nrom of Pi_ab
     const T Pi_ab_sqr = util::NormSquare<T, LatSet::d>(Pi_ab);
     const T Pi_ab_norm = std::sqrt(Pi_ab_sqr);

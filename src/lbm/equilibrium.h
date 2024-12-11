@@ -72,33 +72,56 @@ struct Equilibrium {
 namespace equilibrium {
 
 template <typename CELL>
+struct SecondOrderImpl {
+  using T = typename CELL::FloatType;
+  using LatSet = typename CELL::LatticeSet;
+  using CELLTYPE = CELL;
+  using GenericRho = typename CELL::GenericRho;
+
+  __any__ static void apply(std::array<T, LatSet::q> &feq, const T rho, const Vector<T, LatSet::d> &u) {
+    const T u2 = u.getnorm2();
+    for (unsigned int k = 0; k < LatSet::q; ++k) {
+      const T uc = u * latset::c<LatSet>(k);
+      feq[k] = latset::w<LatSet>(k) * rho *
+      (T{1} + LatSet::InvCs2 * uc + uc * uc * T{0.5} * LatSet::InvCs4 - LatSet::InvCs2 * u2 * T{0.5});
+    }
+  }
+};
+
+template <typename CELL>
 struct SecondOrder {
   using T = typename CELL::FloatType;
   using LatSet = typename CELL::LatticeSet;
   using CELLTYPE = CELL;
-
   using GenericRho = typename CELL::GenericRho;
 
-  __any__ static inline T get(int k, const Vector<T, LatSet::d> &u, T rho, T u2) {
+  __any__ static inline T get(unsigned int k, const Vector<T, LatSet::d> &u, const T rho, const T u2) {
     const T uc = u * latset::c<LatSet>(k);
     return latset::w<LatSet>(k) * rho *
            (T{1} + LatSet::InvCs2 * uc + uc * uc * T{0.5} * LatSet::InvCs4 -
             LatSet::InvCs2 * u2 * T{0.5});
   }
-
-  __any__ static void apply(std::array<T, LatSet::q> &feq, T rho, const Vector<T, LatSet::d> &u) {
-    const T u2 = u.getnorm2();
-    for (unsigned int k = 0; k < LatSet::q; ++k) {
-      feq[k] = get(k, u, rho, u2);
-    }
-  }
-
   __any__ static void apply(std::array<T, LatSet::q> &feq, const CELL &cell) {
     const T rho = cell.template get<GenericRho>();
     const Vector<T, LatSet::d> &u = cell.template get<VELOCITY<T, LatSet::d>>();
-    const T u2 = u.getnorm2();
+    apply(feq, rho, u);
+  }
+  __any__ static void apply(std::array<T, LatSet::q> &feq, const T rho, const Vector<T, LatSet::d> &u) {
+    SecondOrderImpl<CELL>::apply(feq, rho, u);
+  }
+};
+
+
+template <typename CELL>
+struct FirstOrderImpl {
+  using T = typename CELL::FloatType;
+  using LatSet = typename CELL::LatticeSet;
+  using CELLTYPE = CELL;
+  using GenericRho = typename CELL::GenericRho;
+
+  __any__ static void apply(std::array<T, LatSet::q> &feq, const T rho, const Vector<T, LatSet::d> &u) {
     for (unsigned int k = 0; k < LatSet::q; ++k) {
-      feq[k] = get(k, u, rho, u2);
+      feq[k] = latset::w<LatSet>(k) * rho * (T{1} + LatSet::InvCs2 * (u * latset::c<LatSet>(k)));
     }
   }
 };
@@ -108,27 +131,19 @@ struct FirstOrder {
   using T = typename CELL::FloatType;
   using LatSet = typename CELL::LatticeSet;
   using CELLTYPE = CELL;
-
   using GenericRho = typename CELL::GenericRho;
 
-  __any__ static inline T get(int k, const Vector<T, LatSet::d> &u, T rho) {
+  __any__ static inline T get(unsigned int k, const Vector<T, LatSet::d> &u, const T rho) {
     return latset::w<LatSet>(k) * rho * (T{1} + LatSet::InvCs2 * (u * latset::c<LatSet>(k)));
   }
-
-  __any__ static void apply(std::array<T, LatSet::q> &feq, T rho, const Vector<T, LatSet::d> &u) {
-    for (unsigned int k = 0; k < LatSet::q; ++k) {
-      feq[k] = get(k, u, rho);
-    }
-  }
-
   __any__ static void apply(std::array<T, LatSet::q> &feq, const CELL &cell) {
     const T rho = cell.template get<GenericRho>();
     const Vector<T, LatSet::d> &u = cell.template get<VELOCITY<T, LatSet::d>>();
-    for (unsigned int k = 0; k < LatSet::q; ++k) {
-      feq[k] = get(k, u, rho);
-    }
+    apply(feq, rho, u);
   }
-  
+  __any__ static void apply(std::array<T, LatSet::q> &feq, const T rho, const Vector<T, LatSet::d> &u) {
+    FirstOrderImpl<CELL>::apply(feq, rho, u);
+  }
 };
 
 

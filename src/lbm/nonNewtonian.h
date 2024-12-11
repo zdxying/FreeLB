@@ -91,7 +91,7 @@ struct PowerLaw_BGK {
     MomentaScheme::apply(cell, rho, u);
     // strain rate
     std::array<T, util::SymmetricMatrixSize<LatSet::d>()> strain_rate{};
-    moment::template strainRate<CELL>::get(cell, strain_rate, rho, u);
+    moment::template strainRate<CELL>::apply(cell, rho, u, strain_rate);
     // magnitude of shear rate
     T gamma = moment::template shearRateMag<CELL>::get(strain_rate);
     // equilibrium distribution function
@@ -123,7 +123,7 @@ struct PowerLaw_BGKForce {
     MomentaScheme::apply(cell, force, rho, u);
     // strain rate
     std::array<T, util::SymmetricMatrixSize<LatSet::d>()> strain_rate{};
-    moment::template strainRate<CELL>::get(cell, strain_rate, rho, u);
+    moment::template strainRate<CELL>::apply(cell, rho, u, strain_rate);
     // magnitude of shear rate
     T gamma = moment::template shearRateMag<CELL>::get(strain_rate);
     // compute force term

@@ -176,7 +176,7 @@ int main() {
 
   // define task/ dynamics:
   // bulk task
-  using BulkTask = tmp::Key_TypePair<AABBFlag, collision::BGK<moment::rhou<CELL>, equilibrium::SecondOrder<CELL>>>;
+  using BulkTask = tmp::Key_TypePair<AABBFlag, collision::BGK<moment::rhoU<CELL>, equilibrium::SecondOrder<CELL>>>;
   // wall task
   using BBTask = tmp::Key_TypePair<BouncebackFlag, collision::BounceBack<CELL>>;
   using BBMVTask = tmp::Key_TypePair<BBMovingWallFlag, collision::BounceBackMovingWall<CELL>>;
@@ -185,7 +185,7 @@ int main() {
   // task executor
   using NSTask = tmp::TaskSelector<TaskCollection, std::uint8_t, CELL>;
 
-  using Momenta = moment::MomentaTuple<moment::rhou<CELL, true>, moment::shearRateMag<CELL, true>>;
+  using Momenta = moment::MomentaTuple<moment::rhoU<CELL, true>, moment::shearRateMag<CELL, true>>;
   using RhoUTask = tmp::Key_TypePair<AABBFlag|PeriodicFlag, Momenta>;
   using TaskCollectionRhoU = tmp::TupleWrapper<RhoUTask>;
   using TaskSelectorRhoU = tmp::TaskSelector<TaskCollectionRhoU, std::uint8_t, CELL>;

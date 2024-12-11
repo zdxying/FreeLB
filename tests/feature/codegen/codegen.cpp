@@ -23,11 +23,42 @@
 
 #include "template.h"
 
+#define TEMPGEN_LATSETS tempgen::D2Q5, tempgen::D2Q9, tempgen::D3Q7, tempgen::D3Q15, tempgen::D3Q19, tempgen::D3Q27
 
 int main() {
+  std::string outdir = "./output/";
+  std::string momentfname = outdir + "cse.h";
+  std::string feqfname = outdir + "feq.h";
 
-  tempgenest::rhoImplgen gen("rhoImpl.h", {"D2Q5", "D2Q9", "D3Q15", "D3Q19"}, {5, 9, 15, 19});
-  gen.generateAll();
+  DirCreator::Create_Dir(outdir);
+
+  tempgen::rhoImplgen<TEMPGEN_LATSETS> rho(momentfname);
+  tempgen::sourcerhoImplgen<TEMPGEN_LATSETS> sourcerho(momentfname);
+  tempgen::UImplgen<TEMPGEN_LATSETS> U(momentfname);
+  tempgen::forceUImplgen<TEMPGEN_LATSETS> forceU(momentfname);
+  tempgen::rhoUImplgen<TEMPGEN_LATSETS> rhoU(momentfname);
+  tempgen::forcerhoUImplgen<TEMPGEN_LATSETS> forcerhoU(momentfname);
+  tempgen::Pi_ab_neqgen<TEMPGEN_LATSETS> Pi_ab_neq(momentfname);
+  tempgen::forcePi_ab_neqgen<TEMPGEN_LATSETS> forcePi_ab_neq(momentfname);
+  tempgen::stressgen<TEMPGEN_LATSETS> stress(momentfname);
+  tempgen::strainRategen<TEMPGEN_LATSETS> strainRate(momentfname);
+  tempgen::shearRateMagImplgen<TEMPGEN_LATSETS> shearRateMag(momentfname);
+
+  tempgen::SecondOrderImplgen<TEMPGEN_LATSETS> SecondOrder(feqfname);
+
+  rho.generateAll();
+  sourcerho.generateAll();
+  U.generateAll();
+  forceU.generateAll();
+  rhoU.generateAll();
+  forcerhoU.generateAll();
+  Pi_ab_neq.generateAll();
+  forcePi_ab_neq.generateAll();
+  stress.generateAll();
+  strainRate.generateAll();
+  shearRateMag.generateAll();
+
+  SecondOrder.generateAll();
 
 
 }

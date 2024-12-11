@@ -164,7 +164,7 @@ class Cell {
     return BLOCKLATTICE::template hasField<FieldType>();
   }
 
-  Cell<T, LatSet, TypePack> getNeighbor(int i) const {
+  Cell<T, LatSet, TypePack> getNeighbor(unsigned int i) const {
     return Cell<T, LatSet, TypePack>(Id + Lat.getDelta_Index()[i], Lat);
   }
   Cell<T, LatSet, TypePack> getNeighbor(const Vector<int, LatSet::d>& direction) const {
@@ -176,7 +176,7 @@ class Cell {
   void operator++() { ++Id; }
 
   std::size_t getId() const { return Id; }
-  std::size_t getNeighborId(int i) const { return Id + Lat.getDelta_Index()[i]; }
+  std::size_t getNeighborId(unsigned int i) const { return Id + Lat.getDelta_Index()[i]; }
 
   // get population before streaming
   T& getPrevious(int i) const {

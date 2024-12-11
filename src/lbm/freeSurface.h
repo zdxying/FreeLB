@@ -52,7 +52,7 @@ struct FreeSurfaceHelper {
     latman.template getField<STATE>().forEach([&](auto& field, std::size_t id) {
       const auto& block = field.getBlock();
       if (util::isFlag(field.get(id), FSType::Fluid)) {
-        for (int i = 1; i < LatSet::q; ++i) {
+        for (unsigned int i = 1; i < LatSet::q; ++i) {
           std::size_t idn = id + latset::c<LatSet>(i) * block.getProjection();
           Vector<T, LatSet::d> loc_t = block.getLoc_t(idn);
           if (block.IsInside(loc_t)) {
@@ -112,7 +112,7 @@ struct MassTransfer {
     int interface_nbrs = 0;
 
     NbrInfo(CELL& cell) {
-      for (int k = 1; k < LatSet::q; ++k) {
+      for (unsigned int k = 1; k < LatSet::q; ++k) {
         auto iflag = cell.template getField<STATE>().get(cell.getNeighborId(k));
         if (util::isFlag(iflag, FSType::Fluid)) {
           fluid_nbr = true;
@@ -135,7 +135,7 @@ struct MassTransfer {
       // cell's nbr info
       NbrInfo cellNbrInfo(cell);
 
-      for (int k = 1; k < LatSet::q; ++k) {
+      for (unsigned int k = 1; k < LatSet::q; ++k) {
         CELL celln = cell.getNeighbor(k);
         int kopp = latset::opp<LatSet>(k);
 
@@ -196,7 +196,7 @@ struct MassTransfer {
       T rho_gas = T(1) - T(6) * cell.template get<Surface_Tension_Parameter<T>>() * curvature;
       const Vector<T, LatSet::d>& u = cell.template get<PREVIOUS_VELOCITY<T, LatSet::d>>();
       T u2 = u.getnorm2();
-      for (int k = 1; k < LatSet::q; ++k) {
+      for (unsigned int k = 1; k < LatSet::q; ++k) {
         CELL celln = cell.getNeighbor(k);
         if (util::isFlag(celln.template get<STATE>(), FSType::Gas)) {
           // fiopp = feqiopp(rho_gas) + feqi(rho_gas) - fi(x+ei)
@@ -251,15 +251,15 @@ struct ToFluidNbrConversion {
 				T averho{};
 				Vector<T, LatSet::d> aveu{};
 				int count{};
-				for (int k = 1; k < LatSet::q; ++k) {
+				for (unsigned int k = 1; k < LatSet::q; ++k) {
 					CELL celln = cell.getNeighbor(k);
 					if (util::isFlag(celln.template get<STATE>(), (FSType::Fluid | FSType::Interface))) {
 						// openlb uses: cellC.computeRhoU(rho_tmp, u_tmp);
             // however FreeLB can't get dynamics from a single cell
-            // we have to use forceRhou here
+            // we have to use forcerhoU here
             T rho{};
             Vector<T, LatSet::d> u{};
-            moment::forceRhou<CELL, ForceScheme>::apply(celln, rho, u);
+            moment::forcerhoU<CELL, ForceScheme>::apply(celln, rho, u);
             averho += rho;
             aveu += u;
 						++count;
@@ -271,7 +271,7 @@ struct ToFluidNbrConversion {
 				}
 				// set fi, openlb uses: cell.iniEquilibrium(rho_avg, u_avg);
 				T aveu2 = aveu.getnorm2();
-				for (int k = 0; k < LatSet::q; ++k) {
+				for (unsigned int k = 0; k < LatSet::q; ++k) {
 					cell[k] = equilibrium::SecondOrder<CELL>::get(k, aveu, averho, aveu2);
 				}
       }
@@ -331,7 +331,7 @@ struct InterfaceExcessMass {
 
 			// find neighbors
 			int count{};
-			for (int k = 1; k < LatSet::q; ++k) {
+			for (unsigned int k = 1; k < LatSet::q; ++k) {
 				CELL celln = cell.getNeighbor(k);
 				if (util::isFlag(celln.template get<STATE>(), FSType::Interface) &&
 						!util::isFlag(celln.template get<FLAG>(), std::uint8_t(255))) {
@@ -344,7 +344,7 @@ struct InterfaceExcessMass {
 			if (count > 0) {
         const T mass_excess_frac = mass_excess / count;
         
-        for (int k = 1; k < LatSet::q; ++k) {
+        for (unsigned int k = 1; k < LatSet::q; ++k) {
           CELL celln = cell.getNeighbor(k);
           if (util::isFlag(celln.template get<STATE>(), FSType::Interface) &&
               !util::isFlag(celln.template get<FLAG>(), std::uint8_t(255))) {
@@ -355,7 +355,7 @@ struct InterfaceExcessMass {
         }
       } else {
 				mass_ex_vec[0] = mass_excess;
-        for (int k = 1; k < LatSet::q; ++k) {
+        for (unsigned int k = 1; k < LatSet::q; ++k) {
           mass_ex_vec[k] = T{};
         }
 			}
@@ -390,7 +390,7 @@ struct FinalizeConversion {
 		// collect excess mass
 		if (util::isFlag(cell.template get<STATE>(), FSType::Interface)) {
       T collected_excess{};
-			for (int k = 1; k < LatSet::q; ++k) {
+			for (unsigned int k = 1; k < LatSet::q; ++k) {
 				CELL celln = cell.getNeighbor(k);
         if (util::isFlag(celln.template get<FLAG>(), FSFlag::To_Fluid | FSFlag::To_Gas))
 				collected_excess += celln.template get<MASSEX<T, LatSet::q>>()[latset::opp<LatSet>(k)];
@@ -400,10 +400,10 @@ struct FinalizeConversion {
 
       // openlb uses: cell.computeRhoU(rho, u_tmp);
       // however FreeLB can't get dynamics from a single cell
-      // we have to use forceRhou here
+      // we have to use forcerhoU here
 			T rho;
 			Vector<T, LatSet::d> u{};
-			moment::forceRhou<CELL, ForceScheme>::apply(cell, rho, u);
+			moment::forcerhoU<CELL, ForceScheme>::apply(cell, rho, u);
 
 			cell.template get<MASS<T>>() = mass_tmp;
 			cell.template get<VOLUMEFRAC<T>>() = mass_tmp / rho;
@@ -411,7 +411,7 @@ struct FinalizeConversion {
 
     } else if (util::isFlag(cell.template get<STATE>(), FSType::Fluid)) {
       T collected_excess{};
-			for (int k = 1; k < LatSet::q; ++k) {
+			for (unsigned int k = 1; k < LatSet::q; ++k) {
 				CELL celln = cell.getNeighbor(k);
 				if (util::isFlag(celln.template get<FLAG>(), FSFlag::To_Fluid | FSFlag::To_Gas))
 				collected_excess += celln.template get<MASSEX<T, LatSet::q>>()[latset::opp<LatSet>(k)];
@@ -512,7 +512,7 @@ struct FreeSurfaceHelper {
     latman.template getField<STATE>().forEach([&](auto& field, std::size_t id) {
       const auto& block = field.getBlock();
       if (util::isFlag(field.get(id), FSType::Fluid)) {
-        for (int i = 1; i < LatSet::q; ++i) {
+        for (unsigned int i = 1; i < LatSet::q; ++i) {
           std::size_t idn = id + latset::c<LatSet>(i) * block.getProjection();
           Vector<T, LatSet::d> loc_t = block.getLoc_t(idn);
           if (block.IsInside(loc_t)) {
@@ -570,19 +570,19 @@ struct surface_post_process0 {
       // mass transfer
       T deltamass{};
 
-      for (int k = 1; k < LatSet::q; ++k) {
+      for (unsigned int k = 1; k < LatSet::q; ++k) {
         CELL celln = cell.getNeighbor(k);
         deltamass += celln.template get<MASSEX<T>>();
       }
 
       if (util::isFlag(cell.template get<STATE>(), FSType::Fluid)) {
-        for (int k = 1; k < LatSet::q; ++k) {
+        for (unsigned int k = 1; k < LatSet::q; ++k) {
           CELL celln = cell.getNeighbor(k);
           deltamass += cell[latset::opp<LatSet>(k)] - celln[k];
         }
       } else {
         const T cellvof = computeVOF(cell);
-        for (int k = 1; k < LatSet::q; ++k) {
+        for (unsigned int k = 1; k < LatSet::q; ++k) {
           CELL celln = cell.getNeighbor(k);
           const int kopp = latset::opp<LatSet>(k);
 
@@ -607,13 +607,13 @@ struct surface_post_process0 {
           }
           T rho_gas =
             T(1) - T(6) * cell.template get<Surface_Tension_Parameter<T>>() * curvature;
-          // in Lehmann's thesis: stream-collide-update rhou - free surface,
+          // in Lehmann's thesis: stream-collide-update rhoU - free surface,
           // the current velocity is used to calculate the reconstructed fi
-          // FreeLB uses: update rhou-colide-stream-free surface
+          // FreeLB uses: update rhoU-colide-stream-free surface
           // so before call free surface post process, rho and u should be updated
           const Vector<T, LatSet::d>& u = cell.template get<VELOCITY<T, LatSet::d>>();
           const T u2 = u.getnorm2();
-          for (int k = 1; k < LatSet::q; ++k) {
+          for (unsigned int k = 1; k < LatSet::q; ++k) {
             CELL celln = cell.getNeighbor(k);
             if (util::isFlag(celln.template get<STATE>(), FSType::Gas)) {
               // fiopp = feqiopp(rho_gas) + feqi(rho_gas) - fi(x+ei) reconstructed f
@@ -702,7 +702,7 @@ struct surface_post_process2 {
       T averho{};
       Vector<T, LatSet::d> aveu{};
       int count{};
-      for (int k = 1; k < LatSet::q; ++k) {
+      for (unsigned int k = 1; k < LatSet::q; ++k) {
         CELL celln = cell.getNeighbor(k);
         if (util::isFlag(celln.template get<STATE>(),
                          (FSType::Fluid | FSType::Interface))) {
@@ -715,7 +715,7 @@ struct surface_post_process2 {
       aveu /= count;
       // set fi
       T aveu2 = aveu.getnorm2();
-      for (int k = 0; k < LatSet::q; ++k) {
+      for (unsigned int k = 0; k < LatSet::q; ++k) {
         cell[k] = equilibrium::SecondOrder<CELL>::get(k, aveu, averho, aveu2);
       }
     } else if (util::isFlag(cell.template get<STATE>(), FSType::Fluid)) {
@@ -782,7 +782,7 @@ struct surface_post_process3 {
     } 
     // distribute excess mass equally to all interface and fluid neighbors
     int count{};
-    for (int k = 1; k < LatSet::q; ++k) {
+    for (unsigned int k = 1; k < LatSet::q; ++k) {
       CELL celln = cell.getNeighbor(k);
       if (util::isFlag(celln.template get<STATE>(), 
       FSType::Interface | FSType::Fluid | FSType::To_Fluid | FSType::To_Interface)) {

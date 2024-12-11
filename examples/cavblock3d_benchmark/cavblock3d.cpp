@@ -179,9 +179,9 @@ int main() {
 
   // define task/ dynamics:
   // bulk task
-  using BulkTask = tmp::Key_TypePair<AABBFlag, collision::BGK<moment::rhou<CELL>, equilibrium::SecondOrder<CELL>>>;
+  using BulkTask = tmp::Key_TypePair<AABBFlag, collision::BGK<moment::rhoU<CELL>, equilibrium::SecondOrder<CELL>>>;
   // wall task
-  using WallTask = tmp::Key_TypePair<BouncebackFlag | BBMovingWallFlag, collision::BGK<moment::UseFieldRhoU<CELL>, equilibrium::SecondOrder<CELL>>>;
+  using WallTask = tmp::Key_TypePair<BouncebackFlag | BBMovingWallFlag, collision::BGK<moment::useFieldrhoU<CELL>, equilibrium::SecondOrder<CELL>>>;
   // BCs task as a collision process, if used, bcs will be handled in the collision process
   using BBTask = tmp::Key_TypePair<BouncebackFlag, collision::BounceBack<CELL>>;
   using BBMVTask = tmp::Key_TypePair<BBMovingWallFlag, collision::BounceBackMovingWall<CELL>>;
@@ -192,7 +192,7 @@ int main() {
   using NSTask = tmp::TaskSelector<TaskCollection, std::uint8_t, CELL>;
 
   // task: update rho and u
-  using RhoUTask = tmp::Key_TypePair<AABBFlag, moment::rhou<CELL>>;
+  using RhoUTask = tmp::Key_TypePair<AABBFlag, moment::rhoU<CELL>>;
   using TaskCollectionRhoU = tmp::TupleWrapper<RhoUTask>;
   using TaskSelectorRhoU = tmp::TaskSelector<TaskCollectionRhoU, std::uint8_t, CELL>;
 
@@ -220,8 +220,8 @@ int main() {
 
     NSLattice.ApplyCellDynamics<NSTask>(FlagFM);
 
-    // NSLattice.ApplyCellDynamics<collision::BGK<moment::rhou<CELL>, equilibrium::SecondOrder<CELL>>>(BulkTaskIds);
-    // NSLattice.ApplyCellDynamics<collision::BGK<moment::UseFieldRhoU<CELL>, equilibrium::SecondOrder<CELL>>>(WallTaskIds);
+    // NSLattice.ApplyCellDynamics<collision::BGK<moment::rhoU<CELL>, equilibrium::SecondOrder<CELL>>>(BulkTaskIds);
+    // NSLattice.ApplyCellDynamics<collision::BGK<moment::useFieldrhoU<CELL>, equilibrium::SecondOrder<CELL>>>(WallTaskIds);
     // NSLattice.ApplyCellDynamics<collision::BounceBack<CELL>>(BBTaskIds);
     // NSLattice.ApplyCellDynamics<collision::BounceBackMovingWall<CELL>>(BBMWTaskIds);
     

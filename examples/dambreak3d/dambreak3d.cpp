@@ -122,9 +122,9 @@ void readParam() {
 }
 
 int main() {
-  constexpr std::uint8_t VoidFlag = std::uint8_t(1);
-  constexpr std::uint8_t AABBFlag = std::uint8_t(2);
-  constexpr std::uint8_t BouncebackFlag = std::uint8_t(4);
+  // constexpr std::uint8_t VoidFlag = std::uint8_t(1);
+  // constexpr std::uint8_t AABBFlag = std::uint8_t(2);
+  // constexpr std::uint8_t BouncebackFlag = std::uint8_t(4);
 
   Printer::Print_BigBanner(std::string("Initializing..."));
 
@@ -202,7 +202,7 @@ int main() {
   // NS task
   using NSBulkTask =
     tmp::Key_TypePair<olbfs::FSType::Fluid | olbfs::FSType::Interface | olbfs::FSType::Gas,
-                      collision::BGKForce<moment::forceRhou<NSCELL, force::ScalarConstForce<NSCELL>, true>, 
+                      collision::BGKForce<moment::forcerhoU<NSCELL, force::ScalarConstForce<NSCELL>, true>, 
                       equilibrium::SecondOrder<NSCELL>, force::ScalarConstForce<NSCELL>>>;
   using NSWallTask = tmp::Key_TypePair<olbfs::FSType::Wall, collision::BounceBack<NSCELL>>;
 
