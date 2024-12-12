@@ -1,10 +1,10 @@
 
-TARGET = cazs3d
-ROOT := ../..
+TARGET = cazs2d.exe
+ROOT := ../../..
 
 # FLAGS += -march=native -ffast-math
 # FLAGS += -O3 -march=native #-fopenmp
-FLAGS += -O3 -march=native -fopenmp
+FLAGS += -O3 -Wall -Wdisabled-optimization -Wno-unknown-pragmas -Wno-unused-local-typedefs -march=native -fopenmp
 # FLAGS += -march=native
 # FLAGS += -DThread_Num 16 -fopenmp
 

@@ -424,7 +424,6 @@ namespace vtino {
 class AbstractWriter {
  public:
   virtual void writeBinary(const std::string &fName, int Overlap) const = 0;
-  virtual void writeConvertedBinary(const std::string &fName, int Overlap) const = 0;
 };
 
 class AbstWriterSet {
@@ -515,32 +514,6 @@ class vtiManager {
     }
     vtiEnd(fullName);
   }
-  void WriteConvertedBinary() {
-    std::string fullName = _dirname + _filename;
-    if (_id == -1) {
-      fullName += ".vti";
-    } else {
-      fullName += "_B" + std::to_string(_id) + ".vti";
-    }
-    vtiHeader(fullName);
-    for (const AbstractWriter *writer : _writers) {
-      writer->writeConvertedBinary(fullName, _Overlap);
-    }
-    vtiEnd(fullName);
-  }
-  void WriteConvertedBinary(int step) {
-    std::string fullName = _dirname + _filename;
-    if (_id == -1) {
-      fullName += "_T" + std::to_string(step) + ".vti";
-    } else {
-      fullName += "_T" + std::to_string(step) + "_B" + std::to_string(_id) + ".vti";
-    }
-    vtiHeader(fullName);
-    for (const AbstractWriter *writer : _writers) {
-      writer->writeConvertedBinary(fullName, _Overlap);
-    }
-    vtiEnd(fullName);
-  }
 
   void vtiHeader(const std::string &fName) {
     std::ofstream f(fName);
@@ -575,6 +548,7 @@ class vtiManager {
   }
 };
 
+
 template <typename ArrayType, unsigned int Dim>
 class ScalarWriter : public AbstractWriter {
  public:
@@ -582,13 +556,6 @@ class ScalarWriter : public AbstractWriter {
 
   ScalarWriter(std::string name, const ArrayType &f, Vector<int, Dim> mesh)
       : varname(name), Array(f), Mesh(mesh) {
-    static_assert(Dim == 2 || Dim == 3, "Error: Dimension is not supported!");
-  }
-  // std::bind(&uintConvclass::func, &unitConv, std::placeholders::_1); or 
-  // [&unitConv](T x) { return unitConv.func(x); };
-  ScalarWriter(std::string name, const ArrayType &f, Vector<int, Dim> mesh, 
-  std::function<datatype(datatype)> func)
-      : varname(name), Array(f), Mesh(mesh), unitConvert(func) {
     static_assert(Dim == 2 || Dim == 3, "Error: Dimension is not supported!");
   }
 
@@ -639,7 +606,28 @@ class ScalarWriter : public AbstractWriter {
     ff.close();
   }
 
-  void writeConvertedBinary(const std::string &fName, int Overlap) const override {
+ private:
+  std::string varname;
+  // field data
+  const ArrayType &Array;
+  // mesh info
+  Vector<int, Dim> Mesh;
+};
+
+template <typename ArrayType, unsigned int Dim>
+class physScalarWriter : public AbstractWriter {
+ public:
+  using datatype = typename ArrayType::value_type;
+
+  // std::bind(&uintConvclass::func, &unitConv, std::placeholders::_1); or 
+  // [&unitConv](T x) { return unitConv.func(x); };
+  physScalarWriter(std::string name, const ArrayType &f, Vector<int, Dim> mesh, 
+  std::function<datatype(datatype)> func)
+      : varname(name), Array(f), Mesh(mesh), unitConvert(func) {
+    static_assert(Dim == 2 || Dim == 3, "Error: Dimension is not supported!");
+  }
+
+  void writeBinary(const std::string &fName, int Overlap) const override {
     std::ofstream f(fName, std::ios::out | std::ios::app);
     std::string type;
     getVTKTypeString<datatype>(type);
@@ -648,22 +636,17 @@ class ScalarWriter : public AbstractWriter {
       << "\">\n";
     f.close();
 
-    datatype *data = nullptr;
-    std::size_t Size;
-    if (Overlap == 0) {
-      Size = Array.size();
-    } else {
-      Vector<int, Dim> SubMesh = Mesh - Vector<int, Dim>{2 * Overlap};
-      if constexpr (Dim == 2) {
-        Size = SubMesh[0] * SubMesh[1];
-      } else if constexpr (Dim == 3) {
-        Size = SubMesh[0] * SubMesh[1] * SubMesh[2];
-      }
-      // data array for encoding
-      data = new datatype[Size];
-      // copy data
-      util::CopyFromFieldArray(Mesh, Overlap, Array, data, unitConvert);
+    std::size_t Size{};
+    Vector<int, Dim> SubMesh = Mesh - Vector<int, Dim>{2 * Overlap};
+    if constexpr (Dim == 2) {
+      Size = SubMesh[0] * SubMesh[1];
+    } else if constexpr (Dim == 3) {
+      Size = SubMesh[0] * SubMesh[1] * SubMesh[2];
     }
+    // data array for encoding
+    datatype *data = new datatype[Size];
+    // copy data
+    util::CopyFromFieldArray(Mesh, Overlap, Array, data, unitConvert);
 
     std::ofstream fb(fName, std::ios::out | std::ios::app | std::ios::binary);
     std::size_t binarySize = std::size_t(Size * sizeof(datatype));
@@ -673,12 +656,8 @@ class ScalarWriter : public AbstractWriter {
     sizeEncoder.encode(&uintBinarySize, 1);
     // writes the data
     Base64Encoder<datatype> Encoder(fb, Size);
-    if (Overlap == 0) {
-      Encoder.encode(Array.getdataPtr(), Size);
-    } else {
-      Encoder.encode(data, Size);
-      delete[] data;
-    }
+    Encoder.encode(data, Size);
+    delete[] data;
     fb.close();
 
     std::ofstream ff(fName, std::ios::out | std::ios::app);
@@ -696,6 +675,7 @@ class ScalarWriter : public AbstractWriter {
   std::function<datatype(datatype)> unitConvert;
 };
 
+
 template <typename ArrayType, unsigned int Dim>
 class VectorWriter : public AbstractWriter {
   public:
@@ -705,13 +685,6 @@ class VectorWriter : public AbstractWriter {
 
   VectorWriter(std::string name, const ArrayType &f, Vector<int, Dim> mesh)
       : varname(name), Array(f), Mesh(mesh) {
-    static_assert(Dim == 2 || Dim == 3, "Error: Dimension is not supported!");
-  }
-  // std::bind(&uintConvclass::func, &unitConv, std::placeholders::_1); or 
-  // [&unitConv](T x) { return unitConv.func(x); };
-  VectorWriter(std::string name, const ArrayType &f, Vector<int, Dim> mesh, 
-  std::function<vectortype(vectortype)> func)
-      : varname(name), Array(f), Mesh(mesh), unitConvert(func) {
     static_assert(Dim == 2 || Dim == 3, "Error: Dimension is not supported!");
   }
 
@@ -765,7 +738,30 @@ class VectorWriter : public AbstractWriter {
     ff.close();
   }
 
-  void writeConvertedBinary(const std::string &fName, int Overlap) const override {
+ private:
+  std::string varname;
+  // field data
+  const ArrayType &Array;
+  // mesh info
+  Vector<int, Dim> Mesh;
+};
+
+template <typename ArrayType, unsigned int Dim>
+class physVectorWriter : public AbstractWriter {
+  public:
+  using vectortype = typename ArrayType::value_type;
+  using datatype = typename vectortype::value_type;
+  static constexpr unsigned int D = vectortype::vector_dim;
+
+  // std::bind(&uintConvclass::func, &unitConv, std::placeholders::_1); or 
+  // [&unitConv](T x) { return unitConv.func(x); };
+  physVectorWriter(std::string name, const ArrayType &f, Vector<int, Dim> mesh, 
+  std::function<vectortype(vectortype)> func)
+      : varname(name), Array(f), Mesh(mesh), unitConvert(func) {
+    static_assert(Dim == 2 || Dim == 3, "Error: Dimension is not supported!");
+  }
+
+  void writeBinary(const std::string &fName, int Overlap) const override {
     std::ofstream f(fName, std::ios::out | std::ios::app);
     std::string type;
     getVTKTypeString<datatype>(type);
@@ -774,25 +770,18 @@ class VectorWriter : public AbstractWriter {
       << "\">\n";
     f.close();
 
-    Vector<datatype, D> *data = nullptr;
-    std::size_t Size;
-    std::size_t arrDSize;
-    if (Overlap == 0) {
-      Size = Array.size();
-      arrDSize = D * Size;
-    } else {
-      Vector<int, Dim> SubMesh = Mesh - Vector<int, Dim>{2 * Overlap};
-      if constexpr (Dim == 2) {
-        Size = SubMesh[0] * SubMesh[1];
-      } else if constexpr (Dim == 3) {
-        Size = SubMesh[0] * SubMesh[1] * SubMesh[2];
-      }
-      arrDSize = D * Size;
-      // data array for encoding
-      data = new Vector<datatype, D>[arrDSize];
-      // copy data
-      util::CopyFromFieldArray(Mesh, Overlap, Array, data, unitConvert);
+    std::size_t Size{};
+    Vector<int, Dim> SubMesh = Mesh - Vector<int, Dim>{2 * Overlap};
+    if constexpr (Dim == 2) {
+      Size = SubMesh[0] * SubMesh[1];
+    } else if constexpr (Dim == 3) {
+      Size = SubMesh[0] * SubMesh[1] * SubMesh[2];
     }
+    std::size_t arrDSize = D * Size;
+    // data array for encoding
+    Vector<datatype, D> *data = new Vector<datatype, D>[arrDSize];
+    // copy data
+    util::CopyFromFieldArray(Mesh, Overlap, Array, data, unitConvert);
 
     std::ofstream fb(fName, std::ios::out | std::ios::app | std::ios::binary);
     std::size_t binarySize = std::size_t(arrDSize * sizeof(datatype));
@@ -802,12 +791,8 @@ class VectorWriter : public AbstractWriter {
     sizeEncoder.encode(&uintBinarySize, 1);
     // writes the data
     Base64Encoder<datatype> Encoder(fb, arrDSize);
-    if (Overlap == 0) {
-      Encoder.encode(Array.getdataPtr()->data(), arrDSize);
-    } else {
-      Encoder.encode(data->data(), arrDSize);
-      delete[] data;
-    }
+    Encoder.encode(data->data(), arrDSize);
+    delete[] data;
     fb.close();
 
     std::ofstream ff(fName, std::ios::out | std::ios::app);
@@ -825,9 +810,9 @@ class VectorWriter : public AbstractWriter {
   std::function<vectortype(vectortype)> unitConvert;
 };
 
+
 // XML does not support the SOA format
 // we may change to HDF5 format when writing SOA data
-// TODO: implement the SOA writer
 template <typename ArrayType, unsigned int Dim, unsigned int D>
 class VectorSOAWriter : public AbstractWriter {
  public:
@@ -835,11 +820,6 @@ class VectorSOAWriter : public AbstractWriter {
 
   VectorSOAWriter(std::string name, const GenericArrayField<ArrayType, D> &f, Vector<int, Dim> mesh)
       : varname(name), Field(f), Mesh(mesh) {}
-  // std::bind(&uintConvclass::func, &unitConv, std::placeholders::_1); or 
-  // [&unitConv](T x) { return unitConv.func(x); };
-  VectorSOAWriter(std::string name, const GenericArrayField<ArrayType, D> &f, Vector<int, Dim> mesh, 
-  std::function<datatype(datatype)> func)
-      : varname(name), Field(f), Mesh(mesh), unitConvert(func) {}
 
   void writeBinary(const std::string &fName, int Overlap) const override {
     std::ofstream f(fName, std::ios::out | std::ios::app);
@@ -905,7 +885,26 @@ class VectorSOAWriter : public AbstractWriter {
     ff.close();
   }
 
-  void writeConvertedBinary(const std::string &fName, int Overlap) const override {
+ private:
+  std::string varname;
+  // field data
+  const GenericArrayField<ArrayType, D> &Field;
+  // mesh info
+  Vector<int, Dim> Mesh;
+};
+
+template <typename ArrayType, unsigned int Dim, unsigned int D>
+class physVectorSOAWriter : public AbstractWriter {
+ public:
+  using datatype = typename ArrayType::value_type;
+
+  // std::bind(&uintConvclass::func, &unitConv, std::placeholders::_1); or 
+  // [&unitConv](T x) { return unitConv.func(x); };
+  physVectorSOAWriter(std::string name, const GenericArrayField<ArrayType, D> &f, Vector<int, Dim> mesh, 
+  std::function<datatype(datatype)> func)
+      : varname(name), Field(f), Mesh(mesh), unitConvert(func) {}
+
+  void writeBinary(const std::string &fName, int Overlap) const override {
     std::ofstream f(fName, std::ios::out | std::ios::app);
     std::string type;
     getVTKTypeString<datatype>(type);
@@ -915,7 +914,7 @@ class VectorSOAWriter : public AbstractWriter {
     f.close();
 
     // get submesh size
-    std::size_t Size;
+    std::size_t Size{};
     Vector<int, Dim> SubMesh = Mesh - Vector<int, Dim>{2 * Overlap};
     if constexpr (Dim == 2) {
       Size = SubMesh[0] * SubMesh[1];

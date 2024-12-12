@@ -455,6 +455,14 @@ void CopyFromFieldArray(const Vector<int, Dim> &Mesh, int Overlap, const ArrayTy
 template <typename ArrayType, unsigned int Dim>
 void CopyFromFieldArray(const Vector<int, Dim> &Mesh, int Overlap, const ArrayType &Array, typename ArrayType::value_type *dst, 
 std::function<typename ArrayType::value_type(typename ArrayType::value_type)> f) {
+  if (Overlap == 0) {
+    const std::size_t Size = Array.size();
+    for (std::size_t i = 0; i < Size; ++i) {
+      dst[i] = f(Array[i]);
+    }
+    return;
+  }
+  
   int delta_x = Mesh[0] - 2 * Overlap;
   std::size_t id{};
   if constexpr (Dim == 2) {

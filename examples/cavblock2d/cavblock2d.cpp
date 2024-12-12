@@ -183,15 +183,12 @@ int main() {
   using TaskSelectorRhoU = tmp::TaskSelector<TaskCollectionRhoU, std::uint8_t, CELL>;
 
   // writers
-  vtmwriter::ScalarWriter RhoWriter("Rho", NSLattice.getField<RHO<T>>());
-  vtmwriter::VectorWriter VecWriter("Velocity", NSLattice.getField<VELOCITY<T, 2>>());
-  vtmwriter::vtmWriter<T, LatSet::d> NSWriter("cavblock2d", Geo);
-  NSWriter.addWriterSet(RhoWriter, VecWriter);
-
-  vtmo::ScalarWriter physRhoWriter("Rho", NSLattice.getField<RHO<T>>(), std::bind(&BaseConverter<T>::getPhysRho, &BaseConv, std::placeholders::_1));
-  vtmo::VectorWriter physVecWriter("Velocity", NSLattice.getField<VELOCITY<T, 2>>(), std::bind(&BaseConverter<T>::getPhysU<2>, &BaseConv, std::placeholders::_1));
-  vtmo::vtmWriter<T, LatSet::d> physNSWriter("cavblock2dconv", Geo);
-  physNSWriter.addWriterSet(physRhoWriter, physVecWriter);
+  vtmo::ScalarWriter RhoWriter("Rho", NSLattice.getField<RHO<T>>());
+  vtmo::PhysScalarWriter physRhoWriter("physRho", NSLattice.getField<RHO<T>>(), std::bind(&BaseConverter<T>::getPhysRho, &BaseConv, std::placeholders::_1));
+  vtmo::VectorWriter VecWriter("Velocity", NSLattice.getField<VELOCITY<T, 2>>());
+  vtmo::PhysVectorWriter physVecWriter("physVelocity", NSLattice.getField<VELOCITY<T, 2>>(), std::bind(&BaseConverter<T>::getPhysU<2>, &BaseConv, std::placeholders::_1));
+  vtmo::vtmWriter<T, LatSet::d> NSWriter("cavblock2d", Geo);
+  NSWriter.addWriterSet(RhoWriter, physRhoWriter, VecWriter, physVecWriter);
 
   // count and timer
   Timer MainLoopTimer;
@@ -221,7 +218,6 @@ int main() {
       Printer::Print_Res<T>(res);
       Printer::Endl();
       NSWriter.WriteBinary(MainLoopTimer());
-      physNSWriter.WriteConvertedBinary(MainLoopTimer());
     }
   }
 

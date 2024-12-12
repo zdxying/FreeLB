@@ -48,13 +48,11 @@ int Thread_Num;
 
 // physical properties
 T rho_ref;    // g/mm^3
-T Dyna_Visc;  // Pa·s Dynamic viscosity of the liquid
 T Kine_Visc;  // mm^2/s kinematic viscosity of the liquid
 T Ra;         // Rayleigh number
 // init conditions
 Vector<T, 2> U_Ini;  // mm/s
 T U_Max;
-
 // bcs
 Vector<T, 2> U_Wall;  // mm/s
 
@@ -65,7 +63,7 @@ T tol;
 std::string work_dir;
 
 void readParam() {
-  iniReader param_reader("Couetteparam.ini");
+  iniReader param_reader("couetteparam.ini");
   // Thread_Num = param_reader.getValue<int>("OMP", "Thread_Num");
   // mesh
   work_dir = param_reader.getValue<std::string>("workdir", "workdir_");
@@ -77,7 +75,6 @@ void readParam() {
   Cell_Len = param_reader.getValue<T>("Mesh", "Cell_Len");
   // physical properties
   rho_ref = param_reader.getValue<T>("Physical_Property", "rho_ref");
-  Dyna_Visc = param_reader.getValue<T>("Physical_Property", "Dyna_Visc");
   Kine_Visc = param_reader.getValue<T>("Physical_Property", "Kine_Visc");
   // init conditions
   U_Ini[0] = param_reader.getValue<T>("Init_Conditions", "U_Ini0");
@@ -93,7 +90,6 @@ void readParam() {
   OutputStep = param_reader.getValue<int>("Simulation_Settings", "OutputStep");
   tol = param_reader.getValue<T>("tolerance", "tol");
 
-
   std::cout << "------------Simulation Parameters:-------------\n" << std::endl;
   std::cout << "[Simulation_Settings]:"
             << "TotalStep:         " << MaxStep << "\n"
@@ -106,10 +102,11 @@ void readParam() {
 }
 
 int main() {
-  std::uint8_t BouncebackFlag = std::uint8_t(4);
-  std::uint8_t PeriodicFlag1 = std::uint8_t(8);
-  std::uint8_t PeriodicFlag2 = std::uint8_t(16);
-  std::uint8_t BBMovingWallFlag = std::uint8_t(32);
+  constexpr std::uint8_t VoidFlag = std::uint8_t(1);
+  constexpr std::uint8_t AABBFlag = std::uint8_t(2);
+  constexpr std::uint8_t BouncebackFlag = std::uint8_t(4);
+  constexpr std::uint8_t BBMovingWallFlag = std::uint8_t(8);
+  constexpr std::uint8_t PeriodicFlag = std::uint8_t(16);
 
   Printer::Print_BigBanner(std::string("Initializing..."));
 
@@ -130,80 +127,112 @@ int main() {
                    Vector<T, 2>(T(Ni * Cell_Len), T((Nj - 1) * Cell_Len)));
   AABB<T, 2> toplid(Vector<T, 2>(T(0), T((Nj - 1) * Cell_Len)),
                     Vector<T, 2>(T(Ni * Cell_Len), T(Nj * Cell_Len)));
-  Geometry2D<T> Geo(Ni, Nj, cavity, Cell_Len);
-  Geo.SetupBoundary<LatSet>();
-  Geo.setFlag(left, BouncebackFlag, PeriodicFlag1);
-  Geo.setFlag(right, BouncebackFlag, PeriodicFlag2);
-  Geo.setFlag(toplid, BouncebackFlag, BBMovingWallFlag);
+  BlockGeometry2D<T> Geo(Ni, Nj, Thread_Num, cavity, Cell_Len);
 
-  vtkWriter::FieldFlagWriter<std::uint8_t> flagwriter(
-    "flag", Geo.getGeoFlagField().getField().getdataPtr(),
-    Geo.getGeoFlagField().getField().size());
-  vtkStruPointsWriter<T, LatSet::d> GeoWriter("CavGeo", Geo);
-  GeoWriter.addtoWriteList(&flagwriter);
-  GeoWriter.Write();
+  // ------------------ define flag field ------------------
+  BlockFieldManager<FLAG, T, 2> FlagFM(Geo, VoidFlag);
+  FlagFM.forEach(cavity,
+                 [&](FLAG& field, std::size_t id) { field.SetField(id, AABBFlag); });
+  FlagFM.template SetupBoundary<LatSet>(cavity, BouncebackFlag);
+  FlagFM.forEach(toplid, [&](FLAG& field, std::size_t id) {
+    if (util::isFlag(field.get(id), BouncebackFlag)) field.SetField(id, BBMovingWallFlag);
+  });
+  FlagFM.forEach(left, [&](FLAG& field, std::size_t id) {
+    if (util::isFlag(field.get(id), BouncebackFlag)) field.SetField(id, PeriodicFlag);
+  });
+  FlagFM.forEach(right, [&](FLAG& field, std::size_t id) {
+    if (util::isFlag(field.get(id), BouncebackFlag)) field.SetField(id, PeriodicFlag);
+  });
+
+  vtmwriter::ScalarWriter FlagWriter("flag", FlagFM);
+  vtmwriter::vtmWriter<T, 2> GeoWriter("GeoFlag", Geo);
+  GeoWriter.addWriterSet(FlagWriter);
+  GeoWriter.WriteBinary();
 
   // ------------------ define lattice ------------------
-  // velocity field
-  VectorFieldAOS<T, LatSet::d> Velocity(Geo.getVoxelsNum());
-  // set initial value of field
-  Geo.forEachVoxel(toplid, BBMovingWallFlag,
-                   [&Velocity](int id) { Velocity.SetField(id, U_Wall); });
+  using FIELDS = TypePack<RHO<T>, VELOCITY<T, LatSet::d>, POP<T, LatSet::q>, StrainRateMag<T>>;
+  using CELL = Cell<T, LatSet, FIELDS>;
+  ValuePack InitValues(BaseConv.getLatRhoInit(), Vector<T, 2>{}, T{}, T{});
   // lattice
-  PopLattice<T, LatSet> NSLattice(Geo, BaseConv, Velocity);
+  BlockLatticeManager<T, LatSet, FIELDS> NSLattice(Geo, InitValues, BaseConv);
   NSLattice.EnableToleranceU();
-  // bcs
-  BBLikeFixedBoundary<T, LatSet, BounceBackLikeMethod<T, LatSet>::normal_bounceback>
-    NS_BB("NS_BB", NSLattice, BouncebackFlag);
-  BBLikeFixedBoundary<T, LatSet, BounceBackLikeMethod<T, LatSet>::movingwall_bounceback>
-    NS_BBMW("NS_BBMW", NSLattice, BBMovingWallFlag);
-  FixedPeriodicBoundary<T, LatSet> NS_Pleft(NSLattice, left, right, PeriodicFlag1);
-  FixedPeriodicBoundary<T, LatSet> NS_Pright(NSLattice, right, left, PeriodicFlag2);
-  BoundaryManager BM1(&NS_BB, &NS_BBMW);
-  BoundaryManager BM2(&NS_Pleft, &NS_Pright);
-
   T res = 1;
+  // set initial value of field
+  Vector<T, 2> LatU_Wall = BaseConv.getLatticeU(U_Wall);
+  NSLattice.getField<VELOCITY<T, LatSet::d>>().forEach(
+    toplid, FlagFM, BBMovingWallFlag,
+    [&](auto& field, std::size_t id) { field.SetField(id, LatU_Wall); });
+  
+  // bcs
+  BBLikeFixedBlockBdManager<bounceback::normal<CELL>, BlockLatticeManager<T, LatSet, FIELDS>, BlockFieldManager<FLAG, T, 2>>
+    NS_BB("NS_BB", NSLattice, FlagFM, BouncebackFlag, VoidFlag);
+  BBLikeFixedBlockBdManager<bounceback::movingwall<CELL>, BlockLatticeManager<T, LatSet, FIELDS>, BlockFieldManager<FLAG, T, 2>>
+    NS_BBMW("NS_BBMW", NSLattice, FlagFM, BBMovingWallFlag, VoidFlag);
+  FixedPeriodicBoundaryManager<BlockLatticeManager<T, LatSet, FIELDS>, BlockFieldManager<FLAG, T, 2>>
+    NS_Peri("NS_Peri", NSLattice, FlagFM, PeriodicFlag, VoidFlag);
+  // direction should be handled carefully
+  NS_Peri.Setup(left, NbrDirection::XN, right, NbrDirection::XP);
+  BlockBoundaryManager BM(&NS_BB, &NS_BBMW);
+  
 
+  // define task/ dynamics:
+  // bulk task
+  using BulkTask = tmp::Key_TypePair<AABBFlag | PeriodicFlag, collision::BGK<moment::rhoU<CELL>, equilibrium::SecondOrder<CELL>>>;
+  // wall task
+  using WallTask = tmp::Key_TypePair<BouncebackFlag | BBMovingWallFlag, collision::BGK<moment::useFieldrhoU<CELL>, equilibrium::SecondOrder<CELL>>>;
+  // task collection
+  using TaskCollection = tmp::TupleWrapper<BulkTask, WallTask>;
+  // task executor
+  using NSTask = tmp::TaskSelector<TaskCollection, std::uint8_t, CELL>;
+
+  using Momenta = moment::MomentaTuple<moment::rhoU<CELL, true>, moment::shearRateMag<CELL, true>>;
+  using RhoUTask = tmp::Key_TypePair<AABBFlag|PeriodicFlag, Momenta>;
+  using TaskCollectionRhoU = tmp::TupleWrapper<RhoUTask>;
+  using TaskSelectorRhoU = tmp::TaskSelector<TaskCollectionRhoU, std::uint8_t, CELL>;
+
+  // writers
+  vtmo::ScalarWriter RhoWriter("Rho", NSLattice.getField<RHO<T>>());
+  vtmo::PhysVectorWriter PhysVecWriter("Velocity", NSLattice.getField<VELOCITY<T, 2>>(),
+    std::bind(&BaseConverter<T>::getPhysU<2>, &BaseConv, std::placeholders::_1));
+  vtmo::PhysScalarWriter PhysShearRateWriter("ShearRate", NSLattice.getField<StrainRateMag<T>>(),
+    std::bind(&BaseConverter<T>::getPhysStrainRate, &BaseConv, std::placeholders::_1));
+  vtmo::vtmWriter<T, LatSet::d> NSWriter("couette2d", Geo);
+  NSWriter.addWriterSet(RhoWriter, PhysVecWriter, PhysShearRateWriter);
+  
   // count and timer
   Timer MainLoopTimer;
   Timer OutputTimer;
 
-  vtkWriter::FieldScalarWriter<T> RhoWriter("rho",
-                                            NSLattice.getRhoField().getField().getdataPtr(),
-                                            NSLattice.getRhoField().getField().size());
-  vtkWriter::FieldVectorWriter_AOS<T, LatSet::d> VelocityWriter(
-    "velocity", NSLattice.getVelocityField().getField().getdataPtr(),
-    NSLattice.getVelocityField().getField().size());
-  vtkStruPointsWriter<T, LatSet::d> NSWriter("NS", Geo);
-  NSWriter.addtoWriteList(&RhoWriter, &VelocityWriter);
+  NSWriter.WriteBinary(MainLoopTimer());
 
   Printer::Print_BigBanner(std::string("Start Calculation..."));
 
-  // NSWriter.Write(MainLoopTimer());
-
   while (MainLoopTimer() < MaxStep && res > tol) {
+
+    NSLattice.ApplyCellDynamics<NSTask>(FlagFM);
+    NS_Peri.Apply();
+    NSLattice.Stream();
+    NSLattice.NormalFullCommunicate();
+    BM.Apply(MainLoopTimer());
+
     ++MainLoopTimer;
     ++OutputTimer;
 
-    NSLattice.UpdateRho(NSLattice.getIndex());
-    NSLattice.UpdateU(NSLattice.getInnerIndex());
-    BM2.UpdateU();
-    NSLattice.BGK<Equilibrium<T, LatSet>::SecondOrder>();
-    BM2.Apply();
-    NSLattice.Stream();
-    BM1.Apply();
-
     if (MainLoopTimer() % OutputStep == 0) {
-      res = NSLattice.getToleranceU();
-      OutputTimer.Print_InnerLoopPerformance(NSLattice.getN(), OutputStep);
+      NSLattice.ApplyCellDynamics<TaskSelectorRhoU>(FlagFM);
+      
+      res = NSLattice.getToleranceU(-1);
+      OutputTimer.Print_InnerLoopPerformance(Geo.getTotalCellNum(), OutputStep);
       Printer::Print_Res<T>(res);
       Printer::Endl();
-      // NSWriter.Write(MainLoopTimer());
+      NSWriter.WriteBinary(MainLoopTimer());
     }
   }
-  NSWriter.Write(MainLoopTimer());
+
   Printer::Print_BigBanner(std::string("Calculation Complete!"));
-  MainLoopTimer.Print_MainLoopPerformance(NSLattice.getN());
+  MainLoopTimer.Print_MainLoopPerformance(Geo.getTotalCellNum());
+  Printer::Print("Total PhysTime", BaseConv.getPhysTime(MainLoopTimer()));
+  Printer::Endl();
 
   return 0;
 }

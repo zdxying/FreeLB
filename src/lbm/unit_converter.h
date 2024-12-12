@@ -167,8 +167,8 @@ struct BaseConverter final : public AbstractConverter<T> {
   }
 
   T getPhysRho(T Lattice_rho) const override { return Lattice_rho * Conv_rho; }
-
   T getPhysTime(T Lattice_Time) { return Lattice_Time * deltaT; }
+  T getPhysStrainRate(T Lattice_StrainRate) { return Lattice_StrainRate / deltaT; }
   /*--------------------Basic Converters--------------------*/
   void Converter(T deltaX_, T deltaT_, T rho_, T charL_, T charU_, T VisKine_,
                  T charP_ = T(0)) {

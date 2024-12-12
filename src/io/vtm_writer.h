@@ -403,59 +403,6 @@ class vtmWriter {
     vtmEnd(fullName);
   }
 
-  void WriteConvertedBinary() {
-    mpi().barrier();
-    // write vtis
-#pragma omp parallel for num_threads(Thread_Num)
-    for (vtino::vtiManager<T, D>& vti : _vtiwriters) {
-      vti.WriteConvertedBinary();
-    }
-    // write vtm
-    std::string fullName = _vtidirname + _filename + ".vtm";
-    IF_MPI_RANK(0) { vtmHeader(fullName); }
-#ifdef MPI_ENABLED
-    std::size_t vtisize = _vtiwriters.size();
-    std::size_t totalvtisize;
-    mpi().reduce(vtisize, totalvtisize, MPI_SUM);
-    MPI_RANK(0)
-    for (std::size_t i = 0; i < totalvtisize; ++i) {
-      writevtm(fullName, getvtiFileName(i), i);
-    }
-#else
-    for (std::size_t i = 0; i < _vtiwriters.size(); ++i) {
-      writevtm(fullName, getvtiFileName(i), i);
-    }
-#endif
-    vtmEnd(fullName);
-  }
-
-  void WriteConvertedBinary(int step) {
-    mpi().barrier();
-    // write vtis
-#pragma omp parallel for num_threads(Thread_Num)
-    for (vtino::vtiManager<T, D>& vti : _vtiwriters) {
-      vti.WriteConvertedBinary(step);
-    }
-    // write vtm
-    std::string fullName = _vtidirname + _filename + std::to_string(step) + ".vtm";
-    IF_MPI_RANK(0) { vtmHeader(fullName); }
-    vtmHeader(fullName);
-#ifdef MPI_ENABLED
-    std::size_t vtisize = _vtiwriters.size();
-    std::size_t totalvtisize;
-    mpi().reduce(vtisize, totalvtisize, MPI_SUM);
-    MPI_RANK(0)
-    for (std::size_t i = 0; i < totalvtisize; ++i) {
-      writevtm(fullName, getvtiFileName(i, step), i);
-    }
-#else
-    for (std::size_t i = 0; i < _vtiwriters.size(); ++i) {
-      writevtm(fullName, getvtiFileName(i, step), i);
-    }
-#endif
-    vtmEnd(fullName);
-  }
-
   std::string getvtiFileName(int id) {
     std::string fName = _filename + "_B" + std::to_string(id) + ".vti";
     return fName;
@@ -509,8 +456,36 @@ class ScalarWriter : public vtino::AbstWriterSet {
                                   blockF.getBlock().getMesh());
     }
   }
+
   template <typename FloatType>
-  ScalarWriter(std::string varname,
+  void Init(const BlockFieldManager<FieldType, FloatType, Dim>& blockFM) {
+    _ScalarWriters.clear();
+    for (const BlockField<FieldType, FloatType, Dim>& blockF : blockFM.getBlockFields()) {
+      _ScalarWriters.emplace_back(VarName, blockF.getField(0),
+                                  blockF.getBlock().getMesh());
+    }
+  }
+
+  const vtino::AbstractWriter& getWriter(int i) const override {
+    return _ScalarWriters[i];
+  }
+};
+
+template <typename FieldType, unsigned int Dim>
+class PhysScalarWriter : public vtino::AbstWriterSet {
+ public:
+  using ArrayType = typename FieldType::array_type;
+  using datatype = typename ArrayType::value_type;
+
+ private:
+  std::vector<vtino::physScalarWriter<ArrayType, Dim>> _ScalarWriters;
+  std::string VarName;
+
+ public:
+  // std::bind(&uintConvclass::func, &unitConv, std::placeholders::_1); or 
+  // [&unitConv](T x) { return unitConv.func(x); };
+  template <typename FloatType>
+  PhysScalarWriter(std::string varname,
                const BlockFieldManager<FieldType, FloatType, Dim>& blockFM, 
                std::function<datatype(datatype)> f)
       : VarName(varname) {
@@ -534,6 +509,7 @@ class ScalarWriter : public vtino::AbstWriterSet {
   }
 };
 
+
 template <typename FieldType, unsigned int Dim>
 class VectorWriter : public vtino::AbstWriterSet {
  public:
@@ -555,8 +531,37 @@ class VectorWriter : public vtino::AbstWriterSet {
                                   blockF.getBlock().getMesh());
     }
   }
+
   template <typename FloatType>
-  VectorWriter(std::string varname,
+  void Init(const BlockFieldManager<FieldType, FloatType, Dim>& blockFM) {
+    _vectorwriters.clear();
+    for (const BlockField<FieldType, FloatType, Dim>& blockF : blockFM.getBlockFields()) {
+      _vectorwriters.emplace_back(VarName, blockF.getField(0),
+                                  blockF.getBlock().getMesh());
+    }
+  }
+
+  const vtino::AbstractWriter& getWriter(int i) const override {
+    return _vectorwriters[i];
+  }
+};
+
+template <typename FieldType, unsigned int Dim>
+class PhysVectorWriter : public vtino::AbstWriterSet {
+ public:
+  using ArrayType = typename FieldType::array_type;
+  using datatype = typename FieldType::value_type;
+  static constexpr unsigned int D = datatype::vector_dim;
+
+ private:
+  std::vector<vtino::physVectorWriter<ArrayType, Dim>> _vectorwriters;
+  std::string VarName;
+
+ public:
+  // std::bind(&uintConvclass::func, &unitConv, std::placeholders::_1); or 
+  // [&unitConv](T x) { return unitConv.func(x); };
+  template <typename FloatType>
+  PhysVectorWriter(std::string varname,
                const BlockFieldManager<FieldType, FloatType, Dim>& blockFM, 
                std::function<datatype(datatype)> f)
       : VarName(varname) {
@@ -580,6 +585,7 @@ class VectorWriter : public vtino::AbstWriterSet {
   }
 };
 
+
 template <typename FieldType, unsigned int Dim, unsigned int D>
 class VectorSOAWriter : public vtino::AbstWriterSet {
  public:
@@ -600,8 +606,36 @@ class VectorSOAWriter : public vtino::AbstWriterSet {
                                      blockF.getBlock().getMesh());
     }
   }
+
   template <typename FloatType>
-  VectorSOAWriter(std::string varname,
+  void Init(const BlockFieldManager<FieldType, FloatType, Dim>& blockFM) {
+    _vectorsoawriters.clear();
+    for (const BlockField<FieldType, FloatType, Dim>& blockF : blockFM.getBlockFields()) {
+      _vectorsoawriters.emplace_back(VarName, blockF,
+                                     blockF.getBlock().getMesh());
+    }
+  }
+
+  const vtino::AbstractWriter& getWriter(int i) const override {
+    return _vectorsoawriters[i];
+  }
+};
+
+template <typename FieldType, unsigned int Dim, unsigned int D>
+class PhysVectorSOAWriter : public vtino::AbstWriterSet {
+ public:
+  using ArrayType = typename FieldType::array_type;
+  using datatype = typename ArrayType::value_type;
+
+ private:
+  std::vector<vtino::physVectorSOAWriter<ArrayType, Dim, D>> _vectorsoawriters;
+  std::string VarName;
+
+ public:
+  // std::bind(&uintConvclass::func, &unitConv, std::placeholders::_1); or 
+  // [&unitConv](T x) { return unitConv.func(x); };
+  template <typename FloatType>
+  PhysVectorSOAWriter(std::string varname,
                   const BlockFieldManager<FieldType, FloatType, Dim>& blockFM, 
                   std::function<datatype(datatype)> f)
       : VarName(varname) {
