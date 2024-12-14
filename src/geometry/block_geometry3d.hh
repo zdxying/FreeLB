@@ -1215,12 +1215,12 @@ void BlockGeometryHelper3D<T>::TagBlockCells(const StlReader<T>& reader) {
 }
 
 template <typename T>
-bool BlockGeometryHelper3D<T>::IsInside(Octree<T>* tree, const BasicBlock<T, 3> &blockcell) {
-  for (int z = 0; z < blockcell.getNz(); ++z) {
-    for (int y = 0; y < blockcell.getNy(); ++y) {
-      for (int x = 0; x < blockcell.getNx(); ++x) {
+bool BlockGeometryHelper3D<T>::IsInside(Octree<T>* tree, const BasicBlock<T, 3> &block) const {
+  for (int z = 0; z < block.getNz(); ++z) {
+    for (int y = 0; y < block.getNy(); ++y) {
+      for (int x = 0; x < block.getNx(); ++x) {
         const Vector<int, 3> locidx{x, y, z};
-        const Vector<T, 3> vox = blockcell.getVoxel(locidx);
+        const Vector<T, 3> vox = block.getVoxel(locidx);
         // get the node containing the voxel
         Octree<T>* node = tree->find(vox);
         if (node != nullptr) {
@@ -1228,6 +1228,26 @@ bool BlockGeometryHelper3D<T>::IsInside(Octree<T>* tree, const BasicBlock<T, 3> 
           if (node->isLeaf() && node->getInside()) {
             return true;
           }
+        }
+      }
+    }
+  }
+  return false;
+}
+
+template <typename T>
+bool BlockGeometryHelper3D<T>::hasOutSideCell(Octree<T>* tree, const BasicBlock<T, 3> &block) const {
+  for (int z = 0; z < block.getNz(); ++z) {
+    for (int y = 0; y < block.getNy(); ++y) {
+      for (int x = 0; x < block.getNx(); ++x) {
+        const Vector<int, 3> locidx{x, y, z};
+        const Vector<T, 3> vox = block.getVoxel(locidx);
+        // get the node containing the voxel
+        Octree<T>* node = tree->find(vox);
+        if (node == nullptr) {
+          return true;
+        } else if (node->isLeaf() && !node->getInside()) {
+          return true;
         }
       }
     }
@@ -1689,4 +1709,204 @@ void BlockGeometryHelper3D<T>::Refine() {
       _BlockCellTags[i] = BlockCellTag::none;
     }
   }
+}
+
+template <typename T>
+void BlockGeometryHelper3D<T>::ShrinkBasicBlocks(const StlReader<T>& reader) {
+
+  Octree<T>* tree = reader.getTree();
+  std::vector<BasicBlock<T, 3>> &BasicBlocks = getAllBasicBlocks();
+
+  // statistics
+  std::size_t totalremoved{};
+
+  for (BasicBlock<T, 3> &block : BasicBlocks) {
+    // if contains cell outside of the geometry, test if it could be shrinked
+    if (hasOutSideCell(tree, block)) {
+      // 1. XN face, shrink along +x direction
+      int xnlayer{};
+      for (int ix = 0; ix < block.getNx() - 1; ++ix) {
+        // find if all cells on YZ plane are OUTSIDE
+        bool alloutside = true;
+        for (int iz = 0; iz < block.getNz(); ++iz) {
+          for (int iy = 0; iy < block.getNy(); ++iy) {
+            const Vector<int, 3> locidx{ix, iy, iz};
+            const Vector<T, 3> vox = block.getVoxel(locidx);
+            Octree<T>* node = tree->find(vox);
+            if (node != nullptr) {
+              if (node->isLeaf() && node->getInside()) {
+                alloutside = false;
+                goto xncheckalloutside;
+              }
+            }
+          }
+        }
+        xncheckalloutside:
+        if (!alloutside) {
+          break;
+        } else {
+          ++xnlayer;
+        }
+      }
+      if (xnlayer > 0) {
+        totalremoved += xnlayer * block.getNy() * block.getNz();
+        block.resize(-xnlayer, NbrDirection::XN);
+      }
+
+      // 2. XP face, shrink along -x direction
+      int xplayer{};
+      for (int ix = block.getNx() - 1; ix > 0; --ix) {
+        // find if all cells on YZ plane are OUTSIDE
+        bool alloutside = true;
+        for (int iz = 0; iz < block.getNz(); ++iz) {
+          for (int iy = 0; iy < block.getNy(); ++iy) {
+            const Vector<int, 3> locidx{ix, iy, iz};
+            const Vector<T, 3> vox = block.getVoxel(locidx);
+            Octree<T>* node = tree->find(vox);
+            if (node != nullptr) {
+              if (node->isLeaf() && node->getInside()) {
+                alloutside = false;
+                goto xpcheckalloutside;
+              }
+            }
+          }
+        }
+        xpcheckalloutside:
+        if (!alloutside) {
+          break;
+        } else {
+          ++xplayer;
+        }
+      }
+      if (xplayer > 0) {
+        totalremoved += xplayer * block.getNy() * block.getNz();
+        block.resize(-xplayer, NbrDirection::XP);
+      }
+
+      // 3. YN face, shrink along +y direction
+      int ynlayer{};
+      for (int iy = 0; iy < block.getNy() - 1; ++iy) {
+        // find if all cells on XZ plane are OUTSIDE
+        bool alloutside = true;
+        for (int iz = 0; iz < block.getNz(); ++iz) {
+          for (int ix = 0; ix < block.getNx(); ++ix) {
+            const Vector<int, 3> locidx{ix, iy, iz};
+            const Vector<T, 3> vox = block.getVoxel(locidx);
+            Octree<T>* node = tree->find(vox);
+            if (node != nullptr) {
+              if (node->isLeaf() && node->getInside()) {
+                alloutside = false;
+                goto yncheckalloutside;
+              }
+            }
+          }
+        }
+        yncheckalloutside:
+        if (!alloutside) {
+          break;
+        } else {
+          ++ynlayer;
+        }
+      }
+      if (ynlayer > 0) {
+        totalremoved += ynlayer * block.getNx() * block.getNz();
+        block.resize(-ynlayer, NbrDirection::YN);
+      }
+
+      // 4. YP face, shrink along -y direction
+      int yplayer{};
+      for (int iy = block.getNy() - 1; iy > 0; --iy) {
+        // find if all cells on XZ plane are OUTSIDE
+        bool alloutside = true;
+        for (int iz = 0; iz < block.getNz(); ++iz) {
+          for (int ix = 0; ix < block.getNx(); ++ix) {
+            const Vector<int, 3> locidx{ix, iy, iz};
+            const Vector<T, 3> vox = block.getVoxel(locidx);
+            Octree<T>* node = tree->find(vox);
+            if (node != nullptr) {
+              if (node->isLeaf() && node->getInside()) {
+                alloutside = false;
+                goto ypcheckalloutside;
+              }
+            }
+          }
+        }
+        ypcheckalloutside:
+        if (!alloutside) {
+          break;
+        } else {
+          ++yplayer;
+        }
+      }
+      if (yplayer > 0) {
+        totalremoved += yplayer * block.getNx() * block.getNz();
+        block.resize(-yplayer, NbrDirection::YP);
+      }
+
+      // 5. ZN face, shrink along +z direction
+      int znlayer{};
+      for (int iz = 0; iz < block.getNz() - 1; ++iz) {
+        // find if all cells on XY plane are OUTSIDE
+        bool alloutside = true;
+        for (int iy = 0; iy < block.getNy(); ++iy) {
+          for (int ix = 0; ix < block.getNx(); ++ix) {
+            const Vector<int, 3> locidx{ix, iy, iz};
+            const Vector<T, 3> vox = block.getVoxel(locidx);
+            Octree<T>* node = tree->find(vox);
+            if (node != nullptr) {
+              if (node->isLeaf() && node->getInside()) {
+                alloutside = false;
+                goto zncheckalloutside;
+              }
+            }
+          }
+        }
+        zncheckalloutside:
+        if (!alloutside) {
+          break;
+        } else {
+          ++znlayer;
+        }
+      }
+      if (znlayer > 0) {
+        totalremoved += znlayer * block.getNx() * block.getNy();
+        block.resize(-znlayer, NbrDirection::ZN);
+      }
+
+      // 6. ZP face, shrink along -z direction
+      int zplayer{};
+      for (int iz = block.getNz() - 1; iz > 0; --iz) {
+        // find if all cells on XY plane are OUTSIDE
+        bool alloutside = true;
+        for (int iy = 0; iy < block.getNy(); ++iy) {
+          for (int ix = 0; ix < block.getNx(); ++ix) {
+            const Vector<int, 3> locidx{ix, iy, iz};
+            const Vector<T, 3> vox = block.getVoxel(locidx);
+            Octree<T>* node = tree->find(vox);
+            if (node != nullptr) {
+              if (node->isLeaf() && node->getInside()) {
+                alloutside = false;
+                goto zpcheckalloutside;
+              }
+            }
+          }
+        }
+        zpcheckalloutside:
+        if (!alloutside) {
+          break;
+        } else {
+          ++zplayer;
+        }
+      }
+      if (zplayer > 0) {
+        totalremoved += zplayer * block.getNx() * block.getNy();
+        block.resize(-zplayer, NbrDirection::ZP);
+      }
+
+    }
+  }
+
+  // print statistics
+  MPI_RANK(0)
+  std::cout << "ShrinkBasicBlocks: " << totalremoved << " cells removed." << std::endl;
 }

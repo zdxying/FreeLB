@@ -23,7 +23,6 @@
 #pragma once
 
 #include "geometry/basic_geometry.h"
-#include "parallel/communicator.h"
 #include "io/block_reader.h"
 
 // basic block 2d structure, BasicBlock stores the original AABB and index AABB(not

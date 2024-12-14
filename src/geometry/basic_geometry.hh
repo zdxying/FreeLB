@@ -320,6 +320,50 @@ void BasicBlock<T, D>::coarsen(std::uint8_t deltalevel) {
 }
 
 template <typename T, unsigned int D>
+void BasicBlock<T, D>::resize(int deltaX, NbrDirection fromDir) {
+  const T TdeltaX = deltaX * VoxelSize;
+  // 3 face directions will affect Vector<T, D> MinCenter: XN, YN, ZN
+  if (util::isFlag(fromDir, NbrDirection::XN)) {
+    AABB<T, D>::_min[0] -= TdeltaX;
+    MinCenter[0] -= TdeltaX;
+    IndexBlock = AABB<int, D>(IndexBlock.getMin() - Vector<int, D>{deltaX, 0, 0}, IndexBlock.getMax());
+    Mesh[0] += deltaX;
+  } else if (util::isFlag(fromDir, NbrDirection::YN)) {
+    AABB<T, D>::_min[1] -= TdeltaX;
+    MinCenter[1] -= TdeltaX;
+    IndexBlock = AABB<int, D>(IndexBlock.getMin() - Vector<int, D>{0, deltaX, 0}, IndexBlock.getMax());
+    Mesh[1] += deltaX;
+  } else if (util::isFlag(fromDir, NbrDirection::ZN)) {
+    AABB<T, D>::_min[2] -= TdeltaX;
+    MinCenter[2] -= TdeltaX;
+    IndexBlock = AABB<int, D>(IndexBlock.getMin() - Vector<int, D>{0, 0, deltaX}, IndexBlock.getMax());
+    Mesh[2] += deltaX;
+  }
+  // 3 face directions will NOT affect Vector<T, D> MinCenter: XP, YP, ZP
+  if (util::isFlag(fromDir, NbrDirection::XP)) {
+    AABB<T, D>::_max[0] += TdeltaX;
+    IndexBlock = AABB<int, D>(IndexBlock.getMin(), IndexBlock.getMax() + Vector<int, D>{deltaX, 0, 0});
+    Mesh[0] += deltaX;
+  } else if (util::isFlag(fromDir, NbrDirection::YP)) {
+    AABB<T, D>::_max[1] += TdeltaX;
+    IndexBlock = AABB<int, D>(IndexBlock.getMin(), IndexBlock.getMax() + Vector<int, D>{0, deltaX, 0});
+    Mesh[1] += deltaX;
+  } else if (util::isFlag(fromDir, NbrDirection::ZP)) {
+    AABB<T, D>::_max[2] += TdeltaX;
+    IndexBlock = AABB<int, D>(IndexBlock.getMin(), IndexBlock.getMax() + Vector<int, D>{0, 0, deltaX});
+    Mesh[2] += deltaX;
+  }
+  // set N and Projection
+  if constexpr (D == 2) {
+    N = Mesh[0] * Mesh[1];
+    Projection = Vector<int, 2>{1, Mesh[0]};
+  } else if constexpr (D == 3) {
+    N = Mesh[0] * Mesh[1] * Mesh[2];
+    Projection = Vector<int, 3>{1, Mesh[0], Mesh[0] * Mesh[1]};
+  }
+}
+
+template <typename T, unsigned int D>
 std::size_t BasicBlock<T, D>::getIndex_t(const Vector<T, D>& loc) const {
   const Vector<T, D> ext = loc - MinCenter;
   const int x = static_cast<int>(std::round(ext[0] / VoxelSize));

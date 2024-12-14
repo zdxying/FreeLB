@@ -23,7 +23,6 @@
 #pragma once
 
 #include "geometry/basic_geometry.h"
-#include "parallel/communicator.h"
 #include "io/stlreader.h"
 #include "io/block_reader.h"
 
@@ -324,7 +323,10 @@ class BlockGeometryHelper3D : public BasicBlock<T, 3> {
 
   void CreateBlockCells();
   void TagBlockCells(const StlReader<T>& reader);
-  bool IsInside(Octree<T>* tree, const BasicBlock<T, 3> &aabbcell); 
+  // find if one cell of the block is inside the octree
+  bool IsInside(Octree<T>* tree, const BasicBlock<T, 3> &block) const;
+  // find if one cell of the block is outside the octree
+  bool hasOutSideCell(Octree<T>* tree, const BasicBlock<T, 3> &block) const;
   // create block from BlockCells, this should be called after refinement
   void CreateBlocks(bool CreateFromInsideTag = false);
   // create block using normal divide method, like CreateBlocks() in BlockGeometry3D
@@ -335,6 +337,10 @@ class BlockGeometryHelper3D : public BasicBlock<T, 3> {
   void CheckRefine();
   // perform refine
   void Refine();
+
+  // shrink created BasicBlocks to fit geometry held by octree
+  // this should be called after CreateBlocks(bool CreateFromInsideTag);
+  void ShrinkBasicBlocks(const StlReader<T>& reader);
 
   // lambda function for each cell block
   template <typename Func>

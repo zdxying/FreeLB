@@ -111,6 +111,26 @@ enum NbrDirection : std::uint8_t {
   ZP = 32
 };
 
+NbrDirection getOpposite(NbrDirection direction) {
+  std::uint8_t opp{};
+  if (util::isFlag(direction, NbrDirection::XN)) {
+    opp |= NbrDirection::XP;
+  } else if (util::isFlag(direction, NbrDirection::XP)) {
+    opp |= NbrDirection::XN;
+  }
+  if (util::isFlag(direction, NbrDirection::YN)) {
+    opp |= NbrDirection::YP;
+  } else if (util::isFlag(direction, NbrDirection::YP)) {
+    opp |= NbrDirection::YN;
+  }
+  if (util::isFlag(direction, NbrDirection::ZN)) {
+    opp |= NbrDirection::ZP;
+  } else if (util::isFlag(direction, NbrDirection::ZP)) {
+    opp |= NbrDirection::ZN;
+  }
+  return static_cast<NbrDirection>(opp);
+}
+
 // find pop directions to be reconstructed after streaming
 template <typename LatSet>
 void getCommPopDir(NbrDirection direction, std::vector<unsigned int>& commdirection) {

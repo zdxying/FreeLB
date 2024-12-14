@@ -34,6 +34,7 @@
 #include <algorithm>
 
 #include "data_struct/Vector.h"
+#include "parallel/communicator.h"
 
 // axis-aligned bounding box (AABB) class
 // all the voxels in the computational domain are inside the AABB
@@ -227,10 +228,8 @@ class BasicBlock : public AABB<T, D> {
   int getNx() const { return Mesh[0]; }
   int getNy() const { return Mesh[1]; }
   int getNz() const {
-    if constexpr (D == 3)
-      return Mesh[2];
-    else if constexpr (D == 2)
-      return 1;
+    if constexpr (D == 3) return Mesh[2];
+    else if constexpr (D == 2) return 1;
   }
   // return total number of cells in the block
   std::size_t getN() const { return N; }
@@ -250,6 +249,12 @@ class BasicBlock : public AABB<T, D> {
   // suggested to call on base block to get coarsened base block, _deltalevel>0
   BasicBlock<T, D> getCoasenedBlock(std::uint8_t _deltalevel = std::uint8_t(1)) const;
   void coarsen(std::uint8_t _deltalevel = std::uint8_t(1));
+
+  // resize the block, by FACE moving along its normal direction
+  // deltaX is the number of layers of cells to be added(+) or removed(-) from the block
+  // fromDir is the FACE direction of the block to be resized, so ONLY 1 direction is allowed
+  // the FACE will be moved along the direction of fromDir by deltaX layers
+  void resize(int deltaX, NbrDirection fromDir);
 
   // get cell center
   inline Vector<T, D> getVoxel(const Vector<int, D>& locidx) const {

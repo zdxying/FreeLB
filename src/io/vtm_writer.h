@@ -295,16 +295,17 @@ class vtmWriter {
   std::string _vtidirname = "./vtkoutput/vtidata/";
   std::string _filename;
   std::vector<vtino::vtiManager<T, D>> _vtiwriters;
+
+  int _Overlap_Threshold;
+  BlockGeometry<T, D>& BlockGeo;
+
+ public:
   // if block overlap is larger than this value, use overlap - threshold
   // if block overlap is smaller than or equal to this value, use 0
   // you could set it as:
   // default: -1, use default overlap, vtmo::vtmWriter becomes vtmwriter::vtmWriter
   // 0, no overlap, not recommended for paraview-surface rendering
   // 1, each block has 1 overlap
-  int _Overlap_Threshold;
-  BlockGeometry<T, D>& BlockGeo;
-
- public:
   vtmWriter(std::string filename, BlockGeometry<T, D>& blockgeo, int overlapth = -1)
       : _filename(filename), _Overlap_Threshold(overlapth), BlockGeo(blockgeo) {
     DirCreator::Create_Dir(_dirname);
