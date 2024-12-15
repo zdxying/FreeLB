@@ -1265,6 +1265,9 @@ void BlockGeometryHelper3D<T>::UpdateMaxLevel() {
 
 template <typename T>
 void BlockGeometryHelper3D<T>::CreateBlocks(bool CreateFromInsideTag) {
+  // collect info
+  std::vector<std::size_t> BlockCellNumVec;
+
   // create new blocks on relatively older blocks
   std::vector<BasicBlock<T, 3>> &BasicBlocks = getAllOldBasicBlocks();
   BasicBlocks.clear();
@@ -1347,6 +1350,7 @@ void BlockGeometryHelper3D<T>::CreateBlocks(bool CreateFromInsideTag) {
         }
       end_z_expansion:
 
+        BlockCellNumVec.push_back(Nx * Ny * Nz);
         // create block
         Vector<int, 3> Ext = BlockCellLen * Vector<int, 3>{Nx, Ny, Nz};
         Vector<int, 3> min = _BlockCells[id].getIdxBlock().getMin();
@@ -1374,6 +1378,21 @@ void BlockGeometryHelper3D<T>::CreateBlocks(bool CreateFromInsideTag) {
   delete[] visited;
   // update max level
   UpdateMaxLevel();
+
+  // print info
+  // find min and max block cell num
+  std::size_t min = BlockCellNumVec[0];
+  std::size_t max = BlockCellNumVec[0];
+  for (std::size_t x : BlockCellNumVec) {
+    min = x < min ? x : min;
+    max = x > max ? x : max;
+  }
+  T aver = T(CellsN) / BasicBlocks.size();
+
+  MPI_RANK(0)
+  std::cout << "[BlockGeometryHelper3D<T>::CreateBlocks]: " << BasicBlocks.size() << " Blocks created, with: \n"
+            << "  Min BlockCell Num: " << min << ", Max BlockCell Num: " << max << ", Average Block Cell Num: " << aver
+            << std::endl;
 }
 
 template <typename T>
@@ -1908,5 +1927,5 @@ void BlockGeometryHelper3D<T>::ShrinkBasicBlocks(const StlReader<T>& reader) {
 
   // print statistics
   MPI_RANK(0)
-  std::cout << "ShrinkBasicBlocks: " << totalremoved << " cells removed." << std::endl;
+  std::cout << "[BlockGeometryHelper3D<T>::ShrinkBasicBlocks]: " << totalremoved << " cells removed." << std::endl;
 }
