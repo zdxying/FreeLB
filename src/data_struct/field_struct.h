@@ -567,6 +567,37 @@ class BlockFieldManager {
 #endif
   }
 
+  // for flag field, clean lonely flags after reading from octree/stl
+  // this should be called after ReadOctree and before SetupBoundary
+  // so at this time it is supposed that there are only 2 kinds of flags: void(1) and stl(2)
+  // lonelyth is the threshold when cell has less than lonelyth neighbors of the same flag
+  // each lonely cell will be set to voidflag after all cells have been checked
+  // if recursive is true, the process will be repeated until no lonely cell is found
+  void CleanLonelyFlags(std::uint8_t flag = std::uint8_t(1), std::uint8_t voidflag = std::uint8_t(1), 
+    unsigned int lonelyth = 2, bool recursive = true) {
+    static_assert(std::is_same(datatype, std::uint8_t), "CleanLonelyFlags only works for uint8_t");
+    bool cleaned = false;
+    // statistic info
+    std::size_t total{};
+    int iblock = 0;
+    for (Block<FloatType, Dim>& blockgeo : _BlockGeo.getBlocks()) {
+      auto& field = _Fields[iblock];
+      blockgeo.template CleanLonelyFlags<FieldType, LatSet>(field, flag, voidflag, lonelyth, cleaned, total);
+      ++iblock;
+    }
+    NormalCommunicate();
+#ifdef MPI_ENABLED
+    MPINormalCommunicate();
+#endif
+
+    if (cleaned) {
+      MPI_RANK(0)
+      std::cout << "[BlockFieldManager::CleanLonelyFlags]: " << total << " lonely cells cleaned" << std::endl;
+
+      if (recursive) CleanLonelyFlags(flag, voidflag, lonelyth, recursive);
+    }
+  }
+
   template <typename Func>
   void forEachField(const Func& func) {
     for (BlockField<FieldType, FloatType, Dim>& blockF : _Fields) {

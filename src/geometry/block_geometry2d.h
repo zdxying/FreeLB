@@ -197,8 +197,8 @@ class BlockGeometryHelper2D : public BasicBlock<T, 2> {
   int CellsN;
   // block length
   int BlockCellLen;
-  // extension of the whole domain
-  int Ext;
+  // overlap of blocks
+  int _Overlap;
   // max level limit
   std::uint8_t _LevelLimit;
   // max level
@@ -235,7 +235,7 @@ class BlockGeometryHelper2D : public BasicBlock<T, 2> {
   std::uint8_t getLevelLimit() const { return _LevelLimit; }
   const std::array<int, 8>& getDeltaCellidx() const { return Delta_Cellidx; }
 
-  int getExt() const { return Ext; }
+  int getOverlap() const { return _Overlap; }
   BasicBlock<T, 2>& getBaseBlock() { return _BaseBlock; }
 
   BasicBlock<T, 2>& getBlockCell(int id) { return _BlockCells[id]; }

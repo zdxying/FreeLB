@@ -120,6 +120,8 @@ class StlMesh {
   /// Returns _max
   inline Vector<T, 3> &getMax() { return _max; }
   inline const Vector<T, 3> &getMax() const { return _max; }
+  // return AABB
+  inline AABB<T, 3> getAABB() const { return AABB<T, 3>{_min, _max}; }
   // return Max - Min
   inline const Vector<T, 3> getMax_Min() const { return _max - _min; }
   /// Returns maxDist squared

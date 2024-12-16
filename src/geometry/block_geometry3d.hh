@@ -40,6 +40,41 @@ Block3D<T>::Block3D(const AABB<T, 3> &block, const AABB<int, 3> &idxblock, int b
 
 template <typename T>
 template <typename FieldType, typename LatSet>
+void Block3D<T>::CleanLonelyFlags(FieldType& field, std::uint8_t flag, std::uint8_t voidflag, 
+  unsigned int lonelyth, bool& cleaned, std::size_t& count) {
+  GenericArray<bool> TransFlag(BasicBlock<T, 3>::N, false);
+  const int overlap = _overlap;
+  for (int z = overlap; z < BasicBlock<T, 3>::Mesh[2] - overlap; ++z) {
+    for (int y = overlap; y < BasicBlock<T, 3>::Mesh[1] - overlap; ++y) {
+      std::size_t id = BasicBlock<T, 3>::getIndex(Vector<int, 3>{overlap, y, z});
+      for (int x = overlap; x < BasicBlock<T, 3>::Mesh[0] - overlap; ++x) {
+        if (util::isFlag(field.get(id), flag)) {
+          unsigned int lonely{};
+          for (unsigned int i = 1; i < LatSet::q; ++i) {
+            // get neighbor cell index
+            const std::size_t nbridx = id + latset::c<LatSet>(i) * BasicBlock<T, 3>::getProjection();
+            if (util::isFlag(field.get(nbridx), flag)) ++lonely;
+          }
+          if (lonely < lonelyth) {
+            TransFlag[id] = true;
+            cleaned = true;
+            ++count;
+          }
+        }
+        ++id;
+      }
+    }
+  }
+  
+  if (cleaned) {
+    for (std::size_t id = 0; id < BasicBlock<T, 3>::N; ++id) {
+      if (TransFlag[id]) field.SetField(id, voidflag);
+    }
+  }
+}
+
+template <typename T>
+template <typename FieldType, typename LatSet>
 void Block3D<T>::SetupBoundary(const AABB<T, 3> &block, FieldType &field,
                                typename FieldType::value_type bdvalue) {
   // temp flag field store the transition flag
@@ -137,12 +172,17 @@ BlockGeometry3D<T>::BlockGeometry3D(int Nx, int Ny, int Nz, int blocknum,
 }
 
 template <typename T>
-BlockGeometry3D<T>::BlockGeometry3D(BlockGeometryHelper3D<T> &GeoHelper)
+BlockGeometry3D<T>::BlockGeometry3D(BlockGeometryHelper3D<T> &GeoHelper,  bool useHelperOlap)
     : BasicBlock<T, 3>(GeoHelper), _BaseBlock(GeoHelper.getBaseBlock()), 
-      _overlap(GeoHelper.getExt()), _MaxLevel(GeoHelper.getMaxLevel()) {
+      _overlap(GeoHelper.getOverlap()), _MaxLevel(GeoHelper.getMaxLevel()) {
   // create blocks from GeoHelper
   for (BasicBlock<T, 3> *baseblock : GeoHelper.getBasicBlocks()) {
-    int overlap = (baseblock->getLevel() != std::uint8_t(0)) ? 2 : 1;
+    int overlap{};
+    if (useHelperOlap) {
+      overlap = _overlap;
+    } else {
+      overlap = (baseblock->getLevel() != std::uint8_t(0)) ? 2 : 1;
+    }
     _Blocks.emplace_back(*baseblock, overlap);
     _BasicBlocks.emplace_back(*baseblock);
   }
@@ -435,7 +475,7 @@ template <typename T>
 BlockGeometry3D<T>::BlockGeometry3D(BlockGeometryHelper3D<T> &GeoHelper, 
 std::vector<BasicBlock<T, 3>>& BasicBlocks)
     : BasicBlock<T, 3>(GeoHelper), _BaseBlock(GeoHelper.getBaseBlock()), 
-      _overlap(GeoHelper.getExt()), _MaxLevel(GeoHelper.getMaxLevel()) {
+      _overlap(GeoHelper.getOverlap()), _MaxLevel(GeoHelper.getMaxLevel()) {
   // create blocks from GeoHelper
   for (BasicBlock<T, 3>& baseblock : BasicBlocks) {
     int overlap = (baseblock.getLevel() != std::uint8_t(0)) ? 2 : 1;
@@ -1102,14 +1142,14 @@ template <typename T>
 BlockGeometryHelper3D<T>::BlockGeometryHelper3D(int Nx, int Ny, int Nz,
                                                 const AABB<T, 3> &AABBs, T voxelSize,
                                                 int blockcelllen, std::uint8_t llimit,
-                                                int ext)
-    : BasicBlock<T, 3>(
-        voxelSize, AABBs.getExtended(Vector<T, 3>{voxelSize * ext}),
-        AABB<int, 3>(Vector<int, 3>{0}, Vector<int, 3>{Nx - 1 + 2*ext, Ny - 1 + 2*ext, Nz - 1 + 2*ext})),
-      _BaseBlock(voxelSize, AABBs,
-                 AABB<int, 3>(Vector<int, 3>{ext}, Vector<int, 3>{Nx - 1 + ext, Ny - 1 + ext, Nz - 1 + ext})),
-      BlockCellLen(blockcelllen), Ext(ext), _LevelLimit(llimit), _MaxLevel(std::uint8_t(0)), 
-      _Exchanged(true), _IndexExchanged(true) {
+                                                int olap, int ext)
+  : BasicBlock<T, 3>(
+      voxelSize, AABBs.getExtended(Vector<T, 3>{voxelSize * olap}),
+      AABB<int, 3>(Vector<int, 3>{0}, Vector<int, 3>{Nx - 1 + 2*olap, Ny - 1 + 2*olap, Nz - 1 + 2*olap})),
+    _BaseBlock(voxelSize, AABBs,
+                AABB<int, 3>(Vector<int, 3>{olap}, Vector<int, 3>{Nx - 1 + olap, Ny - 1 + olap, Nz - 1 + olap})),
+    BlockCellLen(blockcelllen), _Overlap(olap), _Ext(ext), _LevelLimit(llimit), _MaxLevel(std::uint8_t(0)), 
+    _Exchanged(true), _IndexExchanged(true) {
   if (BlockCellLen < 4) {
     std::cerr << "BlockGeometryHelper3D<T>, BlockCellLen < 4" << std::endl;
   }
@@ -1127,21 +1167,28 @@ BlockGeometryHelper3D<T>::BlockGeometryHelper3D(int Nx, int Ny, int Nz,
 }
 
 template <typename T>
-BlockGeometryHelper3D<T>::BlockGeometryHelper3D(const StlReader<T>& reader, int blockcelllen, std::uint8_t llimit, int ext)
-    : BasicBlock<T, 3>(reader.getVoxelSize(), 
-    AABB<T, 3>(reader.getMesh().getMin() - reader.getVoxelSize(), reader.getMesh().getMax() + reader.getVoxelSize()),
-    AABB<int, 3>(Vector<int, 3>{0}, 
-                 Vector<int, 3>{int(std::ceil(reader.getMesh().getMax_Min()[0] / reader.getVoxelSize())) + 1, 
-                                int(std::ceil(reader.getMesh().getMax_Min()[1] / reader.getVoxelSize())) + 1,
-                                int(std::ceil(reader.getMesh().getMax_Min()[2] / reader.getVoxelSize())) + 1})),
-    _BaseBlock(reader.getVoxelSize(), 
-      AABB<T, 3>(reader.getMesh().getMin(), reader.getMesh().getMax()),
-      AABB<int, 3>(Vector<int, 3>{1}, 
-                    Vector<int, 3>{int(std::ceil(reader.getMesh().getMax_Min()[0] / reader.getVoxelSize())), 
-                                  int(std::ceil(reader.getMesh().getMax_Min()[1] / reader.getVoxelSize())),
-                                  int(std::ceil(reader.getMesh().getMax_Min()[2] / reader.getVoxelSize()))})),
-      BlockCellLen(blockcelllen), Ext(ext), _LevelLimit(llimit), _MaxLevel(std::uint8_t(0)), 
-      _Exchanged(true), _IndexExchanged(true) {
+BlockGeometryHelper3D<T>::BlockGeometryHelper3D(const StlReader<T>& reader, int blockcelllen, 
+  std::uint8_t llimit, int olap, int ext)
+  : BasicBlock<T, 3>(
+      reader.getVoxelSize(), 
+      reader.getMesh().getAABB().getExtended((olap+ext)*reader.getVoxelSize()),
+      AABB<int, 3>(
+        Vector<int, 3>{}, 
+        Vector<int, 3>{
+          int(std::ceil(reader.getMesh().getMax_Min()[0] / reader.getVoxelSize())) + 2*(olap+ext) - 1, 
+          int(std::ceil(reader.getMesh().getMax_Min()[1] / reader.getVoxelSize())) + 2*(olap+ext) - 1,
+          int(std::ceil(reader.getMesh().getMax_Min()[2] / reader.getVoxelSize())) + 2*(olap+ext) - 1})),
+    _BaseBlock(
+      reader.getVoxelSize(), 
+      reader.getMesh().getAABB().getExtended(ext*reader.getVoxelSize()),
+      AABB<int, 3>(
+        Vector<int, 3>{olap}, 
+        Vector<int, 3>{
+          int(std::ceil(reader.getMesh().getMax_Min()[0] / reader.getVoxelSize())) + (olap+2*ext) - 1, 
+          int(std::ceil(reader.getMesh().getMax_Min()[1] / reader.getVoxelSize())) + (olap+2*ext) - 1,
+          int(std::ceil(reader.getMesh().getMax_Min()[2] / reader.getVoxelSize())) + (olap+2*ext) - 1})),
+    BlockCellLen(blockcelllen), _Overlap(olap), _Ext(ext), _LevelLimit(llimit), _MaxLevel(std::uint8_t(0)), 
+    _Exchanged(true), _IndexExchanged(true) {
   if (BlockCellLen < 4) {
     std::cerr << "BlockGeometryHelper3D<T>, BlockCellLen < 4" << std::endl;
   }
@@ -1158,18 +1205,19 @@ BlockGeometryHelper3D<T>::BlockGeometryHelper3D(const StlReader<T>& reader, int 
   T MeshSizeY = T(NewNy) * _BaseBlock.getVoxelSize();
   T MeshSizeZ = T(NewNz) * _BaseBlock.getVoxelSize();
 
+  // ext is already included in the _BaseBlock, CellsNx, CellsNy, CellsNz
   static_cast<BasicBlock<T, 3>&>(*this) = BasicBlock<T, 3>(
     reader.getVoxelSize(), 
-    AABB<T, 3>(reader.getMesh().getMin() - reader.getVoxelSize(), 
-               reader.getMesh().getMin() + Vector<T, 3>{MeshSizeX, MeshSizeY, MeshSizeZ} + reader.getVoxelSize()),
-    AABB<int, 3>(Vector<int, 3>{0}, 
-                 Vector<int, 3>{NewNx + 1, NewNy + 1, NewNz + 1}));
+    AABB<T, 3>(reader.getMesh().getMin() - (olap+ext)*reader.getVoxelSize(), 
+               reader.getMesh().getMin() + olap*reader.getVoxelSize() + Vector<T, 3>{MeshSizeX, MeshSizeY, MeshSizeZ}),
+    AABB<int, 3>(Vector<int, 3>{}, 
+                 Vector<int, 3>{NewNx + 2*olap-1, NewNy + 2*olap-1, NewNz + 2*olap-1}));
   _BaseBlock = BasicBlock<T, 3>(
     reader.getVoxelSize(), 
-    AABB<T, 3>(reader.getMesh().getMin(), 
+    AABB<T, 3>(reader.getMesh().getMin() - ext*reader.getVoxelSize(), 
                reader.getMesh().getMin() + Vector<T, 3>{MeshSizeX, MeshSizeY, MeshSizeZ}),
-    AABB<int, 3>(Vector<int, 3>{1}, 
-                 Vector<int, 3>{NewNx, NewNy, NewNz}));
+    AABB<int, 3>(Vector<int, 3>{olap}, 
+                 Vector<int, 3>{NewNx + olap-1, NewNy + olap-1, NewNz + olap-1}));
 
   // end correct
 

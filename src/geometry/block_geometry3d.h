@@ -55,6 +55,11 @@ class Block3D : public BasicBlock<T, 3> {
   BasicBlock<T, 3>& getBaseBlock() { return _BaseBlock; }
 
   int getOverlap() const { return _overlap; }
+  
+  // clean lonely flags
+  template <typename FieldType, typename LatSet>
+  void CleanLonelyFlags(FieldType& field, std::uint8_t flag, std::uint8_t voidflag, 
+    unsigned int lonelyth, bool& cleaned, std::size_t& count);
 
   // setup boundary
   template <typename FieldType, typename LatSet>
@@ -101,7 +106,7 @@ class BlockGeometry3D : public BasicBlock<T, 3> {
   BlockGeometry3D(int Nx, int Ny, int Nz, int blocknum, const AABB<T, 3>& block,
                   T voxelSize = T(1), int overlap = 1);
   // construct uniform/ refined blockgeometry from GeoHelper
-  BlockGeometry3D(BlockGeometryHelper3D<T>& GeoHelper);
+  BlockGeometry3D(BlockGeometryHelper3D<T>& GeoHelper, bool useHelperOlap = true);
   // construct blockgeometry from blockreader
   BlockGeometry3D(const BlockReader3D<T>& blockreader);
   // construct blockgeometry from stlreader
@@ -200,8 +205,10 @@ class BlockGeometryHelper3D : public BasicBlock<T, 3> {
   int CellsN;
   // block length
   int BlockCellLen;
+  // overlap of blocks
+  int _Overlap;
   // extension of the whole domain
-  int Ext;
+  int _Ext;
   // max level limit
   std::uint8_t _LevelLimit;
   // max level
@@ -229,9 +236,11 @@ class BlockGeometryHelper3D : public BasicBlock<T, 3> {
   // domain of Nx * Ny will be divided into (Nx/blocklen)*(Ny/blocklen) blocks
   BlockGeometryHelper3D(int Nx, int Ny, int Nz, const AABB<T, 3>& AABBs, T voxelSize = T(1),
                         int blockcelllen = 10, std::uint8_t llimit = std::uint8_t(2),
-                        int ext = 1);
+                        int olap = 1, int ext = 0);
+  // olap is the num of overlapped cells between blocks
+  // ext is the extension of the whole domain, used for creating solid cells after reading stl
   BlockGeometryHelper3D(const StlReader<T>& reader, int blockcelllen = 10, 
-                        std::uint8_t llimit = std::uint8_t(2), int ext = 1);
+                        std::uint8_t llimit = std::uint8_t(2), int olap = 1, int ext = 0);
   ~BlockGeometryHelper3D() = default;
 
   // get
@@ -240,7 +249,7 @@ class BlockGeometryHelper3D : public BasicBlock<T, 3> {
   std::uint8_t getLevelLimit() const { return _LevelLimit; }
   const std::array<int, 26>& getDeltaCellidx() const { return Delta_Cellidx; }
 
-  int getExt() const { return Ext; }
+  int getOverlap() const { return _Overlap; }
   BasicBlock<T, 3>& getBaseBlock() { return _BaseBlock; }
 
   BasicBlock<T, 3>& getBlockCell(int id) { return _BlockCells[id]; }

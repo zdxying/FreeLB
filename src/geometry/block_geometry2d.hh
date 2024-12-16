@@ -117,7 +117,7 @@ BlockGeometry2D<T>::BlockGeometry2D(int Nx, int Ny, int blocknum, const AABB<T, 
 template <typename T>
 BlockGeometry2D<T>::BlockGeometry2D(BlockGeometryHelper2D<T> &GeoHelper)
     : BasicBlock<T, 2>(GeoHelper), _BaseBlock(GeoHelper.getBaseBlock()), 
-      _overlap(GeoHelper.getExt()), _MaxLevel(GeoHelper.getMaxLevel()) {
+      _overlap(GeoHelper.getOverlap()), _MaxLevel(GeoHelper.getMaxLevel()) {
   // create blocks from GeoHelper
   for (BasicBlock<T, 2> *baseblock : GeoHelper.getBasicBlocks()) {
     int overlap = (baseblock->getLevel() != std::uint8_t(0)) ? 2 : 1;
@@ -373,7 +373,7 @@ template <typename T>
 BlockGeometry2D<T>::BlockGeometry2D(BlockGeometryHelper2D<T> &GeoHelper, 
 std::vector<BasicBlock<T, 2>>& BasicBlocks)
     : BasicBlock<T, 2>(GeoHelper), _BaseBlock(GeoHelper.getBaseBlock()), 
-      _overlap(GeoHelper.getExt()), _MaxLevel(GeoHelper.getMaxLevel()) {
+      _overlap(GeoHelper.getOverlap()), _MaxLevel(GeoHelper.getMaxLevel()) {
   // create blocks from GeoHelper
   for (BasicBlock<T, 2>& baseblock : BasicBlocks) {
     int overlap = (baseblock.getLevel() != std::uint8_t(0)) ? 2 : 1;
@@ -877,7 +877,7 @@ BlockGeometryHelper2D<T>::BlockGeometryHelper2D(int Nx, int Ny, const AABB<T, 2>
                        AABB<int, 2>(Vector<int, 2>{0}, Vector<int, 2>{Nx - 1 + 2*overlap, Ny - 1 + 2*overlap})),
       _BaseBlock(voxelSize, AABBs,
                  AABB<int, 2>(Vector<int, 2>{overlap}, Vector<int, 2>{Nx - 1 + overlap, Ny - 1 + overlap})),
-      BlockCellLen(blockcelllen), Ext(overlap), _LevelLimit(llimit), _MaxLevel(std::uint8_t(0)), 
+      BlockCellLen(blockcelllen), _Overlap(overlap), _LevelLimit(llimit), _MaxLevel(std::uint8_t(0)), 
       _Exchanged(true), _IndexExchanged(true) {
   if (BlockCellLen < 4) {
     std::cerr << "BlockGeometryHelper2D<T>, BlockCellLen < 4" << std::endl;
