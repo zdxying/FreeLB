@@ -3,21 +3,25 @@ Refine: 0
 VoxelSize: 1.
 
 [Block]
+Overlap: 2
 Level: 0
 AABB: {{0, 0, 0}, {40, 40, 40}} 
 Mesh: {40, 40, 40}
 
 [Block]
+Overlap: 2
 Level: 0
 AABB: {{40, 0, 0}, {80, 40, 40}} 
 Mesh: {40, 40, 40}
 
 [Block]
+Overlap: 2
 Level: 0
 AABB: {{80, 0, 0}, {120, 40, 40}} 
 Mesh: {40, 40, 40}
 
 [Block]
+Overlap: 2
 Level: 0
 AABB: {{80, 0, 40}, {120, 40, 80}} 
 Mesh: {40, 40, 40}

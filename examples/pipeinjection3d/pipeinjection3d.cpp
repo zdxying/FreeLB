@@ -21,11 +21,11 @@
 #include "freelb.h"
 #include "freelb.hh"
 #include "lbm/freeSurface.h"
-
+#include "offLattice/marchingCube.hh"
 
 
 using T = FLOAT;
-using LatSet = D3Q27<T>;
+using LatSet = D3Q19<T>;
 
 /*----------------------------------------------
                 Simulation Parameters
@@ -222,14 +222,17 @@ int main() {
   // define task/ dynamics:
   // NS task  PowerLaw_BGKForce
   // using NSBulkTask = tmp::Key_TypePair<olbfs::FSType::Fluid | olbfs::FSType::Interface,
+  // using NSBulkTask = tmp::Key_TypePair<olbfs::FSType::Fluid | olbfs::FSType::Interface,
+    // collision::BGK<moment::rhoU<NSCELL, true>, equilibrium::SecondOrder<NSCELL>>>;
   using NSBulkTask = tmp::Key_TypePair<olbfs::FSType::Fluid | olbfs::FSType::Interface,
-    collision::BGK<moment::rhoU<NSCELL, true>, equilibrium::SecondOrder<NSCELL>>>;
+    collision::BGKForce<moment::forcerhoU<NSCELL, force::ScalarConstForce<NSCELL>, true>, 
+                      equilibrium::SecondOrder<NSCELL>, force::ScalarConstForce<NSCELL>>>;
   using NSWallTask = tmp::Key_TypePair<olbfs::FSType::Wall, collision::BounceBack<NSCELL>>;
 
   using NSTaskSelector = TaskSelector<std::uint8_t, NSCELL, NSBulkTask, NSWallTask>;
 
   // inlet u task
-  using InletTask = tmp::Key_TypePair<InletFlag, moment::constU<NSCELL>>;
+  using InletTask = tmp::Key_TypePair<InletFlag, moment::constU<NSCELL, true>>;
   using InletTaskSelector = TaskSelector<std::uint8_t, NSCELL, InletTask>;
 
   // bcs
@@ -242,7 +245,7 @@ int main() {
                             BlockFieldManager<FLAG, T, LatSet::d>>
     NS_Inlet("NS_BBMW", NSLattice, FlagFM, InletFlag, VoidFlag);
 
-  vtmo::ScalarWriter rhovtm("rho", NSLattice.getField<RHO<T>>());
+  // vtmo::ScalarWriter rhovtm("rho", NSLattice.getField<RHO<T>>());
   vtmo::ScalarWriter MassWriter("Mass", NSLattice.getField<olbfs::MASS<T>>());
   vtmo::VectorWriter VeloWriter("Velo", NSLattice.getField<VELOCITY<T, LatSet::d>>());
   vtmo::ScalarWriter VOFWriter("VOF", NSLattice.getField<olbfs::VOLUMEFRAC<T>>());
@@ -250,32 +253,66 @@ int main() {
   vtmo::vtmWriter<T, LatSet::d> Writer("PipeInjection3d", Geo, 1);
   Writer.addWriterSet(MassWriter, VOFWriter, VeloWriter, StateWriter);
 
+  FieldStatistics RhoStat(NSLattice.getField<RHO<T>>());
+  FieldStatistics MassStat(NSLattice.getField<olbfs::MASS<T>>());
+
   // count and timer
   Timer MainLoopTimer;
   Timer OutputTimer;
 
-  Writer.WriteBinary(MainLoopTimer());
+  // Writer.WriteBinary(MainLoopTimer());
+  // write freeSurface stl
+  // set wall vof to 0
+  NSLattice.getField<olbfs::VOLUMEFRAC<T>>().forEach(
+    NSLattice.getField<olbfs::STATE>(), olbfs::FSType::Wall,
+    [&](auto& field, std::size_t id) { field.SetField(id, T{}); });
+  // mc algorithm
+  offlat::MarchingCubeSurface<T, olbfs::VOLUMEFRAC<T>> mc(NSLattice.getField<olbfs::VOLUMEFRAC<T>>(), T{0.5});
+  offlat::TriangleSet<T> triangles;
+  mc.generateIsoSurface(triangles.getTriangles());
+  triangles.writeBinarySTL("SurfacemarchingCube" + std::to_string(MainLoopTimer()));
+  // set wall vof back to 1
+  NSLattice.getField<olbfs::VOLUMEFRAC<T>>().forEach(
+    NSLattice.getField<olbfs::STATE>(), olbfs::FSType::Wall,
+    [&](auto& field, std::size_t id) { field.SetField(id, T{1}); });
 
   Printer::Print_BigBanner(std::string("Start Calculation..."));
   while (MainLoopTimer() < MaxStep) {
     ++MainLoopTimer;
     ++OutputTimer;
 
-    NSLattice.ApplyCellDynamics<NSTaskSelector>(MainLoopTimer(),
-                                                NSLattice.getField<olbfs::STATE>());
-    NSLattice.ApplyCellDynamics<InletTaskSelector>(MainLoopTimer(),
-                                                FlagFM);
-    NSLattice.Stream(MainLoopTimer());
-    NS_Inlet.Apply(MainLoopTimer());
-    NSLattice.Communicate(MainLoopTimer());
+    NSLattice.ApplyCellDynamics<NSTaskSelector>(NSLattice.getField<olbfs::STATE>());
+    NSLattice.ApplyCellDynamics<InletTaskSelector>(FlagFM);
+    NSLattice.Stream();
+    NS_Inlet.Apply();
+    NSLattice.NormalAllCommunicate();
 
     olbfs::FreeSurfaceApply<NSBlockLatMan>::Apply(NSLattice, MainLoopTimer());
 
 
     if (MainLoopTimer() % OutputStep == 0) {
       OutputTimer.Print_InnerLoopPerformance(Geo.getTotalCellNum(), OutputStep);
+      Printer::Print("Average Rho", RhoStat.getAverage());
+      Printer::Print("Average Mass", MassStat.getAverage());
+      Printer::Print("Max Mass", MassStat.getMax());
+      Printer::Print("Min Mass", MassStat.getMin());
       Printer::Endl();
-      Writer.WriteBinary(MainLoopTimer());
+      // Writer.WriteBinary(MainLoopTimer());
+
+      // write freeSurface stl
+      // set wall vof to 0
+      NSLattice.getField<olbfs::VOLUMEFRAC<T>>().forEach(
+        NSLattice.getField<olbfs::STATE>(), olbfs::FSType::Wall,
+        [&](auto& field, std::size_t id) { field.SetField(id, T{}); });
+      // mc algorithm
+      offlat::MarchingCubeSurface<T, olbfs::VOLUMEFRAC<T>> mc(NSLattice.getField<olbfs::VOLUMEFRAC<T>>(), T{0.5});
+      offlat::TriangleSet<T> triangles;
+      mc.generateIsoSurface(triangles.getTriangles());
+      triangles.writeBinarySTL("SurfacemarchingCube" + std::to_string(MainLoopTimer()));
+      // set wall vof back to 1
+      NSLattice.getField<olbfs::VOLUMEFRAC<T>>().forEach(
+        NSLattice.getField<olbfs::STATE>(), olbfs::FSType::Wall,
+        [&](auto& field, std::size_t id) { field.SetField(id, T{1}); });
     }
   }
 

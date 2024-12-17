@@ -172,7 +172,7 @@ BlockGeometry3D<T>::BlockGeometry3D(int Nx, int Ny, int Nz, int blocknum,
 }
 
 template <typename T>
-BlockGeometry3D<T>::BlockGeometry3D(BlockGeometryHelper3D<T> &GeoHelper,  bool useHelperOlap)
+BlockGeometry3D<T>::BlockGeometry3D(BlockGeometryHelper3D<T> &GeoHelper, bool useHelperOlap)
     : BasicBlock<T, 3>(GeoHelper), _BaseBlock(GeoHelper.getBaseBlock()), 
       _overlap(GeoHelper.getOverlap()), _MaxLevel(GeoHelper.getMaxLevel()) {
   // create blocks from GeoHelper
@@ -198,13 +198,20 @@ BlockGeometry3D<T>::BlockGeometry3D(BlockGeometryHelper3D<T> &GeoHelper,  bool u
 }
 
 template <typename T>
-BlockGeometry3D<T>::BlockGeometry3D(const BlockReader3D<T>& blockreader) 
+BlockGeometry3D<T>::BlockGeometry3D(const BlockReader3D<T>& blockreader, bool useReaderOlap) 
     : BasicBlock<T, 3>(blockreader.getBasicBlock()), _BaseBlock(blockreader.getBaseBlock()), 
       _overlap(1), _MaxLevel(blockreader.getMaxLevel()) {
   // create blocks from Block Reader
+  int iblock{};
   for (const BasicBlock<T, 3> &baseblock : blockreader.getBlocks()) {
-    int overlap = (baseblock.getLevel() != std::uint8_t(0)) ? 2 : 1;
+    int overlap{};
+    if (useReaderOlap) {
+      overlap = blockreader.getOverlaps()[iblock];
+    } else {
+      overlap = (baseblock.getLevel() != std::uint8_t(0)) ? 2 : 1;
+    }
     _Blocks.emplace_back(baseblock, overlap);
+    ++iblock;
   }
   BuildBlockIndexMap();
   SetupNbrs();

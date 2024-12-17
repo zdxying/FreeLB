@@ -37,7 +37,7 @@ class Cylinder final : public AABB<T, 3> {
 
  public:
   Cylinder(T radius, const Vector<T, 3>& height, const Vector<T, 3>& centre)
-      : _Radius(radius), _height(height), _centre(centre), AABB<T, 3>() {
+      :  AABB<T, 3>(), _Radius(radius), _height(height), _centre(centre) {
     // get radius and height
     _Height = _height.getnorm();
     // get normalized _height, i.e. get the normal of the circle

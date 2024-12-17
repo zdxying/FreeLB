@@ -712,8 +712,8 @@ class BlockFieldManager {
   }
 
   // call forEach(FlagFManager, [&](FieldType& field, std::size_t id){});
-  template <typename BFM, typename Func>
-  void forEach(const BFM& BlockFM, const Func& func) {
+  template <typename FieldTypeX, typename Func>
+  void forEach(const BlockFieldManager<FieldTypeX, FloatType, Dim>& BlockFM, const Func& func) {
     int iblock = 0;
     for (Block<FloatType, Dim>& blockgeo : _BlockGeo.getBlocks()) {
       auto& thisbfield = _Fields[iblock];

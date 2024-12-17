@@ -112,7 +112,7 @@ class BlockGeometry3D : public BasicBlock<T, 3> {
   // construct uniform/ refined blockgeometry from GeoHelper
   BlockGeometry3D(BlockGeometryHelper3D<T>& GeoHelper, bool useHelperOlap = true);
   // construct blockgeometry from blockreader
-  BlockGeometry3D(const BlockReader3D<T>& blockreader);
+  BlockGeometry3D(const BlockReader3D<T>& blockreader, bool useReaderOlap = true);
   // construct blockgeometry from stlreader
   BlockGeometry3D(const StlReader<T>& reader, int blocknum);
   ~BlockGeometry3D() = default;

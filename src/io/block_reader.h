@@ -257,12 +257,13 @@ class BlockReader2D {
 template <typename T>
 class BlockReader3D {
 	private:
-	std::vector<BasicBlock<T, 3>> blocks;
 	T VoxelSize;
+	std::uint8_t MaxLevel;
 	// an aabb including all blocks
 	BasicBlock<T, 3> BaseBlock;
 
-	std::uint8_t MaxLevel;
+	std::vector<BasicBlock<T, 3>> blocks;
+	std::vector<int> overlaps;
 
 	void getBaseBlock(){
 		T minx = std::numeric_limits<T>::max();
@@ -360,6 +361,10 @@ class BlockReader3D {
 				continue;
 			} else {
 				// read block info
+				// read overlaps
+				if (line.find("Overlap") != std::string::npos) {
+					overlaps.push_back(StrToTypeInt<int>(line.substr(line.find(":") + 1)));
+				}
 				// read Level
 				if (refine){
 					if (line.find("Level") != std::string::npos) {
@@ -398,6 +403,9 @@ class BlockReader3D {
 
 	const std::vector<BasicBlock<T, 3>>& getBlocks() const {
 		return blocks;
+	}
+	const std::vector<int>& getOverlaps() const {
+		return overlaps;
 	}
 	const BasicBlock<T, 3>& getBaseBlock() const {
 		return BaseBlock;

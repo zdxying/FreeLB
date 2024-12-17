@@ -23,7 +23,6 @@
 #include "lbm/freeSurface.h"
 
 
-
 using T = FLOAT;
 using LatSet = D2Q9<T>;
 
@@ -216,15 +215,17 @@ int main() {
 
   // define task/ dynamics:
   // NS task  PowerLaw_BGKForce
-  // using NSBulkTask = tmp::Key_TypePair<olbfs::FSType::Fluid | olbfs::FSType::Interface,
+  // using NSBulkTask = tmp::Key_TypePair<olbfs::FSType::Fluid | olbfs::FSType::Interface, 
+    // collision::BGK<moment::rhoU<NSCELL, true>, equilibrium::SecondOrder<NSCELL>>>;
   using NSBulkTask = tmp::Key_TypePair<olbfs::FSType::Fluid | olbfs::FSType::Interface,
-    collision::BGK<moment::rhoU<NSCELL, true>, equilibrium::SecondOrder<NSCELL>>>;
+    collision::BGKForce<moment::forcerhoU<NSCELL, force::ScalarConstForce<NSCELL>, true>, 
+                      equilibrium::SecondOrder<NSCELL>, force::ScalarConstForce<NSCELL>>>;
   using NSWallTask = tmp::Key_TypePair<olbfs::FSType::Wall, collision::BounceBack<NSCELL>>;
 
   using NSTaskSelector = TaskSelector<std::uint8_t, NSCELL, NSBulkTask, NSWallTask>;
 
   // inlet u task
-  using InletTask = tmp::Key_TypePair<InletFlag, moment::constU<NSCELL>>;
+  using InletTask = tmp::Key_TypePair<InletFlag, moment::constU<NSCELL, true>>;
   using InletTaskSelector = TaskSelector<std::uint8_t, NSCELL, InletTask>;
 
   // bcs
@@ -245,6 +246,9 @@ int main() {
   vtmo::vtmWriter<T, LatSet::d> Writer("PipeInjection2d", Geo, 1);
   Writer.addWriterSet(MassWriter, VOFWriter, VeloWriter, StateWriter);
 
+  FieldStatistics RhoStat(NSLattice.getField<RHO<T>>());
+  FieldStatistics MassStat(NSLattice.getField<olbfs::MASS<T>>());
+
   // count and timer
   Timer MainLoopTimer;
   Timer OutputTimer;
@@ -256,19 +260,21 @@ int main() {
     ++MainLoopTimer;
     ++OutputTimer;
 
-    NSLattice.ApplyCellDynamics<NSTaskSelector>(MainLoopTimer(),
-                                                NSLattice.getField<olbfs::STATE>());
-    NSLattice.ApplyCellDynamics<InletTaskSelector>(MainLoopTimer(),
-                                                FlagFM);
-    NSLattice.Stream(MainLoopTimer());
-    NS_Inlet.Apply(MainLoopTimer());
-    NSLattice.Communicate(MainLoopTimer());
+    NSLattice.ApplyCellDynamics<NSTaskSelector>(NSLattice.getField<olbfs::STATE>());
+    NSLattice.ApplyCellDynamics<InletTaskSelector>(FlagFM);
+    NSLattice.Stream();
+    NS_Inlet.Apply();
+    NSLattice.NormalAllCommunicate();
 
     olbfs::FreeSurfaceApply<NSBlockLatMan>::Apply(NSLattice, MainLoopTimer());
 
 
     if (MainLoopTimer() % OutputStep == 0) {
       OutputTimer.Print_InnerLoopPerformance(Geo.getTotalCellNum(), OutputStep);
+      Printer::Print("Average Rho", RhoStat.getAverage());
+      Printer::Print("Average Mass", MassStat.getAverage());
+      Printer::Print("Max Mass", MassStat.getMax());
+      Printer::Print("Min Mass", MassStat.getMin());
       Printer::Endl();
       Writer.WriteBinary(MainLoopTimer());
     }

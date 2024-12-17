@@ -219,7 +219,7 @@ int main() {
   vtmo::VectorWriter VeloWriter("Velo", NSLattice.getField<VELOCITY<T, LatSet::d>>());
   vtmo::ScalarWriter VOFWriter("VOF", NSLattice.getField<olbfs::VOLUMEFRAC<T>>());
   vtmo::ScalarWriter StateWriter("State", NSLattice.getField<olbfs::STATE>());
-  vtmo::vtmWriter<T, LatSet::d> Writer("dambreak3d", Geo);
+  vtmo::vtmWriter<T, LatSet::d> Writer("dambreak3d", Geo, 1);
   Writer.addWriterSet(rhovtm, StateWriter, MassWriter, VOFWriter, VeloWriter);
 
   FieldStatistics RhoStat(NSLattice.getField<RHO<T>>());
