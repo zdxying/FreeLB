@@ -34,6 +34,7 @@ template <typename BLOCKLATTICE, typename ArrayType>
 class BBLikeFixedBlockBoundary : public BlockFixedBoundary<BLOCKLATTICE, ArrayType> {
  public:
   using CELL = typename BLOCKLATTICE::CellType;
+  using LatSet = typename CELL::LatticeSet;
 
   BBLikeFixedBlockBoundary(BLOCKLATTICE &lat, const ArrayType &f, std::uint8_t cellflag,
                            std::uint8_t voidflag)
@@ -41,7 +42,7 @@ class BBLikeFixedBlockBoundary : public BlockFixedBoundary<BLOCKLATTICE, ArrayTy
 
   template <typename CELLDYNAMICS>
   void ApplyCellDynamics() {
-    CELL cell(0, this->Lat);
+    CELL cell(std::size_t{}, this->Lat);
 #ifdef SingleBlock_OMP
 #pragma omp parallel for num_threads(Thread_Num) schedule(static) firstprivate(cell)
 #endif
@@ -51,6 +52,23 @@ class BBLikeFixedBlockBoundary : public BlockFixedBoundary<BLOCKLATTICE, ArrayTy
         CELLDYNAMICS::apply(cell, k);
       }
     }
+    // for (auto& pair : this->Cells) {
+    //   for (unsigned int k : pair.first) {
+    //       auto& arr = this->Lat.template getField<POP<T, LatSet::q>>().getField(k);
+    //       const auto& arrk = this->Lat.template getField<POP<T, LatSet::q>>().getField(latset::opp<LatSet>(k));
+    //     for (std::size_t id : pair.second) {
+    //       CELLDYNAMICS::apply(arr, arrk, id);
+    //     }
+    //   }
+    // }
+    // for (auto& pair : this->Cells) {
+    //   for (unsigned int k : pair.first) {
+    //     for (std::size_t id : pair.second) {
+    //       cell.setId(bdcell.Id);
+    //       CELLDYNAMICS::apply(cell, k);
+    //     }
+    //   }
+    // }
   }
 };
 
@@ -96,10 +114,16 @@ class BBLikeFixedBlockBdManager final : public AbstractBlockBoundary {
 #pragma omp parallel for num_threads(Thread_Num)
 #endif
     for (auto &bdBlock : BdBlocks) {
-      if (count %
-            (static_cast<int>(std::pow(2, int(MaxLevel - bdBlock.getLat().getLevel())))) ==
-          0)
+      if (count % (static_cast<int>(std::pow(2, int(MaxLevel - bdBlock.getLat().getLevel())))) == 0)
         bdBlock.template ApplyCellDynamics<CELLDYNAMICS>();
+    }
+  }
+  void Apply() override {
+#ifndef SingleBlock_OMP
+#pragma omp parallel for num_threads(Thread_Num)
+#endif
+    for (auto &bdBlock : BdBlocks) {
+      bdBlock.template ApplyCellDynamics<CELLDYNAMICS>();
     }
   }
 };
@@ -180,10 +204,16 @@ class BBLikeMovingBlockBdManager final : public AbstractBlockBoundary {
 #pragma omp parallel for num_threads(Thread_Num)
 #endif
     for (auto &bdBlock : BdBlocks) {
-      if (count %
-            (static_cast<int>(std::pow(2, int(MaxLevel - bdBlock.getLat().getLevel())))) ==
-          0)
+      if (count % (static_cast<int>(std::pow(2, int(MaxLevel - bdBlock.getLat().getLevel())))) == 0)
         bdBlock.template ApplyCellDynamics<CELLDYNAMICS>();
+    }
+  }
+  void Apply() override {
+#ifndef SingleBlock_OMP
+#pragma omp parallel for num_threads(Thread_Num)
+#endif
+    for (auto &bdBlock : BdBlocks) {
+      bdBlock.template ApplyCellDynamics<CELLDYNAMICS>();
     }
   }
 };

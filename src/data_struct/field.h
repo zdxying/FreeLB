@@ -775,7 +775,7 @@ class CyclicArray {
   }
 
   // get data before the last shift(rotate), used in bcs
-  T& getPrevious(std::size_t i) {
+  T& getPrevious(std::size_t i) const {
     std::ptrdiff_t prevIndex = i + Offset;
     if (prevIndex < 0) {
       prevIndex += count;

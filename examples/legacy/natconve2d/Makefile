@@ -1,6 +1,6 @@
 
 TARGET = natconve2d.exe
-ROOT := ../..
+ROOT := ../../..
 
 FLAGS += -O3 -march=native -fopenmp
 # FLAGS += -march=native

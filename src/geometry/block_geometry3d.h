@@ -56,6 +56,10 @@ class Block3D : public BasicBlock<T, 3> {
 
   int getOverlap() const { return _overlap; }
   
+  // this is a generalized function to iterate over all cells in _BaseBlock
+  // TODO: change similar code to this?
+  template <typename Func>
+  void forEachBaseCell(const Func& func);
   // clean lonely flags
   template <typename FieldType, typename LatSet>
   void CleanLonelyFlags(FieldType& field, std::uint8_t flag, std::uint8_t voidflag, 

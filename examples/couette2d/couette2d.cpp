@@ -213,7 +213,7 @@ int main() {
     NS_Peri.Apply();
     NSLattice.Stream();
     NSLattice.NormalFullCommunicate();
-    BM.Apply(MainLoopTimer());
+    BM.Apply();
 
     ++MainLoopTimer;
     ++OutputTimer;

@@ -246,6 +246,20 @@ void AABB<T, D>::divide(int Nx, int Ny, int Nz, std::vector<AABB<int, 3>>& subAA
   }
 }
 
+template <typename T, unsigned int D>
+void AABB<T, D>::check() {
+  for (unsigned int i = 0; i < D; i++) {
+    if (_min[i] > _max[i]) {
+      MPI_RANK(0)
+      std::cerr << "[ERROR] AABB<T, D>: min > max " << std::endl;
+      exit(1);
+    } 
+    // else if (std::abs(_max[i] - _min[i]) <= std::numeric_limits<T>::epsilon()) {
+    //   MPI_RANK(0)
+    //   std::cout << "[WARNING] AABB<T, D>: min == max " << std::endl;
+    // }
+  }
+}
 // ---------------------basicblock----------------------
 
 template <typename T, unsigned int D>
@@ -323,6 +337,7 @@ template <typename T, unsigned int D>
 void BasicBlock<T, D>::resize(int deltaX, NbrDirection fromDir) {
   const T TdeltaX = deltaX * VoxelSize;
   // 3 face directions will affect Vector<T, D> MinCenter: XN, YN, ZN
+  // 3 face directions will NOT affect Vector<T, D> MinCenter: XP, YP, ZP
   if (util::isFlag(fromDir, NbrDirection::XN)) {
     AABB<T, D>::_min[0] -= TdeltaX;
     MinCenter[0] -= TdeltaX;
@@ -338,9 +353,7 @@ void BasicBlock<T, D>::resize(int deltaX, NbrDirection fromDir) {
     MinCenter[2] -= TdeltaX;
     IndexBlock = AABB<int, D>(IndexBlock.getMin() - Vector<int, D>{0, 0, deltaX}, IndexBlock.getMax());
     Mesh[2] += deltaX;
-  }
-  // 3 face directions will NOT affect Vector<T, D> MinCenter: XP, YP, ZP
-  if (util::isFlag(fromDir, NbrDirection::XP)) {
+  } else if (util::isFlag(fromDir, NbrDirection::XP)) {
     AABB<T, D>::_max[0] += TdeltaX;
     IndexBlock = AABB<int, D>(IndexBlock.getMin(), IndexBlock.getMax() + Vector<int, D>{deltaX, 0, 0});
     Mesh[0] += deltaX;

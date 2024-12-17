@@ -57,7 +57,7 @@ class AABB {
   const Vector<T, D>& getCenter() const { return _center; }
   //
   AABB(const Vector<T, D>& min, const Vector<T, D>& max)
-      : _min(min), _max(max), _extension(max - min), _center((_min + _max) / T(2)) {}
+      : _min(min), _max(max), _extension(max - min), _center((_min + _max) / T(2)) {check();}
   AABB(const Vector<T, D>& centre, T extension0, T extension1, T extension2 = T(0))
       : _center(centre) {
     if constexpr (D == 2) {
@@ -69,6 +69,7 @@ class AABB {
       _min = _center - _extension / T(2);
       _max = _center + _extension / T(2);
     }
+    check();
   }
   AABB(const AABB<T, D>& aabb)
       : _min(aabb.getMin()), _max(aabb.getMax()), _extension(aabb.getExtension()),
@@ -107,6 +108,10 @@ class AABB {
   // called on AABB<int, D>
   void divide(int Nx, int Ny, std::vector<AABB<int, 2>>& subAABBs) const;
   void divide(int Nx, int Ny, int Nz, std::vector<AABB<int, 3>>& subAABBs) const;
+
+ private:
+  // check min and max
+  void check();
 };
 
 // get intersection of 2 AABBs without checking if is intersected

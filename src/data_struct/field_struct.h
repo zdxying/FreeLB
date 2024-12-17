@@ -573,9 +573,10 @@ class BlockFieldManager {
   // lonelyth is the threshold when cell has less than lonelyth neighbors of the same flag
   // each lonely cell will be set to voidflag after all cells have been checked
   // if recursive is true, the process will be repeated until no lonely cell is found
-  void CleanLonelyFlags(std::uint8_t flag = std::uint8_t(1), std::uint8_t voidflag = std::uint8_t(1), 
+  template <typename LatSet>
+  void CleanLonelyFlags(std::uint8_t flag = std::uint8_t(2), std::uint8_t voidflag = std::uint8_t(1), 
     unsigned int lonelyth = 2, bool recursive = true) {
-    static_assert(std::is_same(datatype, std::uint8_t), "CleanLonelyFlags only works for uint8_t");
+    static_assert(std::is_same<datatype, std::uint8_t>::value, "CleanLonelyFlags only works for uint8_t");
     bool cleaned = false;
     // statistic info
     std::size_t total{};
@@ -594,7 +595,7 @@ class BlockFieldManager {
       MPI_RANK(0)
       std::cout << "[BlockFieldManager::CleanLonelyFlags]: " << total << " lonely cells cleaned" << std::endl;
 
-      if (recursive) CleanLonelyFlags(flag, voidflag, lonelyth, recursive);
+      if (recursive) CleanLonelyFlags<LatSet>(flag, voidflag, lonelyth, recursive);
     }
   }
 

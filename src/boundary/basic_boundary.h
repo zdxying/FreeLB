@@ -160,14 +160,18 @@ class MovingBoundary : public AbstractBoundary {
 class AbstractBlockBoundary {
  public:
   virtual void Apply(std::int64_t count) = 0;
-  // virtual void Apply() = 0;
+  virtual void Apply() = 0;
 };
 
 template <typename BLOCKLATTICE, typename ArrayType>
 class BlockFixedBoundary {
  protected:
-  // boundary cell
+  // boundary cell : legacy
   std::vector<FixedBdCell> BdCells;
+  // new scheme
+  // boundary blocks with outflow directions: vector<pair<vec_of_flowdirs, vec_of_cellids>>
+  std::vector<std::pair<std::vector<unsigned int>, std::vector<std::size_t>>> Cells;
+
   // reference to lattice
   BLOCKLATTICE &Lat;
   // geometry flag
@@ -200,45 +204,63 @@ class BlockFixedBoundary {
     for (unsigned int k = 1; k < LatSet::q; ++k) {
       // if (util::isFlag(Field[Lat.getNbrId(id, k)], voidFlag) &&
       //     !util::isFlag(Field[Lat.getNbrId(id, latset::opp<LatSet>(k))], voidFlag)) {
-
       // using util::isFlag requires voidFlag to be non-zero
       if (util::isFlag(Field[Lat.getNbrId(id, k)], voidFlag)) {
         fixedbdcell.outflows.push_back(latset::opp<LatSet>(k));
       }
     }
   }
+  // 
+  void addtoCells(std::size_t id) {
+    // find all outflow directions
+    std::vector<unsigned int> outflows;
+    for (unsigned int k = 1; k < LatSet::q; ++k) {
+      if (util::isFlag(Field[Lat.getNbrId(id, k)], voidFlag)) {
+        outflows.push_back(latset::opp<LatSet>(k));
+      }
+    }
+    // search for existing outflow directions
+    for (auto& pair : Cells) {
+      // using operator== to compare vectors
+      if (pair.first == outflows) {
+        // already exists: add cell index
+        pair.second.push_back(id);
+        return;
+      }
+    }
+    // not found: add new outflow directions
+    Cells.emplace_back(std::make_pair(outflows, std::vector<std::size_t>{id}));
+  }
   // setup boundary cells
   void Setup() {
-    std::size_t reserveSize;
-    if constexpr (LatSet::d == 2) {
-      reserveSize = (Lat.getNx() + Lat.getNy()) * 2;
-    } else if constexpr (LatSet::d == 3) {
-      reserveSize = (Lat.getNx() * Lat.getNy() + Lat.getNx() * Lat.getNz() +
-                     Lat.getNy() * Lat.getNz()) *
-                    2;
-    }
-    BdCells.reserve(reserveSize);
+    // std::size_t reserveSize{};
+    // if constexpr (LatSet::d == 2) {
+    //   reserveSize = (Lat.getNx() + Lat.getNy()) * 2;
+    // } else if constexpr (LatSet::d == 3) {
+    //   reserveSize = (Lat.getNx() * Lat.getNy() + Lat.getNx() * Lat.getNz() +
+    //                  Lat.getNy() * Lat.getNz()) * 2;
+    // }
+    // Cells.reserve(reserveSize);
     // add inner cells
     if constexpr (LatSet::d == 2) {
-      for (int iy = 1; iy < Lat.getNy() - 1; ++iy) {
-        for (int ix = 1; ix < Lat.getNx() - 1; ++ix) {
+      for (int iy = Lat.getOverlap(); iy < Lat.getNy() - Lat.getOverlap(); ++iy) {
+        for (int ix = Lat.getOverlap(); ix < Lat.getNx() - Lat.getOverlap(); ++ix) {
           std::size_t id = ix + iy * Lat.getNx();
           if (util::isFlag(Field[id], BdCellFlag)) addtoBd(id);
         }
       }
     } else if constexpr (LatSet::d == 3) {
-      for (int iz = 1; iz < Lat.getNz() - 1; ++iz) {
-        for (int iy = 1; iy < Lat.getNy() - 1; ++iy) {
-          for (int ix = 1; ix < Lat.getNx() - 1; ++ix) {
-            std::size_t id =
-              ix + iy * Lat.getProjection()[1] + iz * Lat.getProjection()[2];
+      for (int iz = Lat.getOverlap(); iz < Lat.getNz() - Lat.getOverlap(); ++iz) {
+        for (int iy = Lat.getOverlap(); iy < Lat.getNy() - Lat.getOverlap(); ++iy) {
+          for (int ix = Lat.getOverlap(); ix < Lat.getNx() - Lat.getOverlap(); ++ix) {
+            std::size_t id = ix + iy * Lat.getProjection()[1] + iz * Lat.getProjection()[2];
             if (util::isFlag(Field[id], BdCellFlag)) addtoBd(id);
           }
         }
       }
     }
     // shrink capacity to actual size
-    BdCells.shrink_to_fit();
+    // Cells.shrink_to_fit();
   }
 };
 
@@ -319,6 +341,9 @@ class BlockBoundaryManager {
 
   void Apply(std::int64_t count) {
     for (AbstractBlockBoundary *boundary : _Boundaries) boundary->Apply(count);
+  }
+  void Apply() {
+    for (AbstractBlockBoundary *boundary : _Boundaries) boundary->Apply();
   }
 };
 

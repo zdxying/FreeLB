@@ -58,6 +58,10 @@ class Block2D : public BasicBlock<T, 2> {
 
   int getOverlap() const { return _overlap; }
 
+  // this is a generalized function to iterate over all cells in _BaseBlock
+  // TODO: change similar code to this?
+  template <typename Func>
+  void forEachBaseCell(const Func& func);
   // setup boundary
   template <typename FieldType, typename LatSet>
   void SetupBoundary(const AABB<T, 2>& block, FieldType& field,

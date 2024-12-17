@@ -319,7 +319,7 @@ void BlockGeometry3D<T>::SetupNbrs() {
     for (Block3D<T> &blockn : _Blocks) {
       int idn = blockn.getBlockId();
       if (id != idn) {
-        if (isOverlapped(block, blockn.getBaseBlock())) {
+        if (isOverlapped(block.getBaseBlock().getExtBlock(1), blockn.getBaseBlock())) {
           nbrsvec.push_back(&blockn);
         }
       }
