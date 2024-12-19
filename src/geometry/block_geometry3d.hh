@@ -107,7 +107,7 @@ void Block3D<T>::SetupBoundary(FieldType &field, typename FieldType::value_type 
 typename FieldType::value_type voidvalue, typename FieldType::value_type bdvalue) {
   // temp flag field store the transition flag
   GenericArray<bool> TransFlag(BasicBlock<T, 3>::N, false);
-  const int overlap = _overlap;
+  const int overlap = 0;
   for (int z = overlap; z < BasicBlock<T, 3>::Mesh[2] - overlap; ++z) {
     for (int y = overlap; y < BasicBlock<T, 3>::Mesh[1] - overlap; ++y) {
       for (int x = overlap; x < BasicBlock<T, 3>::Mesh[0] - overlap; ++x) {
@@ -1822,6 +1822,7 @@ void BlockGeometryHelper3D<T>::ShrinkBasicBlocks(const StlReader<T>& reader) {
           ++xnlayer;
         }
       }
+      xnlayer -= _Ext;
       if (xnlayer > 0) {
         totalremoved += xnlayer * block.getNy() * block.getNz();
         block.resize(-xnlayer, NbrDirection::XN);
@@ -1852,6 +1853,7 @@ void BlockGeometryHelper3D<T>::ShrinkBasicBlocks(const StlReader<T>& reader) {
           ++xplayer;
         }
       }
+      xplayer -= _Ext;
       if (xplayer > 0) {
         totalremoved += xplayer * block.getNy() * block.getNz();
         block.resize(-xplayer, NbrDirection::XP);
@@ -1882,6 +1884,7 @@ void BlockGeometryHelper3D<T>::ShrinkBasicBlocks(const StlReader<T>& reader) {
           ++ynlayer;
         }
       }
+      ynlayer -= _Ext;
       if (ynlayer > 0) {
         totalremoved += ynlayer * block.getNx() * block.getNz();
         block.resize(-ynlayer, NbrDirection::YN);
@@ -1912,6 +1915,7 @@ void BlockGeometryHelper3D<T>::ShrinkBasicBlocks(const StlReader<T>& reader) {
           ++yplayer;
         }
       }
+      yplayer -= _Ext;
       if (yplayer > 0) {
         totalremoved += yplayer * block.getNx() * block.getNz();
         block.resize(-yplayer, NbrDirection::YP);
@@ -1942,6 +1946,7 @@ void BlockGeometryHelper3D<T>::ShrinkBasicBlocks(const StlReader<T>& reader) {
           ++znlayer;
         }
       }
+      znlayer -= _Ext;
       if (znlayer > 0) {
         totalremoved += znlayer * block.getNx() * block.getNy();
         block.resize(-znlayer, NbrDirection::ZN);
@@ -1972,6 +1977,7 @@ void BlockGeometryHelper3D<T>::ShrinkBasicBlocks(const StlReader<T>& reader) {
           ++zplayer;
         }
       }
+      zplayer -= _Ext;
       if (zplayer > 0) {
         totalremoved += zplayer * block.getNx() * block.getNy();
         block.resize(-zplayer, NbrDirection::ZP);
