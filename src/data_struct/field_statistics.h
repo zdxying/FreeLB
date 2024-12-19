@@ -562,7 +562,98 @@ public:
 			if (printpercentage) std::cout << std::setw(11) << std::left << static_cast<FloatType>(p.second) / TotalCount * 100;
 			std::cout << p.second << std::endl;
 		}
-		std::cout << std::endl;
+	}
+
+
+	// print statistics of a field
+	void printValueStatistics(std::size_t fieldidx = 0, bool printpercentage = true, bool useolap = true) const {
+		std::size_t TotalCount{};
+		// get the number of different flags
+		std::vector<std::pair<FieldDataType, std::size_t>> valuecount;
+
+		if (useolap) {
+			for (const auto& blockfield : BFM.getBlockFields()) {
+				const auto& field = blockfield.getFieldType().getField(fieldidx);
+				const auto& blockxd = blockfield.getBlock();
+				const int overlap = blockxd.getOverlap();
+				const int Nx = blockxd.getNx();
+				const int Ny = blockxd.getNy();
+				const int Nz = blockxd.getNz();
+
+				std::size_t id{};
+				if constexpr (BLOCKFIELDMANAGER::dim == 2) {
+					for (int j = overlap; j < Ny - overlap; ++j) {
+						id = j * Nx + overlap;
+						for (int i = overlap; i < Nx - overlap; ++i) {
+							// find if the flag is in the vector
+							const auto var = field[id];
+							auto it = std::find_if(valuecount.begin(), valuecount.end(), [var](const auto& p) {
+								return var == p.first;
+							});
+							if (it != valuecount.end()) {
+								++it->second;
+							} else {
+								valuecount.push_back({var, std::size_t{1}});
+							}
+							++id;
+						}
+					}
+					TotalCount += (Nx - 2 * overlap) * (Ny - 2 * overlap);
+				} else if constexpr (BLOCKFIELDMANAGER::dim == 3) {
+					std::size_t NxNy = Nx * Ny;
+					for (int k = overlap; k < Nz - overlap; ++k) {
+						for (int j = overlap; j < Ny - overlap; ++j) {
+							id = k * NxNy + j * Nx + overlap;
+							for (int i = overlap; i < Nx - overlap; ++i) {
+								// find if the flag is in the vector
+								const auto var = field[id];
+								auto it = std::find_if(valuecount.begin(), valuecount.end(), [var](const auto& p) {
+									return var == p.first;
+								});
+								if (it != valuecount.end()) {
+									++it->second;
+								} else {
+									valuecount.push_back({var, std::size_t{1}});
+								}
+								++id;
+							}
+						}
+					}
+					TotalCount += (Nx - 2 * overlap) * (Ny - 2 * overlap) * (Nz - 2 * overlap);
+				}
+			}
+		} else {
+			for (const auto& blockfield : BFM.getBlockFields()) {
+				const auto& field = blockfield.getFieldType().getField(fieldidx);
+				const std::size_t size = field.size();
+				for (std::size_t i = 0; i < size; ++i) {
+					// find if the flag is in the vector
+					const auto& var = field[i];
+					auto it = std::find_if(valuecount.begin(), valuecount.end(), [var](const auto& p) {
+						return var == p.first;
+					});
+					if (it != valuecount.end()) {
+						++it->second;
+					} else {
+						valuecount.push_back({var, std::size_t{1}});
+					}
+				}
+				TotalCount += size;
+			}
+		}
+		// sort the vector
+		std::sort(valuecount.begin(), valuecount.end(), [](const auto& a, const auto& b) { return a.first < b.first; });
+		// print info
+		MPI_RANK(0);
+		std::cout << "[Value statistics]:" << std::endl;
+		std::cout << "Value | ";
+		if (printpercentage) std::cout << "Percent% | ";
+		std::cout << "Count" << std::endl;
+		for (const auto& p : valuecount) {
+			std::cout << std::setw(8) << std::left << p.first;
+			if (printpercentage) std::cout << std::setw(11) << std::left << static_cast<FloatType>(p.second) / TotalCount * 100;
+			std::cout << p.second << std::endl;
+		}
 	}
 
 

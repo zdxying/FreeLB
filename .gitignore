@@ -46,6 +46,7 @@ temp/
 *.vtm
 *.pvd
 *.vtk
+*.vtu
 
 # dat
 *.dat

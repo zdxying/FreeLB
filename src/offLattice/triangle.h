@@ -31,6 +31,31 @@ template <typename T>
 using Triangle = Vector<Vector<T, 3>, 3>;
 
 template <typename T>
+struct LinearInterp {
+  // the first of 2 indices of the edge where one vertex is on
+  std::size_t id1;
+  // the second of 2 indices of the edge where one vertex is on
+  std::size_t id2;
+  // T mu = (isoValue - val1) / (val2 - val1);
+  // intp = p1 + mu * (p2 - p1)
+  T mu;
+
+  LinearInterp() = default;
+  LinearInterp(std::size_t id1, std::size_t id2, T mu) : id1(id1), id2(id2), mu(mu) {}
+  
+  inline T getIntp(const T val1, const T val2) const { return val1 + mu * (val2 - val1); }
+  template <unsigned int D>
+  inline Vector<T, D> getIntp(const Vector<T, D>& val1, const Vector<T, D>& val2) const {
+    return val1 + mu * (val2 - val1);
+  }
+};
+
+// TriangleIdx contains 6 points' indices of the 3 edges where the triangle's vertices are on
+// and 3 values for linear interpolation
+template <typename T>
+using TriangleIdx = Vector<LinearInterp<T>, 3>;
+
+template <typename T>
 void TriangleNormal(Vector<T, 3>& normal, const Triangle<T>& triangle) {
   Vector<T, 3> e0 = triangle[1] - triangle[0];
   Vector<T, 3> e1 = triangle[2] - triangle[0];

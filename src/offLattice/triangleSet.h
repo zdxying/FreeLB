@@ -33,7 +33,10 @@ namespace offlat {
 template <typename T>
 class TriangleSet {
  private:
+  // triangles of the whole domain
   std::vector<Triangle<T>> _triangles;
+  // triangle-related index stored like "block strcture"
+  std::vector<std::vector<TriangleIdx<T>>> _triIdxs;
 
  public:
   // UINT8[80] – Header
@@ -46,9 +49,13 @@ class TriangleSet {
   // UINT16 – Attribute byte count
   // end
 	TriangleSet() = default;
-	TriangleSet(std::size_t size) : _triangles(size) {}
+	TriangleSet(std::size_t size) : _triangles(size), _triIdxs(size) {}
 	
   std::vector<Triangle<T>> &getTriangles() { return _triangles; }
+  const std::vector<Triangle<T>> &getTriangles() const { return _triangles; }
+
+  std::vector<std::vector<TriangleIdx<T>>> &getTriangleIdxs() { return _triIdxs; }
+  const std::vector<std::vector<TriangleIdx<T>>> &getTriangleIdxs() const { return _triIdxs; }
 
   void writeBinarySTL(std::string fName, T scale = T{1},
                       Vector<T, 3> offset = Vector<T, 3>{}) const {

@@ -269,7 +269,7 @@ int main() {
   // mc algorithm
   offlat::MarchingCubeSurface<T, olbfs::VOLUMEFRAC<T>> mc(NSLattice.getField<olbfs::VOLUMEFRAC<T>>(), T{0.5});
   offlat::TriangleSet<T> triangles;
-  mc.generateIsoSurface(triangles.getTriangles());
+  mc.generateIsoSurface(triangles);
   triangles.writeBinarySTL("SurfacemarchingCube" + std::to_string(MainLoopTimer()));
   // set wall vof back to 1
   NSLattice.getField<olbfs::VOLUMEFRAC<T>>().forEach(
@@ -307,7 +307,7 @@ int main() {
       // mc algorithm
       offlat::MarchingCubeSurface<T, olbfs::VOLUMEFRAC<T>> mc(NSLattice.getField<olbfs::VOLUMEFRAC<T>>(), T{0.5});
       offlat::TriangleSet<T> triangles;
-      mc.generateIsoSurface(triangles.getTriangles());
+      mc.generateIsoSurface(triangles);
       triangles.writeBinarySTL("SurfacemarchingCube" + std::to_string(MainLoopTimer()));
       // set wall vof back to 1
       NSLattice.getField<olbfs::VOLUMEFRAC<T>>().forEach(

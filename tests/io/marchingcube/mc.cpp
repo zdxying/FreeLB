@@ -21,6 +21,7 @@
 #include "freelb.h"
 #include "freelb.hh"
 #include "offLattice/marchingCube.hh"
+#include "io/vtu_writer.h"
 
 using T = FLOAT;
 using LatSet = D3Q19<T>;
@@ -95,6 +96,12 @@ int main() {
   scalar.template SetupBoundary<LatSet>(cavity, T{});
   setField(scalar, flag);
 
+  FieldStatistics stat(scalar);
+  stat.printValueStatistics();
+
+  // vector field
+  BlockFieldManager<VELOCITY<T, 3>, T, 3> velo(Geo, Vector<T, 3>{T{1}, T{2}, T{3}});
+
   vtmwriter::ScalarWriter FlagWriter("flag", flag);
   vtmwriter::ScalarWriter ScalarWriter("scalar", scalar);
   vtmwriter::vtmWriter<T, 3> Writer("mc", Geo);
@@ -104,9 +111,15 @@ int main() {
 	// ISO surface stl
   offlat::MarchingCubeSurface<T, RHO<T>> mc(scalar, T{0.5});
   offlat::TriangleSet<T> triangles;
-  mc.generateIsoSurface(triangles.getTriangles());
+  mc.generateIsoSurface(triangles);
 
   triangles.writeBinarySTL("marchingCube");
+
+  vtuwriter::ScalarWriter vtuScalarWriter("scalar", scalar, triangles);
+  vtuwriter::VectorWriter vtuVectorWriter("velocity", velo, triangles);
+  vtuwriter::vtuManager<T> vtuManager("vtu", triangles);
+  vtuManager.addWriter(vtuScalarWriter, vtuVectorWriter);
+  vtuManager.Write();
 
   return 0;
 }
