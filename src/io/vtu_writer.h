@@ -64,8 +64,6 @@ class vtuManager {
   std::string _filename;
 
   const offlat::TriangleSet<T>& _triangleSet;
-  std::size_t _numPoints;
-  std::size_t _numCells;
 
 #ifdef MPI_ENABLED
   int _rank;
@@ -94,6 +92,7 @@ class vtuManager {
   }
 
   void vtuPointsBinary(const std::string &fName) {
+    const std::size_t _numPoints = _triangleSet.getTriangles().size() * 3;
     std::ofstream f(fName, std::ios::out | std::ios::app);
     std::string type;
     getVTKTypeString<T>(type);
@@ -124,6 +123,7 @@ class vtuManager {
   }
 
   void vtuCellsBinary(const std::string &fName) {
+    const std::size_t _numCells = _triangleSet.getTriangles().size();
     std::ofstream f(fName, std::ios::out | std::ios::app);
     f << "<Cells>\n";
 
@@ -231,6 +231,7 @@ class vtuManager {
   }
 
   void vtuCells(const std::string &fName) {
+    const std::size_t _numCells = _triangleSet.getTriangles().size();
     std::ofstream f(fName, std::ios::out | std::ios::app);
     f << "<Cells>\n";
 
@@ -265,6 +266,8 @@ class vtuManager {
   }
 
   void vtuHeader(const std::string &fName) {
+    const std::size_t _numCells = _triangleSet.getTriangles().size();
+    const std::size_t _numPoints = _triangleSet.getTriangles().size() * 3;
     std::ofstream f(fName);
     f << "<?xml version=\"1.0\"?>\n";
     f << "<VTKFile type=\"UnstructuredGrid\" version=\"0.1\" "
@@ -284,9 +287,7 @@ class vtuManager {
 
  public:
   vtuManager(std::string filename, const offlat::TriangleSet<T>& triangleSet)
-      : _filename(filename), _triangleSet(triangleSet), 
-        _numPoints(triangleSet.getTriangles().size() * 3),
-        _numCells(triangleSet.getTriangles().size()) {
+      : _filename(filename), _triangleSet(triangleSet) {
     DirCreator::Create_Dir(_dirname);
   }
 
@@ -324,7 +325,7 @@ void getFieldData(const BlockFieldManager<FieldType, FloatType, 3>& fieldManager
   typename FieldType::value_type* data) {
   
   std::size_t id{};
-  for (int iblock = 0; iblock < fieldManager.size(); ++iblock) {
+  for (std::size_t iblock = 0; iblock < fieldManager.size(); ++iblock) {
     const auto& field = fieldManager.getBlockField(iblock).getField(0);
     const std::vector<offlat::TriangleIdx<FloatType>>& triIdxs = triIdxvecs[iblock];
 
@@ -348,7 +349,7 @@ void getFieldData(const BlockFieldManager<FieldType, FloatType, 3>& fieldManager
   std::function<typename FieldType::value_type(typename FieldType::value_type)> f) {
   
   std::size_t id{};
-  for (int iblock = 0; iblock < fieldManager.size(); ++iblock) {
+  for (std::size_t iblock = 0; iblock < fieldManager.size(); ++iblock) {
     const auto& field = fieldManager.getBlockField(iblock).getField(0);
     const std::vector<offlat::TriangleIdx<FloatType>>& triIdxs = triIdxvecs[iblock];
 
@@ -371,9 +372,11 @@ class ScalarWriter : public AbstractWriter {
 
   ScalarWriter(const std::string& name, const BlockFieldManager<FieldType, FloatType, 3> &fieldManager, 
     const offlat::TriangleSet<FloatType>& triSet)
-      : varname(name), _fieldManager(fieldManager), _triSet(triSet), _pointNum(triSet.getTriangles().size()*3) {}
+      : varname(name), _fieldManager(fieldManager), _triSet(triSet) {}
 
   void writeBinary(const std::string &fName) const override {
+    // number of point data
+    std::size_t _pointNum = _triSet.getTriangles().size()*3;
     std::ofstream f(fName, std::ios::out | std::ios::app);
     std::string type;
     getVTKTypeString<datatype>(type);
@@ -402,6 +405,8 @@ class ScalarWriter : public AbstractWriter {
   }
 
   void write(const std::string &fName) const override {
+    // number of point data
+    std::size_t _pointNum = _triSet.getTriangles().size()*3;
     std::ofstream f(fName, std::ios::out | std::ios::app);
     std::string type;
     getVTKTypeString<datatype>(type);
@@ -426,8 +431,6 @@ class ScalarWriter : public AbstractWriter {
   const BlockFieldManager<FieldType, FloatType, 3>& _fieldManager;
   // triangle info
   const offlat::TriangleSet<FloatType>& _triSet;
-  // number of point data
-  std::size_t _pointNum;
 };
 
 template <typename FieldType, typename FloatType>
@@ -439,10 +442,11 @@ class physScalarWriter : public AbstractWriter {
   // [&unitConv](T x) { return unitConv.func(x); };
   physScalarWriter(const std::string& name, const BlockFieldManager<FieldType, FloatType, 3> &fieldManager, 
     const offlat::TriangleSet<FloatType>& triSet, std::function<datatype(datatype)> func)
-      : varname(name), _fieldManager(fieldManager), _triSet(triSet), 
-        _pointNum(triSet.getTriangles().size()*3), unitConvert(func) {}
+      : varname(name), _fieldManager(fieldManager), _triSet(triSet), unitConvert(func) {}
 
   void writeBinary(const std::string &fName) const override {
+    // number of point data
+    std::size_t _pointNum = _triSet.getTriangles().size()*3;    
     std::ofstream f(fName, std::ios::out | std::ios::app);
     std::string type;
     getVTKTypeString<datatype>(type);
@@ -471,6 +475,8 @@ class physScalarWriter : public AbstractWriter {
   }
 
   void write(const std::string &fName) const override {
+    // number of point data
+    std::size_t _pointNum = _triSet.getTriangles().size()*3;    
     std::ofstream f(fName, std::ios::out | std::ios::app);
     std::string type;
     getVTKTypeString<datatype>(type);
@@ -495,8 +501,6 @@ class physScalarWriter : public AbstractWriter {
   const BlockFieldManager<FieldType, FloatType, 3>& _fieldManager;
   // triangle info
   const offlat::TriangleSet<FloatType>& _triSet;
-  // number of point data
-  std::size_t _pointNum;
   // unit convert function pointer
   std::function<datatype(datatype)> unitConvert;
 };
@@ -511,9 +515,11 @@ class VectorWriter : public AbstractWriter {
 
   VectorWriter(const std::string& name, const BlockFieldManager<FieldType, FloatType, 3> &fieldManager, 
     const offlat::TriangleSet<FloatType>& triSet)
-      : varname(name), _fieldManager(fieldManager), _triSet(triSet), _pointNum(triSet.getTriangles().size()*3) {}
+      : varname(name), _fieldManager(fieldManager), _triSet(triSet) {}
 
   void writeBinary(const std::string &fName) const override {
+    // number of point data
+    std::size_t _pointNum = _triSet.getTriangles().size()*3;
     std::ofstream f(fName, std::ios::out | std::ios::app);
     std::string type;
     getVTKTypeString<datatype>(type);
@@ -542,6 +548,8 @@ class VectorWriter : public AbstractWriter {
   }
 
   void write(const std::string &fName) const override {
+    // number of point data
+    std::size_t _pointNum = _triSet.getTriangles().size()*3;
     std::ofstream f(fName, std::ios::out | std::ios::app);
     std::string type;
     getVTKTypeString<datatype>(type);
@@ -568,8 +576,6 @@ class VectorWriter : public AbstractWriter {
   const BlockFieldManager<FieldType, FloatType, 3>& _fieldManager;
   // triangle info
   const offlat::TriangleSet<FloatType>& _triSet;
-  // number of point data
-  std::size_t _pointNum;
 };
 
 template <typename FieldType, typename FloatType>
@@ -583,10 +589,11 @@ class physVectorWriter : public AbstractWriter {
   // [&unitConv](T x) { return unitConv.func(x); };
   physVectorWriter(const std::string& name, const BlockFieldManager<FieldType, FloatType, 3> &fieldManager, 
     const offlat::TriangleSet<FloatType>& triSet, std::function<vectortype(vectortype)> func)
-      : varname(name), _fieldManager(fieldManager), _triSet(triSet), 
-        _pointNum(triSet.getTriangles().size()*3), unitConvert(func) {}
+      : varname(name), _fieldManager(fieldManager), _triSet(triSet), unitConvert(func) {}
 
   void writeBinary(const std::string &fName) const override {
+    // number of point data
+    std::size_t _pointNum = _triSet.getTriangles().size()*3;    
     std::ofstream f(fName, std::ios::out | std::ios::app);
     std::string type;
     getVTKTypeString<datatype>(type);
@@ -615,6 +622,8 @@ class physVectorWriter : public AbstractWriter {
   }
 
   void write(const std::string &fName) const override {
+    // number of point data
+    std::size_t _pointNum = _triSet.getTriangles().size()*3;    
     std::ofstream f(fName, std::ios::out | std::ios::app);
     std::string type;
     getVTKTypeString<datatype>(type);
@@ -641,8 +650,6 @@ class physVectorWriter : public AbstractWriter {
   const BlockFieldManager<FieldType, FloatType, 3>& _fieldManager;
   // triangle info
   const offlat::TriangleSet<FloatType>& _triSet;
-  // number of point data
-  std::size_t _pointNum;
   // unit convert function pointer
   std::function<datatype(datatype)> unitConvert;
 };

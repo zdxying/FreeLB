@@ -32,6 +32,7 @@
 #include "io/vtkWriter.h"
 #include "io/vtm_writer.h"
 #include "io/ini_reader.h"
+#include "io/vtu_writer.h"
 
 #include "lbm/lattice_set.h"
 // lbm dynamics

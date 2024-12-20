@@ -21,7 +21,6 @@
 #include "freelb.h"
 #include "freelb.hh"
 #include "offLattice/marchingCube.hh"
-#include "io/vtu_writer.h"
 
 using T = FLOAT;
 using LatSet = D3Q19<T>;

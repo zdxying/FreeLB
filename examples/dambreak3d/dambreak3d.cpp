@@ -225,11 +225,36 @@ int main() {
   FieldStatistics RhoStat(NSLattice.getField<RHO<T>>());
   FieldStatistics MassStat(NSLattice.getField<olbfs::MASS<T>>());
 
+  // write freeSurface stl
+  // set wall vof to 0
+  NSLattice.getField<olbfs::VOLUMEFRAC<T>>().forEach(
+  NSLattice.getField<olbfs::STATE>(), olbfs::FSType::Wall,
+  [&](auto& field, std::size_t id) { field.SetField(id, T{}); });
+  // marching cube surface
+  offlat::MarchingCubeSurface<T, olbfs::VOLUMEFRAC<T>> mc(NSLattice.getField<olbfs::VOLUMEFRAC<T>>(), T{0.5});
+  offlat::TriangleSet<T> triangles;
+  mc.generateIsoSurface(triangles);
+  // triangles.writeBinarySTL("Surface" + std::to_string(0));
+  // set wall vof back to 1
+  NSLattice.getField<olbfs::VOLUMEFRAC<T>>().forEach(
+  NSLattice.getField<olbfs::STATE>(), olbfs::FSType::Wall,
+  [&](auto& field, std::size_t id) { field.SetField(id, T{1}); });
+
+  // write vtu
+  vtuwriter::VectorWriter vtuVectorWriter("velocity", NSLattice.getField<VELOCITY<T, LatSet::d>>(), triangles);
+  vtuwriter::vtuManager<T> vtuWriter("dambreak3dvtu", triangles);
+  vtuWriter.addWriter(vtuVectorWriter);
+
+  vtuwriter::vtuManager<T> vtuWriterBinary("dambreak3dvtuBinary", triangles);
+  vtuWriterBinary.addWriter(vtuVectorWriter);
+
   // count and timer
   Timer MainLoopTimer;
   Timer OutputTimer;
 
-  Writer.WriteBinary(MainLoopTimer());
+  // Writer.WriteBinary(MainLoopTimer());
+  vtuWriter.Write(MainLoopTimer());
+  // vtuWriterBinary.WriteBinary(MainLoopTimer());
 
   Printer::Print_BigBanner(std::string("Start Calculation..."));
 
@@ -258,21 +283,22 @@ int main() {
       Printer::Print("Max Mass", MassStat.getMax());
       Printer::Print("Min Mass", MassStat.getMin());
       Printer::Endl();
-      Writer.WriteBinary(MainLoopTimer());
+      // Writer.WriteBinary(MainLoopTimer());
       // write freeSurface stl
       // set wall vof to 0
       NSLattice.getField<olbfs::VOLUMEFRAC<T>>().forEach(
       NSLattice.getField<olbfs::STATE>(), olbfs::FSType::Wall,
       [&](auto& field, std::size_t id) { field.SetField(id, T{}); });
-      // mc algorithm
-      offlat::MarchingCubeSurface<T, olbfs::VOLUMEFRAC<T>> mc(NSLattice.getField<olbfs::VOLUMEFRAC<T>>(), T{0.5});
-      offlat::TriangleSet<T> triangles;
+      // re-generate iso surface
       mc.generateIsoSurface(triangles);
-      triangles.writeBinarySTL("SurfacemarchingCube" + std::to_string(MainLoopTimer()));
+      // triangles.writeBinarySTL("Surface" + std::to_string(MainLoopTimer()));
       // set wall vof back to 1
       NSLattice.getField<olbfs::VOLUMEFRAC<T>>().forEach(
       NSLattice.getField<olbfs::STATE>(), olbfs::FSType::Wall,
       [&](auto& field, std::size_t id) { field.SetField(id, T{1}); });
+
+      vtuWriter.Write(MainLoopTimer());
+      // vtuWriterBinary.WriteBinary(MainLoopTimer());
 
     }
   }
