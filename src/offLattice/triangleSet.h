@@ -48,73 +48,107 @@ class TriangleSet {
   // REAL32[3] – Vertex 3
   // UINT16 – Attribute byte count
   // end
-	TriangleSet() = default;
-	TriangleSet(std::size_t size) : _triangles(size), _triIdxs(size) {}
-	
+  TriangleSet() = default;
+  TriangleSet(std::size_t size) : _triangles(size), _triIdxs(size) {}
+
   std::vector<Triangle<T>> &getTriangles() { return _triangles; }
   const std::vector<Triangle<T>> &getTriangles() const { return _triangles; }
 
   std::vector<std::vector<TriangleIdx<T>>> &getTriangleIdxs() { return _triIdxs; }
-  const std::vector<std::vector<TriangleIdx<T>>> &getTriangleIdxs() const { return _triIdxs; }
-
-  void writeBinarySTL(std::string fName, T scale = T{1},
-                      Vector<T, 3> offset = Vector<T, 3>{}) const {
-    writeBinarySTL(fName, _triangles, scale, offset);
+  const std::vector<std::vector<TriangleIdx<T>>> &getTriangleIdxs() const {
+    return _triIdxs;
   }
 
-  void writeBinarySTL(std::string fName, const std::vector<Triangle<T>> &triangles,
-                      T scale = T{1}, Vector<T, 3> offset = Vector<T, 3>{}) const {
-    DirCreator::Create_Dir("./STLoutput");
+  void writeBinarySTL(const std::string &fName, T scale = T{1},
+    Vector<T, 3> offset = Vector<T, 3>{}) const {
+    mpi().barrier();
+    std::size_t TotalTriNum{};
+    std::size_t TriNum = _triangles.size();
+#ifdef MPI_ENABLED
+    mpi().reduce(TriNum, TotalTriNum, MPI_SUM);
+#else
+    TotalTriNum = TriNum;
+#endif
+
     std::string fullName = "./STLoutput/" + fName + ".stl";
-    std::ofstream f(fullName, std::ios::binary);
-
-    const std::int32_t num = triangles.size();
-    const std::uint16_t abc = 0;
-    char buf[80] = {'\0'};
-
     // trim fullName to less than 80 characters
     if (fullName.size() > 79) {
       fullName = fullName.substr(0, 79);
       // set the last character to '\0'
       fullName[79] = '\0';
     }
+    BinarySTLHeader(fullName, static_cast<std::uint32_t>(TotalTriNum));
+#ifdef MPI_ENABLED
+    // serialize the output, each time only one rank writes to the file
+    for (int iRank = 0; iRank < mpi().getSize(); ++iRank) {
+      mpi().barrier();
+      BinarySTLContent(fullName, scale, offset, iRank);
+    }
+#else
+    BinarySTLContent(fullName, scale, offset, 0);
+#endif
+    
+    // output info
+    MPI_RANK(0)
+    std::cout << "[TriangleSet]: Write " << TotalTriNum << " triangles" << std::endl;
+  }
+
+ private:
+  void BinarySTLHeader(const std::string &fullName, std::uint32_t TotalTriNum) const {
+    MPI_RANK(0)
+    DirCreator::Create_Dir("./STLoutput");
+    // UINT8[80] – Header
+    char buf[80] = {'\0'};
     // copy the string to buf
     std::copy(fullName.begin(), fullName.end(), buf);
-
     // write header
+    std::ofstream f(fullName, std::ios::out | std::ios::binary);
     f.write(buf, 80);
     // write number of triangles
-    f.write(reinterpret_cast<const char *>(&num), sizeof(std::int32_t));
-    for (std::int32_t i = 0; i < num; ++i) {
-      Vector<T, 3> v0 = scale * triangles[i][0] + offset;
-      Vector<T, 3> v1 = scale * triangles[i][1] + offset;
-      Vector<T, 3> v2 = scale * triangles[i][2] + offset;
+    f.write(reinterpret_cast<const char *>(&TotalTriNum), sizeof(std::uint32_t));
+
+    f.close();
+  }
+
+  void BinarySTLContent(
+    const std::string &fullName, T scale, Vector<T, 3> offset, int rank = 0) const {
+    MPI_RANK(rank)
+
+    const std::uint32_t num = _triangles.size();
+    const std::uint16_t abc{};
+
+    std::ofstream f(fullName, std::ios::out | std::ios::app | std::ios::binary);
+
+    for (std::uint32_t i = 0; i < num; ++i) {
+      Vector<T, 3> v0 = scale * _triangles[i][0] + offset;
+      Vector<T, 3> v1 = scale * _triangles[i][1] + offset;
+      Vector<T, 3> v2 = scale * _triangles[i][2] + offset;
       Vector<T, 3> normal = getTriangleNormal(v0, v1, v2);
 
       float n[3];
-      n[0] = normal[0];
-      n[1] = normal[1];
-      n[2] = normal[2];
+      n[0] = static_cast<float>(normal[0]);
+      n[1] = static_cast<float>(normal[1]);
+      n[2] = static_cast<float>(normal[2]);
       f.write(reinterpret_cast<const char *>(n), sizeof(float) * 3);
       float v[3];
-      v[0] = v0[0];
-      v[1] = v0[1];
-      v[2] = v0[2];
+      v[0] = static_cast<float>(v0[0]);
+      v[1] = static_cast<float>(v0[1]);
+      v[2] = static_cast<float>(v0[2]);
       f.write(reinterpret_cast<const char *>(v), sizeof(float) * 3);
-      v[0] = v1[0];
-      v[1] = v1[1];
-      v[2] = v1[2];
+      v[0] = static_cast<float>(v1[0]);
+      v[1] = static_cast<float>(v1[1]);
+      v[2] = static_cast<float>(v1[2]);
       f.write(reinterpret_cast<const char *>(v), sizeof(float) * 3);
-      v[0] = v2[0];
-      v[1] = v2[1];
-      v[2] = v2[2];
+      v[0] = static_cast<float>(v2[0]);
+      v[1] = static_cast<float>(v2[1]);
+      v[2] = static_cast<float>(v2[2]);
       f.write(reinterpret_cast<const char *>(v), sizeof(float) * 3);
       f.write(reinterpret_cast<const char *>(&abc), sizeof(std::uint16_t));
     }
-		f.close();
-		// out put info
-		std::cout << "[TriangleSet]: Write " << num << " triangles" << std::endl;
+
+    f.close();
   }
+
 };
 
 

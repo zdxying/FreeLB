@@ -11,6 +11,6 @@ FLAGS += -Wall -Wdisabled-optimization -Wno-unknown-pragmas -Wno-unused-local-ty
 FLAGS += -DFLOAT_TYPE=double
 FLAGS += -D_UNROLLFOR
 
-OUTPUT += vtkoutput
+OUTPUT += vtkoutput  STLoutput
 
 include $(ROOT)/make.mk

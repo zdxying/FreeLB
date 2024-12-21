@@ -272,8 +272,8 @@ int main() {
     [&](auto& field, std::size_t id) { field.SetField(id, T{1}); });
   
   // write vtu
-  vtuwriter::VectorWriter vtuVectorWriter("velocity", NSLattice.getField<VELOCITY<T, LatSet::d>>(), triangles);
-  vtuwriter::vtuManager<T> vtuWriter("pipe3dvtu", triangles);
+  vtuSurface::VectorWriter vtuVectorWriter("velocity", NSLattice.getField<VELOCITY<T, LatSet::d>>(), triangles);
+  vtuSurface::vtuManager<T> vtuWriter("pipe3dvtu", triangles);
   vtuWriter.addWriter(vtuVectorWriter);
 
   // count and timer

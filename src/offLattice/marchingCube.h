@@ -105,6 +105,7 @@ class MarchingCubeSurface {
   using mcc = MarchingCubeConstants;
 
   void generateIsoSurface(TriangleSet<T>& triSet) {
+    mpi().barrier();
     std::vector<Triangle<T>>& tvecs = triSet.getTriangles();
     std::vector<std::vector<TriangleIdx<T>>>& tIdxvecs = triSet.getTriangleIdxs();
     tvecs.clear();

@@ -50,6 +50,8 @@ class Vector;
 #include <string>
 // usleep
 #include <unistd.h>
+// type check
+#include <type_traits>
 
 #ifdef MPI_ENABLED
 
@@ -186,9 +188,15 @@ class MpiManager {
                 MPI_Comm comm = MPI_COMM_WORLD);
 
   /// Sends data at *buf, non blocking
+  // default implementation sends data as MPI_BYTE
   template <typename T>
   void iSend(T* buf, int count, int dest, MPI_Request* request, int tag = 0,
-             MPI_Comm comm = MPI_COMM_WORLD);
+             MPI_Comm comm = MPI_COMM_WORLD) {
+    // check if type T's underlying type is of type std::uint8_t
+    static_assert(std::is_same<std::underlying_type_t<T>, std::uint8_t>::value,
+                  "unsupported type for iSend");
+    if (ok) MPI_Isend(static_cast<void*>(buf), count, MPI_BYTE, dest, tag, comm, request);
+  }
 
   template <typename T, unsigned int D>
   void iSend(Vector<T, D>* buf, int arrsize, int dest, MPI_Request* request, int tag = 0,
@@ -230,9 +238,15 @@ class MpiManager {
                 MPI_Comm comm = MPI_COMM_WORLD);
 
   /// Receives data at *buf, non blocking
+  // default implementation receives data as MPI_BYTE
   template <typename T>
   void iRecv(T* buf, int count, int source, MPI_Request* request, int tag = 0,
-             MPI_Comm comm = MPI_COMM_WORLD);
+             MPI_Comm comm = MPI_COMM_WORLD){
+    // check if type T's underlying type is of type std::uint8_t
+    static_assert(std::is_same<std::underlying_type_t<T>, std::uint8_t>::value,
+                  "unsupported type for iRecv");
+    if (ok) MPI_Irecv(static_cast<void*>(buf), count, MPI_BYTE, source, tag, comm, request);
+  }
   
   template <typename T, unsigned int D>
   void iRecv(Vector<T, D>* buf, int arrsize, int source, MPI_Request* request, int tag = 0,
@@ -256,9 +270,17 @@ class MpiManager {
                 int root = 0, MPI_Comm comm = MPI_COMM_WORLD);
 
   /// Gather data from multiple processors to one processor
+  // default implementation gather data as MPI_BYTE
   template <typename T>
   void gatherv(T* sendBuf, int sendCount, T* recvBuf, int* recvCounts, int* displs,
-               int root = 0, MPI_Comm comm = MPI_COMM_WORLD);
+               int root = 0, MPI_Comm comm = MPI_COMM_WORLD) {
+    // check if type T's underlying type is of type std::uint8_t
+    static_assert(std::is_same<std::underlying_type_t<T>, std::uint8_t>::value,
+                  "unsupported type for gatherv");
+    if (!ok) return;
+    MPI_Gatherv(static_cast<void*>(sendBuf), sendCount, MPI_BYTE, static_cast<void*>(recvBuf),
+                recvCounts, displs, MPI_BYTE, root, comm);
+  }
 
   /// Broadcast data from one processor to multiple processors
   template <typename T>
@@ -275,8 +297,15 @@ class MpiManager {
   void bCast(std::string& message, int root = 0);
 
   /// Reduction operation toward one processor
+  // default implementation reduce data as MPI_BYTE
   template <typename T>
-  void reduce(T& sendVal, T& recvVal, MPI_Op op, int root = 0, MPI_Comm = MPI_COMM_WORLD);
+  void reduce(T& sendVal, T& recvVal, MPI_Op op, int root = 0, MPI_Comm comm = MPI_COMM_WORLD) {
+    // check if type T's underlying type is of type std::uint8_t
+    static_assert(std::is_same<std::underlying_type_t<T>, std::uint8_t>::value,
+                  "unsupported type for reduce");    
+    if (!ok) return;
+    MPI_Reduce(static_cast<void*>(&sendVal), static_cast<void*>(&recvVal), 1, MPI_BYTE, op, root, comm);
+  }
 
   /// Element-per-element reduction of a vector of data
   template <typename T>

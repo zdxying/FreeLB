@@ -391,7 +391,7 @@ void MpiManager::iRecv<char>(char* buf, int count, int source, MPI_Request* requ
 template <>
 void MpiManager::iRecv<std::uint8_t>(std::uint8_t* buf, int count, int source, MPI_Request* request, int tag,
                              MPI_Comm comm) {
-  if (ok) MPI_Irecv(static_cast<void*>(buf), count, MPI_CHAR, source, tag, comm, request);
+  if (ok) MPI_Irecv(static_cast<void*>(buf), count, MPI_BYTE, source, tag, comm, request);
 }
 
 template <>

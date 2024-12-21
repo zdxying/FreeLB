@@ -39,6 +39,7 @@ int Nk;
 T Cell_Len;
 T RT;
 int Thread_Num;
+int BlockCellLen;
 
 // physical properties
 T rho_ref;    // g/mm^3
@@ -81,6 +82,7 @@ void readParam() {
   Nj = param_reader.getValue<int>("Mesh", "Nj");
   Nk = param_reader.getValue<int>("Mesh", "Nk");
   Cell_Len = param_reader.getValue<T>("Mesh", "Cell_Len");
+  BlockCellLen = param_reader.getValue<int>("Mesh", "BlockCellLen");
   // physical properties
   rho_ref = param_reader.getValue<T>("Physical_Property", "rho_ref");
   Kine_Visc = param_reader.getValue<T>("Physical_Property", "Kine_Visc");
@@ -111,7 +113,7 @@ void readParam() {
   MaxStep = param_reader.getValue<int>("Simulation_Settings", "TotalStep");
   OutputStep = param_reader.getValue<int>("Simulation_Settings", "OutputStep");
 
-
+  MPI_RANK(0)
   std::cout << "------------Simulation Parameters:-------------\n" << std::endl;
   std::cout << "[Simulation_Settings]:" << "TotalStep:         " << MaxStep << "\n"
             << "OutputStep:        " << OutputStep << "\n"
@@ -121,10 +123,14 @@ void readParam() {
             << "----------------------------------------------" << std::endl;
 }
 
-int main() {
+int main(int argc, char* argv[]) {
   // constexpr std::uint8_t VoidFlag = std::uint8_t(1);
   // constexpr std::uint8_t AABBFlag = std::uint8_t(2);
   // constexpr std::uint8_t BouncebackFlag = std::uint8_t(4);
+
+  mpi().init(&argc, &argv);
+
+  MPI_DEBUG_WAIT
 
   Printer::Print_BigBanner(std::string("Initializing..."));
 
@@ -141,7 +147,13 @@ int main() {
                     Vector<T, 3>(T(Ni * Cell_Len), T(Nj * Cell_Len), T(Nk * Cell_Len)));
   AABB<T, 3> fluid(Vector<T, 3>{},
                    Vector<T, 3>(T(int(Ni / 2) * Cell_Len), T(int(Nj) * Cell_Len), T(int(Nk/2) * Cell_Len)));
-  BlockGeometry3D<T> Geo(Ni, Nj, Nk, Thread_Num, cavity, Cell_Len, 2);
+  // BlockGeometry3D<T> Geo(Ni, Nj, Nk, Thread_Num, cavity, Cell_Len, 2);
+
+  BlockGeometryHelper3D<T> GeoHelper(Ni, Nj, Nk, cavity, Cell_Len, BlockCellLen, 2);
+  GeoHelper.CreateBlocks();
+  GeoHelper.AdaptiveOptimization(mpi().getSize());
+  GeoHelper.LoadBalancing(mpi().getSize());
+  BlockGeometry3D<T> Geo(GeoHelper);
 
   // ------------------ define flag field ------------------
   // BlockFieldManager<FLAG, T, LatSet::d> FlagFM(Geo, VoidFlag);
@@ -234,18 +246,18 @@ int main() {
   offlat::MarchingCubeSurface<T, olbfs::VOLUMEFRAC<T>> mc(NSLattice.getField<olbfs::VOLUMEFRAC<T>>(), T{0.5});
   offlat::TriangleSet<T> triangles;
   mc.generateIsoSurface(triangles);
-  // triangles.writeBinarySTL("Surface" + std::to_string(0));
+  triangles.writeBinarySTL("Surface" + std::to_string(0));
   // set wall vof back to 1
   NSLattice.getField<olbfs::VOLUMEFRAC<T>>().forEach(
   NSLattice.getField<olbfs::STATE>(), olbfs::FSType::Wall,
   [&](auto& field, std::size_t id) { field.SetField(id, T{1}); });
 
   // write vtu
-  vtuwriter::VectorWriter vtuVectorWriter("velocity", NSLattice.getField<VELOCITY<T, LatSet::d>>(), triangles);
-  vtuwriter::vtuManager<T> vtuWriter("dambreak3dvtu", triangles);
+  vtuSurface::VectorWriter vtuVectorWriter("velocity", NSLattice.getField<VELOCITY<T, LatSet::d>>(), triangles);
+  vtuSurface::vtuManager<T> vtuWriter("dambreak3dvtu", triangles);
   vtuWriter.addWriter(vtuVectorWriter);
 
-  vtuwriter::vtuManager<T> vtuWriterBinary("dambreak3dvtuBinary", triangles);
+  vtuSurface::vtuManager<T> vtuWriterBinary("dambreak3dvtuBinary", triangles);
   vtuWriterBinary.addWriter(vtuVectorWriter);
 
   // count and timer
@@ -274,7 +286,7 @@ int main() {
     // NS_BB.Apply(MainLoopTimer());
     NSLattice.NormalAllCommunicate();
 
-    olbfs::FreeSurfaceApply<BlockLatticeManager<T, LatSet, ALLFIELDS>>::Apply(NSLattice, MainLoopTimer());
+    olbfs::FreeSurfaceApply<BlockLatticeManager<T, LatSet, ALLFIELDS>>::Apply(NSLattice);
 
     if (MainLoopTimer() % OutputStep == 0) {
       OutputTimer.Print_InnerLoopPerformance(Geo.getTotalCellNum(), OutputStep);
@@ -291,7 +303,7 @@ int main() {
       [&](auto& field, std::size_t id) { field.SetField(id, T{}); });
       // re-generate iso surface
       mc.generateIsoSurface(triangles);
-      // triangles.writeBinarySTL("Surface" + std::to_string(MainLoopTimer()));
+      triangles.writeBinarySTL("Surface" + std::to_string(MainLoopTimer()));
       // set wall vof back to 1
       NSLattice.getField<olbfs::VOLUMEFRAC<T>>().forEach(
       NSLattice.getField<olbfs::STATE>(), olbfs::FSType::Wall,

@@ -38,6 +38,8 @@ public:
 	// get the average value of a field
 	FieldDataType getAverage(std::size_t fieldidx = 0, bool useolap = true) const {
 		FieldDataType TotalSum{};
+		FieldDataType Result{};
+		mpi().barrier();
 
 		if (useolap) {
 #ifdef _OPENMP
@@ -95,13 +97,22 @@ public:
 			}
 		}
 
-		return TotalSum / BFM.size();
+#ifdef MPI_ENABLED
+		FieldDataType result = TotalSum / BFM.size();
+		mpi().reduce(result, Result, MPI_SUM);
+		Result /= mpi().getSize();
+#else
+		Result = TotalSum / BFM.size();
+#endif
+	return Result;
 	}
 
 
 	// get the maximum value of a field
 	FieldDataType getMax(std::size_t fieldidx = 0, bool useolap = true) const {
 		FieldDataType TotalMax{};
+		FieldDataType Result{};
+		mpi().barrier();
 
 		if (useolap) {
 #ifdef _OPENMP
@@ -156,13 +167,20 @@ public:
 			}
 		}
 
-		return TotalMax;
+#ifdef MPI_ENABLED
+		mpi().reduce(TotalMax, Result, MPI_MAX);
+#else
+		Result = TotalMax;
+#endif
+		return Result;
 	}
 
 
 	// get the minimum value of a field
 	FieldDataType getMin(std::size_t fieldidx = 0, bool useolap = true) const {
 		FieldDataType TotalMin{};
+		FieldDataType Result{};
+		mpi().barrier();
 
 		if (useolap) {
 #ifdef _OPENMP
@@ -217,13 +235,20 @@ public:
 			}
 		}
 
-		return TotalMin;
+#ifdef MPI_ENABLED
+		mpi().reduce(TotalMin, Result, MPI_MIN);
+#else
+		Result = TotalMin;
+#endif
+		return Result;
 	}
 
 
 	// get number of a kind of value in a field
 	std::size_t getCount(const FieldDataType value, std::size_t fieldidx = 0, bool useolap = true) const {
 		std::size_t TotalValueCount{};
+		FieldDataType Result{};
+		mpi().barrier();
 
 		if (useolap) {
 #ifdef _OPENMP
@@ -278,7 +303,12 @@ public:
 			}
 		}
 
-		return TotalValueCount;
+#ifdef MPI_ENABLED
+		mpi().reduce(TotalValueCount, Result, MPI_SUM);
+#else
+		Result = TotalValueCount;
+#endif
+		return Result;
 	}
 
 
@@ -286,6 +316,8 @@ public:
 	FloatType getPercentage(const FieldDataType value, std::size_t fieldidx = 0, bool useolap = true) const {
 		std::size_t TotalCount{};
 		std::size_t TotalValueCount{};
+		FieldDataType Result{};
+		mpi().barrier();
 
 		if (useolap) {
 #ifdef _OPENMP
@@ -343,13 +375,22 @@ public:
 			}
 		}
 
-		return static_cast<FloatType>(TotalValueCount) / TotalCount;
+#ifdef MPI_ENABLED
+		FloatType result = static_cast<FloatType>(TotalValueCount) / TotalCount;
+		mpi().reduce(result, Result, MPI_SUM);
+		Result /= mpi().getSize();
+#else
+		Result = static_cast<FloatType>(TotalValueCount) / TotalCount;
+#endif
+		return Result;
 	}
 
 
 	// get number of a kind of flag in a flag field
 	std::size_t getFlagCount(const FieldDataType flag, std::size_t fieldidx = 0, bool useolap = true) const {
 		std::size_t TotalValueCount{};
+		FieldDataType Result{};
+		mpi().barrier();
 
 		if (useolap) {
 #ifdef _OPENMP
@@ -404,7 +445,12 @@ public:
 			}
 		}
 
-		return TotalValueCount;
+#ifdef MPI_ENABLED
+		mpi().reduce(TotalValueCount, Result, MPI_SUM);
+#else
+		Result = TotalValueCount;
+#endif
+		return Result;
 	}
 
 
@@ -412,6 +458,8 @@ public:
 	FloatType getFlagPercentage(const FieldDataType flag, std::size_t fieldidx = 0, bool useolap = true) const {
 		std::size_t TotalCount{};
 		std::size_t TotalValueCount{};
+		FieldDataType Result{};
+		mpi().barrier();
 
 		if (useolap) {
 #ifdef _OPENMP
@@ -469,15 +517,25 @@ public:
 			}
 		}
 
-		return static_cast<FloatType>(TotalValueCount) / TotalCount;
+#ifdef MPI_ENABLED
+		FloatType result = static_cast<FloatType>(TotalValueCount) / TotalCount;
+		mpi().reduce(result, Result, MPI_SUM);
+		Result /= mpi().getSize();
+#else
+		Result = static_cast<FloatType>(TotalValueCount) / TotalCount;
+#endif
+		return Result;
 	}
 
 
 	// print statistics of a flag field
 	void printFlagStatistics(std::size_t fieldidx = 0, bool printpercentage = true, bool useolap = true) const {
 		std::size_t TotalCount{};
+		std::size_t Total{};
 		// get the number of different flags
 		std::vector<std::pair<FieldDataType, std::size_t>> flagcount;
+		std::vector<std::pair<FieldDataType, std::size_t>> Result;
+		mpi().barrier();
 
 		if (useolap) {
 			for (const auto& blockfield : BFM.getBlockFields()) {
@@ -549,17 +607,63 @@ public:
 				TotalCount += size;
 			}
 		}
-		// sort the vector
-		std::sort(flagcount.begin(), flagcount.end(), [](const auto& a, const auto& b) { return a.first < b.first; });
-		// print info
+
+#ifdef MPI_ENABLED
+		// merge all ranks' vector
+		mpi().reduce(TotalCount, Total, MPI_SUM);
+		// 1. prepare send buffers
+		std::vector<FieldDataType> flagsendbuf;
+		std::vector<std::size_t> countsendbuf;
+		for (const auto& p : flagcount) {
+			flagsendbuf.push_back(p.first);
+			countsendbuf.push_back(p.second);
+		} 
+		// 2. determine the size of send buffers
+		int sendbuf_size = static_cast<int>(flagsendbuf.size());
+		// 3. gather the sizes at the main rank
+		std::vector<int> recvcounts(mpi().getSize());
+		MPI_Gather(&sendbuf_size, 1, MPI_INT, recvcounts.data(), 1, MPI_INT, 0, MPI_COMM_WORLD);
+		// 4. allocate space for receiving all sendbuf at the main rank
+		std::vector<int> displs(mpi().getSize(), 0);
+		int total_size{};
+    IF_MPI_RANK(0) {
+			for (int i = 0; i < mpi().getSize(); ++i) {
+				displs[i] = total_size;
+				total_size += recvcounts[i];
+			}
+    }
+		std::vector<FieldDataType> flagrecvbuf(total_size);
+		std::vector<std::size_t> countrecvbuf(total_size);
+		// 5. gather all sendbuf at the main rank
+		mpi().gatherv(flagsendbuf.data(), sendbuf_size, flagrecvbuf.data(), recvcounts.data(), displs.data());
+		mpi().gatherv(countrecvbuf.data(), sendbuf_size, countrecvbuf.data(), recvcounts.data(), displs.data());
+		// 6. process at the main rank
 		MPI_RANK(0);
+		for (std::size_t i = 0; i < total_size; ++i) {
+			const auto& var = flagrecvbuf[i];
+			auto it = std::find_if(Result.begin(), Result.end(), [var](const auto& p) {
+				return util::isFlag(var, p.first);
+			});
+			if (it != Result.end()) {
+				it->second += countrecvbuf[i];
+			} else {
+				Result.push_back({var, countrecvbuf[i]});
+			}
+		}
+#else
+		Result = flagcount;
+		Total = TotalCount;
+#endif
+		// sort the vector
+		std::sort(Result.begin(), Result.end(), [](const auto& a, const auto& b) { return a.first < b.first; });
+		// print info
 		std::cout << "[Flag statistics]:" << std::endl;
 		std::cout << "Flag | ";
 		if (printpercentage) std::cout << "Percent% | ";
 		std::cout << "Count" << std::endl;
-		for (const auto& p : flagcount) {
+		for (const auto& p : Result) {
 			std::cout << std::setw(7) << std::left << static_cast<int>(p.first);
-			if (printpercentage) std::cout << std::setw(11) << std::left << static_cast<FloatType>(p.second) / TotalCount * 100;
+			if (printpercentage) std::cout << std::setw(11) << std::left << static_cast<FloatType>(p.second) / Total * 100;
 			std::cout << p.second << std::endl;
 		}
 	}
@@ -568,8 +672,11 @@ public:
 	// print statistics of a field
 	void printValueStatistics(std::size_t fieldidx = 0, bool printpercentage = true, bool useolap = true) const {
 		std::size_t TotalCount{};
+		std::size_t Total{};
 		// get the number of different flags
 		std::vector<std::pair<FieldDataType, std::size_t>> valuecount;
+		std::vector<std::pair<FieldDataType, std::size_t>> Result;
+		mpi().barrier();
 
 		if (useolap) {
 			for (const auto& blockfield : BFM.getBlockFields()) {
@@ -641,20 +748,65 @@ public:
 				TotalCount += size;
 			}
 		}
-		// sort the vector
-		std::sort(valuecount.begin(), valuecount.end(), [](const auto& a, const auto& b) { return a.first < b.first; });
-		// print info
+		
+#ifdef MPI_ENABLED
+		// merge all ranks' vector
+		mpi().reduce(TotalCount, Total, MPI_SUM);
+		// 1. prepare send buffers
+		std::vector<FieldDataType> valuesendbuf;
+		std::vector<std::size_t> countsendbuf;
+		for (const auto& p : valuecount) {
+			valuesendbuf.push_back(p.first);
+			countsendbuf.push_back(p.second);
+		} 
+		// 2. determine the size of send buffers
+		int sendbuf_size = static_cast<int>(valuesendbuf.size());
+		// 3. gather the sizes at the main rank
+		std::vector<int> recvcounts(mpi().getSize());
+		MPI_Gather(&sendbuf_size, 1, MPI_INT, recvcounts.data(), 1, MPI_INT, 0, MPI_COMM_WORLD);
+		// 4. allocate space for receiving all sendbuf at the main rank
+		std::vector<int> displs(mpi().getSize(), 0);
+		int total_size{};
+    IF_MPI_RANK(0) {
+			for (int i = 0; i < mpi().getSize(); ++i) {
+				displs[i] = total_size;
+				total_size += recvcounts[i];
+			}
+    }
+		std::vector<FieldDataType> valuerecvbuf(total_size);
+		std::vector<std::size_t> countrecvbuf(total_size);
+		// 5. gather all sendbuf at the main rank
+		mpi().gatherv(valuesendbuf.data(), sendbuf_size, valuerecvbuf.data(), recvcounts.data(), displs.data());
+		mpi().gatherv(countrecvbuf.data(), sendbuf_size, countrecvbuf.data(), recvcounts.data(), displs.data());
+		// 6. process at the main rank
 		MPI_RANK(0);
+		for (std::size_t i = 0; i < total_size; ++i) {
+			const auto& var = valuerecvbuf[i];
+			auto it = std::find_if(Result.begin(), Result.end(), [var](const auto& p) {
+				return var == p.first;
+			});
+			if (it != Result.end()) {
+				it->second += countrecvbuf[i];
+			} else {
+				Result.push_back({var, countrecvbuf[i]});
+			}
+		}
+#else
+		Result = valuecount;
+		Total = TotalCount;
+#endif
+		// sort the vector
+		std::sort(Result.begin(), Result.end(), [](const auto& a, const auto& b) { return a.first < b.first; });
+		// print info
 		std::cout << "[Value statistics]:" << std::endl;
 		std::cout << "Value | ";
 		if (printpercentage) std::cout << "Percent% | ";
 		std::cout << "Count" << std::endl;
-		for (const auto& p : valuecount) {
+		for (const auto& p : Result) {
 			std::cout << std::setw(8) << std::left << p.first;
-			if (printpercentage) std::cout << std::setw(11) << std::left << static_cast<FloatType>(p.second) / TotalCount * 100;
+			if (printpercentage) std::cout << std::setw(11) << std::left << static_cast<FloatType>(p.second) / Total * 100;
 			std::cout << p.second << std::endl;
 		}
 	}
-
 
 };

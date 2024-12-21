@@ -114,9 +114,9 @@ int main() {
 
   triangles.writeBinarySTL("marchingCube");
 
-  vtuwriter::ScalarWriter vtuScalarWriter("scalar", scalar, triangles);
-  vtuwriter::VectorWriter vtuVectorWriter("velocity", velo, triangles);
-  vtuwriter::vtuManager<T> vtuManager("vtu", triangles);
+  vtuSurface::ScalarWriter vtuScalarWriter("scalar", scalar, triangles);
+  vtuSurface::VectorWriter vtuVectorWriter("velocity", velo, triangles);
+  vtuSurface::vtuManager<T> vtuManager("vtu", triangles);
   vtuManager.addWriter(vtuScalarWriter, vtuVectorWriter);
   vtuManager.Write();
 

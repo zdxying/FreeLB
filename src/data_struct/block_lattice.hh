@@ -1542,7 +1542,6 @@ void BlockLatticeManager<T, LatSet, TypePack>::Communicate() {
   NormalCommunicate();
   AverageCommunicate();
   InterpolateCommunicate();
-  mpi().barrier();
 }
 
 template <typename T, typename LatSet, typename TypePack>
@@ -1550,7 +1549,6 @@ void BlockLatticeManager<T, LatSet, TypePack>::Communicate(std::int64_t count) {
   NormalCommunicate(count);
   AverageCommunicate(count);
   InterpolateCommunicate(count);
-  mpi().barrier();
 }
 
 
@@ -1559,7 +1557,6 @@ void BlockLatticeManager<T, LatSet, TypePack>::FullCommunicate() {
   NormalFullCommunicate();
   AverageCommunicate();
   InterpolateCommunicate();
-  mpi().barrier();
 }
 
 template <typename T, typename LatSet, typename TypePack>
@@ -1567,7 +1564,6 @@ void BlockLatticeManager<T, LatSet, TypePack>::FullCommunicate(std::int64_t coun
   NormalFullCommunicate(count);
   AverageCommunicate(count);
   InterpolateCommunicate(count);
-  mpi().barrier();
 }
 
 template <typename T, typename LatSet, typename TypePack>
@@ -1575,7 +1571,6 @@ void BlockLatticeManager<T, LatSet, TypePack>::AllCommunicate() {
   NormalAllCommunicate();
   AverageCommunicate();
   InterpolateCommunicate();
-  mpi().barrier();
 }
 
 template <typename T, typename LatSet, typename TypePack>
@@ -1583,7 +1578,6 @@ void BlockLatticeManager<T, LatSet, TypePack>::AllCommunicate(std::int64_t count
   NormalAllCommunicate(count);
   AverageCommunicate(count);
   InterpolateCommunicate(count);
-  mpi().barrier();
 }
 
 

@@ -65,10 +65,7 @@ struct FreeSurfaceHelper {
       }
     });
 
-    latman.template getField<STATE>().NormalCommunicate();
-#ifdef MPI_ENABLED
-    latman.template getField<STATE>().MPINormalCommunicate(count);
-#endif
+    latman.template getField<STATE>().AllNormalCommunicate();
 
     // set mass and volume fraction
     latman.template getField<MASS<T>>().forEach(
@@ -78,10 +75,7 @@ struct FreeSurfaceHelper {
       latman.template getField<STATE>(), FSType::Interface,
       [&](auto& field, std::size_t id) { field.SetField(id, T{0.5}); });
 
-    latman.template getField<MASS<T>>().NormalCommunicate();
-#ifdef MPI_ENABLED
-    latman.template getField<MASS<T>>().MPINormalCommunicate(count);
-#endif
+    latman.template getField<MASS<T>>().AllNormalCommunicate();
 
     latman.template getField<VOLUMEFRAC<T>>().forEach(
       latman.template getField<STATE>(), FSType::Fluid | FSType::Wall,
@@ -90,10 +84,7 @@ struct FreeSurfaceHelper {
       latman.template getField<STATE>(), FSType::Interface,
       [&](auto& field, std::size_t id) { field.SetField(id, T{0.5}); });
 
-    latman.template getField<VOLUMEFRAC<T>>().NormalCommunicate();
-#ifdef MPI_ENABLED
-    latman.template getField<VOLUMEFRAC<T>>().MPINormalCommunicate(count);
-#endif
+    latman.template getField<VOLUMEFRAC<T>>().AllNormalCommunicate();
   }
 };
 
@@ -429,63 +420,84 @@ struct FreeSurfaceApply {
   using T = typename CELL::FloatType;
   using LatSet = typename CELL::LatticeSet;
 
+static void Apply(LATTICEMANAGERTYPE& latManager) {
+    // mass transfer
+    latManager.template ApplyInnerCellDynamics<MassTransfer<CELL>>();
+    latManager.template getField<FLAG>().AllNormalCommunicate();
+    latManager.template getField<MASS<T>>().AllNormalCommunicate();
+    // communicate reconstructed pops streamed in from a gas cell
+    // this is NOT a post-stream process, so we must communicate fi in each direction
+    latManager.NormalAllCommunicate();
+
+
+    // to fluid neighbor conversion
+    latManager.template ApplyInnerCellDynamics<ToFluidNbrConversion<CELL>>();
+    latManager.template getField<FLAG>().AllNormalCommunicate();
+    // communicate equilibrium fi from nbr Fluid/Interface cells' rho and u for a Gas->Interface cell
+    // this is NOT a post-stream process, so we must communicate fi in each direction
+    latManager.NormalAllCommunicate();
+
+
+    // to gas neighbor conversion
+    latManager.template ApplyInnerCellDynamics<ToGasNbrConversion<CELL>>();
+    latManager.template getField<FLAG>().AllNormalCommunicate();
+		latManager.template getField<MASS<T>>().AllNormalCommunicate();
+
+
+    // interface excess mass
+    latManager.template ApplyInnerCellDynamics<InterfaceExcessMass<CELL>>();
+    latManager.template getField<MASS<T>>().AllNormalCommunicate();
+    latManager.template getField<MASSEX<T, LatSet::q>>().AllNormalCommunicate();
+
+
+    // finalize conversion
+    latManager.template ApplyInnerCellDynamics<FinalizeConversion<CELL>>();
+    latManager.template getField<STATE>().AllNormalCommunicate();
+    latManager.template getField<MASS<T>>().AllNormalCommunicate();
+    latManager.template getField<VOLUMEFRAC<T>>().AllNormalCommunicate();
+    latManager.template getField<PREVIOUS_VELOCITY<T,LatSet::d>>().AllNormalCommunicate();
+
+
+    // clear EXCESSMASS<T,LatSet::q>
+    latManager.ForEachBlockLattice([&](auto& blocklat) { blocklat.template getField<MASSEX<T, LatSet::q>>().Init(Vector<T,LatSet::q>{}); });
+  }
+
   static void Apply(LATTICEMANAGERTYPE& latManager, std::int64_t count) {
     // mass transfer
     latManager.template ApplyInnerCellDynamics<MassTransfer<CELL>>(count);
-
-    latManager.template getField<FLAG>().NormalCommunicate(count);
-#ifdef MPI_ENABLED
-    latManager.template getField<FLAG>().MPINormalCommunicate(count);
-#endif
-    latManager.template getField<MASS<T>>().AllCommunicate(count);
-
+    latManager.template getField<FLAG>().AllNormalCommunicate(count);
+    latManager.template getField<MASS<T>>().AllNormalCommunicate(count);
     // communicate reconstructed pops streamed in from a gas cell
     // this is NOT a post-stream process, so we must communicate fi in each direction
-		// latManager.FullCommunicate(count);
-    latManager.template getField<POP<T, LatSet::q>>().AllCommunicate(count);
+		latManager.NormalAllCommunicate(count);
 
 
     // to fluid neighbor conversion
     latManager.template ApplyInnerCellDynamics<ToFluidNbrConversion<CELL>>(count);
-
-    latManager.template getField<FLAG>().NormalCommunicate(count);
-#ifdef MPI_ENABLED
-    latManager.template getField<FLAG>().MPINormalCommunicate(count);
-#endif
-
+    latManager.template getField<FLAG>().AllNormalCommunicate(count);
     // communicate equilibrium fi from nbr Fluid/Interface cells' rho and u for a Gas->Interface cell
     // this is NOT a post-stream process, so we must communicate fi in each direction
-    // latManager.FullCommunicate(count);
-    latManager.template getField<POP<T, LatSet::q>>().AllCommunicate(count);
+    latManager.NormalAllCommunicate(count);
 
 
     // to gas neighbor conversion
     latManager.template ApplyInnerCellDynamics<ToGasNbrConversion<CELL>>(count);
-
-    latManager.template getField<FLAG>().NormalCommunicate(count);
-#ifdef MPI_ENABLED
-    latManager.template getField<FLAG>().MPINormalCommunicate(count);
-#endif
-		latManager.template getField<MASS<T>>().AllCommunicate(count);
+    latManager.template getField<FLAG>().AllNormalCommunicate(count);
+		latManager.template getField<MASS<T>>().AllNormalCommunicate(count);
 
 
     // interface excess mass
     latManager.template ApplyInnerCellDynamics<InterfaceExcessMass<CELL>>(count);
-
-    latManager.template getField<MASS<T>>().AllCommunicate(count);
-    latManager.template getField<MASSEX<T, LatSet::q>>().AllCommunicate(count);
+    latManager.template getField<MASS<T>>().AllNormalCommunicate(count);
+    latManager.template getField<MASSEX<T, LatSet::q>>().AllNormalCommunicate(count);
 
 
     // finalize conversion
     latManager.template ApplyInnerCellDynamics<FinalizeConversion<CELL>>(count);
-
-    latManager.template getField<STATE>().NormalCommunicate(count);
-#ifdef MPI_ENABLED
-    latManager.template getField<STATE>().MPINormalCommunicate(count);
-#endif
-    latManager.template getField<MASS<T>>().AllCommunicate(count);
-    latManager.template getField<VOLUMEFRAC<T>>().AllCommunicate(count);
-    latManager.template getField<PREVIOUS_VELOCITY<T,LatSet::d>>().AllCommunicate(count);
+    latManager.template getField<STATE>().AllNormalCommunicate(count);
+    latManager.template getField<MASS<T>>().AllNormalCommunicate(count);
+    latManager.template getField<VOLUMEFRAC<T>>().AllNormalCommunicate(count);
+    latManager.template getField<PREVIOUS_VELOCITY<T,LatSet::d>>().AllNormalCommunicate(count);
 
 
     // clear EXCESSMASS<T,LatSet::q>
@@ -526,9 +538,6 @@ struct FreeSurfaceHelper {
     });
 
     latman.template getField<STATE>().NormalCommunicate();
-#ifdef MPI_ENABLED
-    latman.template getField<STATE>().MPINormalCommunicate(count);
-#endif
 
     // set mass and volume fraction
     latman.template getField<MASS<T>>().forEach(
@@ -539,9 +548,6 @@ struct FreeSurfaceHelper {
       [&](auto& field, std::size_t id) { field.SetField(id, T{0.5}); });
 
     latman.template getField<MASS<T>>().NormalCommunicate();
-#ifdef MPI_ENABLED
-    latman.template getField<MASS<T>>().MPINormalCommunicate(count);
-#endif
 
     latman.template getField<VOLUMEFRAC<T>>().forEach(
       latman.template getField<STATE>(), FSType::Fluid | FSType::Wall,
@@ -551,9 +557,6 @@ struct FreeSurfaceHelper {
       [&](auto& field, std::size_t id) { field.SetField(id, T{0.5}); });
 
     latman.template getField<VOLUMEFRAC<T>>().NormalCommunicate();
-#ifdef MPI_ENABLED
-    latman.template getField<VOLUMEFRAC<T>>().MPINormalCommunicate(count);
-#endif
   }
 };
 
@@ -816,27 +819,21 @@ struct FreeSurfaceApply {
     latManager.template ApplyInnerCellDynamics<surface_post_process0<CELL>>(count);
 
     latManager.template getField<STATE>().NormalCommunicate(count);
-#ifdef MPI_ENABLED
-    latManager.template getField<STATE>().MPINormalCommunicate(count);
-#endif
+
     latManager.template getField<MASS<T>>().AllCommunicate(count);
 
     // to fluid neighbor conversion
     latManager.template ApplyInnerCellDynamics<surface_post_process1<CELL>>(count);
 
     latManager.template getField<STATE>().NormalCommunicate(count);
-#ifdef MPI_ENABLED
-    latManager.template getField<STATE>().MPINormalCommunicate(count);
-#endif
+
 
 
     // gas to interface pop init and to gas neighbor conversion
     latManager.template ApplyInnerCellDynamics<surface_post_process2<CELL>>(count);
 
     latManager.template getField<STATE>().NormalCommunicate(count);
-#ifdef MPI_ENABLED
-    latManager.template getField<STATE>().MPINormalCommunicate(count);
-#endif
+
 
     latManager.Communicate(count);
 
@@ -845,9 +842,7 @@ struct FreeSurfaceApply {
     latManager.template ApplyInnerCellDynamics<surface_post_process3<CELL>>(count);
 
     latManager.template getField<STATE>().NormalCommunicate(count);
-#ifdef MPI_ENABLED
-    latManager.template getField<STATE>().MPINormalCommunicate(count);
-#endif
+
 
     latManager.template getField<MASS<T>>().AllCommunicate(count);
     latManager.template getField<MASSEX<T>>().AllCommunicate(count);

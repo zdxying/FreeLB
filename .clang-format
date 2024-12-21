@@ -18,5 +18,5 @@ TabWidth: 2
 
 # AlignOperands: true
 # Align, DontAlign, AlwaysBreak
-AlignAfterOpenBracket: Align
+AlignAfterOpenBracket: DontAlign
 # BreakBeforeBinaryOperators: true

@@ -275,16 +275,30 @@ void BlockGeometry3D<T>::Init(BlockGeometryHelper3D<T> &GeoHelper) {
 
 template <typename T>
 std::size_t BlockGeometry3D<T>::getTotalCellNum() const {
-  std::size_t sum = 0;
+  std::size_t sum{};
   for (const Block3D<T> &block : _Blocks) sum += block.getN();
+#ifdef MPI_ENABLED
+  std::size_t Result{};
+  mpi().barrier();
+	mpi().reduce(sum, Result, MPI_SUM);
+  return Result;
+#else
   return sum;
+#endif
 }
 
 template <typename T>
 std::size_t BlockGeometry3D<T>::getBaseCellNum() const {
-  std::size_t sum = 0;
+  std::size_t sum{};
   for (const Block3D<T> &block : _Blocks) sum += block.getBaseBlock().getN();
+#ifdef MPI_ENABLED
+  std::size_t Result{};
+  mpi().barrier();
+	mpi().reduce(sum, Result, MPI_SUM);
+  return Result;
+#else
   return sum;
+#endif
 }
 
 template <typename T>
@@ -1148,8 +1162,8 @@ void BlockGeometry3D<T>::BuildBlockIndexMap() {
 template <typename T>
 BlockGeometryHelper3D<T>::BlockGeometryHelper3D(int Nx, int Ny, int Nz,
                                                 const AABB<T, 3> &AABBs, T voxelSize,
-                                                int blockcelllen, std::uint8_t llimit,
-                                                int olap, int ext)
+                                                int blockcelllen, int olap, int ext, 
+                                                std::uint8_t llimit)
   : BasicBlock<T, 3>(
       voxelSize, AABBs.getExtended(Vector<T, 3>{voxelSize * olap}),
       AABB<int, 3>(Vector<int, 3>{0}, Vector<int, 3>{Nx - 1 + 2*olap, Ny - 1 + 2*olap, Nz - 1 + 2*olap})),
@@ -1175,7 +1189,7 @@ BlockGeometryHelper3D<T>::BlockGeometryHelper3D(int Nx, int Ny, int Nz,
 
 template <typename T>
 BlockGeometryHelper3D<T>::BlockGeometryHelper3D(const StlReader<T>& reader, int blockcelllen, 
-  std::uint8_t llimit, int olap, int ext)
+  int olap, int ext, std::uint8_t llimit)
   : BasicBlock<T, 3>(
       reader.getVoxelSize(), 
       reader.getMesh().getAABB().getExtended((olap+ext)*reader.getVoxelSize()),
@@ -1565,8 +1579,10 @@ void BlockGeometryHelper3D<T>::Optimize(std::vector<BasicBlock<T, 3>> &Blocks,
   // iterate through all blocks
   typename std::vector<BasicBlock<T, 3>>::iterator it = Blocks.begin();
 
+  // [enforce] will try to divide blocks into ProcessNum parts
+  // but will NOT divide blocks with number of cells less than NumPerProcess
   if (enforce && Blocks.size() < static_cast<std::size_t>(ProcessNum)) {
-    // sort blocks by number of points, large blocks first
+    // sort blocks in descending order based on the number of cells
     std::sort(Blocks.begin(), Blocks.end(),
               [](const BasicBlock<T, 3> &a, const BasicBlock<T, 3> &b) {
                 return a.getN() > b.getN();
@@ -1575,10 +1591,15 @@ void BlockGeometryHelper3D<T>::Optimize(std::vector<BasicBlock<T, 3>> &Blocks,
     std::size_t count = Blocks.size();
     while (count < static_cast<std::size_t>(ProcessNum) && it != Blocks.end()) {
       T ratio = std::round(static_cast<T>(it->getN()) / NumPerProcess);
+      if (ratio < 1) { break; }
       int part = static_cast<int>(ratio);
       if (ratio < 2) {
         part = 2;
       }
+      if ((count + part - 1) > static_cast<std::size_t>(ProcessNum)) {
+        part = ProcessNum - count + 1;
+      }
+      if (part == 1) { break; }
       // divide block
       DivideBlock3D(*it, part, NewBasicBlocks);
       // remove block

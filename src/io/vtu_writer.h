@@ -47,7 +47,7 @@
 </VTKFile>
 */
 
-namespace vtuwriter {
+namespace vtuSurface {
 
 class AbstractWriter {
   public:
@@ -65,13 +65,10 @@ class vtuManager {
 
   const offlat::TriangleSet<T>& _triangleSet;
 
-#ifdef MPI_ENABLED
-  int _rank;
-#endif
-
   std::vector<const AbstractWriter *> _writers;
 
   void WriteBinaryImpl(const std::string &fName) {
+    mpi().barrier();
     vtuHeader(fName);
     vtuPointsBinary(fName);
     vtuCellsBinary(fName);
@@ -82,6 +79,7 @@ class vtuManager {
   }
 
   void WriteImpl(const std::string &fName) {
+    mpi().barrier();
     vtuHeader(fName);
     vtuPoints(fName);
     vtuCells(fName);
@@ -89,6 +87,31 @@ class vtuManager {
       writer->write(fName);
     }
     vtuEnd(fName);
+  }
+
+  void WritevtmImpl() {
+#ifdef MPI_ENABLED
+    IF_MPI_RANK(0) { 
+      std::string fullName = _dirname + _filename + ".vtm";
+      vtmHeader(fullName);     
+      for (int iRank = 0; iRank < mpi().getSize(); ++iRank) {
+        vtmContent(fullName, vtuFileName(iRank), iRank);
+      }
+      vtmEnd(fullName); 
+    }
+#endif
+  }
+  void WritevtmImpl(int step) {
+#ifdef MPI_ENABLED
+    IF_MPI_RANK(0) { 
+      std::string fullName = _dirname + _filename + "_T" + std::to_string(step) + ".vtm";
+      vtmHeader(fullName);     
+      for (int iRank = 0; iRank < mpi().getSize(); ++iRank) {
+        vtmContent(fullName, vtuFileName(iRank, step), iRank);
+      }
+      vtmEnd(fullName); 
+    }
+#endif
   }
 
   void vtuPointsBinary(const std::string &fName) {
@@ -285,9 +308,72 @@ class vtuManager {
     f.close();
   }
 
+  void vtmHeader(const std::string& fName) {
+    std::ofstream f(fName, std::ios::out | std::ios::trunc);
+    f << "<?xml version=\"1.0\"?>\n";
+    f << "<VTKFile type=\"vtkMultiBlockDataSet\" version=\"1.0\" "
+      << "byte_order=\"LittleEndian\">\n"
+      << "<vtkMultiBlockDataSet>\n";
+    f.close();
+  }
+  void vtmEnd(const std::string& fName) {
+    std::ofstream f(fName, std::ios::out | std::ios::app);
+    f << "</vtkMultiBlockDataSet>\n";
+    f << "</VTKFile>\n";
+    f.close();
+  }
+  void vtmContent(const std::string& vtmName, const std::string& vtuName, int rank) {
+    std::ofstream f(vtmName, std::ios::out | std::ios::app);
+    f << "<Block index=\"" << rank << "\" >\n";
+    f << "<DataSet index= \"0\" " << "file=\"" << vtuName << "\">\n"
+      << "</DataSet>\n";
+    f << "</Block>\n";
+    f.close();
+  }
+
+  std::string vtuFileName(int rank) {
+    std::string fName{};
+#ifdef MPI_ENABLED
+    fName = _filename + "_B" + std::to_string(rank) + ".vtu";
+#else
+    fName = _filename + ".vtu";
+#endif
+    return fName;
+  }
+  std::string vtuFileName(int rank, int step) {
+    std::string fName{};
+#ifdef MPI_ENABLED
+    fName = _filename + "_T" + std::to_string(step) 
+    + "_B" + std::to_string(rank)+ ".vtu";
+#else
+    fName = _filename + "_T" + std::to_string(step) + ".vtu";
+#endif
+    return fName;
+  }
+  std::string vtuFullName() {
+    std::string fName{};
+#ifdef MPI_ENABLED
+    fName = _dirname + _filename + "_B" + std::to_string(mpi().getRank()) + ".vtu";
+#else
+    fName = _dirname + _filename + ".vtu";
+#endif
+    return fName;
+  }
+  std::string vtuFullName(int step) {
+    std::string fName{};
+#ifdef MPI_ENABLED
+    fName = _dirname + _filename + "_T" + std::to_string(step) 
+    + "_B" + std::to_string(mpi().getRank())+ ".vtu";
+#else
+    fName = _dirname + _filename + "_T" + std::to_string(step) + ".vtu";
+#endif
+    return fName;
+  }
+
  public:
-  vtuManager(std::string filename, const offlat::TriangleSet<T>& triangleSet)
+  vtuManager(const std::string& filename, const offlat::TriangleSet<T>& triangleSet)
       : _filename(filename), _triangleSet(triangleSet) {
+    DirCreator::Create_Dir("./vtkoutput/");
     DirCreator::Create_Dir(_dirname);
   }
 
@@ -299,21 +385,21 @@ class vtuManager {
   }
 
   void WriteBinary() {
-    std::string fullName = _dirname + _filename + ".vtu";
-    WriteBinaryImpl(fullName);
+    WriteBinaryImpl(vtuFullName());
+    WritevtmImpl();
   }
   void WriteBinary(int step) {
-    std::string fullName = _dirname + _filename + "_T" + std::to_string(step) + ".vtu";
-    WriteBinaryImpl(fullName);
+    WriteBinaryImpl(vtuFullName(step));
+    WritevtmImpl(step);
   }
 
   void Write() {
-    std::string fullName = _dirname + _filename + ".vtu";
-    WriteImpl(fullName);
+    WriteImpl(vtuFullName());
+    WritevtmImpl();
   }
   void Write(int step) {
-    std::string fullName = _dirname + _filename + "_T" + std::to_string(step) + ".vtu";
-    WriteImpl(fullName);
+    WriteImpl(vtuFullName(step));
+    WritevtmImpl(step);
   }
 };
 
@@ -654,4 +740,4 @@ class physVectorWriter : public AbstractWriter {
   std::function<datatype(datatype)> unitConvert;
 };
 
-}  // namespace vtuwriter
+}  // namespace vtuSurface

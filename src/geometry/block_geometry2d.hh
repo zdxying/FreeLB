@@ -179,16 +179,30 @@ void BlockGeometry2D<T>::Init(BlockGeometryHelper2D<T> &GeoHelper) {
 
 template <typename T>
 std::size_t BlockGeometry2D<T>::getTotalCellNum() const {
-  std::size_t sum = 0;
+  std::size_t sum{};
   for (const Block2D<T> &block : _Blocks) sum += block.getN();
+#ifdef MPI_ENABLED
+  std::size_t Result{};
+  mpi().barrier();
+	mpi().reduce(sum, Result, MPI_SUM);
+  return Result;
+#else
   return sum;
+#endif
 }
 
 template <typename T>
 std::size_t BlockGeometry2D<T>::getBaseCellNum() const {
-  std::size_t sum = 0;
+  std::size_t sum{};
   for (const Block2D<T> &block : _Blocks) sum += block.getBaseBlock().getN();
+#ifdef MPI_ENABLED
+  std::size_t Result{};
+  mpi().barrier();
+	mpi().reduce(sum, Result, MPI_SUM);
+  return Result;
+#else
   return sum;
+#endif
 }
 
 template <typename T>
