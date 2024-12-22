@@ -193,7 +193,7 @@ class MpiManager {
   void iSend(T* buf, int count, int dest, MPI_Request* request, int tag = 0,
              MPI_Comm comm = MPI_COMM_WORLD) {
     // check if type T's underlying type is uint8_t
-    static_assert(std::is_same<std::underlying_type_t<T>, std::uint8_t>>::value,
+    static_assert(std::is_same<std::underlying_type_t<T>, std::uint8_t>::value,
                   "unsupported type for iSend");
     if (ok) MPI_Isend(static_cast<void*>(buf), count, MPI_BYTE, dest, tag, comm, request);
   }
