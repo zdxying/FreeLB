@@ -542,6 +542,14 @@ void MpiManager::gatherv<bool>(bool* sendBuf, int sendCount, bool* recvBuf, int*
 }
 
 template <>
+void MpiManager::gatherv<std::uint8_t>(std::uint8_t* sendBuf, int sendCount, std::uint8_t* recvBuf, int* recvCounts,
+                               int* displs, int root, MPI_Comm comm) {
+  if (!ok) return;
+  MPI_Gatherv(static_cast<void*>(sendBuf), sendCount, MPI_BYTE, static_cast<void*>(recvBuf),
+              recvCounts, displs, MPI_BYTE, root, comm);
+}
+
+template <>
 void MpiManager::gatherv<char>(char* sendBuf, int sendCount, char* recvBuf, int* recvCounts,
                                int* displs, int root, MPI_Comm comm) {
   if (!ok) return;
@@ -748,6 +756,13 @@ void MpiManager::bCastThroughMaster<double>(double* sendBuf, int sendCount, bool
 
 template <>
 void MpiManager::reduce<bool>(bool& sendVal, bool& recvVal, MPI_Op op, int root, MPI_Comm comm) {
+  if (!ok) return;
+  MPI_Reduce(static_cast<void*>(&sendVal), static_cast<void*>(&recvVal), 1, MPI_BYTE, op, root,
+             comm);
+}
+
+template <>
+void MpiManager::reduce<std::uint8_t>(std::uint8_t& sendVal, std::uint8_t& recvVal, MPI_Op op, int root, MPI_Comm comm) {
   if (!ok) return;
   MPI_Reduce(static_cast<void*>(&sendVal), static_cast<void*>(&recvVal), 1, MPI_BYTE, op, root,
              comm);
