@@ -269,6 +269,7 @@ struct TempConverter final : public AbstractConverter<T> {
     // normalized temperature
     T Lattice_T = (T_phys - Tl) / Conv_dT;
     if (Lattice_T < 0 || Lattice_T > 1) {
+      MPI_RANK(0)
       std::cout << "Error: Lattice_T out of range [0,1]" << std::endl;
       exit(-1);
     }
@@ -394,6 +395,7 @@ struct ConcConverter final : public AbstractConverter<T> {
     // normalized concentration
     T Lattice_Conc = (Conc_phys - Cl) / Conv_dC;
     if (Lattice_Conc < 0 || Lattice_Conc > 1) {
+      MPI_RANK(0)
       std::cout << "Error: Lattice_Conc out of range [0,1]" << std::endl;
       exit(-1);
     }

@@ -247,7 +247,7 @@ public:
 	// get number of a kind of value in a field
 	std::size_t getCount(const FieldDataType value, std::size_t fieldidx = 0, bool useolap = true) const {
 		std::size_t TotalValueCount{};
-		FieldDataType Result{};
+		std::size_t Result{};
 		mpi().barrier();
 
 		if (useolap) {
@@ -316,7 +316,7 @@ public:
 	FloatType getPercentage(const FieldDataType value, std::size_t fieldidx = 0, bool useolap = true) const {
 		std::size_t TotalCount{};
 		std::size_t TotalValueCount{};
-		FieldDataType Result{};
+		FloatType Result{};
 		mpi().barrier();
 
 		if (useolap) {
@@ -389,7 +389,7 @@ public:
 	// get number of a kind of flag in a flag field
 	std::size_t getFlagCount(const FieldDataType flag, std::size_t fieldidx = 0, bool useolap = true) const {
 		std::size_t TotalValueCount{};
-		FieldDataType Result{};
+		std::size_t Result{};
 		mpi().barrier();
 
 		if (useolap) {
@@ -458,7 +458,7 @@ public:
 	FloatType getFlagPercentage(const FieldDataType flag, std::size_t fieldidx = 0, bool useolap = true) const {
 		std::size_t TotalCount{};
 		std::size_t TotalValueCount{};
-		FieldDataType Result{};
+		FloatType Result{};
 		mpi().barrier();
 
 		if (useolap) {
@@ -639,7 +639,7 @@ public:
 		mpi().gatherv(countrecvbuf.data(), sendbuf_size, countrecvbuf.data(), recvcounts.data(), displs.data());
 		// 6. process at the main rank
 		MPI_RANK(0);
-		for (std::size_t i = 0; i < total_size; ++i) {
+		for (int i = 0; i < total_size; ++i) {
 			const auto& var = flagrecvbuf[i];
 			auto it = std::find_if(Result.begin(), Result.end(), [var](const auto& p) {
 				return util::isFlag(var, p.first);
@@ -780,7 +780,7 @@ public:
 		mpi().gatherv(countrecvbuf.data(), sendbuf_size, countrecvbuf.data(), recvcounts.data(), displs.data());
 		// 6. process at the main rank
 		MPI_RANK(0);
-		for (std::size_t i = 0; i < total_size; ++i) {
+		for (int i = 0; i < total_size; ++i) {
 			const auto& var = valuerecvbuf[i];
 			auto it = std::find_if(Result.begin(), Result.end(), [var](const auto& p) {
 				return var == p.first;

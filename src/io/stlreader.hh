@@ -460,6 +460,7 @@ inline void StlMesh<T>::Getminmax(Triangle<T> &tri) {
 
 template <typename T>
 void StlMesh<T>::print(bool full) {
+  MPI_RANK(0)
   std::cout << "[StlMesh " << _fName << "]: " << std::endl;
   if (full || Triangles.size() < 20) {
     int i = 1;

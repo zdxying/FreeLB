@@ -581,6 +581,7 @@ void Octree<T>::write(const int depth, const std::string no) {
 // sum of numPoints and connectivity indices over each cell: 8+1)
 template <typename T>
 void Octree<T>::write(const std::string fName) {
+  MPI_RANK(0)
   std::vector<Octree<T>*> leafs;
   getLeafs(leafs);
   if (leafs.size() > 100000) {
@@ -823,6 +824,7 @@ void Octree<T>::intersectRayNode(const Vector<T, 3>& pt, const Vector<T, 3>& dir
 
 template <typename T>
 void Octree<T>::print(std::vector<Octree<T>*>& leafs) {
+  MPI_RANK(0)
   std::cout << "[Octree]: " << std::endl;
   std::cout << "TreeRadius = " << _radius << "; Center = (" << _center[0] << ","
             << _center[1] << "," << _center[2] << "); Leafs = " << leafs.size()

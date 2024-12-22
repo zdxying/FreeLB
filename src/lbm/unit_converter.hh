@@ -24,6 +24,7 @@
 
 template <typename T>
 void BaseConverter<T>::check(int &check_status) {
+  MPI_RANK(0)
   std::cout << "[BasicConverter]:\n"
             << "deltaX:           " << deltaX << "\n"
             << "deltaT:           " << deltaT << "\n"
@@ -62,6 +63,7 @@ void BaseConverter<T>::check(int &check_status) {
 
 template <typename T>
 void TempConverter<T>::check(int &check_status) {
+  MPI_RANK(0)
   std::cout << "[TempConverter]:\n"
             << "Tl:               " << Tl << "\n"
             << "Th:               " << Th << "\n"
@@ -101,6 +103,7 @@ void TempConverter<T>::check(int &check_status) {
 
 template <typename T>
 void ConcConverter<T>::check(int &check_status) {
+  MPI_RANK(0)
   std::cout << "[ConcConverter]:\n"
             << "Cl:               " << Cl << "\n"
             << "Ch:               " << Ch << "\n"
@@ -127,12 +130,14 @@ void ConcConverter<T>::check(int &check_status) {
 
 template <typename T>
 void ZSConverter<T>::check(int &check_status) {
+  MPI_RANK(0)
   std::cout << "[ZS Model Converter]:\n"
             << "Lattice_GT_Coef: " << Lattice_GT_Coef << "\n";
 }
 
 template <typename T>
 void GandinConverter<T>::check(int &check_status) {
+  MPI_RANK(0)
   std::cout << "[GandinConverter]:  \n"
             << "Lat_DT_Mean_Bulk: " << Lattice_DT_Mean_Bulk << "\n"
             << "Lat_DT_Std_Bulk:  " << Lattice_DT_Std_Bulk << "\n"
