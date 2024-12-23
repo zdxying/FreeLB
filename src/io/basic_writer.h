@@ -68,13 +68,13 @@ void getVTKTypeString(std::string& type) {
 
 class Printer {
  public:
-  static void Print_BigBanner(std::string banner) {
+  static void Print_BigBanner(const std::string& banner) {
     MPI_RANK(0)
     std::cout << "\n------------------------------------------------\n"
               << "                " << banner << "\n"
               << "------------------------------------------------" << std::endl;
   }
-  static void Print_Banner(std::string banner) {
+  static void Print_Banner(const std::string& banner) {
     MPI_RANK(0)
     std::cout << "\n----------------" << banner << "----------------" << std::endl;
   }
@@ -84,16 +84,16 @@ class Printer {
     std::cout << "Res: " << Res << "  ";
   }
   template <typename T>
-  static void Print(std::string title, T value) {
+  static void Print(const std::string& title, T value) {
     MPI_RANK(0)
     std::cout << title << ": " << value << "  ";
   }
   template <typename T>
-  static void Print(std::string title, T value, std::string title2) {
+  static void Print(const std::string& title, T value, const std::string& title2) {
     MPI_RANK(0)
     std::cout << title << ": " << value << title2 << "  ";
   }
-  static void PrintTitle(std::string title) {
+  static void PrintTitle(const std::string& title) {
     MPI_RANK(0)
     std::cout << "[" << title << "]:\n";
   }

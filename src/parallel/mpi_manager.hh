@@ -46,7 +46,7 @@ void MpiManager::init(int* argc, char*** argv) {
   int ok4 = MPI_Comm_set_errhandler(MPI_COMM_WORLD, MPI_ERRORS_ARE_FATAL);
   ok = (ok1 == MPI_SUCCESS && ok2 == MPI_SUCCESS && ok3 == MPI_SUCCESS && ok4 == MPI_SUCCESS);
   if (taskId == 0) {
-    std::cout << "Sucessfully initialized, ThreadNum = " << getSize() << std::endl;
+    std::cout << "Sucessfully initialized, ProcessNum = " << getSize() << std::endl;
   }
 }
 

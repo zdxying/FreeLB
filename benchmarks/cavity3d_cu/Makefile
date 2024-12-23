@@ -1,5 +1,5 @@
 
-TARGET = cavblock2d.exe
+TARGET = cavity3d.exe
 ROOT := ../..
 
 CXXC := nvcc
@@ -11,13 +11,13 @@ FLAGS += -O3
 # FLAGS += -pg
 FLAGS += -DFLOAT_TYPE=float
 
-# FLAGS += -gencode arch=compute_89,code=sm_89
-FLAGS += -gencode arch=compute_86,code=sm_86
+FLAGS += -gencode arch=compute_89,code=sm_89
+# FLAGS += -gencode arch=compute_86,code=sm_86
 
+FLAGS += -D_UNROLLFOR
 FLAGS += --expt-relaxed-constexpr
 FLAGS += -rdc=true
 
 OUTPUT += vtkoutput
-
 
 include $(ROOT)/make.mk

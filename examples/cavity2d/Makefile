@@ -1,5 +1,5 @@
 # -------------executable name-------------
-TARGET = cavref2d.exe
+TARGET = cavity2d.exe
 
 # -------------/src/-------------
 ROOT := ../..

@@ -67,3 +67,12 @@ endif
 info:
 	@echo "CXXC" = $(CXXC) 
 	@echo "FLAGS" = $(FLAGS) 
+
+#-------------omp----------------
+omp: FLAGS += -fopenmp
+omp: all
+
+#-------------mpi----------------
+mpi: FLAGS += -DMPI_ENABLED
+mpi: CXXC := mpic++
+mpi: all

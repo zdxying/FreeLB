@@ -48,7 +48,6 @@ int BlockCellNx;
 
 // physical properties
 T rho_ref;    // g/mm^3
-T Dyna_Visc;  // Pa·s Dynamic viscosity of the liquid
 T Kine_Visc;  // mm^2/s kinematic viscosity of the liquid
 // init conditions
 Vector<T, 2> U_Ini;  // mm/s
@@ -76,7 +75,6 @@ void readParam() {
   BlockCellNx = param_reader.getValue<int>("Mesh", "BlockCellNx");
   // physical properties
   rho_ref = param_reader.getValue<T>("Physical_Property", "rho_ref");
-  Dyna_Visc = param_reader.getValue<T>("Physical_Property", "Dyna_Visc");
   Kine_Visc = param_reader.getValue<T>("Physical_Property", "Kine_Visc");
   // init conditions
   U_Ini[0] = param_reader.getValue<T>("Init_Conditions", "U_Ini0");
@@ -92,6 +90,7 @@ void readParam() {
   OutputStep = param_reader.getValue<int>("Simulation_Settings", "OutputStep");
   tol = param_reader.getValue<T>("tolerance", "tol");
 
+  MPI_RANK(0)
 
   std::cout << "------------Simulation Parameters:-------------\n" << std::endl;
   std::cout << "[Simulation_Settings]:"
@@ -104,11 +103,15 @@ void readParam() {
             << "----------------------------------------------" << std::endl;
 }
 
-int main() {
+int main(int argc, char* argv[]) {
   constexpr std::uint8_t VoidFlag = std::uint8_t(1);
   constexpr std::uint8_t AABBFlag = std::uint8_t(2);
   constexpr std::uint8_t BouncebackFlag = std::uint8_t(4);
   constexpr std::uint8_t BBMovingWallFlag = std::uint8_t(8);
+
+  mpi().init(&argc, &argv);
+
+  MPI_DEBUG_WAIT
 
   Printer::Print_BigBanner(std::string("Initializing..."));
 
@@ -121,16 +124,16 @@ int main() {
   ConvManager.Check_and_Print();
 
   // ------------------ define geometry ------------------
-  AABB<T, 2> cavity(Vector<T, 2>(T(0), T(0)),
-                    Vector<T, 2>(T(Ni * Cell_Len), T(Nj * Cell_Len)));
+  AABB<T, 2> cavity(
+    Vector<T, 2>(T(0), T(0)), Vector<T, 2>(T(Ni * Cell_Len), T(Nj * Cell_Len)));
   // use 0.5 for refined block
   AABB<T, 2> toplid(Vector<T, 2>(Cell_Len / 2, T((Nj - 1) * Cell_Len)),
-                    Vector<T, 2>(T((Ni - 0.5) * Cell_Len), T(Nj * Cell_Len)));
+    Vector<T, 2>(T((Ni - 0.5) * Cell_Len), T(Nj * Cell_Len)));
   // for refined block
   AABB<T, 2> innercavity(
     Vector<T, 2>(T(Ni * Cell_Len) / BlockCellNx, T(Nj * Cell_Len) / BlockCellNx),
     Vector<T, 2>(T(Ni * Cell_Len) * (BlockCellNx - 1) / BlockCellNx,
-                 T(Nj * Cell_Len) * (BlockCellNx - 1) / BlockCellNx));
+      T(Nj * Cell_Len) * (BlockCellNx - 1) / BlockCellNx));
 
   // geometry helper
   BlockGeometryHelper2D<T> GeoHelper(Ni, Nj, cavity, Cell_Len, Ni / BlockCellNx);
@@ -140,6 +143,7 @@ int main() {
     }
   });
   GeoHelper.CreateBlocks();
+  // GeoHelper.AdaptiveOptimization(mpi().getSize());
   GeoHelper.AdaptiveOptimization(Thread_Num);
   GeoHelper.LoadBalancing(mpi().getSize());
 
@@ -147,8 +151,8 @@ int main() {
 
   // ------------------ define flag field ------------------
   BlockFieldManager<FLAG, T, 2> FlagFM(Geo, VoidFlag);
-  FlagFM.forEach(cavity,
-                 [&](auto& field, std::size_t id) { field.SetField(id, AABBFlag); });
+  FlagFM.forEach(
+    cavity, [&](auto& field, std::size_t id) { field.SetField(id, AABBFlag); });
   FlagFM.template SetupBoundary<LatSet>(cavity, BouncebackFlag);
   FlagFM.forEach(toplid, [&](auto& field, std::size_t id) {
     if (util::isFlag(field.get(id), BouncebackFlag)) field.SetField(id, BBMovingWallFlag);
@@ -173,21 +177,25 @@ int main() {
   // set initial value of field
   Vector<T, 2> LatU_Wall = BaseConv.getLatticeU(U_Wall);
   NSLattice.getField<VELOCITY<T, LatSet::d>>().forEach(FlagFM, BBMovingWallFlag,
-                     [&](auto& field, std::size_t id) { field.SetField(id, LatU_Wall); });
+    [&](auto& field, std::size_t id) { field.SetField(id, LatU_Wall); });
 
   // bcs
-  BBLikeFixedBlockBdManager<bounceback::normal<CELL>, BlockLatticeManager<T, LatSet, FIELDSPACK>, BlockFieldManager<FLAG, T, 2>>
+  BBLikeFixedBlockBdManager<bounceback::normal<CELL>,
+    BlockLatticeManager<T, LatSet, FIELDSPACK>, BlockFieldManager<FLAG, T, 2>>
     NS_BB("NS_BB", NSLattice, FlagFM, BouncebackFlag, VoidFlag);
-  BBLikeFixedBlockBdManager<bounceback::movingwall<CELL>, BlockLatticeManager<T, LatSet, FIELDSPACK>, BlockFieldManager<FLAG, T, 2>>
+  BBLikeFixedBlockBdManager<bounceback::movingwall<CELL>,
+    BlockLatticeManager<T, LatSet, FIELDSPACK>, BlockFieldManager<FLAG, T, 2>>
     NS_BBMW("NS_BBMW", NSLattice, FlagFM, BBMovingWallFlag, VoidFlag);
   BlockBoundaryManager BM(&NS_BB, &NS_BBMW);
 
   // define task/ dynamics:
-  // to use refined/multi-level block structure, macroscopic fields should be updated each time step for pop conversion
-  // bulk task
-  using BulkTask = tmp::Key_TypePair<AABBFlag, collision::BGK<moment::rhoU<CELL, true>, equilibrium::SecondOrder<CELL>>>;
+  // to use refined/multi-level block structure, macroscopic fields should be updated each
+  // time step for pop conversion bulk task
+  using BulkTask = tmp::Key_TypePair<AABBFlag,
+    collision::BGK<moment::rhoU<CELL, true>, equilibrium::SecondOrder<CELL>>>;
   // wall task
-  using WallTask = tmp::Key_TypePair<BouncebackFlag | BBMovingWallFlag, collision::BGK<moment::useFieldrhoU<CELL>, equilibrium::SecondOrder<CELL>>>;
+  using WallTask = tmp::Key_TypePair<BouncebackFlag | BBMovingWallFlag,
+    collision::BGK<moment::useFieldrhoU<CELL>, equilibrium::SecondOrder<CELL>>>;
   // task collection
   using TaskCollection = tmp::TupleWrapper<BulkTask, WallTask>;
   // task executor
