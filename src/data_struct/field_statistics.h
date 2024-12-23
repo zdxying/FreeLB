@@ -636,7 +636,7 @@ public:
 		std::vector<std::size_t> countrecvbuf(total_size);
 		// 5. gather all sendbuf at the main rank
 		mpi().gatherv(flagsendbuf.data(), sendbuf_size, flagrecvbuf.data(), recvcounts.data(), displs.data());
-		mpi().gatherv(countrecvbuf.data(), sendbuf_size, countrecvbuf.data(), recvcounts.data(), displs.data());
+		mpi().gatherv(countsendbuf.data(), sendbuf_size, countrecvbuf.data(), recvcounts.data(), displs.data());
 		// 6. process at the main rank
 		MPI_RANK(0);
 		for (int i = 0; i < total_size; ++i) {
