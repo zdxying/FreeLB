@@ -38,7 +38,6 @@ public:
 	// get the average value of a field
 	FieldDataType getAverage(std::size_t fieldidx = 0, bool useolap = true) const {
 		FieldDataType TotalSum{};
-		FieldDataType Result{};
 		mpi().barrier();
 
 		if (useolap) {
@@ -97,21 +96,18 @@ public:
 			}
 		}
 
+		TotalSum /= BFM.size();
 #ifdef MPI_ENABLED
-		FieldDataType result = TotalSum / BFM.size();
-		mpi().reduce(result, Result, MPI_SUM);
-		Result /= mpi().getSize();
-#else
-		Result = TotalSum / BFM.size();
+		mpi().reduceAndBcast(TotalSum, MPI_SUM);
+		TotalSum /= mpi().getSize();
 #endif
-	return Result;
+	return TotalSum;
 	}
 
 
 	// get the maximum value of a field
 	FieldDataType getMax(std::size_t fieldidx = 0, bool useolap = true) const {
 		FieldDataType TotalMax{};
-		FieldDataType Result{};
 		mpi().barrier();
 
 		if (useolap) {
@@ -168,18 +164,15 @@ public:
 		}
 
 #ifdef MPI_ENABLED
-		mpi().reduce(TotalMax, Result, MPI_MAX);
-#else
-		Result = TotalMax;
+		mpi().reduceAndBcast(TotalMax, MPI_MAX);
 #endif
-		return Result;
+		return TotalMax;
 	}
 
 
 	// get the minimum value of a field
 	FieldDataType getMin(std::size_t fieldidx = 0, bool useolap = true) const {
 		FieldDataType TotalMin{};
-		FieldDataType Result{};
 		mpi().barrier();
 
 		if (useolap) {
@@ -236,18 +229,15 @@ public:
 		}
 
 #ifdef MPI_ENABLED
-		mpi().reduce(TotalMin, Result, MPI_MIN);
-#else
-		Result = TotalMin;
+		mpi().reduceAndBcast(TotalMin, MPI_MIN);
 #endif
-		return Result;
+		return TotalMin;
 	}
 
 
 	// get number of a kind of value in a field
 	std::size_t getCount(const FieldDataType value, std::size_t fieldidx = 0, bool useolap = true) const {
 		std::size_t TotalValueCount{};
-		std::size_t Result{};
 		mpi().barrier();
 
 		if (useolap) {
@@ -304,11 +294,9 @@ public:
 		}
 
 #ifdef MPI_ENABLED
-		mpi().reduce(TotalValueCount, Result, MPI_SUM);
-#else
-		Result = TotalValueCount;
+		mpi().reduceAndBcast(TotalValueCount, MPI_SUM);
 #endif
-		return Result;
+		return TotalValueCount;
 	}
 
 
@@ -375,12 +363,11 @@ public:
 			}
 		}
 
-#ifdef MPI_ENABLED
-		FloatType result = static_cast<FloatType>(TotalValueCount) / TotalCount;
-		mpi().reduce(result, Result, MPI_SUM);
-		Result /= mpi().getSize();
-#else
 		Result = static_cast<FloatType>(TotalValueCount) / TotalCount;
+
+#ifdef MPI_ENABLED
+		mpi().reduceAndBcast(Result, MPI_SUM);
+		Result /= mpi().getSize();
 #endif
 		return Result;
 	}
@@ -389,7 +376,6 @@ public:
 	// get number of a kind of flag in a flag field
 	std::size_t getFlagCount(const FieldDataType flag, std::size_t fieldidx = 0, bool useolap = true) const {
 		std::size_t TotalValueCount{};
-		std::size_t Result{};
 		mpi().barrier();
 
 		if (useolap) {
@@ -446,11 +432,9 @@ public:
 		}
 
 #ifdef MPI_ENABLED
-		mpi().reduce(TotalValueCount, Result, MPI_SUM);
-#else
-		Result = TotalValueCount;
+		mpi().reduceAndBcast(TotalValueCount, MPI_SUM);
 #endif
-		return Result;
+		return TotalValueCount;
 	}
 
 
@@ -517,12 +501,11 @@ public:
 			}
 		}
 
-#ifdef MPI_ENABLED
-		FloatType result = static_cast<FloatType>(TotalValueCount) / TotalCount;
-		mpi().reduce(result, Result, MPI_SUM);
-		Result /= mpi().getSize();
-#else
 		Result = static_cast<FloatType>(TotalValueCount) / TotalCount;
+
+#ifdef MPI_ENABLED
+		mpi().reduceAndBcast(Result, MPI_SUM);
+		Result /= mpi().getSize();
 #endif
 		return Result;
 	}

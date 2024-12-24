@@ -1,20 +1,24 @@
-
+# -------------executable name-------------
 TARGET = dambreak3d.exe
+
+# -------------/src/-------------
 ROOT := ../..
 
-FLAGS += -O3 -march=native
-FLAGS += -Wall -Wdisabled-optimization -Wno-unknown-pragmas -Wno-unused-local-typedefs
-# FLAGS += -fopenmp
-FLAGS += -DMPI_ENABLED
-
-# FLAGS += -g
-
-FLAGS += -DFLOAT_TYPE=double
+# -------------optimization flags-------------
+FLAGS += -O3 -march=native -mtune=native
 FLAGS += -D_UNROLLFOR
 
-OUTPUT += vtkoutput STLoutput
+# -------------warning flags-------------
+FLAGS += -Wall -Wdisabled-optimization -Wno-unknown-pragmas -Wno-unused-local-typedefs
 
-# mpi enabled
-CXXC := mpic++
+# -------------debug flags-------------
+# FLAGS += -g
+# FLAGS += -pg
+
+# -------------floating point type-------------
+FLAGS += -DFLOAT_TYPE=double
+
+# -------------output folder-------------
+OUTPUT += vtkoutput STLoutput
 
 include $(ROOT)/make.mk

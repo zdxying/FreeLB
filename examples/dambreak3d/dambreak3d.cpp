@@ -68,13 +68,9 @@ T MaxViscCoef;
 int MaxStep;
 int OutputStep;
 
-std::string work_dir;
 
 void readParam() {
   iniReader param_reader("dambreak3d.ini");
-  // Thread_Num = param_reader.getValue<int>("OMP", "Thread_Num");
-  // mesh
-  work_dir = param_reader.getValue<std::string>("workdir", "workdir_");
   // parallel
   Thread_Num = param_reader.getValue<int>("parallel", "thread_num");
 
@@ -147,13 +143,18 @@ int main(int argc, char* argv[]) {
                     Vector<T, 3>(T(Ni * Cell_Len), T(Nj * Cell_Len), T(Nk * Cell_Len)));
   AABB<T, 3> fluid(Vector<T, 3>{},
                    Vector<T, 3>(T(int(Ni / 2) * Cell_Len), T(int(Nj) * Cell_Len), T(int(Nk/2) * Cell_Len)));
+  
+  // method 1: dirctly define geometry, [serial][openmp]
   // BlockGeometry3D<T> Geo(Ni, Nj, Nk, Thread_Num, cavity, Cell_Len, 2);
+  // end method 1
 
+  // method 2: use geohelper for complex geometry, [mpi]
   BlockGeometryHelper3D<T> GeoHelper(Ni, Nj, Nk, cavity, Cell_Len, BlockCellLen, 2);
   GeoHelper.CreateBlocks();
   GeoHelper.AdaptiveOptimization(mpi().getSize());
   GeoHelper.LoadBalancing(mpi().getSize());
   BlockGeometry3D<T> Geo(GeoHelper);
+  // end method 2
 
   // ------------------ define flag field ------------------
   // BlockFieldManager<FLAG, T, LatSet::d> FlagFM(Geo, VoidFlag);
@@ -210,7 +211,7 @@ int main(int argc, char* argv[]) {
 
   //// end free surface
 
-  // define task/ dynamics:
+  // ------------------ define task/ dynamics ------------------
   // NS task
   using NSBulkTask =
     tmp::Key_TypePair<olbfs::FSType::Fluid | olbfs::FSType::Interface | olbfs::FSType::Gas,
@@ -226,6 +227,7 @@ int main(int argc, char* argv[]) {
   //                         BlockFieldManager<FLAG, T, LatSet::d>>
   // NS_BB("NS_BB", NSLattice, FlagFM, BouncebackFlag, VoidFlag);
 
+  // ------------------ define writers ------------------
   vtmo::ScalarWriter rhovtm("rho", NSLattice.getField<RHO<T>>());
   vtmo::ScalarWriter MassWriter("Mass", NSLattice.getField<olbfs::MASS<T>>());
   vtmo::VectorWriter VeloWriter("Velo", NSLattice.getField<VELOCITY<T, LatSet::d>>());

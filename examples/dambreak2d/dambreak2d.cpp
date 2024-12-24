@@ -37,6 +37,7 @@ int Nj;
 T Cell_Len;
 T RT;
 int Thread_Num;
+int BlockCellLen;
 
 // physical properties
 T rho_ref;    // g/mm^3
@@ -68,19 +69,16 @@ T Smagorinsky;
 int MaxStep;
 int OutputStep;
 
-std::string work_dir;
 
 void readParam() {
-  iniReader param_reader("dambreak2dparam.ini");
-  // Thread_Num = param_reader.getValue<int>("OMP", "Thread_Num");
-  // mesh
-  work_dir = param_reader.getValue<std::string>("workdir", "workdir_");
+  iniReader param_reader("dambreak2d.ini");
   // parallel
   Thread_Num = param_reader.getValue<int>("parallel", "thread_num");
 
   Ni = param_reader.getValue<int>("Mesh", "Ni");
   Nj = param_reader.getValue<int>("Mesh", "Nj");
   Cell_Len = param_reader.getValue<T>("Mesh", "Cell_Len");
+  BlockCellLen = param_reader.getValue<int>("Mesh", "BlockCellLen");
   // physical properties
   rho_ref = param_reader.getValue<T>("Physical_Property", "rho_ref");
   Kine_Visc = param_reader.getValue<T>("Physical_Property", "Kine_Visc");
@@ -111,7 +109,7 @@ void readParam() {
   MaxStep = param_reader.getValue<int>("Simulation_Settings", "TotalStep");
   OutputStep = param_reader.getValue<int>("Simulation_Settings", "OutputStep");
 
-
+  MPI_RANK(0)
   std::cout << "------------Simulation Parameters:-------------\n" << std::endl;
   std::cout << "[Simulation_Settings]:" << "TotalStep:         " << MaxStep << "\n"
             << "OutputStep:        " << OutputStep << "\n"
@@ -126,10 +124,14 @@ int getOutputStep(const Timer& timer) {
   else return 1000;
 }
 
-int main() {
+int main(int argc, char* argv[]) {
   // constexpr std::uint8_t VoidFlag = std::uint8_t(1);
   // constexpr std::uint8_t AABBFlag = std::uint8_t(2);
   // constexpr std::uint8_t BouncebackFlag = std::uint8_t(4);
+
+  mpi().init(&argc, &argv);
+
+  MPI_DEBUG_WAIT
 
   Printer::Print_BigBanner(std::string("Initializing..."));
 
@@ -146,7 +148,18 @@ int main() {
                     Vector<T, 2>(T(Ni * Cell_Len), T(Nj * Cell_Len)));
   AABB<T, 2> fluid(Vector<T, 2>{},
                    Vector<T, 2>(T(int(Ni / 2) * Cell_Len), T(int(Nj / 2) * Cell_Len)));
-  BlockGeometry2D<T> Geo(Ni, Nj, Thread_Num, cavity, Cell_Len, 2);
+  
+  // method 1: dirctly define geometry, [serial][openmp]
+  // BlockGeometry2D<T> Geo(Ni, Nj, Thread_Num, cavity, Cell_Len, 2);
+  // end method 1
+
+  // method 2: use geohelper for complex geometry, [mpi]
+  BlockGeometryHelper2D<T> GeoHelper(Ni, Nj, cavity, Cell_Len, BlockCellLen, 2);
+  GeoHelper.CreateBlocks();
+  GeoHelper.AdaptiveOptimization(mpi().getSize());
+  GeoHelper.LoadBalancing(mpi().getSize());
+  BlockGeometry2D<T> Geo(GeoHelper);
+  // end method 2
 
   // ------------------ define flag field ------------------
   // BlockFieldManager<FLAG, T, LatSet::d> FlagFM(Geo, VoidFlag);
@@ -176,7 +189,8 @@ int main() {
   ValuePack NSInitValues(BaseConv.getLatRhoInit(), Vector<T, 2>{}, T{}, Vector<T, 2>{T{}, -BaseConv.Lattice_g}, BaseConv.getOMEGA(), Smagorinsky);
   ValuePack FSInitValues(olbfs::FSType::Void, olbfs::FSFlag::None, T{}, T{}, Vector<T, LatSet::q>{}, Vector<T, 2>{});
   ValuePack FSParamsInitValues(LonelyThreshold, VOF_Trans_Threshold, true, surface_tension_coefficient_factor* surface_tension_coefficient);
-  std::cout << "surface: " << surface_tension_coefficient_factor* surface_tension_coefficient << std::endl;
+  IF_MPI_RANK(0)
+  {std::cout << "surface: " << surface_tension_coefficient_factor* surface_tension_coefficient << std::endl;}
   // power-law dynamics for non-Newtonian fluid
   // ValuePack PowerLawInitValues(BaseConv.Lattice_VisKine, BehaviorIndex - 1, BaseConv.Lattice_VisKine*MInViscCoef, BaseConv.Lattice_VisKine*MaxViscCoef);
 
@@ -205,7 +219,7 @@ int main() {
 
   //// end free surface
 
-  // define task/ dynamics:
+  // ------------------ define task/ dynamics ------------------
   // NS task  PowerLaw_BGKForce
   // openlb used BGK dynamics for Gas cells
   using NSBulkTask =
@@ -226,6 +240,7 @@ int main() {
   //                         BlockFieldManager<FLAG, T, LatSet::d>>
   // NS_BB("NS_BB", NSLattice, FlagFM, BouncebackFlag, VoidFlag);
 
+  // ------------------ define writers ------------------
   vtmo::ScalarWriter rhovtm("rho", NSLattice.getField<RHO<T>>());
   vtmo::ScalarWriter MassWriter("Mass", NSLattice.getField<olbfs::MASS<T>>());
   vtmo::VectorWriter VeloWriter("Velo", NSLattice.getField<VELOCITY<T, LatSet::d>>());

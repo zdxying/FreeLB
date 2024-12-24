@@ -315,7 +315,17 @@ class MpiManager {
   /// Reduction operation, followed by a broadcast
   template <typename T>
   void reduceAndBcast(T& reductVal, MPI_Op op, int root = 0,
-                      MPI_Comm comm = MPI_COMM_WORLD);
+                      MPI_Comm comm = MPI_COMM_WORLD) {
+  // default implementation reduce data as MPI_BYTE
+    static_assert(std::is_same<std::underlying_type_t<T>, std::uint8_t>::value,
+                  "unsupported type for reduceAndBcast");
+    if (!ok) return;
+    T recvVal;
+    MPI_Reduce(static_cast<void*>(&reductVal), static_cast<void*>(&recvVal), 1, MPI_BYTE, op, root,
+              comm);
+    reductVal = recvVal;
+    MPI_Bcast(&reductVal, 1, MPI_BYTE, root, comm);
+  }
 
   /// Complete a non-blocking MPI operation
   void wait(MPI_Request* request, MPI_Status* status) {

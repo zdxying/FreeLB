@@ -848,6 +848,16 @@ void MpiManager::reduceAndBcast<bool>(bool& reductVal, MPI_Op op, int root, MPI_
 }
 
 template <>
+void MpiManager::reduceAndBcast<std::uint8_t>(std::uint8_t& reductVal, MPI_Op op, int root, MPI_Comm comm) {
+  if (!ok) return;
+  std::uint8_t recvVal;
+  MPI_Reduce(static_cast<void*>(&reductVal), static_cast<void*>(&recvVal), 1, MPI_BYTE, op, root,
+             comm);
+  reductVal = recvVal;
+  MPI_Bcast(&reductVal, 1, MPI_BYTE, root, comm);
+}
+
+template <>
 void MpiManager::reduceAndBcast<char>(char& reductVal, MPI_Op op, int root, MPI_Comm comm) {
   if (!ok) return;
   char recvVal;
@@ -903,10 +913,10 @@ void MpiManager::reduceAndBcast<long>(long& reductVal, MPI_Op op, int root, MPI_
 }
 
 template <>
-void MpiManager::reduceAndBcast<unsigned long>(unsigned long& reductVal, MPI_Op op, int root,
+void MpiManager::reduceAndBcast<std::size_t>(std::size_t& reductVal, MPI_Op op, int root,
                                                MPI_Comm comm) {
   if (!ok) return;
-  unsigned long recvVal;
+  std::size_t recvVal;
   MPI_Reduce(&reductVal, &recvVal, 1, MPI_UNSIGNED_LONG, op, root, comm);
   reductVal = recvVal;
   MPI_Bcast(&reductVal, 1, MPI_UNSIGNED_LONG, root, comm);
