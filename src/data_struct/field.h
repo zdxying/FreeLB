@@ -34,7 +34,7 @@
 #endif
 
 
-// single data
+// single data, T could be Vector but should not dynamically allocate memory
 template <typename T, typename Base>
 class Data {
  public:
@@ -156,138 +156,6 @@ class Data {
   void SetField(int i, T value) { _data = value; }
 
   static constexpr unsigned int Size() { return 1; }
-};
-
-
-// a single std::array, type T couldn't dynamically allocate memory
-template <typename T, typename Base>
-class Array {
- public:
-  using value_type = T;
-  static constexpr unsigned int array_dim = Base::array_dim;
-  using array_type = Array<T, Base>;
-  static constexpr bool isField = false;
-  static constexpr bool isCuDevField = false;
-
-#ifdef __CUDACC__
-  using cudev_array_type = cudev::Array<T, Base>;
-#endif
-
- private:
-  std::array<T, array_dim> _data;
-#ifdef __CUDACC__
-  T* dev_data;
-  cudev::Array<T, Base>* dev_Array;
-#endif
-
- public:
-  Array() : _data{} { InitDeviceData(); }
-  // argument size will not be used
-  Array(std::size_t size) : Array() {}
-  Array(std::size_t size, T initialValue)
-      : _data(make_array<T, array_dim>([&]() { return T{initialValue}; })) {
-    InitDeviceData();
-  }
-  // Copy constructor
-  Array(const Array& arr) : _data(arr._data) {
-#ifdef __CUDACC__
-    dev_data = cuda_malloc<T>(array_dim);
-    device_to_device(dev_data, arr.dev_data, array_dim);
-    constructInDevice();
-#endif
-  }
-  // Move constructor
-  Array(Array&& arr) noexcept : _data(std::move(arr._data)) {
-    arr._data = {};
-#ifdef __CUDACC__
-    dev_data = arr.dev_data;
-    arr.dev_data = nullptr;
-    constructInDevice();
-#endif
-  }
-  // Copy assignment operator
-  Array& operator=(const Array& arr) {
-    if (&arr == this) return *this;
-    _data = arr._data;
-#ifdef __CUDACC__
-    device_to_device(dev_data, arr.dev_data, array_dim);
-#endif
-    return *this;
-  }
-  // Move assignment operator
-  Array& operator=(Array&& arr) noexcept {
-    if (&arr == this) return *this;
-    _data = std::move(arr._data);
-    arr._data = {};
-#ifdef __CUDACC__
-    dev_data = arr.dev_data;
-    arr.dev_data = nullptr;
-#endif
-    return *this;
-  }
-
-  ~Array() {
-#ifdef __CUDACC__
-    if (dev_data) cuda_free(dev_data);
-    if (dev_Array) cuda_free(dev_Array);
-#endif
-  }
-
-  void InitDeviceData() {
-#ifdef __CUDACC__
-    dev_data = cuda_malloc<T>(array_dim);
-    copyToDevice();
-    constructInDevice();
-#endif
-  }
-
-#ifdef __CUDACC__
-  void copyToDevice() { host_to_device(dev_data, _data.data(), array_dim); }
-  void copyToHost() { device_to_host(_data.data(), dev_data, array_dim); }
-  T* get_devptr() { return dev_data; }
-  cudev::Array<T, Base>* get_devObj() { return dev_Array; }
-  void constructInDevice() {
-    dev_Array = cuda_malloc<cudev::Array<T, Base>>(1);
-    // temp host object
-    cudev::Array<T, Base> temp(dev_data);
-    // copy to device
-    host_to_device(dev_Array, &temp, 1);
-  }
-#endif
-
-  template <unsigned int i = 0>
-  auto& get() {
-    return _data[i];
-  }
-  template <unsigned int i = 0>
-  const auto& get() const {
-    return _data[i];
-  }
-  auto& get(unsigned int i) { return _data[i]; }
-  const auto& get(unsigned int i) const { return _data[i]; }
-
-  std::array<T, array_dim>& getArray() { return _data; }
-  const std::array<T, array_dim>& getArray() const { return _data; }
-
-  // argument i will not be used
-  auto& getField(std::size_t i = 0) { return *this; }
-  const auto& getField(std::size_t i = 0) const { return *this; }
-
-  // init
-  void Init(T value = T{}) {
-    _data.fill(value);
-#ifdef __CUDACC__
-    copyToDevice();
-#endif
-  }
-
-  template <unsigned int i = 0>
-  void SetField(T value) {
-    _data[i] = value;
-  }
-  void SetField(int i, T value) { _data[i] = value; }
-
-  static constexpr unsigned int Size() { return array_dim; }
 };
 
 
@@ -1549,7 +1417,7 @@ class StreamMapArray {
 
 
 template <typename ArrayType, unsigned int D>
-class GenericArrayField {
+class GenericFieldBase {
  public:
   using array_type = ArrayType;
   using value_type = typename ArrayType::value_type;
@@ -1559,7 +1427,7 @@ class GenericArrayField {
 
 #ifdef __CUDACC__
   using cudev_ArrayType = typename ArrayType::cudev_array_type;
-  using cudev_GenericArrayFieldType = cudev::GenericArrayField<cudev_ArrayType, D>;
+  using cudev_GenericArrayFieldType = cudev::GenericFieldBase<cudev_ArrayType, D>;
 #endif
 
  private:
@@ -1571,22 +1439,22 @@ class GenericArrayField {
 #endif
 
  public:
-  GenericArrayField() : _data{} {
+  GenericFieldBase() : _data{} {
 #ifdef __CUDACC__
     dev_data = nullptr;
     dev_GenericArrayField = nullptr;
 #endif
   }
-  GenericArrayField(std::size_t size)
+  GenericFieldBase(std::size_t size)
       : _data(make_array<ArrayType, D>([&]() { return ArrayType(size); })) {
     InitDeviceData();
   }
-  GenericArrayField(std::size_t size, value_type initialValue)
+  GenericFieldBase(std::size_t size, value_type initialValue)
       : _data(make_array<ArrayType, D>([&]() { return ArrayType(size, initialValue); })) {
     InitDeviceData();
   }
   // Copy constructor
-  GenericArrayField(const GenericArrayField& genF) : _data{} {
+  GenericFieldBase(const GenericFieldBase& genF) : _data{} {
     for (unsigned int i = 0; i < D; ++i) _data[i] = genF._data[i];
 #ifdef __CUDACC__
     dev_data = cuda_malloc<cudev_ArrayType*>(D);
@@ -1595,7 +1463,7 @@ class GenericArrayField {
 #endif
   }
   // Move constructor
-  GenericArrayField(GenericArrayField&& genF) noexcept {
+  GenericFieldBase(GenericFieldBase&& genF) noexcept {
     // manually moving each element of the array
     for (unsigned int i = 0; i < D; ++i) {
       _data[i] = std::move(genF._data[i]);
@@ -1609,7 +1477,7 @@ class GenericArrayField {
 #endif
   }
   // Copy assignment operator
-  GenericArrayField& operator=(const GenericArrayField& genF) {
+  GenericFieldBase& operator=(const GenericFieldBase& genF) {
     if (&genF == this) return *this;
     for (unsigned int i = 0; i < D; ++i) _data[i] = genF._data[i];
 #ifdef __CUDACC__
@@ -1618,7 +1486,7 @@ class GenericArrayField {
     return *this;
   }
   // Move assignment operator
-  GenericArrayField& operator=(GenericArrayField&& genF) noexcept {
+  GenericFieldBase& operator=(GenericFieldBase&& genF) noexcept {
     if (&genF == this) return *this;
     for (unsigned int i = 0; i < D; ++i) {
       _data[i] = std::move(genF._data[i]);
@@ -1632,7 +1500,7 @@ class GenericArrayField {
     return *this;
   }
 
-  ~GenericArrayField() {
+  ~GenericFieldBase() {
 #ifdef __CUDACC__
     if (dev_data) cuda_free(dev_data);
     if (dev_GenericArrayField) cuda_free(dev_GenericArrayField);
@@ -1707,7 +1575,7 @@ class GenericArrayField {
 };
 
 template <typename ArrayType, typename Base>
-class GenericField : public GenericArrayField<ArrayType, Base::array_dim> {
+class GenericField : public GenericFieldBase<ArrayType, Base::array_dim> {
  public:
   static constexpr unsigned int array_dim = Base::array_dim;
   using array_type = ArrayType;
@@ -1726,11 +1594,11 @@ class GenericField : public GenericArrayField<ArrayType, Base::array_dim> {
     dev_GenericField = nullptr;
 #endif
   }
-  GenericField(std::size_t size) : GenericArrayField<ArrayType, array_dim>(size) {
+  GenericField(std::size_t size) : GenericFieldBase<ArrayType, array_dim>(size) {
     constructInDevice();
   }
   GenericField(std::size_t size, value_type initialValue)
-      : GenericArrayField<ArrayType, array_dim>(size, initialValue) {
+      : GenericFieldBase<ArrayType, array_dim>(size, initialValue) {
     constructInDevice();
   }
 
@@ -1934,34 +1802,6 @@ typename ArrayType::value_type getAverage(const ArrayType& Arr,
            FloatType(0.125);
   }
   return Aver;
-}
-
-
-
-template <typename T, unsigned int D>
-struct IntpBlockComm;
-
-template <unsigned int D, typename FloatType, unsigned int Dim, typename ArrayType>
-typename ArrayType::value_type getInterpolation(const ArrayType& Arr,
-                                                const IntpSource<Dim>& src) {
-  using datatype = typename ArrayType::value_type;
-  datatype Intp = datatype{};
-  if constexpr (Dim == 2) {
-    Intp = Arr[src[0]] * IntpBlockComm<FloatType, Dim>::getIntpWeight()[D][0] +
-           Arr[src[1]] * IntpBlockComm<FloatType, Dim>::getIntpWeight()[D][1] +
-           Arr[src[2]] * IntpBlockComm<FloatType, Dim>::getIntpWeight()[D][2] +
-           Arr[src[3]] * IntpBlockComm<FloatType, Dim>::getIntpWeight()[D][3];
-  } else if constexpr (Dim == 3) {
-    Intp = Arr[src[0]] * IntpBlockComm<FloatType, Dim>::getIntpWeight()[D][0] +
-           Arr[src[1]] * IntpBlockComm<FloatType, Dim>::getIntpWeight()[D][1] +
-           Arr[src[2]] * IntpBlockComm<FloatType, Dim>::getIntpWeight()[D][2] +
-           Arr[src[3]] * IntpBlockComm<FloatType, Dim>::getIntpWeight()[D][3] +
-           Arr[src[4]] * IntpBlockComm<FloatType, Dim>::getIntpWeight()[D][4] +
-           Arr[src[5]] * IntpBlockComm<FloatType, Dim>::getIntpWeight()[D][5] +
-           Arr[src[6]] * IntpBlockComm<FloatType, Dim>::getIntpWeight()[D][6] +
-           Arr[src[7]] * IntpBlockComm<FloatType, Dim>::getIntpWeight()[D][7];
-  }
-  return Intp;
 }
 
 

@@ -27,7 +27,7 @@
 
 // #include "data_struct/field_struct.h"
 #include "data_struct/field_statistics.h"
-#include "lbm/equilibrium.h"
+#include "lbm/equilibrium.ur.h"
 
 
 template <typename T, typename LatSet>

@@ -353,13 +353,13 @@ class VectorSOAWriter : public AbstractWriter {
  private:
   std::string varname;
   // field data
-  const GenericArrayField<ArrayType, D> &Field;
+  const GenericFieldBase<ArrayType, D> &Field;
   std::size_t Size;
 
  public:
   using datatype = typename ArrayType::value_type;
 
-  VectorSOAWriter(std::string name, const GenericArrayField<ArrayType, D> &f)
+  VectorSOAWriter(std::string name, const GenericFieldBase<ArrayType, D> &f)
       : varname(name), Field(f), Size(f.getField(0).size()) {}
   void write(const std::string &fName) const override {
     std::ofstream f(fName, std::ios::out | std::ios::app);
@@ -818,7 +818,7 @@ class VectorSOAWriter : public AbstractWriter {
  public:
   using datatype = typename ArrayType::value_type;
 
-  VectorSOAWriter(std::string name, const GenericArrayField<ArrayType, D> &f, Vector<int, Dim> mesh)
+  VectorSOAWriter(std::string name, const GenericFieldBase<ArrayType, D> &f, Vector<int, Dim> mesh)
       : varname(name), Field(f), Mesh(mesh) {}
 
   void writeBinary(const std::string &fName, int Overlap) const override {
@@ -888,7 +888,7 @@ class VectorSOAWriter : public AbstractWriter {
  private:
   std::string varname;
   // field data
-  const GenericArrayField<ArrayType, D> &Field;
+  const GenericFieldBase<ArrayType, D> &Field;
   // mesh info
   Vector<int, Dim> Mesh;
 };
@@ -900,7 +900,7 @@ class physVectorSOAWriter : public AbstractWriter {
 
   // std::bind(&uintConvclass::func, &unitConv, std::placeholders::_1); or 
   // [&unitConv](T x) { return unitConv.func(x); };
-  physVectorSOAWriter(std::string name, const GenericArrayField<ArrayType, D> &f, Vector<int, Dim> mesh, 
+  physVectorSOAWriter(std::string name, const GenericFieldBase<ArrayType, D> &f, Vector<int, Dim> mesh, 
   std::function<datatype(datatype)> func)
       : varname(name), Field(f), Mesh(mesh), unitConvert(func) {}
 
@@ -971,7 +971,7 @@ class physVectorSOAWriter : public AbstractWriter {
  private:
   std::string varname;
   // field data
-  const GenericArrayField<ArrayType, D> &Field;
+  const GenericFieldBase<ArrayType, D> &Field;
   // mesh info
   Vector<int, Dim> Mesh;
   // unit convert function pointer

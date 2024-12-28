@@ -29,6 +29,7 @@ int main() {
   std::string outdir = "./output/";
   std::string momentfname = outdir + "cse.h";
   std::string feqfname = outdir + "feq.h";
+  std::string forcefname = outdir + "force.h";
 
   DirCreator::Create_Dir(outdir);
 
@@ -46,6 +47,9 @@ int main() {
 
   tempgen::SecondOrderImplgen<TEMPGEN_LATSETS> SecondOrder(feqfname);
 
+  tempgen::ForcePopImplgen<TEMPGEN_LATSETS> ForcePop(forcefname);
+  tempgen::ScalarForcePopImplgen<TEMPGEN_LATSETS> ScalarForcePop(forcefname);
+
   rho.generateAll();
   sourcerho.generateAll();
   U.generateAll();
@@ -59,6 +63,9 @@ int main() {
   shearRateMag.generateAll();
 
   SecondOrder.generateAll();
+
+  ForcePop.generateAll();
+  ScalarForcePop.generateAll();
 
 
 }

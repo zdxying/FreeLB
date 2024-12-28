@@ -30,23 +30,30 @@ using LatSet = D3Q19<T>;
 
 int main() {
   constexpr std::uint8_t VoidFlag = std::uint8_t(1);
-  constexpr std::uint8_t AABBFlag = std::uint8_t(2);
-  constexpr std::uint8_t BouncebackFlag = std::uint8_t(4);
-  constexpr std::uint8_t BBMovingWallFlag = std::uint8_t(8);
+  // constexpr std::uint8_t AABBFlag = std::uint8_t(2);
+  // constexpr std::uint8_t BouncebackFlag = std::uint8_t(4);
+  // constexpr std::uint8_t BBMovingWallFlag = std::uint8_t(8);
 
   // ------------------ define geometry ------------------
-  BlockReader3D<T> blockreader("block");
-  BlockGeometry3D<T> Geo(blockreader);
+  BlockReader<T,2> blockreader2d("block2d");
+  BlockReader<T,3> blockreader3d("block3d");
 
-  BlockFieldManager<FlagField, T, LatSet::d> FlagFM(Geo, VoidFlag);
+  BlockGeometry2D<T> Geo2d(blockreader2d);
+  BlockGeometry3D<T> Geo3d(blockreader3d);
+
+  BlockFieldManager<FlagField, T, 2> FlagFM2d(Geo2d, VoidFlag);
+  BlockFieldManager<FlagField, T, 3> FlagFM3d(Geo3d, VoidFlag);
+
   // FlagFM.forEach(cavity, [&](FlagField& field, std::size_t id) { field.SetField(id, AABBFlag); });
   // FlagFM.template SetupBoundary<LatSet>(cavity, BouncebackFlag);
 
-  // BlockFieldManager<FlagField, T, LatSet::d> FlagFM2(Geo, VoidFlag);
+  vtmwriter::ScalarWriter Writer2d("flag", FlagFM2d);
+  vtmwriter::vtmWriter<T, 2> GeoWriter2d("Geo2", Geo2d);
+  GeoWriter2d.addWriterSet(Writer2d);
+  GeoWriter2d.WriteBinary();
 
-  vtmwriter::ScalarWriter GeoFlagWriter("flag", FlagFM);
-  vtmwriter::vtmWriter<T, LatSet::d> GeoWriter("GeoFlag", Geo);
-  GeoWriter.addWriterSet(GeoFlagWriter);
-
-  GeoWriter.WriteBinary();
+  vtmwriter::ScalarWriter Writer3d("flag", FlagFM3d);
+  vtmwriter::vtmWriter<T, 3> GeoWriter3d("Geo3", Geo3d);
+  GeoWriter3d.addWriterSet(Writer3d);
+  GeoWriter3d.WriteBinary();
 }

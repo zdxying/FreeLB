@@ -92,68 +92,6 @@ class Data {
 };
 
 
-// a single std::array, type T couldn't dynamically allocate memory
-template <typename T, typename Base>
-class Array {
- public:
-  using value_type = T;
-  static constexpr unsigned int array_dim = Base::array_dim;
-  using array_type = Array<T, Base>;
-  static constexpr bool isField = false;
-  static constexpr bool isCuDevField = true;
-  using cudev_FieldType = Array<T, Base>;
-
- private:
-  T* _data;
-
- public:
-  __device__ Array() : _data(nullptr) {}
-  __any__ Array(T* data) : _data(data) {}
-  // Copy constructor
-  __device__ Array(const Array& arr) : _data(arr._data) {}
-  // Move constructor
-  __device__ Array(Array&& arr) noexcept : _data(arr._data) {}
-  // Copy assignment operator
-  __device__ Array& operator=(const Array& arr) {
-    if (&arr == this) return *this;
-    _data = arr._data;
-    return *this;
-  }
-  // Move assignment operator
-  __device__ Array& operator=(Array&& arr) noexcept {
-    if (&arr == this) return *this;
-    _data = arr._data;
-    return *this;
-  }
-
-  template <unsigned int i = 0>
-  __device__ auto& get() {
-    return _data[i];
-  }
-  template <unsigned int i = 0>
-  __device__ const auto& get() const {
-    return _data[i];
-  }
-  __device__ auto& get(unsigned int i) { return _data[i]; }
-  __device__ const auto& get(unsigned int i) const { return _data[i]; }
-
-  __device__ T* getArray() { return _data; }
-  __device__ const T* getArray() const { return _data; }
-
-  // argument i will not be used
-  __device__ auto& getField(std::size_t i = 0) { return *this; }
-  __device__ const auto& getField(std::size_t i = 0) const { return *this; }
-
-  template <unsigned int i = 0>
-  __device__ void SetField(T value) {
-    _data[i] = value;
-  }
-  __device__ void SetField(int i, T value) { _data[i] = value; }
-
-  __device__ static constexpr unsigned int Size() { return array_dim; }
-};
-
-
 // a class containing std::vector with some methods
 template <typename T>
 class Genericvector {
@@ -488,33 +426,33 @@ __global__ void Stream_kernel(cudev::StreamMapArray<T>* arr) {
 }
 
 template <typename ArrayType, unsigned int D>
-class GenericArrayField {
+class GenericFieldBase {
  public:
   using array_type = ArrayType;
   using value_type = typename ArrayType::value_type;
   static constexpr unsigned int array_dim = D;
   static constexpr bool isField = true;
   static constexpr bool isCuDevField = true;
-  using cudev_FieldType = GenericArrayField<ArrayType, D>;
+  using cudev_FieldType = GenericFieldBase<ArrayType, D>;
 
  private:
   ArrayType** _data;
 
  public:
-  __device__ GenericArrayField() : _data{} {}
-  __any__ GenericArrayField(ArrayType** data) : _data(data) {}
+  __device__ GenericFieldBase() : _data{} {}
+  __any__ GenericFieldBase(ArrayType** data) : _data(data) {}
   // Copy constructor
-  __device__ GenericArrayField(const GenericArrayField& genF) : _data(genF._data) {}
+  __device__ GenericFieldBase(const GenericFieldBase& genF) : _data(genF._data) {}
   // Move constructor
-  __device__ GenericArrayField(GenericArrayField&& genF) noexcept : _data(genF._data) {}
+  __device__ GenericFieldBase(GenericFieldBase&& genF) noexcept : _data(genF._data) {}
   // Copy assignment operator
-  __device__ GenericArrayField& operator=(const GenericArrayField& genF) {
+  __device__ GenericFieldBase& operator=(const GenericFieldBase& genF) {
     if (&genF == this) return *this;
     _data = genF._data;
     return *this;
   }
   // Move assignment operator
-  __device__ GenericArrayField& operator=(GenericArrayField&& genF) noexcept {
+  __device__ GenericFieldBase& operator=(GenericFieldBase&& genF) noexcept {
     if (&genF == this) return *this;
     _data = genF._data;
     return *this;
@@ -554,7 +492,7 @@ class GenericArrayField {
 };
 
 template <typename ArrayType, typename Base>
-class GenericField : public GenericArrayField<ArrayType, Base::array_dim> {
+class GenericField : public GenericFieldBase<ArrayType, Base::array_dim> {
  public:
   static constexpr unsigned int array_dim = Base::array_dim;
   using array_type = ArrayType;
@@ -562,7 +500,7 @@ class GenericField : public GenericArrayField<ArrayType, Base::array_dim> {
   using cudev_FieldType = GenericField<ArrayType, Base>;
 
   __any__ GenericField(ArrayType** data)
-      : GenericArrayField<ArrayType, array_dim>(data) {}
+      : GenericFieldBase<ArrayType, array_dim>(data) {}
 };
 
 }  // namespace cudev

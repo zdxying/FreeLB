@@ -1,18 +1,24 @@
-
+# -------------executable name-------------
 TARGET = readblock.exe
+
+# -------------/src/-------------
 ROOT := ../../..
 
-# FLAGS += -O3 -march=native
-# FLAGS += -O3 -fopenmp
-# FLAGS += -O3 -march=native
-# FLAGS += -g -DMPI_DEBUG
-FLAGS += -g
+# -------------optimization flags-------------
+# FLAGS += -O3 -march=native -mtune=native
+# FLAGS += -D_UNROLLFOR
+
+# -------------warning flags-------------
+FLAGS += -Wall -Wdisabled-optimization -Wno-unknown-pragmas -Wno-unused-local-typedefs
+
+# -------------debug flags-------------
+# FLAGS += -g
 # FLAGS += -pg
+
+# -------------floating point type-------------
 FLAGS += -DFLOAT_TYPE=double
-# FLAGS += -DMPI_ENABLED
 
+# -------------output folder-------------
 OUTPUT += vtkoutput
-
-# CXXC := mpic++
 
 include $(ROOT)/make.mk

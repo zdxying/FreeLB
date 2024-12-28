@@ -112,7 +112,7 @@ class BlockGeometry3D : public BasicBlock<T, 3> {
   // construct uniform/ refined blockgeometry from GeoHelper
   BlockGeometry3D(BlockGeometryHelper3D<T>& GeoHelper, bool useHelperOlap = true);
   // construct blockgeometry from blockreader
-  BlockGeometry3D(const BlockReader3D<T>& blockreader, bool useReaderOlap = true);
+  BlockGeometry3D(const BlockReader<T,3>& blockreader, bool useReaderOlap = true);
   // construct blockgeometry from stlreader
   BlockGeometry3D(const StlReader<T>& reader, int blocknum);
   ~BlockGeometry3D() = default;
@@ -245,6 +245,8 @@ class BlockGeometryHelper3D : public BasicBlock<T, 3> {
   // ext is the extension of the whole domain, used for creating solid cells after reading stl
   BlockGeometryHelper3D(const StlReader<T>& reader, int blockcelllen = 10, 
                         int olap = 1, int ext = 0, std::uint8_t llimit = std::uint8_t(2));
+  // construct blockgeometryhelper from blockreader
+  BlockGeometryHelper3D(const BlockReader<T,3>& blockreader, bool useReaderOlap = true);
   ~BlockGeometryHelper3D() = default;
 
   // get

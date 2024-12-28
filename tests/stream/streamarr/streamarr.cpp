@@ -59,11 +59,11 @@ void printprev(StreamMapArray<T> &arr) {
 }
 
 template <typename T, unsigned int q>
-using PopStreamField = GenericArrayField<StreamArray<T>, q>;
+using PopStreamField = GenericFieldBase<StreamArray<T>, q>;
 template <typename T, unsigned int q>
-using PopStreamMapField = GenericArrayField<StreamMapArray<T>, q>;
+using PopStreamMapField = GenericFieldBase<StreamMapArray<T>, q>;
 template <typename T, unsigned int q>
-using PopCyclicField = GenericArrayField<CyclicArray<T>, q>;
+using PopCyclicField = GenericFieldBase<CyclicArray<T>, q>;
 
 void set(StreamArray<T>& arr) {
   for (std::size_t i = 0; i < arr.size(); i++) {

@@ -137,7 +137,7 @@ int main() {
   ConvManager.Check_and_Print();
 
   // define geometry
-  BlockReader3D<T> blockreader("block");
+  BlockReader<T,3> blockreader("block", 2);
   BlockGeometry3D<T> Geo(blockreader);
 
   Cylinder<T> horizontal_cylinder(piperadius, Vector<T, 3>{T{120},T{},T{}}, Vector<T, 3>{T{},T{20},T{20}});

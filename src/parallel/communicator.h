@@ -33,66 +33,6 @@
 #endif
 
 
-namespace cudev{
-
-#ifdef __CUDACC__
-
-template <typename T, unsigned int D>
-struct BlockComm {
-  std::size_t* SendCells;  // index in sendblock
-  std::size_t* RecvCells;  // index in recvblock
-
-  __any__ BlockComm(std::size_t* sendcells, std::size_t* recvcells)
-      : SendCells(sendcells), RecvCells(recvcells) {}
-};
-
-// communication structure for blocks of different (refine) levels
-// heterogeneous communication/ interpolation
-template <typename T, unsigned int D>
-struct IntpBlockComm {
-  // index in sendblock, unfold to 1D array
-  std::size_t* SendCells;
-  // index in recvblock
-  std::size_t* RecvCells;
-  // predefined interp weight
-  static constexpr T InterpWeight2D[4][4] = {
-    {T(0.0625), T(0.1875), T(0.1875), T(0.5625)},
-    {T(0.1875), T(0.0625), T(0.5625), T(0.1875)},
-    {T(0.1875), T(0.5625), T(0.0625), T(0.1875)},
-    {T(0.5625), T(0.1875), T(0.1875), T(0.0625)}
-  };
-  static constexpr T InterpWeight3D[8][8] = {
-    {T(0.015625), T(0.046875), T(0.046875), T(0.140625), T(0.046875), T(0.140625), T(0.140625), T(0.421875)},
-    {T(0.046875), T(0.015625), T(0.140625), T(0.046875), T(0.140625), T(0.046875), T(0.421875), T(0.140625)},
-    {T(0.046875), T(0.140625), T(0.015625), T(0.046875), T(0.140625), T(0.421875), T(0.046875), T(0.140625)},
-    {T(0.140625), T(0.046875), T(0.046875), T(0.015625), T(0.421875), T(0.140625), T(0.140625), T(0.046875)},
-    {T(0.046875), T(0.140625), T(0.140625), T(0.421875), T(0.015625), T(0.046875), T(0.046875), T(0.140625)},
-    {T(0.140625), T(0.046875), T(0.421875), T(0.140625), T(0.046875), T(0.015625), T(0.140625), T(0.046875)},
-    {T(0.140625), T(0.421875), T(0.046875), T(0.140625), T(0.046875), T(0.140625), T(0.015625), T(0.046875)},
-    {T(0.421875), T(0.140625), T(0.140625), T(0.046875), T(0.140625), T(0.046875), T(0.046875), T(0.015625)}
-  };
-
-  __device__ static constexpr auto getIntpWeight() {
-    if constexpr (D == 2) {
-      return InterpWeight2D;
-    } else {
-      return InterpWeight3D;
-    }
-  }
-
-  __any__ IntpBlockComm(std::size_t* sendcells, std::size_t* recvcells)
-      : SendCells(sendcells), RecvCells(recvcells) {}
-
-  // return (D == 2) ? 4 : 8;
-  __device__ static constexpr int getSourceNum() { return (D == 2) ? 4 : 8; }
-  // return (D == 2) ? T(0.25) : T(0.125);
-  __device__ static constexpr T getUniformWeight() { return (D == 2) ? T(0.25) : T(0.125); }
-};
-
-#endif
-
-} // namespace cudev
-
 // neighbor block direction relative to current block
 enum NbrDirection : std::uint8_t {
   // not a neighbor
@@ -299,7 +239,6 @@ NbrDirection getEdgeNbrDirection(int edge) {
   return static_cast<NbrDirection>(direction);
 }
 
-
 NbrDirection getFaceNbrDirection(int face) {
   if (face == -1) {
     return NbrDirection::NONE;
@@ -454,22 +393,6 @@ struct BasicCommSet {
 
 };
 
-// specialized communication for blocklattice
-// which is not neccessary in BlockLatticeManager
-template <typename FieldType, typename FloatType, unsigned int Dim>
-class BlockField;
-
-template <typename FieldType, typename FloatType, unsigned int Dim>
-struct FieldComm {
-  // block send to or recv from
-  const BlockField<FieldType, FloatType, Dim>& TargetField;
-  const BasicComm<FloatType, Dim>& Comm;
-  // for streaming fields like populations
-  std::vector<unsigned int> StreamDirections;
-
-  FieldComm(const BlockField<FieldType, FloatType, Dim>& bf,
-            const BasicComm<FloatType, Dim>& comm) : TargetField(bf), Comm(comm) {}
-};
 
 // specialized communication for blocklattice
 // which is not neccessary in BlockLatticeManager
@@ -513,218 +436,11 @@ struct LatticeCommSet {
 };
 
 
-// communication structure for block geometry
-template <typename T, unsigned int D>
-struct BlockComm {
-  std::vector<std::size_t> SendCells;  // index in sendblock
-  std::vector<std::size_t> RecvCells;  // index in recvblock
-  // neighbor block
-  Block<T, D>* SendBlock;
-  // neighbor direction
-  NbrDirection Direction;
-
-  #ifdef __CUDACC__
-  std::size_t* dev_SendCells;
-  std::size_t* dev_RecvCells;
-  cudev::BlockComm<T, D>* dev_BlockComm;
-  #endif
-
-  BlockComm(Block<T, D>* block) : SendBlock(block), Direction(NbrDirection::NONE) {}
-  int getSendId() const { return SendBlock->getBlockId(); }
-};
-
-// communication structure for blocks of different (refine) levels
-// heterogeneous communication/ interpolation
-template <typename T, unsigned int D>
-struct IntpBlockComm {
-  // index in sendblock
-  std::vector<IntpSource<D>> SendCells;
-  // interp weight
-  // std::vector<InterpWeight<T, D>> InterpWeights;
-  // index in recvblock
-  std::vector<std::size_t> RecvCells;
-  // receive data from sendblock
-  Block<T, D>* SendBlock;
-  // predefined interp weight
-  static constexpr std::array<InterpWeight<T, 2>, 4> InterpWeight2D{
-    {{T(0.0625), T(0.1875), T(0.1875), T(0.5625)},
-     {T(0.1875), T(0.0625), T(0.5625), T(0.1875)},
-     {T(0.1875), T(0.5625), T(0.0625), T(0.1875)},
-     {T(0.5625), T(0.1875), T(0.1875), T(0.0625)}}};
-  static constexpr std::array<InterpWeight<T, 3>, 8> InterpWeight3D{
-   {{T{0.015625}, T{0.046875}, T{0.046875}, T{0.140625}, T{0.046875}, T{0.140625}, T{0.140625}, T{0.421875}},
-    {T{0.046875}, T{0.015625}, T{0.140625}, T{0.046875}, T{0.140625}, T{0.046875}, T{0.421875}, T{0.140625}},
-    {T{0.046875}, T{0.140625}, T{0.015625}, T{0.046875}, T{0.140625}, T{0.421875}, T{0.046875}, T{0.140625}},
-    {T{0.140625}, T{0.046875}, T{0.046875}, T{0.015625}, T{0.421875}, T{0.140625}, T{0.140625}, T{0.046875}},
-    {T{0.046875}, T{0.140625}, T{0.140625}, T{0.421875}, T{0.015625}, T{0.046875}, T{0.046875}, T{0.140625}},
-    {T{0.140625}, T{0.046875}, T{0.421875}, T{0.140625}, T{0.046875}, T{0.015625}, T{0.140625}, T{0.046875}},
-    {T{0.140625}, T{0.421875}, T{0.046875}, T{0.140625}, T{0.046875}, T{0.140625}, T{0.015625}, T{0.046875}},
-    {T{0.421875}, T{0.140625}, T{0.140625}, T{0.046875}, T{0.140625}, T{0.046875}, T{0.046875}, T{0.015625}}}};
-
-  // neighbor direction
-  NbrDirection Direction;
-
-  static constexpr auto getIntpWeight() {
-    if constexpr (D == 2) {
-      return InterpWeight2D;
-    } else {
-      return InterpWeight3D;
-    }
-  }
-
-  #ifdef __CUDACC__
-  std::size_t* dev_SendCells;
-  std::size_t* dev_RecvCells;
-  cudev::IntpBlockComm<T, D>* dev_BlockComm;
-  #endif
-
-  IntpBlockComm(Block<T, D>* block) : SendBlock(block), Direction(NbrDirection::NONE) {}
-
-  int getSendId() const { return SendBlock->getBlockId(); }
-  // return (D == 2) ? 4 : 8;
-  static constexpr int getSourceNum() { return (D == 2) ? 4 : 8; }
-  // return (D == 2) ? T(0.25) : T(0.125);
-  static constexpr T getUniformWeight() { return (D == 2) ? T(0.25) : T(0.125); }
-};
-
-
-struct MPIBlockSendStru {
-  std::vector<std::size_t> SendCells;
-  // receive rank
-  int RecvRank;
-  // receive block id
-  int RecvBlockid;
-
-  MPIBlockSendStru(int rank, int blockid) : RecvRank(rank), RecvBlockid(blockid) {}
-};
-
-struct MPIBlockRecvStru {
-  std::vector<std::size_t> RecvCells;
-  // send rank
-  int SendRank;
-  // receive block id
-  int SendBlockid;
-
-  MPIBlockRecvStru(int rank, int blockid) : SendRank(rank), SendBlockid(blockid) {}
-};
-
-// a collection of MPIBlockSendStru and MPIBlockRecvStru
-// std::vector<MPIBlockSendStru<T, D>> Senders;
-// std::vector<MPIBlockRecvStru<T, D>> Recvers;
-struct MPIBlockComm {
-  std::vector<MPIBlockSendStru> Senders;
-  std::vector<MPIBlockRecvStru> Recvers;
-  void clear() {
-    Senders.clear();
-    Recvers.clear();
-  }
-};
-
-template <typename T, unsigned int Dim>
-struct MPIIntpBlockSendStru {
-  std::vector<IntpSource<Dim>> SendCells;
-  int RecvRank;
-  int RecvBlockid;
-  // predefined interp weight
-  static constexpr std::array<InterpWeight<T, 2>, 4> InterpWeight2D{
-    {{T(0.0625), T(0.1875), T(0.1875), T(0.5625)},
-     {T(0.1875), T(0.0625), T(0.5625), T(0.1875)},
-     {T(0.1875), T(0.5625), T(0.0625), T(0.1875)},
-     {T(0.5625), T(0.1875), T(0.1875), T(0.0625)}}};
-  static constexpr std::array<InterpWeight<T, 3>, 8> InterpWeight3D{
-    {T{0.015625}, T{0.046875}, T{0.046875}, T{0.140625}, T{0.046875}, T{0.140625}, T{0.140625}, T{0.421875}},
-    {T{0.046875}, T{0.015625}, T{0.140625}, T{0.046875}, T{0.140625}, T{0.046875}, T{0.421875}, T{0.140625}},
-    {T{0.046875}, T{0.140625}, T{0.015625}, T{0.046875}, T{0.140625}, T{0.421875}, T{0.046875}, T{0.140625}},
-    {T{0.140625}, T{0.046875}, T{0.046875}, T{0.015625}, T{0.421875}, T{0.140625}, T{0.140625}, T{0.046875}},
-    {T{0.046875}, T{0.140625}, T{0.140625}, T{0.421875}, T{0.015625}, T{0.046875}, T{0.046875}, T{0.140625}},
-    {T{0.140625}, T{0.046875}, T{0.421875}, T{0.140625}, T{0.046875}, T{0.015625}, T{0.140625}, T{0.046875}},
-    {T{0.140625}, T{0.421875}, T{0.046875}, T{0.140625}, T{0.046875}, T{0.140625}, T{0.015625}, T{0.046875}},
-    {T{0.421875}, T{0.140625}, T{0.140625}, T{0.046875}, T{0.140625}, T{0.046875}, T{0.046875}, T{0.015625}}};
-
-  static constexpr auto getIntpWeight() {
-    return (Dim == 2) ? InterpWeight2D : InterpWeight3D;
-  }
-  static constexpr int getSourceNum() { return (Dim == 2) ? 4 : 8; }
-  static constexpr T getUniformWeight() {
-    return (Dim == 2) ? T(0.25) : T(0.125);
-  }
-
-  MPIIntpBlockSendStru(int rank, int blockid) : RecvRank(rank), RecvBlockid(blockid) {}
-};
-
-template <typename FloatType, unsigned int Dim>
-struct MPIIntpBlockComm {
-  std::vector<MPIIntpBlockSendStru<FloatType, Dim>> Senders;
-  std::vector<MPIBlockRecvStru> Recvers;
-  void clear() {
-    Senders.clear();
-    Recvers.clear();
-  }
-};
-
-// a collection of buffers
-// std::vector<std::vector<T>> SendBuffers;
-// std::vector<std::vector<T>> RecvBuffers;
-template <typename T>
-struct MPIBlockBuffer {
-  std::vector<std::vector<T>> SendBuffers;
-  std::vector<std::vector<T>> RecvBuffers;
-};
-
-template <typename T>
-void MPIBlockBufferInit(const MPIBlockComm& MPIComm, MPIBlockBuffer<T>& MPIBuffer,
-                        unsigned int Size = 1) {
-  MPIBuffer.SendBuffers.resize(MPIComm.Senders.size(), std::vector<T>{});
-  for (std::size_t i = 0; i < MPIComm.Senders.size(); ++i) {
-    MPIBuffer.SendBuffers[i].resize(Size * MPIComm.Senders[i].SendCells.size(), T{});
-  }
-  MPIBuffer.RecvBuffers.resize(MPIComm.Recvers.size(), std::vector<T>{});
-  for (std::size_t i = 0; i < MPIComm.Recvers.size(); ++i) {
-    MPIBuffer.RecvBuffers[i].resize(Size * MPIComm.Recvers[i].RecvCells.size(), T{});
-  }
-}
-
-template <typename FloatType, unsigned int Dim, typename T>
-void MPIBlockBufferInit(const MPIIntpBlockComm<FloatType,Dim>& MPIComm, MPIBlockBuffer<T>& MPIBuffer,
-                        unsigned int Size = 1) {
-  MPIBuffer.SendBuffers.resize(MPIComm.Senders.size(), std::vector<T>{});
-  for (std::size_t i = 0; i < MPIComm.Senders.size(); ++i) {
-    MPIBuffer.SendBuffers[i].resize(Size * MPIComm.Senders[i].SendCells.size(), T{});
-  }
-  MPIBuffer.RecvBuffers.resize(MPIComm.Recvers.size(), std::vector<T>{});
-  for (std::size_t i = 0; i < MPIComm.Recvers.size(); ++i) {
-    MPIBuffer.RecvBuffers[i].resize(Size * MPIComm.Recvers[i].RecvCells.size(), T{});
-  }
-}
-
-// add data to send buffer
-// scalar data
-template <typename ArrayType, typename T>
-void addtoBuffer(std::vector<T>& buffer, const ArrayType& arr,
-                 const std::vector<int>& index) {
-  for (int i : index) {
-    buffer.push_back(arr[i]);
-  }
-}
-// pop data
-template <typename T, unsigned int q>
-void addtoBuffer(std::vector<T>& buffer, const PopulationField<T, q>& poparr,
-                 const std::vector<int>& index) {
-  for (int k = 0; k < q; ++k) {
-    const CyclicArray<T>& arrk = poparr.getField(k);
-    for (int i : index) {
-      buffer.push_back(arrk[i]);
-    }
-  }
-}
-
-
 // --------------
 // new communication structure
 // --------------
 
 // communication structure for shared memory
-// this is similar to old BlockComm and could be used as IntpBlockComm
 struct SharedComm {
   // indices of send and recv cells: 
   // normal: Scell0, Rcell0; Scell1, Rcell1, ...
@@ -790,7 +506,6 @@ struct SharedComm {
 };
 
 // communication structure for distributed memory
-// this is similar to old MPIBlockRecvStru/MPIBlockSendStru and could be used as MPIIntpBlockSendStru
 struct DistributedComm {
   // indices of recv / send cells: 
   std::vector<std::size_t> Cells;

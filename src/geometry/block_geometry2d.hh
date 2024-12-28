@@ -115,12 +115,17 @@ BlockGeometry2D<T>::BlockGeometry2D(int Nx, int Ny, int blocknum, const AABB<T, 
 }
 
 template <typename T>
-BlockGeometry2D<T>::BlockGeometry2D(BlockGeometryHelper2D<T> &GeoHelper)
+BlockGeometry2D<T>::BlockGeometry2D(BlockGeometryHelper2D<T> &GeoHelper, bool useHelperOlap)
     : BasicBlock<T, 2>(GeoHelper), _BaseBlock(GeoHelper.getBaseBlock()), 
       _overlap(GeoHelper.getOverlap()), _MaxLevel(GeoHelper.getMaxLevel()) {
   // create blocks from GeoHelper
   for (BasicBlock<T, 2> *baseblock : GeoHelper.getBasicBlocks()) {
-    int overlap = (baseblock->getLevel() != std::uint8_t(0)) ? 2 : 1;
+    int overlap{};
+    if (useHelperOlap) {
+      overlap = _overlap;
+    } else {
+      overlap = (baseblock->getLevel() != std::uint8_t(0)) ? 2 : 1;
+    }
     _Blocks.emplace_back(*baseblock, overlap);
   }
   BuildBlockIndexMap();
@@ -135,13 +140,20 @@ BlockGeometry2D<T>::BlockGeometry2D(BlockGeometryHelper2D<T> &GeoHelper)
 }
 
 template <typename T>
-BlockGeometry2D<T>::BlockGeometry2D(const BlockReader2D<T>& blockreader) 
+BlockGeometry2D<T>::BlockGeometry2D(const BlockReader<T,2>& blockreader, bool useReaderOlap) 
     : BasicBlock<T, 2>(blockreader.getBasicBlock()), _BaseBlock(blockreader.getBaseBlock()), 
       _overlap(1), _MaxLevel(blockreader.getMaxLevel()) {
   // create blocks from Block Reader
+  int iblock{};
   for (const BasicBlock<T, 2> &baseblock : blockreader.getBlocks()) {
-    int overlap = (baseblock.getLevel() != std::uint8_t(0)) ? 2 : 1;
+    int overlap{};
+    if (useReaderOlap) {
+      overlap = blockreader.getOverlaps()[iblock];
+    } else {
+      overlap = (baseblock.getLevel() != std::uint8_t(0)) ? 2 : 1;
+    }
     _Blocks.emplace_back(baseblock, overlap);
+    ++iblock;
   }
   BuildBlockIndexMap();
   SetupNbrs();
@@ -904,6 +916,30 @@ BlockGeometryHelper2D<T>::BlockGeometryHelper2D(int Nx, int Ny, const AABB<T, 2>
                    CellsNx - 1,  CellsNx,  CellsNx + 1};
 
   CreateBlockCells();
+}
+
+template <typename T>
+BlockGeometryHelper2D<T>::BlockGeometryHelper2D(const BlockReader<T,2>& blockreader, bool useReaderOlap) 
+    : BasicBlock<T, 2>(blockreader.getBasicBlock()), _BaseBlock(blockreader.getBaseBlock()), 
+      BlockCellLen(0), _Overlap(1), _LevelLimit(std::uint8_t{}), _MaxLevel(blockreader.getMaxLevel()),
+      _Exchanged(true), _IndexExchanged(true) {
+  // create new blocks on relatively older blocks
+  std::vector<BasicBlock<T, 2>> &BasicBlocks = getAllOldBasicBlocks();
+  BasicBlocks.clear();
+  // now old blocks become new blocks
+  _Exchanged = !_Exchanged;
+  // create blocks from Block Reader
+  int iblock{};
+  for (const BasicBlock<T, 2> &baseblock : blockreader.getBlocks()) {
+    int overlap{};
+    if (useReaderOlap) {
+      overlap = blockreader.getOverlaps()[iblock];
+    } else {
+      overlap = (baseblock.getLevel() != std::uint8_t(0)) ? 2 : 1;
+    }
+    BasicBlocks.emplace_back(baseblock, overlap);
+    ++iblock;
+  }
 }
 
 template <typename T>

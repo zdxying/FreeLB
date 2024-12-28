@@ -29,12 +29,6 @@
 
 #include "head.h"
 
-template <unsigned int D>
-struct BasicInterp;
-using BasicInterp2D = BasicInterp<4>;
-using BasicInterp3D = BasicInterp<8>;
-template <unsigned int D>
-using IntpStruct = std::conditional_t<D == 2, BasicInterp2D, BasicInterp3D>;
 
 
 using IntpSource2D = std::array<std::size_t, 4>;
@@ -43,13 +37,7 @@ using IntpSource3D = std::array<std::size_t, 8>;
 template <unsigned int D>
 using IntpSource = std::conditional_t<D == 2, IntpSource2D, IntpSource3D>;
 
-template <typename T>
-using InterpWeight2D = std::array<T, 4>;
-template <typename T>
-using InterpWeight3D = std::array<T, 8>;
-// std::array<T, 4/8>
-template <typename T, unsigned int D>
-using InterpWeight = std::conditional_t<D == 2, InterpWeight2D<T>, InterpWeight3D<T>>;
+
 
 namespace cudev {
 #ifdef __CUDACC__
@@ -59,13 +47,6 @@ using IntpSource3D = thrust::tuple<std::size_t, std::size_t, std::size_t, std::s
                                    std::size_t, std::size_t, std::size_t, std::size_t>;
 template <unsigned int D>
 using IntpSource = std::conditional_t<D == 2, IntpSource2D, IntpSource3D>;
-
-template <typename T>
-using InterpWeight2D = thrust::tuple<T, T, T, T>;
-template <typename T>
-using InterpWeight3D = thrust::tuple<T, T, T, T, T, T, T, T>;
-template <typename T, unsigned int D>
-using InterpWeight = std::conditional_t<D == 2, InterpWeight2D<T>, InterpWeight3D<T>>;
 
 #endif
 }  // namespace cudev
@@ -114,11 +95,8 @@ struct FieldBase {
 template <typename T, typename Base>
 class Data;
 
-template <typename T, typename Base>
-class Array;
-
 template <typename ArrayType, unsigned int D>
-class GenericArrayField;
+class GenericFieldBase;
 
 template <typename ArrayType, typename Base>
 class GenericField;
@@ -140,11 +118,8 @@ namespace cudev {
 template <typename T, typename Base>
 class Data;
 
-template <typename T, typename Base>
-class Array;
-
 template <typename ArrayType, unsigned int D>
-class GenericArrayField;
+class GenericFieldBase;
 
 template <typename ArrayType, typename Base>
 class GenericField;
@@ -169,24 +144,24 @@ template <typename T, unsigned int D>
 class Vector;
 
 template <typename T>
-using ScalarField = GenericArrayField<GenericArray<T>, 1>;
+using ScalarField = GenericFieldBase<GenericArray<T>, 1>;
 
 using FlagField = ScalarField<std::uint8_t>;
 
 // array of structure version of vector field
 // access: getField()[index][ith component]
 template <typename T, unsigned int D>
-using VectorFieldAOS = GenericArrayField<GenericArray<Vector<T, D>>, 1>;
+using VectorFieldAOS = GenericFieldBase<GenericArray<Vector<T, D>>, 1>;
 
 // structure of array version of vector field
 // access: getField(ith component)[index]
 template <typename T, unsigned int D>
-using VectorFieldSoA = GenericArrayField<GenericArray<T>, D>;
+using VectorFieldSoA = GenericFieldBase<GenericArray<T>, D>;
 
 template <typename T, unsigned int q>
-// using PopulationField = GenericArrayField<StreamMapArray<T>, q>;
-// using PopulationField = GenericArrayField<StreamArray<T>, q>;
-using PopulationField = GenericArrayField<CyclicArray<T>, q>;
+// using PopulationField = GenericFieldBase<StreamMapArray<T>, q>;
+// using PopulationField = GenericFieldBase<StreamArray<T>, q>;
+using PopulationField = GenericFieldBase<CyclicArray<T>, q>;
 
 
 // specific field name for access by Cell interface, not alias
@@ -261,54 +236,6 @@ using CONSTU = Data<Vector<T, D>, CONSTUBase>;
 }  // namespace cudev
 
 
-// #ifdef __CUDA_ARCH__
-
-// template <typename T>
-// using RHO = cudev::RHO<T>;
-// template <typename T>
-// using TEMP = cudev::TEMP<T>;
-// template <typename T>
-// using CONC = cudev::CONC<T>;
-
-// template <typename T, unsigned int D>
-// using VELOCITY = cudev::VELOCITY<T,D>;
-
-// using FLAG = cudev::FLAG;
-
-// template <typename T, unsigned int D>
-// using FORCE = cudev::FORCE<T,D>;
-
-// template <typename T>
-// using SCALARFORCE = cudev::SCALARFORCE<T>;
-
-// template <typename T, unsigned int D>
-// using CONSTFORCE = cudev::CONSTFORCE<T,D>;
-
-// template <typename T>
-// using SCALARCONSTFORCE = cudev::SCALARCONSTFORCE<T>;
-
-// template <typename T, unsigned int q>
-// using POP = cudev::POP<T,q>;
-// // using POP = GenericField<CyclicArray<T>, POPBase<q>>;
-
-// template <typename T>
-// using RHOINIT = cudev::RHOINIT<T>;
-// template <typename T>
-// using TEMPINIT = cudev::TEMPINIT<T>;
-// template <typename T>
-// using CONCINIT = cudev::CONCINIT<T>;
-
-// template <typename T>
-// using GBETA = cudev::GBETA<T>;
-
-// template <typename T>
-// using CONSTRHO = cudev::CONSTRHO<T>;
-
-// template <typename T, unsigned int D>
-// using CONSTU = cudev::CONSTU<T,D>;
-
-// #else
-
 template <typename T>
 using RHO = GenericField<GenericArray<T>, RHOBase>;
 template <typename T>
@@ -371,12 +298,6 @@ template <typename T>
 using OMEGA = GenericField<GenericArray<T>, OMEGABase>;
 
 // #endif
-// ---------block field alias-----------
-template <typename FieldType, typename FloatType, unsigned int Dim>
-class BlockField;
-
-template <typename FieldType, typename FloatType, unsigned int Dim>
-class BlockFieldManager;
 
 
 namespace CA {

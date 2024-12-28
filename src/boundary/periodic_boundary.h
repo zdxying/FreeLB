@@ -21,7 +21,7 @@
 #pragma once
 
 #include "boundary/basic_boundary.h"
-#include "lbm/moment.h"
+#include "lbm/moment.ur.h"
 
 
 template <typename T, typename LatSet>

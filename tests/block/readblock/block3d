@@ -3,11 +3,13 @@ Refine: 0
 VoxelSize: 1.
 
 [Block]
+Overlap: 1
 Level: 0
 AABB: {{0, 0, 0}, {10, 10, 10}} 
 Mesh: {10, 10, 10}
 
 [Block]
+Overlap: 1
 Level: 0
 AABB: {{10, 0, 0}, {20, 10, 10}} 
 Mesh: {10, 10, 10}

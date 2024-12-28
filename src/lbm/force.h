@@ -21,45 +21,42 @@
 // force.h
 #pragma once
 
-#include "lbm/moment.h"
+#include "lbm/moment.ur.h"
 #include "utils/util.h"
 
 namespace force {
 
 template <typename T, typename LatSet>
-struct ForcePop {
-  // use template to enable compile-time evaluation of latset::c and latset::w
-  template <unsigned int i>
-  __any__ static inline T get(const Vector<T, LatSet::d> &u, const Vector<T, LatSet::d> &F) {
-    return latset::w<LatSet>(i) * F * ((latset::c<LatSet>(i) - u) * LatSet::InvCs2 + (latset::c<LatSet>(i) * u * LatSet::InvCs4) * latset::c<LatSet>(i));
-  }
-
-  // use template to enable compile-time evaluation of latset::c and latset::w
-  template <unsigned int d, unsigned int i>
-  __any__ static inline T getscalar(const Vector<T, LatSet::d> &u, const T F) {
-    const T v1 = (latset::c<LatSet>(i)[d] - u[d]) * LatSet::InvCs2;
-    const T v2 = (latset::c<LatSet>(i) * u * LatSet::InvCs4) * latset::c<LatSet>(i)[d];
-    return latset::w<LatSet>(i) * F * (v1 + v2);
-  }
-
-  // calculate discrete force
-  // c * (c * u) * LatSet::InvCs4
-  // Vector<T, LatSet::d> ccu = (latset::c<LatSet>(i) * u * LatSet::InvCs4) *
-  // latset::c<LatSet>(i); (c - u) * LatSet::InvCs2 Vector<T, LatSet::d> c_u =
-  // (latset::c<LatSet>(i) - u) * LatSet::InvCs2;
+struct ForcePopImpl {
   __any__ static inline void compute(std::array<T, LatSet::q> &Fi, const Vector<T, LatSet::d> &u, const Vector<T, LatSet::d> &F) {
     for (unsigned int i = 0; i < LatSet::q; ++i) {
       Fi[i] = latset::w<LatSet>(i) * F * ((latset::c<LatSet>(i) - u) * LatSet::InvCs2 + (latset::c<LatSet>(i) * u * LatSet::InvCs4) * latset::c<LatSet>(i));
     }
   }
+};
 
-  template <unsigned int d>
-  __any__ static inline void computeScalar(std::array<T, LatSet::q> &Fi, const Vector<T, LatSet::d> &u, const T F) {
+template <typename T, typename LatSet, unsigned int d>
+struct ScalarForcePopImpl {
+  __any__ static inline void compute(std::array<T, LatSet::q> &Fi, const Vector<T, LatSet::d> &u, const T F) {
     for (unsigned int i = 0; i < LatSet::q; ++i) {
       const T v1 = (latset::c<LatSet>(i)[d] - u[d]) * LatSet::InvCs2;
       const T v2 = (latset::c<LatSet>(i) * u * LatSet::InvCs4) * latset::c<LatSet>(i)[d];
       Fi[i] = latset::w<LatSet>(i) * F * (v1 + v2);
     }
+  }
+};
+
+template <typename T, typename LatSet>
+struct ForcePop {
+
+  // calculate discrete force
+  __any__ static inline void compute(std::array<T, LatSet::q> &Fi, const Vector<T, LatSet::d> &u, const Vector<T, LatSet::d> &F) {
+    ForcePopImpl<T, LatSet>::compute(Fi, u, F);
+  }
+
+  template <unsigned int d>
+  __any__ static inline void computeScalar(std::array<T, LatSet::q> &Fi, const Vector<T, LatSet::d> &u, const T F) {
+    ScalarForcePopImpl<T, LatSet, d>::compute(Fi, u, F);
   }
 };
 

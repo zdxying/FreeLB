@@ -103,18 +103,23 @@ Vector<T,D> StrToVectorInt(const std::string& str) {
 }
 
 
-// read multiple 2D basicblocks' info from file
-template <typename T>
-class BlockReader2D {
+// read multiple 2/3D basicblocks' info from file
+template <typename T, unsigned int D>
+class BlockReader {
 	private:
-	std::vector<BasicBlock<T, 2>> blocks;
 	T VoxelSize;
-	// an aabb including all blocks
-	BasicBlock<T, 2> BaseBlock;
-
 	std::uint8_t MaxLevel;
+	// an aabb including all blocks
+	BasicBlock<T, D> BaseBlock;
 
-	void getBaseBlock(){
+	std::vector<BasicBlock<T, D>> blocks;
+	std::vector<int> overlaps;
+
+	// overlap of boundary blocks
+	// this is used to determine the position of the cell with the minimum index
+	int Overlap;
+
+	void get2DBaseBlock(){
 		T minx = std::numeric_limits<T>::max();
 		T miny = std::numeric_limits<T>::max();
 		T maxx = std::numeric_limits<T>::min();
@@ -139,133 +144,7 @@ class BlockReader2D {
 		BaseBlock = BasicBlock<T, 2>(VoxelSize, aabb, idxaabb, -1);
 	}
 
-	void getMaxLevel(){
-		for (const BasicBlock<T, 2>& block : blocks) {
-			if (block.getLevel() > MaxLevel) MaxLevel = block.getLevel();
-		}
-	}
-
-	public:
-	BlockReader2D(const std::string& filename) : VoxelSize(), MaxLevel(std::uint8_t{}), BaseBlock() {
-		std::ifstream file(filename);
-		if (!file) {
-			std::cerr << "Error: cannot open file " << filename << std::endl;
-			exit(1);
-		}
-		std::string line, section;
-
-		int blockid = -1;
-		bool refine = false;
-		std::uint8_t level{};
-		{};
-		AABB<T, 2> aabb{};
-		Vector<int, 2> mesh{};
-
-		// read Refine
-		while (std::getline(file, line)) {
-			// ignore empty lines
-			if (line.empty()) continue;
-			// ignore comments
-			if (line[0] == '#') continue;
-
-			if (line.find("Refine") != std::string::npos) {
-				std::string refine_str = line.substr(line.find(":") + 1);
-				// trim spaces
-				refine_str = util::trim(refine_str);
-				// convert to bool
-				refine = (refine_str == "1");
-				break;
-			}
-		}
-		// read VoxelSize
-		while (std::getline(file, line)) {
-			// ignore empty lines
-			if (line.empty()) continue;
-			// ignore comments
-			if (line[0] == '#') continue;
-
-			if (line.find("VoxelSize") != std::string::npos) {
-				VoxelSize = StrToType<T>(line.substr(line.find(":") + 1));
-				break;
-			}
-		}
-
-		while (std::getline(file, line)) {
-			if (line.empty()) continue;
-			if (line[0] == '#') continue;
-			if (line[0] == '[') {
-				// read a new block
-				++blockid;
-				level = std::uint8_t{};
-				aabb = AABB<T, 2>{};
-				mesh = Vector<int, 2>{};
-				continue;
-			} else {
-				// read block info
-				// read Level
-				if (refine){
-					if (line.find("Level") != std::string::npos) {
-						level = StrToTypeInt<std::uint8_t>(line.substr(line.find(":") + 1));
-					}
-				}
-				// read AABB: {{minx, miny}, {maxx, maxy}}
-				if (line.find("AABB") != std::string::npos) {
-					std::string sub_str = line.substr(line.find("}") + 1);
-
-					Vector<T, 2> min = StrToVector<T, 2>(line.substr(line.find("{") + 1));
-					Vector<T, 2> max = StrToVector<T, 2>(sub_str.substr(sub_str.find("{")));
-					// convert to T
-					aabb = AABB<T, 2>(min, max);
-				}
-				// read Mesh: {Nx, Ny}
-				if (line.find("Mesh") != std::string::npos) {
-					mesh = StrToVectorInt<int, 2>(line.substr(line.find(":") + 1));
-					// index block
-					AABB<int, 2> idxaabb{Vector<int, 2>{}, mesh - Vector<int, 2>{1}};
-					// construct BasicBlock
-					if (refine) {
-						int coeff = int(std::pow(2, int(level)));
-						Vector<int, 2> refmesh = mesh * coeff;				
-						blocks.emplace_back(level, VoxelSize, blockid, aabb, idxaabb, refmesh);
-					} else {
-						blocks.emplace_back(VoxelSize, aabb, idxaabb, blockid);
-					}
-				}
-			}
-		}
-		
-		getMaxLevel();
-		getBaseBlock();
-	}
-
-	const std::vector<BasicBlock<T, 2>>& getBlocks() const {
-		return blocks;
-	}
-	const BasicBlock<T, 2>& getBaseBlock() const {
-		return BaseBlock;
-	}
-	BasicBlock<T, 2> getBasicBlock() const {
-		return BaseBlock.getExtBlock(1);
-	}
-	std::uint8_t getMaxLevel() const {
-		return MaxLevel;
-	}
-
-};
-
-// read multiple 3D basicblocks' info from file
-template <typename T>
-class BlockReader3D {
-	private:
-	T VoxelSize;
-	std::uint8_t MaxLevel;
-	// an aabb including all blocks
-	BasicBlock<T, 3> BaseBlock;
-
-	std::vector<BasicBlock<T, 3>> blocks;
-	std::vector<int> overlaps;
-
-	void getBaseBlock(){
+	void get3DBaseBlock(){
 		T minx = std::numeric_limits<T>::max();
 		T miny = std::numeric_limits<T>::max();
 		T minz = std::numeric_limits<T>::max();
@@ -299,13 +178,13 @@ class BlockReader3D {
 	}
 
 	void getMaxLevel(){
-		for (const BasicBlock<T, 3>& block : blocks) {
+		for (const BasicBlock<T, D>& block : blocks) {
 			if (block.getLevel() > MaxLevel) MaxLevel = block.getLevel();
 		}
 	}
 
 	public:
-	BlockReader3D(const std::string& filename) : VoxelSize(), MaxLevel(std::uint8_t{}), BaseBlock() {
+	BlockReader(const std::string& filename, int olap = 1) : VoxelSize(), MaxLevel(std::uint8_t{}), BaseBlock(), Overlap(olap) {
 		std::ifstream file(filename);
 		if (!file) {
 			std::cerr << "Error: cannot open file " << filename << std::endl;
@@ -317,8 +196,8 @@ class BlockReader3D {
 		bool refine = false;
 		std::uint8_t level{};
 		{};
-		AABB<T, 3> aabb{};
-		Vector<int, 3> mesh{};
+		AABB<T, D> aabb{};
+		Vector<int, D> mesh{};
 
 		// read Refine
 		while (std::getline(file, line)) {
@@ -356,8 +235,8 @@ class BlockReader3D {
 				// read a new block
 				++blockid;
 				level = std::uint8_t{};
-				aabb = AABB<T, 3>{};
-				mesh = Vector<int, 3>{};
+				aabb = AABB<T, D>{};
+				mesh = Vector<int, D>{};
 				continue;
 			} else {
 				// read block info
@@ -375,20 +254,20 @@ class BlockReader3D {
 				if (line.find("AABB") != std::string::npos) {
 					std::string sub_str = line.substr(line.find("}") + 1);
 
-					Vector<T, 3> min = StrToVector<T, 3>(line.substr(line.find("{") + 1));
-					Vector<T, 3> max = StrToVector<T, 3>(sub_str.substr(sub_str.find("{")));
+					Vector<T, D> min = StrToVector<T, D>(line.substr(line.find("{") + 1));
+					Vector<T, D> max = StrToVector<T, D>(sub_str.substr(sub_str.find("{")));
 					// convert to T
-					aabb = AABB<T, 3>(min, max);
+					aabb = AABB<T, D>(min, max);
 				}
-				// read Mesh: {Nx, Ny}
+				// read Mesh: {Nx, Ny} or {Nx, Ny, Nz}
 				if (line.find("Mesh") != std::string::npos) {
-					mesh = StrToVectorInt<int, 3>(line.substr(line.find(":") + 1));
+					mesh = StrToVectorInt<int, D>(line.substr(line.find(":") + 1));
 					// index block
-					AABB<int, 3> idxaabb{Vector<int, 3>{}, mesh - Vector<int, 3>{1}};
+					AABB<int, D> idxaabb{Vector<int, D>{}, mesh - Vector<int, D>{1}};
 					// construct BasicBlock
 					if (refine) {
 						int coeff = int(std::pow(2, int(level)));
-						Vector<int, 3> refmesh = mesh * coeff;				
+						Vector<int, D> refmesh = mesh * coeff;				
 						blocks.emplace_back(level, VoxelSize, blockid, aabb, idxaabb, refmesh);
 					} else {
 						blocks.emplace_back(VoxelSize, aabb, idxaabb, blockid);
@@ -398,25 +277,27 @@ class BlockReader3D {
 		}
 		
 		getMaxLevel();
-		getBaseBlock();
+		if constexpr (D == 2) {
+			get2DBaseBlock();
+		} else if constexpr (D == 3) {
+			get3DBaseBlock();
+		}
 	}
 
-	const std::vector<BasicBlock<T, 3>>& getBlocks() const {
+	const std::vector<BasicBlock<T, D>>& getBlocks() const {
 		return blocks;
 	}
 	const std::vector<int>& getOverlaps() const {
 		return overlaps;
 	}
-	const BasicBlock<T, 3>& getBaseBlock() const {
+	const BasicBlock<T, D>& getBaseBlock() const {
 		return BaseBlock;
 	}
-	BasicBlock<T, 3> getBasicBlock() const {
-		return BaseBlock.getExtBlock(1);
+	BasicBlock<T, D> getBasicBlock() const {
+		return BaseBlock.getExtBlock(Overlap);
 	}
 	std::uint8_t getMaxLevel() const {
 		return MaxLevel;
 	}
 
 };
-
-

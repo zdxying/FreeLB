@@ -198,7 +198,7 @@ BlockGeometry3D<T>::BlockGeometry3D(BlockGeometryHelper3D<T> &GeoHelper, bool us
 }
 
 template <typename T>
-BlockGeometry3D<T>::BlockGeometry3D(const BlockReader3D<T>& blockreader, bool useReaderOlap) 
+BlockGeometry3D<T>::BlockGeometry3D(const BlockReader<T,3>& blockreader, bool useReaderOlap) 
     : BasicBlock<T, 3>(blockreader.getBasicBlock()), _BaseBlock(blockreader.getBaseBlock()), 
       _overlap(1), _MaxLevel(blockreader.getMaxLevel()) {
   // create blocks from Block Reader
@@ -1249,6 +1249,30 @@ BlockGeometryHelper3D<T>::BlockGeometryHelper3D(const StlReader<T>& reader, int 
 
   CreateBlockCells();
   TagBlockCells(reader);
+}
+
+template <typename T>
+BlockGeometryHelper3D<T>::BlockGeometryHelper3D(const BlockReader<T,3>& blockreader, bool useReaderOlap) 
+    : BasicBlock<T, 3>(blockreader.getBasicBlock()), _BaseBlock(blockreader.getBaseBlock()), 
+      BlockCellLen(0), _Overlap(1), _Ext(0), _LevelLimit(std::uint8_t{}), _MaxLevel(blockreader.getMaxLevel()),
+      _Exchanged(true), _IndexExchanged(true) {
+  // create new blocks on relatively older blocks
+  std::vector<BasicBlock<T, 3>> &BasicBlocks = getAllOldBasicBlocks();
+  BasicBlocks.clear();
+  // now old blocks become new blocks
+  _Exchanged = !_Exchanged;
+  // create blocks from Block Reader
+  int iblock{};
+  for (const BasicBlock<T, 3> &baseblock : blockreader.getBlocks()) {
+    int overlap{};
+    if (useReaderOlap) {
+      overlap = blockreader.getOverlaps()[iblock];
+    } else {
+      overlap = (baseblock.getLevel() != std::uint8_t(0)) ? 2 : 1;
+    }
+    BasicBlocks.emplace_back(baseblock, overlap);
+    ++iblock;
+  }
 }
 
 template <typename T>

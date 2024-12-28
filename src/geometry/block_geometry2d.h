@@ -103,9 +103,9 @@ class BlockGeometry2D : public BasicBlock<T, 2> {
   BlockGeometry2D(int Nx, int Ny, int blocknum, const AABB<T, 2>& block,
                   T voxelSize = T(1), int overlap = 1);
   // construct uniform/ refined blockgeometry from GeoHelper
-  BlockGeometry2D(BlockGeometryHelper2D<T>& GeoHelper);
+  BlockGeometry2D(BlockGeometryHelper2D<T>& GeoHelper, bool useHelperOlap = true);
   // construct blockgeometry from blockreader
-  BlockGeometry2D(const BlockReader2D<T>& blockreader);
+  BlockGeometry2D(const BlockReader<T,2>& blockreader, bool useReaderOlap = true);
   ~BlockGeometry2D() = default;
 
   void PrintInfo() const;
@@ -231,6 +231,10 @@ class BlockGeometryHelper2D : public BasicBlock<T, 2> {
   BlockGeometryHelper2D(int Nx, int Ny, const AABB<T, 2>& AABBs, T voxelSize = T(1),
                         int blocklen = 10, std::uint8_t llimit = std::uint8_t(2),
                         int overlap = 1);
+  // construct blockgeometryhelper from blockreader
+  // blocks are already created in blockreader so
+  // DO NOT call CreateBlocks() after this constructor
+  BlockGeometryHelper2D(const BlockReader<T,2>& blockreader, bool useReaderOlap = true);
   ~BlockGeometryHelper2D() = default;
 
   // get

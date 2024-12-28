@@ -22,7 +22,7 @@
 
 #pragma once
 
-#include "lbm/moment.h"
+#include "lbm/moment.ur.h"
 
 // m
 struct ConsistencyIndexBase : public FieldBase<1> {};

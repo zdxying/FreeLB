@@ -377,6 +377,7 @@ template <typename FieldType, typename FloatType, unsigned int Dim>
 void BlockFieldManager<FieldType, FloatType, Dim>::FieldDataTransfer(
   BlockGeometryHelper<FloatType, Dim>& GeoHelper,
   std::vector<BlockField<FieldType, FloatType, Dim>>& NewFields) {
+  static_assert(Dim == 2, "FieldDataTransfer only support 2D");
   if constexpr (!FieldType::isField) {
     return;
   }

@@ -1170,5 +1170,239 @@ struct SecondOrderImplgen : public codegenbase {
     file << "};" <<"\n"<< std::endl;
   }
 };
+
+
+// template <typename T, typename LatSet>
+// struct ForcePopImpl {
+//   __any__ static inline void compute(std::array<T, LatSet::q> &Fi, const Vector<T, LatSet::d> &u, const Vector<T, LatSet::d> &F) {
+//     for (unsigned int i = 0; i < LatSet::q; ++i) {
+//       Fi[i] = latset::w<LatSet>(i) * F * ((latset::c<LatSet>(i) - u) * LatSet::InvCs2 + (latset::c<LatSet>(i) * u * LatSet::InvCs4) * latset::c<LatSet>(i));
+//     }
+//   }
+// };
+template<typename... LatSets>
+struct ForcePopImplgen : public codegenbase {
+  ForcePopImplgen(const std::string& filename) { _filename = filename; }
+
+  std::string _template = "template <typename T>";
+  std::string _struct = "struct ForcePopImpl";
+  
+  void generateAll(){
+    std::ofstream file;
+    file.open(_filename, std::ios::out | std::ios::app);
+    file << "\n//------------------------------------\n" << std::endl;
+    (generate<LatSets>(file), ...);
+    file << "\n//------------------------------------\n" << std::endl;
+    file.close();
+    std::cout << "Generated " << _filename << std::endl;
+  }
+
+  template<typename LatSet>
+  void generate(std::ofstream& file){
+    constexpr unsigned int d = LatSet::d;
+    constexpr unsigned int q = LatSet::q;
+    std::string _function = "__any__ static inline void compute(std::array<T, " + std::to_string(q)
+      + "> &Fi, const Vector<T, " + std::to_string(d) + "> &u, const Vector<T, " + std::to_string(d) + "> &F)";
+    file << _template << std::endl;
+    file << _struct << "<T, " << LatSet::name("<T>") << ">" << _brace << std::endl;
+    file << _function << _brace << std::endl;
+
+    // Fi[i] = latset::w<LatSet>(i)*LatSet::InvCs2* F * ((latset::c<LatSet>(i)-u) + (latset::c<LatSet>(i)*u*LatSet::InvCs2)*latset::c<LatSet>(i));
+    // function body
+    file << "const T u0 = u[0];" << std::endl;
+    file << "const T u1 = u[1];" << std::endl;
+    if constexpr (d == 3) file << "const T u2 = u[2];" << std::endl;
+    file << "const T F0 = F[0];" << std::endl;
+    file << "const T F1 = F[1];" << std::endl;
+    if constexpr (d == 3) file << "const T F2 = F[2];" << std::endl;
+
+    // common subexpressions
+    // 1 - ux; -1 - ux; -ux;
+    file << "const T T1_u0 = T{1} - u0;" << std::endl;
+    file << "const T _T1_u0 = T{-1} - u0;" << std::endl;
+    file << "const T _u0 = -u0;" << std::endl;
+    file << "const T T1_u1 = T{1} - u1;" << std::endl;
+    file << "const T _T1_u1 = T{-1} - u1;" << std::endl;
+    file << "const T _u1 = -u1;" << std::endl;
+    if constexpr (d == 3) {
+      file << "const T T1_u2 = T{1} - u2;" << std::endl;
+      file << "const T _T1_u2 = T{-1} - u2;" << std::endl;
+      file << "const T _u2 = -u2;" << std::endl;
+    }
+
+    // cuInvCs2_i
+    for (unsigned int i = 1; i < q; i+=2) {
+      // get latset::c<LatSet>(i)*u*LatSet::InvCs2, for each pop direction cu is unique
+      file << "const T cuInvCs2_" << i << " = " << LatSet::name("<T>") << "::InvCs2 * (";
+      bool first = true;
+      for (unsigned int idim = 0; idim < d; ++idim) {
+        if (LatSet::c[i][idim] == 1) {
+          if (first) {file << "u" << idim; first = false;}
+          else file << "+u" << idim;
+        } else if (LatSet::c[i][idim] == -1) {
+          file << "-u" << idim; first = false;
+        }
+      }
+      file << ");" << std::endl;
+    }
+
+    // i = 0
+    file << "Fi[0] = latset::w<" << LatSet::name("<T>") << ">(0)*"<< LatSet::name("<T>") << "::InvCs2 * (";
+    file << "-(";
+    for (unsigned int dim = 0; dim < d; ++dim) {
+      // i = 0, c = 0, cu = 0, calc: F * (-u)
+      file << "F" << dim << "*" << "u" << dim;
+      if (dim < d-1) file << "+";
+    }
+    file << "));" << std::endl;
+
+    for (unsigned int i = 1; i < q; ++i) {
+      // F * ((latset::c<LatSet>(i)-u) + cuInvCs2_i * latset::c<LatSet>(i))
+      file << "Fi[" << i << "] = latset::w<" << LatSet::name("<T>") << ">(" << i << ")*" << LatSet::name("<T>") << "::InvCs2 * (";
+
+      // F[0] * (...) + F[1] * (...) + F[2] * (...)
+      for (unsigned int dim = 0; dim < d; ++dim) {
+        file << "F" << dim << "*(";
+
+        // (latset::c<LatSet>(i) - u)
+        if (LatSet::c[i][dim] == 0) file << "_u" << dim;
+        else if (LatSet::c[i][dim] == 1) file << "T1_u" << dim;
+        else if (LatSet::c[i][dim] == -1) file << "_T1_u" << dim;
+        
+        // + (latset::c<LatSet>(i) * u * LatSet::InvCs2) * latset::c<LatSet>(i)
+        if (LatSet::c[i][dim] != 0) {
+          if (i % 2 != 0) {
+            if (LatSet::c[i][dim] == 1) file << add << "cuInvCs2_" << i;
+            else if (LatSet::c[i][dim] == -1) file << sub << "cuInvCs2_" << i;
+          } else {
+            int iodd = i - 1;
+            if (LatSet::c[i][dim] == 1) file << sub << "cuInvCs2_" << iodd;
+            else if (LatSet::c[i][dim] == -1) file << add << "cuInvCs2_" << iodd;
+          }
+        }
+        file << ")";
+        if (dim < d-1) file << " + ";
+      }
+      file << ");" << std::endl;
+    }
+    // end of function and struct
+    file << brace_ << std::endl;
+    file << "};" <<"\n"<< std::endl;
+  }
+};
+// template <typename T, typename LatSet, unsigned int d>
+// struct ScalarForcePopImpl {
+//   __any__ static inline void compute(std::array<T, LatSet::q> &Fi, const Vector<T, LatSet::d> &u, const T F) {
+//     for (unsigned int i = 0; i < LatSet::q; ++i) {
+//       const T v1 = (latset::c<LatSet>(i)[d] - u[d]) * LatSet::InvCs2;
+//       const T v2 = (latset::c<LatSet>(i) * u * LatSet::InvCs4) * latset::c<LatSet>(i)[d];
+//       Fi[i] = latset::w<LatSet>(i) * F * (v1 + v2);
+//     }
+//   }
+// };
+template<typename... LatSets>
+struct ScalarForcePopImplgen : public codegenbase {
+  ScalarForcePopImplgen(const std::string& filename) { _filename = filename; }
+
+  std::string _template = "template <typename T>";
+  std::string _struct = "struct ScalarForcePopImpl";
+  
+  void generateAll(){
+    std::ofstream file;
+    file.open(_filename, std::ios::out | std::ios::app);
+    file << "\n//------------------------------------\n" << std::endl;
+    (generate<LatSets>(file), ...);
+    file << "\n//------------------------------------\n" << std::endl;
+    file.close();
+    std::cout << "Generated " << _filename << std::endl;
+  }
+
+  template<typename LatSet>
+  void generate(std::ofstream& file){
+    if constexpr (LatSet::d == 2) {
+      gen<LatSet, 0>(file);
+      gen<LatSet, 1>(file);
+    } else if constexpr (LatSet::d == 3) {
+      gen<LatSet, 0>(file);
+      gen<LatSet, 1>(file);
+      gen<LatSet, 2>(file);
+    }
+  }
+
+  template<typename LatSet, unsigned int dir>
+  void gen(std::ofstream& file){
+    constexpr unsigned int d = LatSet::d;
+    constexpr unsigned int q = LatSet::q;
+    std::string _function = "__any__ static inline void compute(std::array<T, " + std::to_string(q) 
+    + "> &Fi, const Vector<T, " + std::to_string(d) + "> &u, const T F)";
+    file << _template << std::endl;
+    file << _struct << "<T, " << LatSet::name("<T>") << ", " << dir << ">" << _brace << std::endl;
+    file << _function << _brace << std::endl;
+
+    // const T v1 = (latset::c<LatSet>(i)[dir] - u[dir]);
+    // const T v2 = (latset::c<LatSet>(i) * u * LatSet::InvCs2) * latset::c<LatSet>(i)[dir];
+    // Fi[i] = latset::w<LatSet>(i) * LatSet::InvCs2 * F * (v1 + v2);
+    // function body
+    file << "const T u0 = u[0];" << std::endl;
+    file << "const T u1 = u[1];" << std::endl;
+    if constexpr (d == 3) file << "const T u2 = u[2];" << std::endl;
+
+    // common subexpressions
+    // v1: 1 - ux; -1 - ux; -ux;
+    file << "const T T1_ud = T{1} - u" << dir << ";" << std::endl;
+    file << "const T _T1_ud = T{-1} - u" << dir << ";" << std::endl;
+    file << "const T _ud = -u" << dir << ";" << std::endl;
+    // cuInvCs2_i
+    for (unsigned int i = 1; i < q; i+=2) {
+      if (LatSet::c[i][dir] != 0) {
+        // get latset::c<LatSet>(i)*u*LatSet::InvCs2, for each pop direction cu is unique
+        file << "const T cuInvCs2_" << i << " = " << LatSet::name("<T>") << "::InvCs2 * (";
+        bool first = true;
+        for (unsigned int idim = 0; idim < d; ++idim) {
+          if (LatSet::c[i][idim] == 1) {
+            if (first) {file << "u" << idim; first = false;}
+            else file << "+u" << idim;
+          } else if (LatSet::c[i][idim] == -1) {
+            file << "-u" << idim; first = false;
+          }
+        }
+        file << ");" << std::endl;
+      }
+    }
+
+    for (unsigned int i = 0; i < q; ++i) {
+      file << "Fi[" << i << "] = latset::w<" << LatSet::name("<T>") << ">(" << i << ") * " << LatSet::name("<T>") << "::InvCs2 * F * (";
+      // v1
+      if (LatSet::c[i][dir] == 0) file << "_ud";
+      else if (LatSet::c[i][dir] == 1) file << "T1_ud";
+      else if (LatSet::c[i][dir] == -1) file << "_T1_ud";
+      // v2
+      if (LatSet::c[i][dir] == 0) {
+        // no v2 term
+        file << ");" << std::endl;
+        continue;
+      } else {
+        if (i % 2 != 0) {
+          if (LatSet::c[i][dir] == 1) file << add << "cuInvCs2_" << i;
+          else if (LatSet::c[i][dir] == -1) file << sub << "cuInvCs2_" << i;
+        } else {
+          int iodd = i - 1;
+          if (LatSet::c[i][dir] == 1) file << sub << "cuInvCs2_" << iodd;
+          else if (LatSet::c[i][dir] == -1) file << add << "cuInvCs2_" << iodd;
+        }
+      }
+      file << ");" << std::endl;
+    }
+    // end of function and struct
+    file << brace_ << std::endl;
+    file << "};" <<"\n"<< std::endl;
+  }
+
+};
+
+
+
+
 }  // namespace tempgen
+
 
