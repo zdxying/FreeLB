@@ -153,7 +153,7 @@ int main() {
   // lattice
   BlockLatticeManager<T, LatSet, FIELDS> NSLattice(Geo, InitValues, BaseConv);
   // NSLattice.EnableToleranceU();
-  T res = 1;
+  // T res = 1;
   // set initial value of field
   Vector<T, 3> LatU_Wall = BaseConv.getLatticeU(U_Wall);
   NSLattice.getField<VELOCITY<T, LatSet::d>>().forEach(

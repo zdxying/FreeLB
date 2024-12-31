@@ -7,6 +7,7 @@ ROOT := ../..
 # -------------optimization flags-------------
 FLAGS += -O3 -march=native -mtune=native
 FLAGS += -D_UNROLLFOR
+FLAGS += -DSingleBlock_OMP
 
 # -------------warning flags-------------
 FLAGS += -Wall -Wdisabled-optimization -Wno-unknown-pragmas -Wno-unused-local-typedefs
@@ -16,7 +17,7 @@ FLAGS += -Wall -Wdisabled-optimization -Wno-unknown-pragmas -Wno-unused-local-ty
 # FLAGS += -pg
 
 # -------------floating point type-------------
-FLAGS += -DFLOAT_TYPE=double
+FLAGS += -DFLOAT_TYPE=float
 
 # -------------output folder-------------
 OUTPUT += vtkoutput
