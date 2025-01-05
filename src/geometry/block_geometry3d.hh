@@ -166,9 +166,7 @@ BlockGeometry3D<T>::BlockGeometry3D(int Nx, int Ny, int Nz, int blocknum,
   BuildBlockIndexMap();
   SetupNbrs();
   InitComm();
-#ifndef MPI_ENABLED
   PrintInfo();
-#endif
 }
 
 template <typename T>
@@ -192,9 +190,8 @@ BlockGeometry3D<T>::BlockGeometry3D(BlockGeometryHelper3D<T> &GeoHelper, bool us
 #ifdef MPI_ENABLED
   GeoHelper.InitBlockGeometry3D();
   InitAllMPIComm(GeoHelper);
-#else
-  PrintInfo();
 #endif
+  PrintInfo();
 }
 
 template <typename T>
@@ -216,9 +213,7 @@ BlockGeometry3D<T>::BlockGeometry3D(const BlockReader<T,3>& blockreader, bool us
   BuildBlockIndexMap();
   SetupNbrs();
   InitAllComm();
-#ifndef MPI_ENABLED
   PrintInfo();
-#endif
 }
 
 template <typename T>
@@ -240,14 +235,15 @@ BlockGeometry3D<T>::BlockGeometry3D(const StlReader<T>& reader, int blocknum)
   BuildBlockIndexMap();
   SetupNbrs();
   InitComm();
-#ifndef MPI_ENABLED
   PrintInfo();
-#endif
 }
 
 template <typename T>
 void BlockGeometry3D<T>::PrintInfo() const {
-  std::cout << "[BlockGeometry3D]: " << "Total Cell Num: " << getTotalCellNum()
+  std::size_t cellnum = getTotalCellNum();
+  // DO NOT use MPI_RANK(0) before getTotalCellNum() cause we have: mpi().barrier();
+  MPI_RANK(0)
+  std::cout << "[BlockGeometry3D]: " << "Total Cell Num: " << cellnum
             << std::endl;
 }
 
@@ -268,9 +264,8 @@ void BlockGeometry3D<T>::Init(BlockGeometryHelper3D<T> &GeoHelper) {
 #ifdef MPI_ENABLED
 // GeoHelper.InitBlockGeometry3D();
   InitAllMPIComm(GeoHelper);
-#else
-  PrintInfo();
 #endif
+  PrintInfo();
 }
 
 template <typename T>
@@ -1735,8 +1730,9 @@ void BlockGeometryHelper3D<T>::SetupMPINbrs() {
       for (std::size_t nRank = 0; nRank < getAllBlockIndices().size(); ++nRank) {
         if (nRank != iRank) {
           for (int nblockid : getAllBlockIndices()[nRank]) {
-            const BasicBlock<T, 3> nblock = getAllBasicBlock(static_cast<std::size_t>(nblockid)).getExtBlock(1);
-            if (isOverlapped(block, nblock))
+            // like SetupNbrs() in BlockGeometry3D, we use baseblock here, NO need to use extblock
+            const BasicBlock<T, 3> nbaseblock = getAllBasicBlock(static_cast<std::size_t>(nblockid));
+            if (isOverlapped(block, nbaseblock))
               nbrsvec.push_back(std::make_pair(nRank, nblockid));
           }
         }
@@ -1844,7 +1840,7 @@ void BlockGeometryHelper3D<T>::ShrinkBasicBlocks(const StlReader<T>& reader) {
     if (hasOutSideCell(tree, block)) {
       // 1. XN face, shrink along +x direction
       int xnlayer{};
-      for (int ix = 0; ix < block.getNx() - 1; ++ix) {
+      for (int ix = 0; ix < block.getNx() - _Overlap; ++ix) {
         // find if all cells on YZ plane are OUTSIDE
         bool alloutside = true;
         for (int iz = 0; iz < block.getNz(); ++iz) {
@@ -1875,7 +1871,7 @@ void BlockGeometryHelper3D<T>::ShrinkBasicBlocks(const StlReader<T>& reader) {
 
       // 2. XP face, shrink along -x direction
       int xplayer{};
-      for (int ix = block.getNx() - 1; ix > 0; --ix) {
+      for (int ix = block.getNx() - _Overlap; ix > 0; --ix) {
         // find if all cells on YZ plane are OUTSIDE
         bool alloutside = true;
         for (int iz = 0; iz < block.getNz(); ++iz) {
@@ -1906,7 +1902,7 @@ void BlockGeometryHelper3D<T>::ShrinkBasicBlocks(const StlReader<T>& reader) {
 
       // 3. YN face, shrink along +y direction
       int ynlayer{};
-      for (int iy = 0; iy < block.getNy() - 1; ++iy) {
+      for (int iy = 0; iy < block.getNy() - _Overlap; ++iy) {
         // find if all cells on XZ plane are OUTSIDE
         bool alloutside = true;
         for (int iz = 0; iz < block.getNz(); ++iz) {
@@ -1937,7 +1933,7 @@ void BlockGeometryHelper3D<T>::ShrinkBasicBlocks(const StlReader<T>& reader) {
 
       // 4. YP face, shrink along -y direction
       int yplayer{};
-      for (int iy = block.getNy() - 1; iy > 0; --iy) {
+      for (int iy = block.getNy() - _Overlap; iy > 0; --iy) {
         // find if all cells on XZ plane are OUTSIDE
         bool alloutside = true;
         for (int iz = 0; iz < block.getNz(); ++iz) {
@@ -1968,7 +1964,7 @@ void BlockGeometryHelper3D<T>::ShrinkBasicBlocks(const StlReader<T>& reader) {
 
       // 5. ZN face, shrink along +z direction
       int znlayer{};
-      for (int iz = 0; iz < block.getNz() - 1; ++iz) {
+      for (int iz = 0; iz < block.getNz() - _Overlap; ++iz) {
         // find if all cells on XY plane are OUTSIDE
         bool alloutside = true;
         for (int iy = 0; iy < block.getNy(); ++iy) {
@@ -1999,7 +1995,7 @@ void BlockGeometryHelper3D<T>::ShrinkBasicBlocks(const StlReader<T>& reader) {
 
       // 6. ZP face, shrink along -z direction
       int zplayer{};
-      for (int iz = block.getNz() - 1; iz > 0; --iz) {
+      for (int iz = block.getNz() - _Overlap; iz > 0; --iz) {
         // find if all cells on XY plane are OUTSIDE
         bool alloutside = true;
         for (int iy = 0; iy < block.getNy(); ++iy) {

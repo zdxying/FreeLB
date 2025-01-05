@@ -109,9 +109,7 @@ BlockGeometry2D<T>::BlockGeometry2D(int Nx, int Ny, int blocknum, const AABB<T, 
   BuildBlockIndexMap();
   SetupNbrs();
   InitComm();
-#ifndef MPI_ENABLED
   PrintInfo();
-#endif
 }
 
 template <typename T>
@@ -134,9 +132,8 @@ BlockGeometry2D<T>::BlockGeometry2D(BlockGeometryHelper2D<T> &GeoHelper, bool us
 #ifdef MPI_ENABLED
   GeoHelper.InitBlockGeometry2D();
   InitAllMPIComm(GeoHelper);
-#else
-  PrintInfo();
 #endif
+  PrintInfo();
 }
 
 template <typename T>
@@ -158,15 +155,16 @@ BlockGeometry2D<T>::BlockGeometry2D(const BlockReader<T,2>& blockreader, bool us
   BuildBlockIndexMap();
   SetupNbrs();
   InitAllComm();
-#ifndef MPI_ENABLED
   PrintInfo();
-#endif
 }
 
 template <typename T>
 void BlockGeometry2D<T>::PrintInfo() const {
+  std::size_t cellnum = getTotalCellNum();
+  // DO NOT use MPI_RANK(0) before getTotalCellNum() cause we have: mpi().barrier();
+  MPI_RANK(0)
   std::cout << "[BlockGeometry2D]: "
-            << "Total Cell Num: " << getTotalCellNum() << std::endl;
+            << "Total Cell Num: " << cellnum << std::endl;
 }
 
 template <typename T>
@@ -184,9 +182,8 @@ void BlockGeometry2D<T>::Init(BlockGeometryHelper2D<T> &GeoHelper) {
 #ifdef MPI_ENABLED
   // GeoHelper.InitBlockGeometry2D();
   InitAllMPIComm(GeoHelper);
-#else
-  PrintInfo();
 #endif
+  PrintInfo();
 }
 
 template <typename T>
@@ -1263,8 +1260,9 @@ void BlockGeometryHelper2D<T>::SetupMPINbrs() {
       for (std::size_t nRank = 0; nRank < getAllBlockIndices().size(); ++nRank) {
         if (nRank != iRank) {
           for (int nblockid : getAllBlockIndices()[nRank]) {
-            const BasicBlock<T, 2> nblock = getAllBasicBlock(static_cast<std::size_t>(nblockid)).getExtBlock(1);
-            if (isOverlapped(block, nblock))
+            // like SetupNbrs() in BlockGeometry2D, we use baseblock here, NO need to use extblock
+            const BasicBlock<T, 2> nbaseblock = getAllBasicBlock(static_cast<std::size_t>(nblockid));
+            if (isOverlapped(block, nbaseblock))
               nbrsvec.push_back(std::make_pair(nRank, nblockid));
           }
         }

@@ -138,7 +138,8 @@ static AABB<T, D> getIntersection(const AABB<T, D>& aabb0, const AABB<T, D>& aab
 template <typename T, typename U, unsigned int D>
 bool isOverlapped(const AABB<T, D>& aabb0, const AABB<U, D>& aabb1) {
   static_assert(D == 2 || D == 3, "Error: Dimension is not supported!");
-  constexpr T eps = std::numeric_limits<T>::epsilon();
+  // prevent blocks sharing the same edge or face from being considered as overlapped
+  constexpr T eps = std::numeric_limits<T>::epsilon() * 1000;
   if constexpr (D == 2) {
     return ((aabb0.getMin()[0] + eps) < aabb1.getMax()[0] &&
             (aabb0.getMin()[1] + eps) < aabb1.getMax()[1] &&

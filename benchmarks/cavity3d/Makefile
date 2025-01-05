@@ -14,6 +14,7 @@ FLAGS += -Wall -Wdisabled-optimization -Wno-unknown-pragmas -Wno-unused-local-ty
 
 # -------------debug flags-------------
 # FLAGS += -g
+# FLAGS += -DMPI_DEBUG
 # FLAGS += -pg
 
 # -------------floating point type-------------
