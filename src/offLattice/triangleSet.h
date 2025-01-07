@@ -1,4 +1,25 @@
-/* This file is part of FreeLB
+/* This file is part of FreeLB, modified from triangleSet.h in palabos
+ *
+ * // start of the original palabos's copyright notice
+ * 
+ * The Palabos softare is developed since 2011 by FlowKit-Numeca Group Sarl
+ * (Switzerland) and the University of Geneva (Switzerland), which jointly
+ * own the IP rights for most of the code base. Since October 2019, the
+ * Palabos project is maintained by the University of Geneva and accepts
+ * source code contributions from the community.
+ *
+ * Contact:
+ * Jonas Latt
+ * Computer Science Department
+ * University of Geneva
+ * 7 Route de Drize
+ * 1227 Carouge, Switzerland
+ * jonas.latt@unige.ch
+ *
+ * The most recent release of Palabos can be downloaded at
+ * <https://palabos.unige.ch/>
+ * 
+ * // end of the original palabos's copyright notice
  *
  * Copyright (C) 2024 Yuan Man
  * E-mail contact: ymmanyuan@outlook.com
@@ -29,7 +50,10 @@
 namespace offlat {
 
 // only for 3D case
-
+// this is a simplified form of the original TriangleSet in palabos
+// we mainly used the writeBinarySTL() part of the original TriangleSet
+// and we make it compatible with the FreeLB's block-strcture: 
+// so we added member _triIdxs to store the triangle-related index like "block strcture"
 template <typename T>
 class TriangleSet {
  private:

@@ -97,12 +97,6 @@ class Printer {
     MPI_RANK(0)
     std::cout << "[" << title << "]:\n";
   }
-  template <typename T>
-  static void Print_SolidFraction(T NucPer) {
-    MPI_RANK(0)
-    std::cout << "SolidFraction: " << T(100) * NucPer << "%"
-              << " ";
-  }
   static void Endl() {
     MPI_RANK(0)
     std::cout << std::endl;

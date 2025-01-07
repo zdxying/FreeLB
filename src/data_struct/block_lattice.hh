@@ -752,6 +752,7 @@ void BlockLatticeManager<T, LatSet, TypePack>::ApplyCellDynamics(
   const BlockFieldManager<FieldType, T, LatSet::d>& BFM) {
 #ifndef SingleBlock_OMP
 #pragma omp parallel for num_threads(Thread_Num)
+// #pragma omp parallel for proc_bind(spread) num_threads(Thread_Num)
 #endif
   for (std::size_t i = 0; i < BlockLats.size(); ++i) {
       BlockLats[i].template ApplyCellDynamics<CELLDYNAMICS, typename FieldType::array_type>(
@@ -896,28 +897,34 @@ void BlockLatticeManager<T, LatSet, TypePack>::ApplyInnerCellDynamics() {
 
 #ifdef __CUDACC__
 
+// for now only one block is supported
+
 template <typename T, typename LatSet, typename TypePack>
 void BlockLatticeManager<T, LatSet, TypePack>::CuDevStream(){
-  for (auto& BLat : BlockLats) {
-    BLat.CuDevStream();
-  }
+  BlockLats[0].CuDevStream();
+  // for (auto& BLat : BlockLats) {
+  //   BLat.CuDevStream();
+  // }
 }
 
 template <typename T, typename LatSet, typename TypePack>
 template <typename CELLDYNAMICS, typename FieldType>
 void BlockLatticeManager<T, LatSet, TypePack>::CuDevApplyCellDynamics(BlockFieldManager<FieldType, T, LatSet::d>& BFM){
-  for (std::size_t i = 0; i < BlockLats.size(); ++i) {
-      BlockLats[i].template CuDevApplyCellDynamics<CELLDYNAMICS, typename FieldType::array_type>(
-          BFM.getBlockField(i).getField(0));
-  }
+  BlockLats[0].template CuDevApplyCellDynamics<CELLDYNAMICS, typename FieldType::array_type>(
+          BFM.getBlockField(0).getField(0));
+  // for (std::size_t i = 0; i < BlockLats.size(); ++i) {
+  //     BlockLats[i].template CuDevApplyCellDynamics<CELLDYNAMICS, typename FieldType::array_type>(
+  //         BFM.getBlockField(i).getField(0));
+  // }
 }
 
 template <typename T, typename LatSet, typename TypePack>
 template <typename CELLDYNAMICS>
 void BlockLatticeManager<T, LatSet, TypePack>::CuDevApplyCellDynamics(){
-  for (std::size_t i = 0; i < BlockLats.size(); ++i) {
-      BlockLats[i].template CuDevApplyCellDynamics<CELLDYNAMICS>();
-  }
+  BlockLats[0].template CuDevApplyCellDynamics<CELLDYNAMICS>();
+  // for (std::size_t i = 0; i < BlockLats.size(); ++i) {
+  //   BlockLats[i].template CuDevApplyCellDynamics<CELLDYNAMICS>();
+  // }
 }
 
 #endif

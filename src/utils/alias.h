@@ -270,8 +270,10 @@ using POP = GenericField<StreamMapArray<T>, POPBase<q>>;
 // using POP = GenericField<CyclicArray<T>, POPBase<q>>;
 
 #else
+// we find that CyclicArray seems faster than StreamArray in benchmarks/cavity3d
 template <typename T, unsigned int q>
 using POP = GenericField<CyclicArray<T>, POPBase<q>>;
+// using POP = GenericField<StreamMapArray<T>, POPBase<q>>;
 
 #endif
 

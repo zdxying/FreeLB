@@ -306,7 +306,6 @@ int main() {
 
     if (MainLoopTimer() % OutputStep == 0) {
       OutputTimer.Print_InnerLoopPerformance(Geo0.getVoxelsNum(), OutputStep);
-      // Printer::Print_SolidFraction<T>(CellComm.getSolidFraction<T>());
       Printer::Print<int>("Interface Cells", CA.getInterface().size());
       Printer::Print<T>("Solid%", CA.getSolidCountFracton() * 100);
       Printer::Endl();

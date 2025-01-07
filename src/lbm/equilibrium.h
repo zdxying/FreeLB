@@ -29,6 +29,11 @@
 template <typename T, typename LatSet, typename TypePack>
 class Cell;
 
+namespace cudev {
+  template <typename T, typename LatSet, typename TypePack>
+  class Cell;
+}  // namespace cudev
+
 // calc equilibrium distribution function
 // sum(feq_i) = rho, for both first and second order
 template <typename T, typename LatSet>

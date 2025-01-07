@@ -289,7 +289,6 @@ int main() {
 
     if (MainLoopTimer() % OutputStep == 0) {
       OutputTimer.Print_InnerLoopPerformance(NSLattice.getN(), OutputStep);
-      // Printer::Print_SolidFraction<T>(CellComm.getSolidFraction<T>());
       Printer::Print<int>("Interface", CA.getInterface().size());
       Printer::Print<T>("Solid%", CA.getSolidCountFracton() * 100);
       Printer::Endl();

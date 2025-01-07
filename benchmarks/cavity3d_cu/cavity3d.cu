@@ -198,10 +198,10 @@ int main() {
   using TaskSelectorRhoU = tmp::TaskSelector<TaskCollectionRhoU, std::uint8_t, CELL>;
 
   // writers
-  vtmwriter::ScalarWriter RhoWriter("Rho", NSLattice.getField<RHO<T>>());
-  vtmwriter::VectorWriter VecWriter("Velocity", NSLattice.getField<VELOCITY<T, LatSet::d>>());
-  vtmwriter::vtmWriter<T, LatSet::d> NSWriter("cavblock3d", Geo);
-  NSWriter.addWriterSet(RhoWriter, VecWriter);
+  // vtmwriter::ScalarWriter RhoWriter("Rho", NSLattice.getField<RHO<T>>());
+  // vtmwriter::VectorWriter VecWriter("Velocity", NSLattice.getField<VELOCITY<T, LatSet::d>>());
+  // vtmwriter::vtmWriter<T, LatSet::d> NSWriter("cavblock3d", Geo);
+  // NSWriter.addWriterSet(RhoWriter, VecWriter);
 
   Printer::Print_BigBanner(std::string("Start Calculation..."));
   std::cout << "Total Cells: " << Geo.getTotalCellNum() << std::endl;

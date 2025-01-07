@@ -64,7 +64,7 @@ T tol;
 std::string work_dir;
 
 void readParam() {
-  iniReader param_reader("cavityblock2d.ini");
+  iniReader param_reader("cavity2d.ini");
   // mesh
   work_dir = param_reader.getValue<std::string>("workdir", "workdir_");
   // parallel
