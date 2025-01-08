@@ -370,12 +370,46 @@ static void DivideBlock2D(BasicBlock<T, 2>& block, int blocknum,
 }
 
 template <typename T>
+static void DivideBlock2D(BasicBlock<T, 2>& block, int blockXNum, int blockYNum, 
+                          std::vector<AABB<int, 2>>& blocksvec) {
+  block.getIdxBlock().divide(blockXNum, blockYNum, blocksvec);
+}
+
+template <typename T>
 static void DivideBlock2D(BasicBlock<T, 2>& block, int blocknum,
                           std::vector<BasicBlock<T, 2>>& basicblocksvec) {
   std::vector<AABB<int, 2>> blocksvec;
   const AABB<int, 2>& IdxBlock = block.getIdxBlock();
   // divide block
   DivideBlock2D<T>(block.getNx(), block.getNy(), blocknum, IdxBlock, blocksvec);
+  // construct basicblocks from aabb
+  std::uint8_t level = block.getLevel();
+  T voxsize = block.getVoxelSize();
+  const Vector<T, 2>& Min = block.getMin();
+  int ratio = static_cast<int>(std::pow(2, static_cast<int>(level)));
+  int blockid = 0;
+  for (const AABB<int, 2>& idxaabb : blocksvec) {
+    // relative index location
+    Vector<int, 2> idxmin = idxaabb.getMin() - IdxBlock.getMin();
+    Vector<int, 2> idxmax = idxaabb.getMax() - IdxBlock.getMin();
+    Vector<T, 2> min = Min + voxsize * ratio * idxmin;
+    // remember to add Vector<int, 2>{1}
+    Vector<T, 2> max = Min + voxsize * ratio * (idxmax + Vector<int, 2>{1});
+    AABB<T, 2> aabb{min, max};
+    // mesh
+    Vector<int, 2> Mesh = (idxaabb.getExtension() + Vector<int, 2>{1}) * ratio;
+    basicblocksvec.emplace_back(level, voxsize, blockid, aabb, idxaabb, Mesh);
+    ++blockid;
+  }
+}
+
+template <typename T>
+static void DivideBlock2D(BasicBlock<T, 2>& block, int blockXNum, int blockYNum, 
+                          std::vector<BasicBlock<T, 2>>& basicblocksvec) {
+  std::vector<AABB<int, 2>> blocksvec;
+  const AABB<int, 2>& IdxBlock = block.getIdxBlock();
+  // divide block
+  block.getIdxBlock().divide(blockXNum, blockYNum, blocksvec);
   // construct basicblocks from aabb
   std::uint8_t level = block.getLevel();
   T voxsize = block.getVoxelSize();
@@ -492,6 +526,12 @@ static void DivideBlock3D(BasicBlock<T, 3>& block, int blocknum,
 }
 
 template <typename T>
+static void DivideBlock3D(BasicBlock<T, 3>& block, int blockXNum, int blockYNum, int blockZNum,
+                          std::vector<AABB<int, 3>>& blocksvec) {
+  block.getIdxBlock().divide(blockXNum, blockYNum, blockZNum, blocksvec);
+}
+
+template <typename T>
 static void DivideBlock3D(BasicBlock<T, 3>& block, int blocknum,
                           std::vector<BasicBlock<T, 3>>& basicblocksvec) {
   std::vector<AABB<int, 3>> blocksvec;
@@ -499,6 +539,34 @@ static void DivideBlock3D(BasicBlock<T, 3>& block, int blocknum,
   // divide block
   DivideBlock3D<T>(block.getNx(), block.getNy(), block.getNz(), blocknum, IdxBlock,
                    blocksvec);
+  // construct basicblocks from aabb
+  std::uint8_t level = block.getLevel();
+  T voxsize = block.getVoxelSize();
+  const Vector<T, 3>& Min = block.getMin();
+  int ratio = static_cast<int>(std::pow(2, static_cast<int>(level)));
+  int blockid = 0;
+  for (const AABB<int, 3>& idxaabb : blocksvec) {
+    // relative index location
+    Vector<int, 3> idxmin = idxaabb.getMin() - IdxBlock.getMin();
+    Vector<int, 3> idxmax = idxaabb.getMax() - IdxBlock.getMin();
+    Vector<T, 3> min = Min + voxsize * ratio * idxmin;
+    // remember to add Vector<int, 3>{1}
+    Vector<T, 3> max = Min + voxsize * ratio * (idxmax + Vector<int, 3>{1});
+    AABB<T, 3> aabb{min, max};
+    // mesh
+    Vector<int, 3> Mesh = (idxaabb.getExtension() + Vector<int, 3>{1}) * ratio;
+    basicblocksvec.emplace_back(level, voxsize, blockid, aabb, idxaabb, Mesh);
+    ++blockid;
+  }
+}
+
+template <typename T>
+static void DivideBlock3D(BasicBlock<T, 3>& block, int blockXNum, int blockYNum, int blockZNum,
+                          std::vector<BasicBlock<T, 3>>& basicblocksvec) {
+  std::vector<AABB<int, 3>> blocksvec;
+  const AABB<int, 3>& IdxBlock = block.getIdxBlock();
+  // divide block
+  block.getIdxBlock().divide(blockXNum, blockYNum, blockZNum, blocksvec);
   // construct basicblocks from aabb
   std::uint8_t level = block.getLevel();
   T voxsize = block.getVoxelSize();
@@ -776,7 +844,7 @@ static void DivideBlock3D(int NX, int NY, int NZ, int blocknum,
 
 // calculate the Standard Deviation of the number of points in each block
 template <typename T, unsigned int D>
-T ComputeStdDev(const std::vector<BasicBlock<T, D>> &Blocks) {
+T ComputeBlockNStdDev(const std::vector<BasicBlock<T, D>> &Blocks) {
   T mean{};
   for (const BasicBlock<T, D> &block : Blocks) {
     mean += block.getN();

@@ -155,14 +155,15 @@ void Block3D<T>::ReadOctree(Octree<T>* tree, FieldType& field, typename FieldTyp
 
 template <typename T>
 BlockGeometry3D<T>::BlockGeometry3D(int Nx, int Ny, int Nz, int blocknum,
-                                    const AABB<T, 3> &block, T voxelSize, int overlap)
+                                    const AABB<T, 3> &block, T voxelSize, int overlap,
+                                    int blockXNum, int blockYNum, int blockZNum)
     : BasicBlock<T, 3>(
         voxelSize, block.getExtended(Vector<T, 3>{voxelSize*overlap}),
         AABB<int, 3>(Vector<int, 3>{0}, Vector<int, 3>{Nx - 1 + 2*overlap, Ny - 1 + 2*overlap, Nz - 1 + 2*overlap})),
       _BaseBlock(voxelSize, block,
                  AABB<int, 3>(Vector<int, 3>{overlap}, Vector<int, 3>{Nx - 1 + overlap, Ny - 1 + overlap, Nz - 1 + overlap})),
       _overlap(overlap), _MaxLevel(std::uint8_t(0)) {
-  CreateBlocks(blocknum);
+  CreateBlocks(blocknum, blockXNum, blockYNum, blockZNum);
   BuildBlockIndexMap();
   SetupNbrs();
   InitComm();
@@ -245,6 +246,10 @@ void BlockGeometry3D<T>::PrintInfo() const {
   MPI_RANK(0)
   std::cout << "[BlockGeometry3D]: " << "Total Cell Num: " << cellnum
             << std::endl;
+#ifndef MPI_ENABLED
+  std::cout << "BlockNum: " << _Blocks.size() << " with StdDev: "
+            << ComputeBlockNStdDev(_BasicBlocks) << std::endl;
+#endif
 }
 
 template <typename T>
@@ -297,14 +302,20 @@ std::size_t BlockGeometry3D<T>::getBaseCellNum() const {
 }
 
 template <typename T>
-void BlockGeometry3D<T>::DivideBlocks(int blocknum) {
+void BlockGeometry3D<T>::DivideBlocks(int blocknum, int blockXNum, int blockYNum, int blockZNum) {
   _BlockAABBs.clear();
   _BlockAABBs.reserve(blocknum);
-  DivideBlock3D(_BaseBlock, blocknum, _BlockAABBs);
+  if (blockXNum == 0 || blockYNum == 0 || blockZNum == 0) {
+    // default scheme
+    DivideBlock3D(_BaseBlock, blocknum, _BlockAABBs);
+  } else {
+    // manually divide
+    DivideBlock3D(_BaseBlock, blockXNum, blockYNum, blockZNum, _BlockAABBs);
+  }
 }
 
 template <typename T>
-void BlockGeometry3D<T>::CreateBlocks(int blocknum) {
+void BlockGeometry3D<T>::CreateBlocks(int blocknum, int blockXNum, int blockYNum, int blockZNum) {
   DivideBlocks(blocknum);
 
   _Blocks.clear();
@@ -1484,30 +1495,14 @@ void BlockGeometryHelper3D<T>::CreateBlocks(bool CreateFromInsideTag) {
 }
 
 template <typename T>
-void BlockGeometryHelper3D<T>::CreateBlocks(int blocknum) {
-  std::vector<AABB<int, 3>> BlockAABBs;
-  BlockAABBs.reserve(blocknum);
-  DivideBlock3D(_BaseBlock, blocknum, BlockAABBs);
-
+void BlockGeometryHelper3D<T>::CreateBlocks(int blockXNum, int blockYNum, int blockZNum) {
   // create new blocks on relatively older blocks
   std::vector<BasicBlock<T, 3>> &BasicBlocks = getAllOldBasicBlocks();
+  BasicBlocks.clear();
   // now old blocks become new blocks
   _Exchanged = !_Exchanged;
-
-  BasicBlocks.clear();
-  BasicBlocks.reserve(BlockAABBs.size());
-  // create blocks
-  int blockid = 0;
-  for (const AABB<int, 3> &blockaabb : BlockAABBs) {
-    Vector<T, 3> MIN =
-      blockaabb.getMin() * _BaseBlock.getVoxelSize() + BasicBlock<T, 3>::_min;
-    Vector<T, 3> MAX =
-      (blockaabb.getMax() + Vector<T, 3>{T(1)}) * _BaseBlock.getVoxelSize() +
-      BasicBlock<T, 3>::_min;
-    AABB<T, 3> aabb(MIN, MAX);
-    BasicBlocks.emplace_back(_BaseBlock.getVoxelSize(), aabb, blockaabb, blockid);
-    blockid++;
-  }
+  // divide blocks manually
+  DivideBlock3D(_BaseBlock, blockXNum, blockYNum, blockZNum, BasicBlocks);
 }
 
 template <typename T>
@@ -1543,7 +1538,7 @@ void BlockGeometryHelper3D<T>::AdaptiveOptimization(int OptProcNum, int MaxProcN
     // buffer vector copied from BasicBlocks
     std::vector<BasicBlock<T, 3>> Blocks = BasicBlocks;
     Optimize(Blocks, i, enforce);
-    StdDevs.push_back(ComputeStdDev(Blocks));
+    StdDevs.push_back(ComputeBlockNStdDev(Blocks));
   }
   // find shcemes with minimum stddev
   std::vector<int> bestSchemesvec;

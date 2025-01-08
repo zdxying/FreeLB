@@ -64,13 +64,13 @@ int main() {
 
   // BlockGeometry2D<T> Geo(Ni, Nj, BlockNum, cavity, Cell_Len);
   BlockGeometryHelper3D<T> GeoHelper(Ni, Nj, Nk, cavity, Cell_Len, Ni/5);
-  GeoHelper.CreateBlocks(BlockNum);
+  GeoHelper.CreateBlocks();
   GeoHelper.AdaptiveOptimization(BlockNum);
   GeoHelper.LoadBalancing();
 
   // BlockGeometry3D<T> Geo(Ni, Nj, Nk, BlockNum, cavity, Cell_Len);
   BlockGeometry3D<T> Geo(GeoHelper);
-  T dev = ComputeStdDev(Geo.getBasicBlocks());
+  T dev = ComputeBlockNStdDev(Geo.getBasicBlocks());
   std::cout << "Standard deviation: " << dev << std::endl;
 
   BlockFieldManager<FlagField, T, LatSet::d> FlagFM(Geo, VoidFlag);

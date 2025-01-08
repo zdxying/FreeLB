@@ -99,13 +99,13 @@ typename FieldType::value_type voidvalue, typename FieldType::value_type bdvalue
 
 template <typename T>
 BlockGeometry2D<T>::BlockGeometry2D(int Nx, int Ny, int blocknum, const AABB<T, 2> &block,
-                                    T voxelSize, int overlap)
+                                    T voxelSize, int overlap, int blockXNum, int blockYNum)
     : BasicBlock<T, 2>(voxelSize, block.getExtended(Vector<T, 2>{voxelSize*overlap}),
                        AABB<int, 2>(Vector<int, 2>{0}, Vector<int, 2>{Nx - 1 + 2*overlap, Ny - 1 + 2*overlap})),
       _BaseBlock(voxelSize, block,
                  AABB<int, 2>(Vector<int, 2>{overlap}, Vector<int, 2>{Nx - 1 + overlap, Ny - 1 + overlap})),
       _overlap(overlap), _MaxLevel(std::uint8_t(0)) {
-  CreateBlocks(blocknum);
+  CreateBlocks(blocknum, blockXNum, blockYNum);
   BuildBlockIndexMap();
   SetupNbrs();
   InitComm();
@@ -165,6 +165,10 @@ void BlockGeometry2D<T>::PrintInfo() const {
   MPI_RANK(0)
   std::cout << "[BlockGeometry2D]: "
             << "Total Cell Num: " << cellnum << std::endl;
+#ifndef MPI_ENABLED
+  std::cout << "BlockNum: " << _Blocks.size() << " with StdDev: "
+            << ComputeBlockNStdDev(_BasicBlocks) << std::endl;
+#endif
 }
 
 template <typename T>
@@ -215,15 +219,21 @@ std::size_t BlockGeometry2D<T>::getBaseCellNum() const {
 }
 
 template <typename T>
-void BlockGeometry2D<T>::DivideBlocks(int blocknum) {
+void BlockGeometry2D<T>::DivideBlocks(int blocknum, int blockXNum, int blockYNum) {
   _BlockAABBs.clear();
   _BlockAABBs.reserve(blocknum);
-  DivideBlock2D(_BaseBlock, blocknum, _BlockAABBs);
+  if (blockXNum == 0 || blockYNum == 0) {
+    // default scheme
+    DivideBlock2D(_BaseBlock, blocknum, _BlockAABBs);
+  } else {
+    // manually divide
+    DivideBlock2D(_BaseBlock, blockXNum, blockYNum, _BlockAABBs);
+  }
 }
 
 template <typename T>
-void BlockGeometry2D<T>::CreateBlocks(int blocknum) {
-  DivideBlocks(blocknum);
+void BlockGeometry2D<T>::CreateBlocks(int blocknum, int blockXNum, int blockYNum) {
+  DivideBlocks(blocknum, blockXNum, blockYNum);
 
   _Blocks.clear();
   _Blocks.reserve(_BlockAABBs.size());
@@ -971,6 +981,8 @@ void BlockGeometryHelper2D<T>::UpdateMaxLevel() {
 
 template <typename T>
 void BlockGeometryHelper2D<T>::CreateBlocks() {
+  // collect info
+  std::vector<std::size_t> BlockCellNumVec;
   // create new blocks on relatively older blocks
   std::vector<BasicBlock<T, 2>> &BasicBlocks = getAllOldBasicBlocks();
   BasicBlocks.clear();
@@ -1021,7 +1033,9 @@ void BlockGeometryHelper2D<T>::CreateBlocks() {
         ++Ny;
         NewMesh[1] += _BlockCells[startid].getNy();
       }
-    end_y_expansion:
+      end_y_expansion:
+
+      BlockCellNumVec.push_back(Nx * Ny);
       // create block
       Vector<int, 2> Ext = BlockCellLen * Vector<int, 2>{Nx, Ny};
       Vector<int, 2> min = _BlockCells[id].getIdxBlock().getMin();
@@ -1046,6 +1060,32 @@ void BlockGeometryHelper2D<T>::CreateBlocks() {
   delete[] visited;
   // update max level
   UpdateMaxLevel();
+
+  // print info
+  // find min and max block cell num
+  std::size_t min = BlockCellNumVec[0];
+  std::size_t max = BlockCellNumVec[0];
+  for (std::size_t x : BlockCellNumVec) {
+    min = x < min ? x : min;
+    max = x > max ? x : max;
+  }
+  T aver = T(CellsN) / BasicBlocks.size();
+
+  MPI_RANK(0)
+  std::cout << "[BlockGeometryHelper2D<T>::CreateBlocks]: " << BasicBlocks.size() << " Blocks created, with: \n"
+            << "  Min BlockCell Num: " << min << ", Max BlockCell Num: " << max << ", Average Block Cell Num: " << aver
+            << std::endl;
+}
+
+template <typename T>
+void BlockGeometryHelper2D<T>::CreateBlocks(int blockXNum, int blockYNum) {
+  // create new blocks on relatively older blocks
+  std::vector<BasicBlock<T, 2>> &BasicBlocks = getAllOldBasicBlocks();
+  BasicBlocks.clear();
+  // now old blocks become new blocks
+  _Exchanged = !_Exchanged;
+  // divide blocks manually
+  DivideBlock2D(_BaseBlock, blockXNum, blockYNum, BasicBlocks);
 }
 
 template <typename T>
@@ -1081,7 +1121,7 @@ void BlockGeometryHelper2D<T>::AdaptiveOptimization(int OptProcNum, int MaxProcN
     // buffer vector copied from BasicBlocks
     std::vector<BasicBlock<T, 2>> Blocks = BasicBlocks;
     Optimize(Blocks, i, enforce);
-    StdDevs.push_back(ComputeStdDev(Blocks));
+    StdDevs.push_back(ComputeBlockNStdDev(Blocks));
   }
   // find shcemes with minimum stddev
   std::vector<int> bestSchemesvec;

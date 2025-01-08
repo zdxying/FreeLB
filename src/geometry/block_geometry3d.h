@@ -108,12 +108,14 @@ class BlockGeometry3D : public BasicBlock<T, 3> {
  public:
   // construct uniform blockgeometry
   BlockGeometry3D(int Nx, int Ny, int Nz, int blocknum, const AABB<T, 3>& block,
-                  T voxelSize = T(1), int overlap = 1);
+                  T voxelSize = T(1), int overlap = 1,
+                  int blockXNum = 0, int blockYNum = 0, int blockZNum = 0);
   // construct uniform/ refined blockgeometry from GeoHelper
   BlockGeometry3D(BlockGeometryHelper3D<T>& GeoHelper, bool useHelperOlap = true);
   // construct blockgeometry from blockreader
   BlockGeometry3D(const BlockReader<T,3>& blockreader, bool useReaderOlap = true);
-  // construct blockgeometry from stlreader
+  // construct blockgeometry from stlreader, 
+  // not recommended, use BlockGeometryHelper3D with StlReader instead, may be removed?
   BlockGeometry3D(const StlReader<T>& reader, int blocknum);
   ~BlockGeometry3D() = default;
 
@@ -152,8 +154,8 @@ class BlockGeometry3D : public BasicBlock<T, 3> {
   std::size_t getBaseCellNum() const;
 
   // first divide blockgeometry into blocks, stored in _BlockAABBs
-  void DivideBlocks(int blocknum);
-  void CreateBlocks(int blocknum);
+  void DivideBlocks(int blocknum, int blockXNum = 0, int blockYNum = 0, int blockZNum = 0);
+  void CreateBlocks(int blocknum, int blockXNum = 0, int blockYNum = 0, int blockZNum = 0);
   void SetupNbrs();
 
   // --- communication ---
@@ -344,8 +346,8 @@ class BlockGeometryHelper3D : public BasicBlock<T, 3> {
   bool hasOutSideCell(Octree<T>* tree, const BasicBlock<T, 3> &block) const;
   // create block from BlockCells, this should be called after refinement
   void CreateBlocks(bool CreateFromInsideTag = false);
-  // create block using normal divide method, like CreateBlocks() in BlockGeometry3D
-  void CreateBlocks(int blocknum);
+  // create blocks manually, if used, AdaptiveOptimization() is NOT necessary
+  void CreateBlocks(int blockXNum, int blockYNum, int blockZNum);
   // tag neighbor refine cells
   void TagRefineLayer(std::vector<std::uint8_t>& refine, bool& refined);
   // check refine cell status
