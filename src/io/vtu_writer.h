@@ -737,7 +737,7 @@ class physVectorWriter : public AbstractWriter {
   // triangle info
   const offlat::TriangleSet<FloatType>& _triSet;
   // unit convert function pointer
-  std::function<datatype(datatype)> unitConvert;
+  std::function<vectortype(vectortype)> unitConvert;
 };
 
 }  // namespace vtuSurface

@@ -369,7 +369,7 @@ class BlockGeometryHelper3D : public BasicBlock<T, 3> {
   // void AdaptiveOptimization(std::vector<BasicBlock<T, 3>>& Blocks, int OptProcNum,
   //                           int MaxProcNum = -1, bool enforce = true);
   // optimize for parallel computing
-  void Optimize(int ProcessNum, bool enforce = true);
+  void Optimize(int ProcessNum, bool enforce = true, bool info = false);
   void Optimize(std::vector<BasicBlock<T, 3>>& Blocks, int ProcessNum,
                 bool enforce = true);
 

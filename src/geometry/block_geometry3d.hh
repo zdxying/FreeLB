@@ -1571,8 +1571,13 @@ void BlockGeometryHelper3D<T>::AdaptiveOptimization(int OptProcNum, int MaxProcN
 }
 
 template <typename T>
-void BlockGeometryHelper3D<T>::Optimize(int ProcessNum, bool enforce) {
+void BlockGeometryHelper3D<T>::Optimize(int ProcessNum, bool enforce, bool info) {
   Optimize(getAllBasicBlocks(), ProcessNum, enforce);
+  if (info) {
+    MPI_RANK(0)
+    std::cout << "Optimization result: " << getAllBasicBlocks().size()
+              << " Blocks with stdDev: " << ComputeBlockNStdDev(getAllBasicBlocks()) << std::endl;
+  }
 }
 
 template <typename T>
