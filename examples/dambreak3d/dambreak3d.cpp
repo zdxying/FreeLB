@@ -168,7 +168,7 @@ int main(int argc, char* argv[]) {
   // FlagWriter.WriteBinary();
 
   // ------------------ define lattice ------------------
-  using NSFIELDS = TypePack<RHO<T>, VELOCITY<T, LatSet::d>, POP<T, LatSet::q>, SCALARCONSTFORCE<T>>;
+  using NSFIELDS = TypePack<RHO<T>, VELOCITY<T, LatSet::d>, POP<T, LatSet::q>, SCALARCONSTFORCE<T>, StrainRateMag<T>>;
 
   using ALLFIELDS = MergeFieldPack<NSFIELDS, olbfs::FSFIELDS<T, LatSet>, olbfs::FSPARAMS<T>>::mergedpack;
   // using ALLNSFS_FIELDS = MergeFieldPack<NSFIELDS, olbfs::FSFIELDS<T, LatSet>, olbfs::FSPARAMS<T>>::mergedpack;
@@ -181,7 +181,7 @@ int main(int argc, char* argv[]) {
   T surface_tension_coefficient_factor =
     BaseConv.Conv_Time * BaseConv.Conv_Time / (rho_ref * std::pow(BaseConv.Conv_L, 3));
 
-  ValuePack NSInitValues(BaseConv.getLatRhoInit(), Vector<T, LatSet::d>{}, T{}, -BaseConv.Lattice_g);
+  ValuePack NSInitValues(BaseConv.getLatRhoInit(), Vector<T, LatSet::d>{}, T{}, -BaseConv.Lattice_g, T{});
   ValuePack FSInitValues(olbfs::FSType::Void, olbfs::FSFlag::None, T{}, T{}, Vector<T, LatSet::q>{}, Vector<T, LatSet::d>{});
   ValuePack FSParamsInitValues(LonelyThreshold, VOF_Trans_Threshold, true, surface_tension_coefficient_factor* surface_tension_coefficient);
   // power-law dynamics for non-Newtonian fluid
@@ -221,6 +221,10 @@ int main(int argc, char* argv[]) {
 
   using NSTaskSelector = TaskSelector<std::uint8_t, NSCELL, NSBulkTask, NSWallTask>;
 
+  // get shear rate
+  using shearRateTask = tmp::Key_TypePair<olbfs::FSType::Fluid | olbfs::FSType::Interface | olbfs::FSType::Gas, moment::shearRateMag<NSCELL, true>>;
+  using shearRateTaskSelector = TaskSelector<std::uint8_t, NSCELL, shearRateTask>;
+
   // bcs
   // BBLikeFixedBlockBdManager<bounceback::normal<NSCELL>,
   //                         BlockLatticeManager<T, LatSet, ALLFIELDS>,
@@ -228,13 +232,17 @@ int main(int argc, char* argv[]) {
   // NS_BB("NS_BB", NSLattice, FlagFM, BouncebackFlag, VoidFlag);
 
   // ------------------ define writers ------------------
-  vtmo::ScalarWriter rhovtm("rho", NSLattice.getField<RHO<T>>());
-  vtmo::ScalarWriter MassWriter("Mass", NSLattice.getField<olbfs::MASS<T>>());
-  vtmo::VectorWriter VeloWriter("Velo", NSLattice.getField<VELOCITY<T, LatSet::d>>());
-  vtmo::ScalarWriter VOFWriter("VOF", NSLattice.getField<olbfs::VOLUMEFRAC<T>>());
-  vtmo::ScalarWriter StateWriter("State", NSLattice.getField<olbfs::STATE>());
+  // vtmo::ScalarWriter rhovtm("rho", NSLattice.getField<RHO<T>>());
+  // vtmo::ScalarWriter MassWriter("Mass", NSLattice.getField<olbfs::MASS<T>>());
+  // vtmo::VectorWriter VeloWriter("Velo", NSLattice.getField<VELOCITY<T, LatSet::d>>());
+  // vtmo::ScalarWriter VOFWriter("VOF", NSLattice.getField<olbfs::VOLUMEFRAC<T>>());
+  // vtmo::ScalarWriter StateWriter("State", NSLattice.getField<olbfs::STATE>());
+  vtmo::PhysScalarWriter<StrainRateMag<T>, LatSet::d, float> PhysShearRateWriter("ShearRate", NSLattice.getField<StrainRateMag<T>>(),
+  std::bind(&BaseConverter<T>::getPhysStrainRate, &BaseConv, std::placeholders::_1));
+  vtmo::PhysVectorWriter<VELOCITY<T, LatSet::d>, LatSet::d, float> physVeloWriter("physVelocity",NSLattice.getField<VELOCITY<T, LatSet::d>>(),
+  std::bind(&BaseConverter<T>::getPhysU<LatSet::d>, &BaseConv, std::placeholders::_1));
   vtmo::vtmWriter<T, LatSet::d> Writer("dambreak3d", Geo, 1);
-  Writer.addWriterSet(rhovtm, StateWriter, MassWriter, VOFWriter, VeloWriter);
+  Writer.addWriterSet(PhysShearRateWriter, physVeloWriter);
 
   FieldStatistics RhoStat(NSLattice.getField<RHO<T>>());
   FieldStatistics MassStat(NSLattice.getField<olbfs::MASS<T>>());
@@ -255,20 +263,21 @@ int main(int argc, char* argv[]) {
   [&](auto& field, std::size_t id) { field.SetField(id, T{1}); });
 
   // write vtu
-  vtuSurface::VectorWriter vtuVectorWriter("velocity", NSLattice.getField<VELOCITY<T, LatSet::d>>(), triangles);
-  vtuSurface::vtuManager<T> vtuWriter("dambreak3dvtu", triangles);
-  vtuWriter.addWriter(vtuVectorWriter);
+  vtuSurface::physScalarWriter<StrainRateMag<T>, T, float> vtuSR("ShearRate", NSLattice.getField<StrainRateMag<T>>(), triangles,
+    std::bind(&BaseConverter<T>::getPhysStrainRate, &BaseConv, std::placeholders::_1));
+  vtuSurface::physVectorWriter<VELOCITY<T, LatSet::d>, T, float> vtuVelo("physVelocity", NSLattice.getField<VELOCITY<T, LatSet::d>>(), triangles,
+    std::bind(&BaseConverter<T>::getPhysU<LatSet::d>, &BaseConv, std::placeholders::_1));
+  // vtuSurface::VectorWriter<VELOCITY<T, LatSet::d>, T, float> vtuVectorWriter("velocity", NSLattice.getField<VELOCITY<T, LatSet::d>>(), triangles);
 
-  vtuSurface::vtuManager<T> vtuWriterBinary("dambreak3dvtuBinary", triangles);
-  vtuWriterBinary.addWriter(vtuVectorWriter);
+  vtuSurface::vtuManager<T, float> vtuWriter("dambreak3dvtu", triangles);
+  vtuWriter.addWriter(vtuSR, vtuVelo);
 
   // count and timer
   Timer MainLoopTimer;
   Timer OutputTimer;
 
-  // Writer.WriteBinary(MainLoopTimer());
-  vtuWriter.Write(MainLoopTimer());
-  // vtuWriterBinary.WriteBinary(MainLoopTimer());
+  Writer.WriteBinary(MainLoopTimer());
+  vtuWriter.WriteBinary(MainLoopTimer());
 
   Printer::Print_BigBanner(std::string("Start Calculation..."));
 
@@ -292,12 +301,16 @@ int main(int argc, char* argv[]) {
 
     if (MainLoopTimer() % OutputStep == 0) {
       OutputTimer.Print_InnerLoopPerformance(Geo.getTotalCellNum(), OutputStep);
+
+      // shear rate
+      NSLattice.ApplyCellDynamics<shearRateTaskSelector>(NSLattice.getField<olbfs::STATE>());
+
       Printer::Print("Average Rho", RhoStat.getAverage());
       Printer::Print("Average Mass", MassStat.getAverage());
       Printer::Print("Max Mass", MassStat.getMax());
       Printer::Print("Min Mass", MassStat.getMin());
       Printer::Endl();
-      // Writer.WriteBinary(MainLoopTimer());
+      Writer.WriteBinary(MainLoopTimer());
       // write freeSurface stl
       // set wall vof to 0
       NSLattice.getField<olbfs::VOLUMEFRAC<T>>().forEach(
@@ -311,8 +324,7 @@ int main(int argc, char* argv[]) {
       NSLattice.getField<olbfs::STATE>(), olbfs::FSType::Wall,
       [&](auto& field, std::size_t id) { field.SetField(id, T{1}); });
 
-      vtuWriter.Write(MainLoopTimer());
-      // vtuWriterBinary.WriteBinary(MainLoopTimer());
+      vtuWriter.WriteBinary(MainLoopTimer());
 
     }
   }

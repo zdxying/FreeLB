@@ -427,10 +427,16 @@ T NormSquare(const std::array<T, SymmetricMatrixSize<N>()> &tensor) {
 }
 
 
-// copy data from field
+
 template <typename ArrayType, unsigned int Dim>
-void CopyFromFieldArray(const Vector<int, Dim> &Mesh, int Overlap, const ArrayType &Array,
+void CopyFromFieldArrayImp(const Vector<int, Dim> &Mesh, int Overlap, const ArrayType &Array,
                         typename ArrayType::value_type *dst) {
+	if (Overlap == 0) {
+		const std::size_t Size = Array.size();
+		std::copy(Array.getdataPtr(), Array.getdataPtr(Size), dst);
+		return;
+	}
+
   int delta_x = Mesh[0] - 2 * Overlap;
   std::size_t id = 0;
   if constexpr (Dim == 2) {
@@ -451,10 +457,57 @@ void CopyFromFieldArray(const Vector<int, Dim> &Mesh, int Overlap, const ArrayTy
   }
 }
 
-// copy data from field with unit conversion
+template <typename ArrayType, unsigned int Dim, typename datatype>
+void CastFromFieldArrayImp(const Vector<int, Dim> &Mesh, int Overlap, const ArrayType &Array, datatype *dst) {
+  if (Overlap == 0) {
+    const std::size_t Size = Array.size();
+    for (std::size_t i = 0; i < Size; ++i) {
+      dst[i] = static_cast<datatype>(Array[i]);
+    }
+    return;
+  }
+
+  int delta_x = Mesh[0] - 2 * Overlap;
+  std::size_t id{};
+  if constexpr (Dim == 2) {
+    for (int j = Overlap; j < Mesh[1] - Overlap; ++j) {
+      std::size_t start = Overlap + j * Mesh[0];
+      for (int i = 0; i < delta_x; ++i) {
+        dst[id] = static_cast<datatype>(Array[start + i]);
+        ++id;
+      }
+    }
+  } else if constexpr (Dim == 3) {
+    std::size_t XY = Mesh[0] * Mesh[1];
+    for (int k = Overlap; k < Mesh[2] - Overlap; ++k) {
+      for (int j = Overlap; j < Mesh[1] - Overlap; ++j) {
+        std::size_t start = Overlap + j * Mesh[0] + k * XY;
+        for (int i = 0; i < delta_x; ++i) {
+          dst[id] = static_cast<datatype>(Array[start + i]);
+          ++id;
+        }
+      }
+    }
+  }
+}
+
+// copy data from field
+template <typename ArrayType, unsigned int Dim, typename datatype>
+void CopyFromFieldArray(const Vector<int, Dim> &Mesh, int Overlap, const ArrayType &Array, datatype *dst) {
+  // check if datatype is the same as ArrayType::value_type and decide which scheme to use
+  if constexpr (std::is_same_v<datatype, typename ArrayType::value_type>) {
+    // just copy data
+    CopyFromFieldArrayImp(Mesh, Overlap, Array, dst);
+  } else {
+    // copy and convert data
+    CastFromFieldArrayImp(Mesh, Overlap, Array, dst);
+  }
+}
+
+
 template <typename ArrayType, unsigned int Dim>
-void CopyFromFieldArray(const Vector<int, Dim> &Mesh, int Overlap, const ArrayType &Array, typename ArrayType::value_type *dst, 
-std::function<typename ArrayType::value_type(typename ArrayType::value_type)> f) {
+void CopyFromFieldArrayImp(const Vector<int, Dim> &Mesh, int Overlap, const ArrayType &Array, typename ArrayType::value_type *dst, 
+	std::function<typename ArrayType::value_type(typename ArrayType::value_type)> f) {
   if (Overlap == 0) {
     const std::size_t Size = Array.size();
     for (std::size_t i = 0; i < Size; ++i) {
@@ -486,6 +539,57 @@ std::function<typename ArrayType::value_type(typename ArrayType::value_type)> f)
     }
   }
 }
+
+template <typename ArrayType, unsigned int Dim, typename datatype>
+void CastFromFieldArrayImp(const Vector<int, Dim> &Mesh, int Overlap, const ArrayType &Array, datatype *dst, 
+	std::function<typename ArrayType::value_type(typename ArrayType::value_type)> f) {
+  if (Overlap == 0) {
+    const std::size_t Size = Array.size();
+    for (std::size_t i = 0; i < Size; ++i) {
+      dst[i] = static_cast<datatype>(f(Array[i]));
+    }
+    return;
+  }
+  
+  int delta_x = Mesh[0] - 2 * Overlap;
+  std::size_t id{};
+  if constexpr (Dim == 2) {
+    for (int j = Overlap; j < Mesh[1] - Overlap; ++j) {
+      std::size_t start = Overlap + j * Mesh[0];
+      for (int i = 0; i < delta_x; ++i) {
+        dst[id] = static_cast<datatype>(f(Array[start + i]));
+        ++id;
+      }
+    }
+  } else if constexpr (Dim == 3) {
+    std::size_t XY = Mesh[0] * Mesh[1];
+    for (int k = Overlap; k < Mesh[2] - Overlap; ++k) {
+      for (int j = Overlap; j < Mesh[1] - Overlap; ++j) {
+        std::size_t start = Overlap + j * Mesh[0] + k * XY;
+        for (int i = 0; i < delta_x; ++i) {
+          dst[id] = static_cast<datatype>(f(Array[start + i]));
+          ++id;
+        }
+      }
+    }
+  }
+}
+
+// copy data from field with unit conversion
+template <typename ArrayType, unsigned int Dim, typename datatype>
+void CopyFromFieldArray(const Vector<int, Dim> &Mesh, int Overlap, const ArrayType &Array, datatype *dst, 
+	std::function<typename ArrayType::value_type(typename ArrayType::value_type)> f) {
+  // check if datatype is the same as ArrayType::value_type and decide which scheme to use
+  if constexpr (std::is_same_v<datatype, typename ArrayType::value_type>) {
+    // copy data after unit conversion
+    CopyFromFieldArrayImp(Mesh, Overlap, Array, dst, f);
+  } else {
+    // copy and convert data after unit conversion
+    CastFromFieldArrayImp(Mesh, Overlap, Array, dst, f);
+  }
+}
+
+
 
 #include <string>
 

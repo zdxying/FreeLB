@@ -50,6 +50,8 @@
 // This is one of
 // Int8, UInt8, Int16, UInt16, Int32, UInt32, Int64, UInt64, Float32, Float64.
 
+// it is old vtiwriter without overlap handling, consider using vtino
+// this may be removed
 namespace vtiwriter {
 
 class AbstractWriter {
@@ -549,10 +551,11 @@ class vtiManager {
 };
 
 
-template <typename ArrayType, unsigned int Dim>
+template <typename ArrayType, unsigned int Dim, typename datatype>
 class ScalarWriter : public AbstractWriter {
  public:
-  using datatype = typename ArrayType::value_type;
+  // using datatype = typename ArrayType::value_type;
+  static constexpr bool SameType = std::is_same_v<datatype, typename ArrayType::value_type>;
 
   ScalarWriter(std::string name, const ArrayType &f, Vector<int, Dim> mesh)
       : varname(name), Array(f), Mesh(mesh) {
@@ -570,7 +573,7 @@ class ScalarWriter : public AbstractWriter {
 
     datatype *data = nullptr;
     std::size_t Size;
-    if (Overlap == 0) {
+    if (Overlap == 0 && SameType) {
       Size = Array.size();
     } else {
       Vector<int, Dim> SubMesh = Mesh - Vector<int, Dim>{2 * Overlap};
@@ -593,7 +596,7 @@ class ScalarWriter : public AbstractWriter {
     sizeEncoder.encode(&uintBinarySize, 1);
     // writes the data
     Base64Encoder<datatype> Encoder(fb, Size);
-    if (Overlap == 0) {
+    if (Overlap == 0 && SameType) {
       Encoder.encode(Array.getdataPtr(), Size);
     } else {
       Encoder.encode(data, Size);
@@ -614,15 +617,16 @@ class ScalarWriter : public AbstractWriter {
   Vector<int, Dim> Mesh;
 };
 
-template <typename ArrayType, unsigned int Dim>
+template <typename ArrayType, unsigned int Dim, typename datatype>
 class physScalarWriter : public AbstractWriter {
  public:
-  using datatype = typename ArrayType::value_type;
+  // using datatype = typename ArrayType::value_type;
+  static constexpr bool SameType = std::is_same_v<datatype, typename ArrayType::value_type>;
 
   // std::bind(&uintConvclass::func, &unitConv, std::placeholders::_1); or 
   // [&unitConv](T x) { return unitConv.func(x); };
   physScalarWriter(std::string name, const ArrayType &f, Vector<int, Dim> mesh, 
-  std::function<datatype(datatype)> func)
+  std::function<typename ArrayType::value_type(typename ArrayType::value_type)> func)
       : varname(name), Array(f), Mesh(mesh), unitConvert(func) {
     static_assert(Dim == 2 || Dim == 3, "Error: Dimension is not supported!");
   }
@@ -672,15 +676,16 @@ class physScalarWriter : public AbstractWriter {
   // mesh info
   Vector<int, Dim> Mesh;
   // unit convert function pointer
-  std::function<datatype(datatype)> unitConvert;
+  std::function<typename ArrayType::value_type(typename ArrayType::value_type)> unitConvert;
 };
 
 
-template <typename ArrayType, unsigned int Dim>
+template <typename ArrayType, unsigned int Dim, typename datatype>
 class VectorWriter : public AbstractWriter {
   public:
   using vectortype = typename ArrayType::value_type;
-  using datatype = typename vectortype::value_type;
+  // using datatype = typename vectortype::value_type;
+  static constexpr bool SameType = std::is_same_v<datatype, typename vectortype::value_type>;
   static constexpr unsigned int D = vectortype::vector_dim;
 
   VectorWriter(std::string name, const ArrayType &f, Vector<int, Dim> mesh)
@@ -700,7 +705,7 @@ class VectorWriter : public AbstractWriter {
     Vector<datatype, D> *data = nullptr;
     std::size_t Size;
     std::size_t arrDSize;
-    if (Overlap == 0) {
+    if (Overlap == 0 && SameType) {
       Size = Array.size();
       arrDSize = D * Size;
     } else {
@@ -725,7 +730,7 @@ class VectorWriter : public AbstractWriter {
     sizeEncoder.encode(&uintBinarySize, 1);
     // writes the data
     Base64Encoder<datatype> Encoder(fb, arrDSize);
-    if (Overlap == 0) {
+    if (Overlap == 0 && SameType) {
       Encoder.encode(Array.getdataPtr()->data(), arrDSize);
     } else {
       Encoder.encode(data->data(), arrDSize);
@@ -746,11 +751,12 @@ class VectorWriter : public AbstractWriter {
   Vector<int, Dim> Mesh;
 };
 
-template <typename ArrayType, unsigned int Dim>
+template <typename ArrayType, unsigned int Dim, typename datatype>
 class physVectorWriter : public AbstractWriter {
   public:
   using vectortype = typename ArrayType::value_type;
-  using datatype = typename vectortype::value_type;
+  // using datatype = typename vectortype::value_type;
+  static constexpr bool SameType = std::is_same_v<datatype, typename vectortype::value_type>;
   static constexpr unsigned int D = vectortype::vector_dim;
 
   // std::bind(&uintConvclass::func, &unitConv, std::placeholders::_1); or 

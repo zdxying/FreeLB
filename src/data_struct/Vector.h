@@ -86,6 +86,14 @@ class Vector {
     }
   }
 
+  // Conversion constructor
+  template <typename U>
+  __any__ constexpr Vector(const Vector<U, D> &vec) {
+    for (unsigned int i = 0; i < D; ++i) {
+      _data[i] = static_cast<T>(vec[i]);
+    }
+  }
+
   ~Vector() = default;
 
   // return pointer of the first element

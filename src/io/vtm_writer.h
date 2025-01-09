@@ -25,7 +25,7 @@
 #include "io/vti_writer.h"
 
 // .pvd - .vtm - .vti
-
+// old vtmwriter without overlap handling, consider using vtmo
 namespace vtmwriter {
 
 // manager of generating a vtm file and series of vti files
@@ -437,14 +437,14 @@ class vtmWriter {
   }
 };
 
-template <typename FieldType, unsigned int Dim>
+template <typename FieldType, unsigned int Dim, typename datatype = typename FieldType::array_type::value_type>
 class ScalarWriter : public vtino::AbstWriterSet {
  public:
   using ArrayType = typename FieldType::array_type;
-  using datatype = typename ArrayType::value_type;
+  // using datatype = typename ArrayType::value_type;
 
  private:
-  std::vector<vtino::ScalarWriter<ArrayType, Dim>> _ScalarWriters;
+  std::vector<vtino::ScalarWriter<ArrayType, Dim, datatype>> _ScalarWriters;
   std::string VarName;
 
  public:
@@ -472,14 +472,14 @@ class ScalarWriter : public vtino::AbstWriterSet {
   }
 };
 
-template <typename FieldType, unsigned int Dim>
+template <typename FieldType, unsigned int Dim, typename datatype = typename FieldType::array_type::value_type>
 class PhysScalarWriter : public vtino::AbstWriterSet {
  public:
   using ArrayType = typename FieldType::array_type;
-  using datatype = typename ArrayType::value_type;
+  // using datatype = typename ArrayType::value_type;
 
  private:
-  std::vector<vtino::physScalarWriter<ArrayType, Dim>> _ScalarWriters;
+  std::vector<vtino::physScalarWriter<ArrayType, Dim, datatype>> _ScalarWriters;
   std::string VarName;
 
  public:
@@ -488,11 +488,10 @@ class PhysScalarWriter : public vtino::AbstWriterSet {
   template <typename FloatType>
   PhysScalarWriter(std::string varname,
                const BlockFieldManager<FieldType, FloatType, Dim>& blockFM, 
-               std::function<datatype(datatype)> f)
+               std::function<typename ArrayType::value_type(typename ArrayType::value_type)> f)
       : VarName(varname) {
     for (const BlockField<FieldType, FloatType, Dim>& blockF : blockFM.getBlockFields()) {
-      _ScalarWriters.emplace_back(varname, blockF.getField(0),
-                                  blockF.getBlock().getMesh(), f);
+      _ScalarWriters.emplace_back(varname, blockF.getField(0), blockF.getBlock().getMesh(), f);
     }
   }
 
@@ -511,15 +510,16 @@ class PhysScalarWriter : public vtino::AbstWriterSet {
 };
 
 
-template <typename FieldType, unsigned int Dim>
+template <typename FieldType, unsigned int Dim,
+ typename datatype = typename FieldType::array_type::value_type::value_type>
 class VectorWriter : public vtino::AbstWriterSet {
  public:
   using ArrayType = typename FieldType::array_type;
-  using datatype = typename FieldType::value_type;
-  static constexpr unsigned int D = datatype::vector_dim;
+  using vectortype = typename ArrayType::value_type;
+  static constexpr unsigned int D = vectortype::vector_dim;
 
  private:
-  std::vector<vtino::VectorWriter<ArrayType, Dim>> _vectorwriters;
+  std::vector<vtino::VectorWriter<ArrayType, Dim, datatype>> _vectorwriters;
   std::string VarName;
 
  public:
@@ -547,15 +547,16 @@ class VectorWriter : public vtino::AbstWriterSet {
   }
 };
 
-template <typename FieldType, unsigned int Dim>
+template <typename FieldType, unsigned int Dim, 
+ typename datatype = typename FieldType::array_type::value_type::value_type>
 class PhysVectorWriter : public vtino::AbstWriterSet {
  public:
   using ArrayType = typename FieldType::array_type;
-  using datatype = typename FieldType::value_type;
-  static constexpr unsigned int D = datatype::vector_dim;
+  using vectortype = typename ArrayType::value_type;
+  static constexpr unsigned int D = vectortype::vector_dim;
 
  private:
-  std::vector<vtino::physVectorWriter<ArrayType, Dim>> _vectorwriters;
+  std::vector<vtino::physVectorWriter<ArrayType, Dim, datatype>> _vectorwriters;
   std::string VarName;
 
  public:
@@ -564,7 +565,7 @@ class PhysVectorWriter : public vtino::AbstWriterSet {
   template <typename FloatType>
   PhysVectorWriter(std::string varname,
                const BlockFieldManager<FieldType, FloatType, Dim>& blockFM, 
-               std::function<datatype(datatype)> f)
+               std::function<vectortype(vectortype)> f)
       : VarName(varname) {
     for (const BlockField<FieldType, FloatType, Dim>& blockF : blockFM.getBlockFields()) {
       _vectorwriters.emplace_back(varname, blockF.getField(0),

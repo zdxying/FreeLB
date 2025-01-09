@@ -57,9 +57,10 @@ class AbstractWriter {
 
 
 // manager of generating a single vtu file
-template <typename T>
+template <typename T, typename datatype = T>
 class vtuManager {
  private:
+  static constexpr bool SameType = std::is_same_v<datatype, T>;
   std::string _dirname = "./vtkoutput/vtudata/";
   std::string _filename;
 
@@ -118,7 +119,7 @@ class vtuManager {
     const std::size_t _numPoints = _triangleSet.getTriangles().size() * 3;
     std::ofstream f(fName, std::ios::out | std::ios::app);
     std::string type;
-    getVTKTypeString<T>(type);
+    getVTKTypeString<datatype>(type);
     
     f << "<Points>\n";
     f << "<DataArray type=\"" << type <<"\" NumberOfComponents=\"" << 3 
@@ -126,16 +127,32 @@ class vtuManager {
     f.close();
 
     std::ofstream fb(fName, std::ios::out | std::ios::app | std::ios::binary);
-    unsigned int uintBinarySize = static_cast<unsigned int>(_numPoints * 3 * sizeof(T));
+    unsigned int uintBinarySize = static_cast<unsigned int>(_numPoints * 3 * sizeof(datatype));
     // writes first number, the size(byte) of the following data
     Base64Encoder<unsigned int> sizeEncoder(fb, 1);
     sizeEncoder.encode(&uintBinarySize, 1);
     // writes the data
-    Base64Encoder<T> Encoder(fb, _numPoints * 3);    
-    for (const auto &triangle : _triangleSet.getTriangles()) {
-      for (unsigned int i = 0; i < 3; ++i) {
-        Encoder.encode(triangle[i].data(), 3);
+    Base64Encoder<datatype> Encoder(fb, _numPoints * 3);
+
+    if constexpr (SameType) {   
+      for (const auto &triangle : _triangleSet.getTriangles()) {
+        for (unsigned int i = 0; i < 3; ++i) {
+          Encoder.encode(triangle[i].data(), 3);
+        }
       }
+    } else {
+      datatype *data = new datatype[_numPoints * 3];
+      std::size_t id{};
+      for (const auto &triangle : _triangleSet.getTriangles()) {
+        for (unsigned int i = 0; i < 3; ++i) {
+          for (unsigned int j = 0; j < 3; ++j) {
+            data[id] = static_cast<datatype>(triangle[i][j]);
+            ++id;
+          }
+        }
+      }
+      Encoder.encode(data, _numPoints * 3);
+      delete[] data;
     }
     fb.close();
 
@@ -238,14 +255,16 @@ class vtuManager {
   void vtuPoints(const std::string &fName) {
     std::ofstream f(fName, std::ios::out | std::ios::app);
     std::string type;
-    getVTKTypeString<T>(type);
+    getVTKTypeString<datatype>(type);
     
     f << "<Points>\n";
     f << "<DataArray type=\"" << type <<"\" NumberOfComponents=\"" << 3 
       << "\" format=\"ascii\">\n";
     for (const auto &triangle : _triangleSet.getTriangles()) {
       for (unsigned int i = 0; i < 3; ++i) {
-        f << triangle[i][0] << " " << triangle[i][1] << " " << triangle[i][2] << " ";
+        f << static_cast<datatype>(triangle[i][0]) << " " 
+          << static_cast<datatype>(triangle[i][1]) << " " 
+          << static_cast<datatype>(triangle[i][2]) << " ";
       }
     }
     f << "\n</DataArray>\n";
@@ -405,10 +424,10 @@ class vtuManager {
 
 
 // get filed data from field manager, filterd by flag manager
-template <typename FieldType, typename FloatType>
+template <typename FieldType, typename FloatType, typename datatype>
 void getFieldData(const BlockFieldManager<FieldType, FloatType, 3>& fieldManager, 
   const std::vector<std::vector<offlat::TriangleIdx<FloatType>>>& triIdxvecs, 
-  typename FieldType::value_type* data) {
+  datatype* data) {
   
   std::size_t id{};
   for (std::size_t iblock = 0; iblock < fieldManager.size(); ++iblock) {
@@ -416,11 +435,11 @@ void getFieldData(const BlockFieldManager<FieldType, FloatType, 3>& fieldManager
     const std::vector<offlat::TriangleIdx<FloatType>>& triIdxs = triIdxvecs[iblock];
 
     for (const offlat::TriangleIdx<FloatType>& triIdx : triIdxs) {
-      data[id] = triIdx[0].getIntp(field[triIdx[0].id1], field[triIdx[0].id2]);
+      data[id] = static_cast<datatype>(triIdx[0].getIntp(field[triIdx[0].id1], field[triIdx[0].id2]));
       ++id;
-      data[id] = triIdx[1].getIntp(field[triIdx[1].id1], field[triIdx[1].id2]);
+      data[id] = static_cast<datatype>(triIdx[1].getIntp(field[triIdx[1].id1], field[triIdx[1].id2]));
       ++id;
-      data[id] = triIdx[2].getIntp(field[triIdx[2].id1], field[triIdx[2].id2]);
+      data[id] = static_cast<datatype>(triIdx[2].getIntp(field[triIdx[2].id1], field[triIdx[2].id2]));
       ++id;
     }
 
@@ -428,11 +447,10 @@ void getFieldData(const BlockFieldManager<FieldType, FloatType, 3>& fieldManager
 }
 
 // get filed data from field manager, filterd by flag manager, convert by unit converter
-template <typename FieldType, typename FloatType>
+template <typename FieldType, typename FloatType, typename datatype>
 void getFieldData(const BlockFieldManager<FieldType, FloatType, 3>& fieldManager, 
   const std::vector<std::vector<offlat::TriangleIdx<FloatType>>>& triIdxvecs, 
-  typename FieldType::value_type* data,
-  std::function<typename FieldType::value_type(typename FieldType::value_type)> f) {
+  datatype* data, std::function<typename FieldType::value_type(typename FieldType::value_type)> f) {
   
   std::size_t id{};
   for (std::size_t iblock = 0; iblock < fieldManager.size(); ++iblock) {
@@ -440,21 +458,22 @@ void getFieldData(const BlockFieldManager<FieldType, FloatType, 3>& fieldManager
     const std::vector<offlat::TriangleIdx<FloatType>>& triIdxs = triIdxvecs[iblock];
 
     for (const offlat::TriangleIdx<FloatType>& triIdx : triIdxs) {
-      data[id] = f(triIdx[0].getIntp(field[triIdx[0].id1], field[triIdx[0].id2]));
+      data[id] = static_cast<datatype>(f(triIdx[0].getIntp(field[triIdx[0].id1], field[triIdx[0].id2])));
       ++id;
-      data[id] = f(triIdx[1].getIntp(field[triIdx[1].id1], field[triIdx[1].id2]));
+      data[id] = static_cast<datatype>(f(triIdx[1].getIntp(field[triIdx[1].id1], field[triIdx[1].id2])));
       ++id;
-      data[id] = f(triIdx[2].getIntp(field[triIdx[2].id1], field[triIdx[2].id2]));
+      data[id] = static_cast<datatype>(f(triIdx[2].getIntp(field[triIdx[2].id1], field[triIdx[2].id2])));
       ++id;
     }
 
   }
 }
 
-template <typename FieldType, typename FloatType>
+template <typename FieldType, typename FloatType, typename datatype = typename FieldType::value_type>
 class ScalarWriter : public AbstractWriter {
  public:
-  using datatype = typename FieldType::value_type;
+  // using datatype = typename FieldType::value_type;
+  // static constexpr bool SameType = std::is_same_v<datatype, typename FieldType::value_type>;
 
   ScalarWriter(const std::string& name, const BlockFieldManager<FieldType, FloatType, 3> &fieldManager, 
     const offlat::TriangleSet<FloatType>& triSet)
@@ -472,7 +491,7 @@ class ScalarWriter : public AbstractWriter {
     f.close();
 
     datatype *data = new datatype[_pointNum];
-    getFieldData<FieldType, FloatType>(_fieldManager, _triSet.getTriangleIdxs(), data);
+    getFieldData<FieldType, FloatType, datatype>(_fieldManager, _triSet.getTriangleIdxs(), data);
 
     std::ofstream fb(fName, std::ios::out | std::ios::app | std::ios::binary);
     unsigned int uintBinarySize = static_cast<unsigned int>(_pointNum * sizeof(datatype));
@@ -500,7 +519,7 @@ class ScalarWriter : public AbstractWriter {
       << "NumberOfComponents=\"1\" format=\"ascii\">\n";
 
     datatype *data = new datatype[_pointNum];
-    getFieldData<FieldType, FloatType>(_fieldManager, _triSet.getTriangleIdxs(), data);
+    getFieldData<FieldType, FloatType, datatype>(_fieldManager, _triSet.getTriangleIdxs(), data);
 
     for (std::size_t i = 0; i < _pointNum; ++i) {
       f << data[i] << " ";
@@ -519,15 +538,17 @@ class ScalarWriter : public AbstractWriter {
   const offlat::TriangleSet<FloatType>& _triSet;
 };
 
-template <typename FieldType, typename FloatType>
+template <typename FieldType, typename FloatType, typename datatype = typename FieldType::value_type>
 class physScalarWriter : public AbstractWriter {
  public:
-  using datatype = typename FieldType::value_type;
+  // using datatype = typename FieldType::value_type;
+  // static constexpr bool SameType = std::is_same_v<datatype, typename FieldType::value_type>;
 
   // std::bind(&uintConvclass::func, &unitConv, std::placeholders::_1); or 
   // [&unitConv](T x) { return unitConv.func(x); };
   physScalarWriter(const std::string& name, const BlockFieldManager<FieldType, FloatType, 3> &fieldManager, 
-    const offlat::TriangleSet<FloatType>& triSet, std::function<datatype(datatype)> func)
+    const offlat::TriangleSet<FloatType>& triSet,
+    std::function<typename FieldType::value_type(typename FieldType::value_type)> func)
       : varname(name), _fieldManager(fieldManager), _triSet(triSet), unitConvert(func) {}
 
   void writeBinary(const std::string &fName) const override {
@@ -542,7 +563,7 @@ class physScalarWriter : public AbstractWriter {
     f.close();
 
     datatype *data = new datatype[_pointNum];
-    getFieldData<FieldType, FloatType>(_fieldManager, _triSet.getTriangleIdxs(), data, unitConvert);
+    getFieldData<FieldType, FloatType, datatype>(_fieldManager, _triSet.getTriangleIdxs(), data, unitConvert);
 
     std::ofstream fb(fName, std::ios::out | std::ios::app | std::ios::binary);
     unsigned int uintBinarySize = static_cast<unsigned int>(_pointNum * sizeof(datatype));
@@ -570,7 +591,7 @@ class physScalarWriter : public AbstractWriter {
       << "NumberOfComponents=\"1\" format=\"ascii\">\n";
 
     datatype *data = new datatype[_pointNum];
-    getFieldData<FieldType, FloatType>(_fieldManager, _triSet.getTriangleIdxs(), data, unitConvert);
+    getFieldData<FieldType, FloatType, datatype>(_fieldManager, _triSet.getTriangleIdxs(), data, unitConvert);
 
     for (std::size_t i = 0; i < _pointNum; ++i) {
       f << data[i] << " ";
@@ -588,15 +609,16 @@ class physScalarWriter : public AbstractWriter {
   // triangle info
   const offlat::TriangleSet<FloatType>& _triSet;
   // unit convert function pointer
-  std::function<datatype(datatype)> unitConvert;
+  std::function<typename FieldType::value_type(typename FieldType::value_type)> unitConvert;
 };
 
 
-template <typename FieldType, typename FloatType>
+template <typename FieldType, typename FloatType, 
+ typename datatype = typename FieldType::value_type::value_type>
 class VectorWriter : public AbstractWriter {
  public:
   using vectortype = typename FieldType::value_type;
-  using datatype = typename vectortype::value_type;
+  // using datatype = typename vectortype::value_type;
   static constexpr unsigned int D = vectortype::vector_dim;
 
   VectorWriter(const std::string& name, const BlockFieldManager<FieldType, FloatType, 3> &fieldManager, 
@@ -614,8 +636,8 @@ class VectorWriter : public AbstractWriter {
       << "format=\"binary\" encoding=\"base64\">\n";
     f.close();
 
-    vectortype *data = new vectortype[_pointNum];
-    getFieldData<FieldType, FloatType>(_fieldManager, _triSet.getTriangleIdxs(), data);
+    Vector<datatype, D> *data = new Vector<datatype, D>[_pointNum];
+    getFieldData<FieldType, FloatType, Vector<datatype, D>>(_fieldManager, _triSet.getTriangleIdxs(), data);
 
     std::ofstream fb(fName, std::ios::out | std::ios::app | std::ios::binary);
     unsigned int uintBinarySize = static_cast<unsigned int>(_pointNum * D * sizeof(datatype));
@@ -642,8 +664,8 @@ class VectorWriter : public AbstractWriter {
     f << "<DataArray type=\"" << type << "\" Name=\"" << varname << "\" "
       << "NumberOfComponents=\"" << D <<"\" format=\"ascii\">\n";
 
-    vectortype *data = new vectortype[_pointNum];
-    getFieldData<FieldType, FloatType>(_fieldManager, _triSet.getTriangleIdxs(), data);
+    Vector<datatype, D> *data = new Vector<datatype, D>[_pointNum];
+    getFieldData<FieldType, FloatType, Vector<datatype, D>>(_fieldManager, _triSet.getTriangleIdxs(), data);
 
     for (std::size_t i = 0; i < _pointNum; ++i) {
       for (unsigned int j = 0; j < D; ++j) {
@@ -664,11 +686,12 @@ class VectorWriter : public AbstractWriter {
   const offlat::TriangleSet<FloatType>& _triSet;
 };
 
-template <typename FieldType, typename FloatType>
+template <typename FieldType, typename FloatType,
+ typename datatype = typename FieldType::value_type::value_type>
 class physVectorWriter : public AbstractWriter {
  public:
   using vectortype = typename FieldType::value_type;
-  using datatype = typename vectortype::value_type;
+  // using datatype = typename vectortype::value_type;
   static constexpr unsigned int D = vectortype::vector_dim;
 
   // std::bind(&uintConvclass::func, &unitConv, std::placeholders::_1); or 
@@ -688,8 +711,8 @@ class physVectorWriter : public AbstractWriter {
       << "format=\"binary\" encoding=\"base64\">\n";
     f.close();
 
-    vectortype *data = new vectortype[_pointNum];
-    getFieldData<FieldType, FloatType>(_fieldManager, _triSet.getTriangleIdxs(), data, unitConvert);
+    Vector<datatype, D> *data = new Vector<datatype, D>[_pointNum];
+    getFieldData<FieldType, FloatType, Vector<datatype, D>>(_fieldManager, _triSet.getTriangleIdxs(), data, unitConvert);
 
     std::ofstream fb(fName, std::ios::out | std::ios::app | std::ios::binary);
     unsigned int uintBinarySize = static_cast<unsigned int>(_pointNum * D * sizeof(datatype));
@@ -716,8 +739,8 @@ class physVectorWriter : public AbstractWriter {
     f << "<DataArray type=\"" << type << "\" Name=\"" << varname << "\" "
       << "NumberOfComponents=\"" << D <<"\" format=\"ascii\">\n";
 
-    vectortype *data = new vectortype[_pointNum];
-    getFieldData<FieldType, FloatType>(_fieldManager, _triSet.getTriangleIdxs(), data, unitConvert);
+    Vector<datatype, D> *data = new Vector<datatype, D>[_pointNum];
+    getFieldData<FieldType, FloatType, Vector<datatype, D>>(_fieldManager, _triSet.getTriangleIdxs(), data, unitConvert);
 
     for (std::size_t i = 0; i < _pointNum; ++i) {
       for (unsigned int j = 0; j < D; ++j) {
