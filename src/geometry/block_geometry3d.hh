@@ -241,13 +241,15 @@ BlockGeometry3D<T>::BlockGeometry3D(const StlReader<T>& reader, int blocknum)
 
 template <typename T>
 void BlockGeometry3D<T>::PrintInfo() const {
-  std::size_t cellnum = getTotalCellNum();
+  std::size_t total_cellnum = getTotalCellNum();
+  std::size_t base_cellnum = getBaseCellNum();
   // DO NOT use MPI_RANK(0) before getTotalCellNum() cause we have: mpi().barrier();
   MPI_RANK(0)
-  std::cout << "[BlockGeometry3D]: " << "Total Cell Num: " << cellnum
-            << std::endl;
+  std::cout << "[BlockGeometry3D]:\n" 
+            << "  Total CellNum: " << total_cellnum << " \n"
+            << "  Base CellNum: " << base_cellnum << std::endl;
 #ifndef MPI_ENABLED
-  std::cout << "BlockNum: " << _Blocks.size() << " with StdDev: "
+  std::cout << "  BlockNum: " << _Blocks.size() << " with StdDev: "
             << ComputeBlockNStdDev(_BasicBlocks) << std::endl;
 #endif
 }
@@ -1489,9 +1491,10 @@ void BlockGeometryHelper3D<T>::CreateBlocks(bool CreateFromInsideTag) {
   T aver = T(CellsN) / BasicBlocks.size();
 
   MPI_RANK(0)
-  std::cout << "[BlockGeometryHelper3D<T>::CreateBlocks]: " << BasicBlocks.size() << " Blocks created, with: \n"
-            << "  Min BlockCell Num: " << min << ", Max BlockCell Num: " << max << ", Average Block Cell Num: " << aver
-            << std::endl;
+  std::cout << "[BlockGeometryHelper3D<T>::CreateBlocks]:\n" 
+            << "  Created " << BasicBlocks.size() << " Blocks\n"
+            << "  [BlockCell Num]: \n" 
+            << "    min: " << min << ", max: " << max << ", average: " << aver << std::endl;
 }
 
 template <typename T>
@@ -1566,8 +1569,8 @@ void BlockGeometryHelper3D<T>::AdaptiveOptimization(int OptProcNum, int MaxProcN
   // apply the best scheme
   Optimize(bestScheme, enforce);
   MPI_RANK(0)
-  std::cout << "Optimization result: " << BasicBlocks.size()
-            << " Blocks with stdDev: " << minStdDev << std::endl;
+  std::cout << "[BlockGeometryHelper3D<T>::AdaptiveOptimization]:\n"
+            << "  BlockNum: " << BasicBlocks.size() << " with stdDev: " << minStdDev << std::endl;
 }
 
 template <typename T>
@@ -1575,8 +1578,9 @@ void BlockGeometryHelper3D<T>::Optimize(int ProcessNum, bool enforce, bool info)
   Optimize(getAllBasicBlocks(), ProcessNum, enforce);
   if (info) {
     MPI_RANK(0)
-    std::cout << "Optimization result: " << getAllBasicBlocks().size()
-              << " Blocks with stdDev: " << ComputeBlockNStdDev(getAllBasicBlocks()) << std::endl;
+    std::cout << "[BlockGeometryHelper3D<T>::Optimize]:\n"
+              << "  BlockNum: " << getAllBasicBlocks().size() 
+              << " with stdDev: " << ComputeBlockNStdDev(getAllBasicBlocks()) << std::endl;
   }
 }
 
@@ -1644,6 +1648,432 @@ void BlockGeometryHelper3D<T>::Optimize(std::vector<BasicBlock<T, 3>> &Blocks,
   for (std::size_t i = 0; i < Blocks.size(); ++i) {
     Blocks[i].setBlockId(i);
   }
+}
+
+// only for movable neighbor blocks with face overlap
+struct FaceNbrInfo {
+  // neighbor block id
+  std::size_t NbrBlockId;
+  // neighbor direction
+  NbrDirection Direction;
+
+  FaceNbrInfo(std::size_t id, NbrDirection dir) : NbrBlockId(id), Direction(dir) {}
+};
+
+template <typename T>
+void buildFaceNbrInfos(const std::vector<BasicBlock<T, 3>> &Blocks,
+                       std::vector<std::vector<FaceNbrInfo>> &NbrInfos) {
+  NbrInfos.clear();
+  NbrInfos.resize(Blocks.size(), std::vector<FaceNbrInfo>{});
+
+  // build NbrInfos
+  for (std::size_t iblock = 0; iblock < Blocks.size(); ++iblock) {
+    std::vector<FaceNbrInfo> &NbrInfo = NbrInfos[iblock];
+    NbrInfo.clear();
+
+    const BasicBlock<T, 3> &block = Blocks[iblock];
+    for (std::size_t jblock = 0; jblock < Blocks.size(); ++jblock) {
+      if (iblock == jblock) continue;
+
+      const BasicBlock<T, 3> &nblock = Blocks[jblock];
+      if (block.whichNbrType(nblock) == 3) {
+        // has face neighbor
+        NbrDirection dir = getFaceNbrDirection(block.whichFace(nblock));
+        // check if the face is movable
+        AABB<T, 3> face = block.getFace(dir);
+        AABB<T, 3> nface = nblock.getFace(getOpposite(dir));
+        if (util::Vectorfpequal(face.getMin(), nface.getMin()) &&
+            util::Vectorfpequal(face.getMax(), nface.getMax())) {
+          // if 2 blocks sharing the same face
+          NbrInfo.emplace_back(jblock, dir);
+        }
+      }
+    }
+  }
+}
+
+template <typename T>
+void UpdateFaceNbrInfos(std::size_t id, const std::vector<BasicBlock<T, 3>> &Blocks,
+                        std::vector<std::vector<FaceNbrInfo>> &NbrInfos) {
+  // clear NbrInfos
+  std::vector<FaceNbrInfo> &NbrInfo = NbrInfos[id];
+  NbrInfo.clear();
+  // update NbrInfos of the id-th block in Blocks
+  const BasicBlock<T, 3> &block = Blocks[id];
+  for (std::size_t jblock = 0; jblock < Blocks.size(); ++jblock) {
+    if (id == jblock) continue;
+
+    const BasicBlock<T, 3> &nblock = Blocks[jblock];
+    if (block.whichNbrType(nblock) == 3) {
+      // has face neighbor
+      NbrDirection dir = getFaceNbrDirection(block.whichFace(nblock));
+      NbrInfo.emplace_back(jblock, dir);
+    }
+  }
+  // update NbrInfos of the neighbor blocks
+  for (const FaceNbrInfo &info : NbrInfo) {
+    std::vector<FaceNbrInfo> &nNbrInfo = NbrInfos[info.NbrBlockId];
+    nNbrInfo.clear();
+    const BasicBlock<T, 3> &nb = Blocks[info.NbrBlockId];
+
+    for (std::size_t jblock = 0; jblock < Blocks.size(); ++jblock) {
+      if (info.NbrBlockId == jblock) continue;
+  
+      const BasicBlock<T, 3> &nnb = Blocks[jblock];
+      if (nb.whichNbrType(nnb) == 3) {
+        // has face neighbor
+        NbrDirection dir = getFaceNbrDirection(nb.whichFace(nnb));
+        nNbrInfo.emplace_back(jblock, dir);
+      }
+    }
+  }
+}
+
+// this will try to make the number of cells in the base block as close to the bestN as possible
+template <typename T>
+void AdjustAdjacentBlockSize(BasicBlock<T, 3>& base, BasicBlock<T, 3>& nbr, std::size_t bestN, NbrDirection direction) {
+  const int baseNx = base.getNx();
+  const int baseNy = base.getNy();
+  const int baseNz = base.getNz();
+  // delta > 0, base: shrink, nbr: expand
+  // delta < 0, base: expand, nbr: shrink
+  const int delta = base.getN() - bestN;
+  if (delta == 0) return;
+
+  const int nbrNx = nbr.getNx();
+  const int nbrNy = nbr.getNy();
+  const int nbrNz = nbr.getNz();
+
+  if (util::isFlag(direction, NbrDirection::XN)) {
+    int shift = static_cast<int>(std::round(T(delta) / (baseNy * baseNz)));
+    if (shift == 0) return;
+    if (shift < 0 && nbrNx + shift < 2) return;
+    base.resize(-shift, NbrDirection::XN);
+    nbr.resize(shift, NbrDirection::XP);
+  } else if (util::isFlag(direction, NbrDirection::XP)) {
+    int shift = static_cast<int>(std::round(T(delta) / (baseNy * baseNz)));
+    if (shift == 0) return;
+    if (shift < 0 && nbrNx + shift < 2) return;
+    base.resize(-shift, NbrDirection::XP);
+    nbr.resize(shift, NbrDirection::XN);
+  } else if (util::isFlag(direction, NbrDirection::YN)) {
+    int shift = static_cast<int>(std::round(T(delta) / (baseNx * baseNz)));
+    if (shift == 0) return;
+    if (shift < 0 && nbrNy + shift < 2) return;
+    base.resize(-shift, NbrDirection::YN);
+    nbr.resize(shift, NbrDirection::YP);
+  } else if (util::isFlag(direction, NbrDirection::YP)) {
+    int shift = static_cast<int>(std::round(T(delta) / (baseNx * baseNz)));
+    if (shift == 0) return;
+    if (shift < 0 && nbrNy + shift < 2) return;
+    base.resize(-shift, NbrDirection::YP);
+    nbr.resize(shift, NbrDirection::YN);
+  } else if (util::isFlag(direction, NbrDirection::ZN)) {
+    int shift = static_cast<int>(std::round(T(delta) / (baseNx * baseNy)));
+    if (shift == 0) return;
+    if (shift < 0 && nbrNz + shift < 2) return;
+    base.resize(-shift, NbrDirection::ZN);
+    nbr.resize(shift, NbrDirection::ZP);
+  } else if (util::isFlag(direction, NbrDirection::ZP)) {
+    int shift = static_cast<int>(std::round(T(delta) / (baseNx * baseNy)));
+    if (shift == 0) return;
+    if (shift < 0 && nbrNz + shift < 2) return;
+    base.resize(-shift, NbrDirection::ZP);
+    nbr.resize(shift, NbrDirection::ZN);
+  }
+}
+
+// this will try to make the number of cells in the input 2 blocks as close as possible
+template <typename T>
+void AdjustAdjacentBlockSize(BasicBlock<T, 3>& base, BasicBlock<T, 3>& nbr, NbrDirection direction) {
+  const int baseNx = base.getNx();
+  const int baseNy = base.getNy();
+  const int baseNz = base.getNz();
+  // delta > 0, base: shrink, nbr: expand
+  // delta < 0, base: expand, nbr: shrink
+  const int delta = base.getN() + nbr.getN() - 2 * base.getN();
+  if (delta == 0) return;
+
+  const int nbrNx = nbr.getNx();
+  const int nbrNy = nbr.getNy();
+  const int nbrNz = nbr.getNz();
+
+  if (util::isFlag(direction, NbrDirection::XN)) {
+    int shift = static_cast<int>(std::round(T(delta) / (baseNy * baseNz)));
+    if (shift == 0) return;
+    if (shift > 0 && baseNx - shift < 2) return;
+    if (shift < 0 && nbrNx + shift < 2) return;
+    base.resize(-shift, NbrDirection::XN);
+    nbr.resize(shift, NbrDirection::XP);
+  } else if (util::isFlag(direction, NbrDirection::XP)) {
+    int shift = static_cast<int>(std::round(T(delta) / (baseNy * baseNz)));
+    if (shift == 0) return;
+    if (shift > 0 && baseNx - shift < 2) return;
+    if (shift < 0 && nbrNx + shift < 2) return;
+    base.resize(-shift, NbrDirection::XP);
+    nbr.resize(shift, NbrDirection::XN);
+  } else if (util::isFlag(direction, NbrDirection::YN)) {
+    int shift = static_cast<int>(std::round(T(delta) / (baseNx * baseNz)));
+    if (shift == 0) return;
+    if (shift > 0 && baseNy - shift < 2) return;
+    if (shift < 0 && nbrNy + shift < 2) return;
+    base.resize(-shift, NbrDirection::YN);
+    nbr.resize(shift, NbrDirection::YP);
+  } else if (util::isFlag(direction, NbrDirection::YP)) {
+    int shift = static_cast<int>(std::round(T(delta) / (baseNx * baseNz)));
+    if (shift == 0) return;
+    if (shift > 0 && baseNy - shift < 2) return;
+    if (shift < 0 && nbrNy + shift < 2) return;
+    base.resize(-shift, NbrDirection::YP);
+    nbr.resize(shift, NbrDirection::YN);
+  } else if (util::isFlag(direction, NbrDirection::ZN)) {
+    int shift = static_cast<int>(std::round(T(delta) / (baseNx * baseNy)));
+    if (shift == 0) return;
+    if (shift > 0 && baseNz - shift < 2) return;
+    if (shift < 0 && nbrNz + shift < 2) return;
+    base.resize(-shift, NbrDirection::ZN);
+    nbr.resize(shift, NbrDirection::ZP);
+  } else if (util::isFlag(direction, NbrDirection::ZP)) {
+    int shift = static_cast<int>(std::round(T(delta) / (baseNx * baseNy)));
+    if (shift == 0) return;
+    if (shift > 0 && baseNz - shift < 2) return;
+    if (shift < 0 && nbrNz + shift < 2) return;
+    base.resize(-shift, NbrDirection::ZP);
+    nbr.resize(shift, NbrDirection::ZN);
+  }
+}
+
+template <typename T>
+void BlockGeometryHelper3D<T>::LoadOptimization(int maxiter, T tolstddev) {
+  std::vector<BasicBlock<T, 3>> &originBlocks = getAllBasicBlocks();
+  if (originBlocks.size() == 1) return;
+  // copy Blocks to a buffer vector
+  std::vector<BasicBlock<T, 3>> Blocks = originBlocks;
+
+  // old info
+  // total number of cells
+  std::size_t OldTotalCellNum{};
+  for (const BasicBlock<T, 3> &block : Blocks) {
+    OldTotalCellNum += block.getN();
+  }
+  // std dev
+  T OldStdDev = ComputeBlockNStdDev(Blocks);
+  // overlapped cell number
+  std::size_t OldOverlappedCellNum = ComputeOverlappedCellNum(Blocks);  
+  // end old info
+
+  // update block id, make sure block id is consistent with the index in Blocks
+  for (std::size_t i = 0; i < Blocks.size(); ++i) {
+    Blocks[i].setBlockId(i);
+  }
+  // get nbr info for each BasicBlocks, each block has a vector of FaceNbrInfo
+  std::vector<std::vector<FaceNbrInfo>> NbrInfos;
+  
+  buildFaceNbrInfos(Blocks, NbrInfos);
+
+  // best number of cells per block
+  const std::size_t BestN = OldTotalCellNum / Blocks.size();
+
+  // get extension of the whole domain
+  Vector<T, 3> min = Blocks[0].getMin();
+  Vector<T, 3> max = Blocks[0].getMax();
+  for (const BasicBlock<T, 3> &block : Blocks) {
+    for (int i = 0; i < 3; ++i) {
+      min[i] = std::min(min[i], block.getMin()[i]);
+      max[i] = std::max(max[i], block.getMax()[i]);
+    }
+  }
+  Vector<T, 3> ext = max - min;
+
+  // get number of cells in each direction
+  const T voxsize = Blocks[0].getVoxelSize();
+  int TotalNx = static_cast<int>(std::round(ext[0] / voxsize));
+  int TotalNy = static_cast<int>(std::round(ext[1] / voxsize));
+  int TotalNz = static_cast<int>(std::round(ext[2] / voxsize));
+
+  // let TotalNx: TotalNy: TotalNz = 1: a: b
+  T a = static_cast<T>(TotalNy) / static_cast<T>(TotalNx);
+  T b = static_cast<T>(TotalNz) / static_cast<T>(TotalNx);
+  // BestNx: BestNy: BestNz = 1: a: b
+  // BestNx*BestNy*BestNz = BestN
+  // a*b*BestNx^3 = BestN
+  int BestNx = static_cast<int>(std::round(std::pow(BestN / (a * b), 1.0 / 3.0)));
+  int BestNy = static_cast<int>(std::round(a * BestNx));
+  int BestNz = static_cast<int>(std::round(b * BestNx));
+  int BestNxNy = BestNx * BestNy;
+  int BestNxNz = BestNx * BestNz;
+  int BestNyNz = BestNy * BestNz;
+  // BestNx*BestNy*BestNz may not be exactly equal to BestN
+  // adjust to make them as close as possible
+  int diff = BestNx * BestNy * BestNz - BestN;
+  while (diff != 0) {
+    if (diff > 0) {
+      if (diff >= BestNxNy) {
+        BestNz -= 1;
+      } else if (diff >= BestNxNz) {
+        BestNy -= 1;
+      } else if (diff >= BestNyNz) {
+        BestNx -= 1;
+      } else {
+        // BestNx*BestNy*BestNz is already close to BestN
+        // find if they could be closer
+        int minface = std::min(std::min(BestNxNy, BestNxNz), BestNyNz);
+        int newdiff = diff - minface;
+        if (std::abs(newdiff) < diff) {
+          // use newdiff
+          if (BestNxNy <= BestNxNz && BestNxNy <= BestNyNz) {
+            BestNz -= 1;
+          } else if (BestNxNz <= BestNxNy && BestNxNz <= BestNyNz) {
+            BestNy -= 1;
+          } else {
+            BestNx -= 1;
+          }
+        } else {
+          // this is already the best
+          break;
+        }
+      }
+    } else if (diff < 0) {
+      int _diff = std::abs(diff);
+      if (_diff >= BestNxNy) {
+        BestNz += 1;
+      } else if (_diff >= BestNxNz) {
+        BestNy += 1;
+      } else if (_diff >= BestNyNz) {
+        BestNx += 1;
+      } else {
+        // BestNx*BestNy*BestNz is already close to BestN
+        // find if they could be closer
+        int minface = std::min(std::min(BestNxNy, BestNxNz), BestNyNz);
+        int newdiff = diff + minface;
+        if (newdiff < _diff) {
+          // use newdiff
+          if (BestNxNy <= BestNxNz && BestNxNy <= BestNyNz) {
+            BestNz -= 1;
+          } else if (BestNxNz <= BestNxNy && BestNxNz <= BestNyNz) {
+            BestNy -= 1;
+          } else {
+            BestNx -= 1;
+          }
+        } else {
+          // this is already the best
+          break;
+        }
+      }
+    }
+    diff = BestNx * BestNy * BestNz - BestN;
+  }
+
+  // perform optimization
+  int iter{};
+  T min_stddev = OldStdDev;
+  // only one layer of overlapped cells are considered
+  std::size_t overlappedCellNum = OldOverlappedCellNum;
+
+  // we have 2 optimization guidelines:
+  // 1. size first: shrink or expand blocks to their cell number be as close as possible to BestN
+  //    which is good for load balancing
+  // 2. scale first: shrink or expand blocks to make their Nx, Ny, Nz be as close as possible to BestNx, BestNy, BestNz
+  //    which is good for efficient communication(least number of overlapped cells)
+  // we will try both guidelines and find the shceme with the minimum stddev 
+
+  // we used overlappedCellNum here, and in the future we may design an algorithm to 
+  // include both stddev and overlappedCellNum to choose the best scheme
+
+  // 1. size first optimization
+  while (iter < maxiter && min_stddev > tolstddev) {
+
+    for (BasicBlock<T, 3> &block : Blocks) {
+      // get block id
+      std::size_t id = block.getBlockId();
+      std::size_t N = block.getN();
+      // int Nx = block.getNx();
+      // int Ny = block.getNy();
+      // int Nz = block.getNz();
+      // get block's neighbors
+      std::vector<FaceNbrInfo> &NbrInfo = NbrInfos[id];
+      if (NbrInfo.empty()) continue;
+      // get all neighbor types and determine movable faces/ resizable directions
+      // movable faces: XN, XP| YN, YP| ZN, ZP
+      // resizable directions: X| Y| Z
+      // get all neighbor directions
+      // std::uint8_t AllNbrDir{};
+      // for (const FaceNbrInfo &info : NbrInfo) {
+      //   AllNbrDir |= static_cast<std::uint8_t>(info.Direction);
+      // }
+
+      BasicBlock<T, 3> *nblockptr = nullptr;
+      // shrink or expand
+      if (N > BestN) {
+        // find neighbors with the minimum number of cells
+        std::size_t min_nblockN = Blocks[NbrInfo[0].NbrBlockId].getN();
+        FaceNbrInfo* minN_info = &NbrInfo[0];
+        for (FaceNbrInfo &info : NbrInfo) {
+          if (Blocks[info.NbrBlockId].getN() < min_nblockN) {
+            min_nblockN = Blocks[info.NbrBlockId].getN();
+            minN_info = &info;
+          }
+        }
+        nblockptr = &Blocks[minN_info->NbrBlockId];
+        // base and neighbors are already large enough
+        // if (min_nblockN >= BestN) continue;
+        // shrink base and expand neighbors
+        // AdjustAdjacentBlockSize(block, *nblockptr, BestN, minN_info->Direction);
+        AdjustAdjacentBlockSize(block, *nblockptr, minN_info->Direction);
+      } else if (N < BestN) {
+        // find neighbors with the maximum number of cells
+        std::size_t max_nblockN = Blocks[NbrInfo[0].NbrBlockId].getN();
+        FaceNbrInfo* maxN_info = &NbrInfo[0];
+        for (FaceNbrInfo &info : NbrInfo) {
+          if (Blocks[info.NbrBlockId].getN() > max_nblockN) {
+            max_nblockN = Blocks[info.NbrBlockId].getN();
+            maxN_info = &info;
+          }
+        }
+        nblockptr = &Blocks[maxN_info->NbrBlockId];
+        // base and neighbors are already small enough
+        // if (max_nblockN <= BestN) continue;
+        // expand base and shrink neighbors
+        AdjustAdjacentBlockSize(block, *nblockptr, BestN, maxN_info->Direction);
+        // AdjustAdjacentBlockSize(block, *nblockptr, maxN_info->Direction);
+      } else if (N == BestN) {
+        // do nothing
+        continue;
+      }
+      // end shrink or expand
+      // nbr info may be changed, update it
+      // UpdateFaceNbrInfos(id, Blocks, NbrInfos);
+      // UpdateFaceNbrInfos(nblockptr->getBlockId(), Blocks, NbrInfos);
+      buildFaceNbrInfos(Blocks, NbrInfos);
+
+    }
+
+    ++iter;
+
+    T stddev = ComputeBlockNStdDev(Blocks);
+    if (stddev < min_stddev) {
+      min_stddev = stddev;
+      overlappedCellNum = ComputeOverlappedCellNum(Blocks);
+      // copy Blocks to originBlocks
+      originBlocks = Blocks;
+    }
+    
+  }
+
+  // 2. scale first optimization
+
+
+  // print info
+  std::size_t TotalCellNum{};
+  for (const BasicBlock<T, 3> &block : originBlocks) {
+    TotalCellNum += block.getN();
+  }
+  MPI_RANK(0)
+  std::cout << "[BlockGeometryHelper3D<T>::LoadOptimization]:\n"
+            << "  After              " << iter << " iterations\n"
+            << "  Total CellNum:     " << OldTotalCellNum << " -> " << TotalCellNum << "\n"
+            << "  StdDev:            " << OldStdDev << " -> " << min_stddev << "\n"
+            << "  OverlappedCellNum: " << OldOverlappedCellNum << " -> " << overlappedCellNum << std::endl;
 }
 
 
@@ -1831,6 +2261,11 @@ void BlockGeometryHelper3D<T>::ShrinkBasicBlocks(const StlReader<T>& reader) {
 
   Octree<T>* tree = reader.getTree();
   std::vector<BasicBlock<T, 3>> &BasicBlocks = getAllBasicBlocks();
+
+  std::size_t Total{};
+  for (const BasicBlock<T, 3> &block : BasicBlocks) {
+    Total += block.getN();
+  }
 
   // statistics
   std::size_t totalremoved{};
@@ -2027,7 +2462,14 @@ void BlockGeometryHelper3D<T>::ShrinkBasicBlocks(const StlReader<T>& reader) {
     }
   }
 
+  std::size_t TotalR{};
+  for (const BasicBlock<T, 3> &block : BasicBlocks) {
+    TotalR += block.getN();
+  }
+
   // print statistics
   MPI_RANK(0)
-  std::cout << "[BlockGeometryHelper3D<T>::ShrinkBasicBlocks]: " << totalremoved << " cells removed." << std::endl;
+  std::cout << "[BlockGeometryHelper3D<T>::ShrinkBasicBlocks]: \n" 
+  << "  Removed: " << totalremoved << " cells\n"
+  << "  Total CellNum: " << Total << " -> " << TotalR << " cells\n";
 }

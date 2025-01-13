@@ -155,6 +155,7 @@ void getCommPopDir(NbrDirection direction, std::vector<unsigned int>& commdirect
   commdirection.erase(std::unique(commdirection.begin(), commdirection.end()), commdirection.end());
 }
 
+// refer to int BasicBlock<T, D>::whichCorner()
 template <unsigned int D>
 NbrDirection getCornerNbrDirection(int corner) {
   if (corner == -1) {
@@ -193,6 +194,7 @@ NbrDirection getCornerNbrDirection(int corner) {
   return static_cast<NbrDirection>(direction);
 }
 
+// refer to int BasicBlock<T, D>::whichEdge()
 template <unsigned int D>
 NbrDirection getEdgeNbrDirection(int edge) {
   if (edge == -1) {
@@ -239,6 +241,7 @@ NbrDirection getEdgeNbrDirection(int edge) {
   return static_cast<NbrDirection>(direction);
 }
 
+// refer to int BasicBlock<T, D>::whichFace()
 NbrDirection getFaceNbrDirection(int face) {
   if (face == -1) {
     return NbrDirection::NONE;
@@ -262,7 +265,7 @@ NbrDirection getFaceNbrDirection(int face) {
 }
 
 // input two AABB should have no intersection
-// not correct for now
+// not correct for now, may be removed
 template <typename T, unsigned int D>
 NbrDirection getNbrDirection(const AABB<T, D>& refAABB, const AABB<T, D>& nbrAABB) {
   std::uint8_t direction{};

@@ -377,11 +377,8 @@ void BasicBlock<T, D>::resize(int deltaX, NbrDirection fromDir) {
 }
 
 template <typename T, unsigned int D>
-std::size_t BasicBlock<T, D>::getIndex_t(const Vector<T, D>& loc) const {
-  const Vector<T, D> ext = loc - MinCenter;
-  const int x = static_cast<int>(std::round(ext[0] / VoxelSize));
-  const int y = static_cast<int>(std::round(ext[1] / VoxelSize));
-  return getIndex(Vector<int, D>{x, y});
+std::size_t BasicBlock<T, D>::getIndex_t(const Vector<T, D>& pos) const {
+    return getIndex(getLoc(pos));
 }
 
 template <typename T, unsigned int D>
@@ -405,32 +402,44 @@ void BasicBlock<T, D>::getLoc(std::size_t id, Vector<int, D>& locidx) const {
     locidx[0] = temp - locidx[1] * Projection[1];
   }
 }
-
 template <typename T, unsigned int D>
 Vector<int, D> BasicBlock<T, D>::getLoc(std::size_t id) const {
   Vector<int, D> locidx;
   getLoc(id, locidx);
   return locidx;
 }
+template <typename T, unsigned int D>
+Vector<int, D> BasicBlock<T, D>::getLoc(const Vector<T, D>& pos) const {
+  const Vector<T, D> ext = pos - AABB<T, D>::_min;
+  if constexpr (D == 2) {
+    const int x = std::clamp(static_cast<int>(ext[0] / VoxelSize), 0, Mesh[0] - 1);
+    const int y = std::clamp(static_cast<int>(ext[1] / VoxelSize), 0, Mesh[1] - 1);
+    return Vector<int, D>{x, y};
+  } else if constexpr (D == 3) {
+    const int x = std::clamp(static_cast<int>(ext[0] / VoxelSize), 0, Mesh[0] - 1);
+    const int y = std::clamp(static_cast<int>(ext[1] / VoxelSize), 0, Mesh[1] - 1);
+    const int z = std::clamp(static_cast<int>(ext[2] / VoxelSize), 0, Mesh[2] - 1);
+    return Vector<int, D>{x, y, z};
+  }
+}
 
 template <typename T, unsigned int D>
-void BasicBlock<T, D>::getLoc_t(std::size_t id, Vector<T, D>& loc) const {
+void BasicBlock<T, D>::getLoc_t(std::size_t id, Vector<T, D>& pos) const {
   Vector<int, D> locidx;
   getLoc(id, locidx);
-  loc = MinCenter + (VoxelSize * locidx);
+  pos = MinCenter + (VoxelSize * locidx);
 }
-
 template <typename T, unsigned int D>
 Vector<T, D> BasicBlock<T, D>::getLoc_t(std::size_t id) const {
-  Vector<T, D> loc;
-  getLoc_t(id, loc);
-  return loc;
+  Vector<T, D> pos;
+  getLoc_t(id, pos);
+  return pos;
 }
-
 template <typename T, unsigned int D>
 Vector<T, D> BasicBlock<T, D>::getLoc_t(Vector<int, D>& locidx) const {
   return MinCenter + (VoxelSize * locidx);
 }
+
 //TODO: delete -1 in idxmax calculation
 template <typename T, unsigned int D>
 void BasicBlock<T, D>::getLocIdxRange(const AABB<T, D>& AABBs, Vector<int, D>& idx_min,
@@ -1116,6 +1125,83 @@ template <typename T, unsigned int D>
 int BasicBlock<T, D>::whichFace(std::size_t idx) const {
   const Vector<int, D> pt = getLoc(idx);
   return whichFace(pt);
+}
+template <typename T, unsigned int D>
+int BasicBlock<T, D>::whichFace(const BasicBlock<T, D>& nbr) const {
+  // check if adjacent and is face nbr
+  if (whichNbrType(nbr) != 3) {
+    // not adjacent
+    return -1;
+  }
+  // get intersection
+  const AABB<T, D> intsec = getIntersection(*this, nbr);
+  // find cell index from center of the intersection, which should be on the face
+  const Vector<int, D> loc = getLoc(intsec.getCenter());
+  // get which face
+  return whichFace(loc);
+}
+
+template <typename T, unsigned int D>
+AABB<T, 3> BasicBlock<T, D>::getFace(NbrDirection face) const {
+  static_assert(D == 3, "getFace is only for 3D block");
+  if (face == NbrDirection::XN) {
+    return AABB<T, 3>(AABB<T, D>::_min, 
+                      Vector<T, 3>{AABB<T, D>::_min[0], AABB<T, D>::_max[1], AABB<T, D>::_max[2]});
+  } else if (face == NbrDirection::XP) {
+    return AABB<T, 3>(Vector<T, 3>{AABB<T, D>::_max[0], AABB<T, D>::_min[1], AABB<T, D>::_min[2]}, 
+                      AABB<T, D>::_max);
+  } else if (face == NbrDirection::YN) {
+    return AABB<T, 3>(AABB<T, D>::_min, 
+                      Vector<T, 3>{AABB<T, D>::_max[0], AABB<T, D>::_min[1], AABB<T, D>::_max[2]});
+  } else if (face == NbrDirection::YP) {
+    return AABB<T, 3>(Vector<T, 3>{AABB<T, D>::_min[0], AABB<T, D>::_max[1], AABB<T, D>::_min[2]}, 
+                      AABB<T, D>::_max);
+  } else if (face == NbrDirection::ZN) {
+    return AABB<T, 3>(AABB<T, D>::_min, 
+                      Vector<T, 3>{AABB<T, D>::_max[0], AABB<T, D>::_max[1], AABB<T, D>::_min[2]});
+  } else if (face == NbrDirection::ZP) {
+    return AABB<T, 3>(Vector<T, 3>{AABB<T, D>::_min[0], AABB<T, D>::_min[1], AABB<T, D>::_max[2]}, 
+                      AABB<T, D>::_max);
+  } else {
+    std::cerr << "[BasicBlock<T, D>::getFace]: Invalid face direction" << std::endl;
+    exit(-1);
+  }
+}
+
+template <typename T, unsigned int D>
+int BasicBlock<T, D>::whichNbrType(const BasicBlock<T, D>& nbr) const {
+  if (!isAdjacent(*this, nbr)) {
+    return 0;
+  }
+  // get intersection
+  const AABB<T, D> intsec = getIntersection(*this, nbr);
+  // get index range of the intersection
+  Vector<int, D> ext;
+  for (unsigned int i = 0; i < D; ++i) {
+    ext[i] = int(std::round(intsec.getExtension()[i] / VoxelSize));
+  }
+
+  int zerocount{};
+  for (unsigned int i = 0; i < D; ++i) {
+    if (ext[i] == 0) ++zerocount;
+  }
+  // 1. corner 2. edge 3. face
+  if constexpr (D == 2) {
+    if (zerocount == 2) {
+      return 1;
+    } else if (zerocount == 1) {
+      return 2;
+    }
+  } else {
+    if (zerocount == 3) {
+      return 1;
+    } else if (zerocount == 2) {
+      return 2;
+    } else if (zerocount == 1) {
+      return 3;
+    }
+  }
+  return 0;
 }
 
 template <typename T, unsigned int D>

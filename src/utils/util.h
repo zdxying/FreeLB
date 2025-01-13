@@ -357,18 +357,25 @@ inline bool nearZero(T a, T epsilon) {
 
 // equality of two floating point numbers
 template <typename T>
-inline bool fpequal(T x, T y, T eps = std::numeric_limits<T>::epsilon())
-{
-    // This is an attempt to treat underflow.
-    if (std::fabs(x) <= eps) x = T{};
-    // This is an attempt to treat underflow.
-    if (std::fabs(y) <= eps) y = T{};
+inline bool fpequal(T x, T y, T eps = std::numeric_limits<T>::epsilon()) {
+  // This is an attempt to treat underflow.
+  if (std::fabs(x) <= eps) x = T{};
+  // This is an attempt to treat underflow.
+  if (std::fabs(y) <= eps) y = T{};
 
-    if (x == T{} || y == T{}) {
-        return (std::fabs(x - y) <= eps);
-    } else {
-        return (std::fabs(x - y) <= eps * std::fabs(x) && std::fabs(x - y) <= eps * std::fabs(y));
-    }
+  if (x == T{} || y == T{}) {
+    return (std::fabs(x - y) <= eps);
+  } else {
+    return (std::fabs(x - y) <= eps * std::fabs(x) && std::fabs(x - y) <= eps * std::fabs(y));
+  }
+}
+
+template<typename T, unsigned int D>
+inline bool Vectorfpequal(const Vector<T, D>& x, const Vector<T, D>& y, T eps = std::numeric_limits<T>::epsilon()) {
+	for (unsigned int i = 0; i < D; ++i) {
+		if (!fpequal(x[i], y[i], eps)) return false;
+	}
+	return true;
 }
 
 // get underlying value of enum 

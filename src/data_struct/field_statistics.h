@@ -641,11 +641,11 @@ public:
 		std::sort(Result.begin(), Result.end(), [](const auto& a, const auto& b) { return a.first < b.first; });
 		// print info
 		std::cout << "[Flag statistics]:" << std::endl;
-		std::cout << "Flag | ";
+		std::cout << "  Flag | ";
 		if (printpercentage) std::cout << "Percent% | ";
 		std::cout << "Count" << std::endl;
 		for (const auto& p : Result) {
-			std::cout << std::setw(7) << std::left << static_cast<int>(p.first);
+			std::cout << "  " << std::setw(7) << std::left << static_cast<int>(p.first);
 			if (printpercentage) std::cout << std::setw(11) << std::left << static_cast<FloatType>(p.second) / Total * 100;
 			std::cout << p.second << std::endl;
 		}

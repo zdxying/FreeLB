@@ -372,7 +372,14 @@ class BlockGeometryHelper3D : public BasicBlock<T, 3> {
   void Optimize(int ProcessNum, bool enforce = true, bool info = false);
   void Optimize(std::vector<BasicBlock<T, 3>>& Blocks, int ProcessNum,
                 bool enforce = true);
-
+	
+	// optimize block's geometry to make each block has similar number of cells
+	// this should be the FINAL step before LoadBalancing() and should be called after ShrinkBasicBlocks()
+	// LoadOptimization() will NOT create or delete blocks, it changes the position and size of blocks
+	// to get the best load result
+  void LoadOptimization(int maxiter = 1000, T tolstddev = T(0.05));
+	
+	// greedy algorithm to balance the load of each process
   void LoadBalancing(int ProcessNum = mpi().getSize());
 
 #ifdef MPI_ENABLED

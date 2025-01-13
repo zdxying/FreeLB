@@ -116,7 +116,7 @@ class AABB {
 
 // get intersection of 2 AABBs without checking if is intersected
 template <typename T, unsigned int D>
-static AABB<T, D> getIntersection(const AABB<T, D>& aabb0, const AABB<T, D>& aabb1) {
+AABB<T, D> getIntersection(const AABB<T, D>& aabb0, const AABB<T, D>& aabb1) {
   if constexpr (D == 2) {
     Vector<T, 2> min{std::max(aabb0.getMin()[0], aabb1.getMin()[0]),
                      std::max(aabb0.getMin()[1], aabb1.getMin()[1])};
@@ -131,6 +131,38 @@ static AABB<T, D> getIntersection(const AABB<T, D>& aabb0, const AABB<T, D>& aab
                      std::min(aabb0.getMax()[1], aabb1.getMax()[1]),
                      std::min(aabb0.getMax()[2], aabb1.getMax()[2])};
     return AABB<T, 3>{min, max};
+  }
+}
+
+// check if 2 AABBs are connected(including sharing a common point or edge or face)
+// if overlapped, also return true  
+template <typename T, unsigned int D>
+bool isAdjacent(const AABB<T, D>& aabb0, const AABB<T, D>& aabb1) {
+  constexpr T eps = std::numeric_limits<T>::epsilon() * 1000;
+  if constexpr (D == 2) {
+    Vector<T, 2> min{std::max(aabb0.getMin()[0], aabb1.getMin()[0]),
+                     std::max(aabb0.getMin()[1], aabb1.getMin()[1])};
+    Vector<T, 2> max{std::min(aabb0.getMax()[0], aabb1.getMax()[0]),
+                     std::min(aabb0.getMax()[1], aabb1.getMax()[1])};
+    // check
+    for (unsigned int i = 0; i < D; i++) {
+      if (min[i] > max[i] + eps) return false;
+    }
+    return true;
+
+  } else if constexpr (D == 3) {
+    Vector<T, 3> min{std::max(aabb0.getMin()[0], aabb1.getMin()[0]),
+                     std::max(aabb0.getMin()[1], aabb1.getMin()[1]),
+                     std::max(aabb0.getMin()[2], aabb1.getMin()[2])};
+    Vector<T, 3> max{std::min(aabb0.getMax()[0], aabb1.getMax()[0]),
+                     std::min(aabb0.getMax()[1], aabb1.getMax()[1]),
+                     std::min(aabb0.getMax()[2], aabb1.getMax()[2])};
+    // check
+    for (unsigned int i = 0; i < D; i++) {
+      if (min[i] > max[i] + eps) return false;
+    }
+    return true;
+
   }
 }
 
@@ -266,15 +298,16 @@ class BasicBlock : public AABB<T, D> {
   inline Vector<T, D> getVoxel(const Vector<int, D>& locidx) const {
     return MinCenter + (locidx * VoxelSize);
   }
-  // get LOCAL index of a point in the block, locidx is the Global position
-  std::size_t getIndex_t(const Vector<T, D>& locidx) const;
+  // get LOCAL index of a point in the block, pos is the Global position
+  std::size_t getIndex_t(const Vector<T, D>& pos) const;
   // get LOCAL index of a point in the block, locidx is the LOCAL IDX position
   std::size_t getIndex(const Vector<int, D>& locidx) const;
   // get location index of a point in the block, id is the LOCAL index
   void getLoc(std::size_t id, Vector<int, D>& locidx) const;
   Vector<int, D> getLoc(std::size_t id) const;
+  Vector<int, D> getLoc(const Vector<T, D>& pos) const;
   // get real position in the block
-  void getLoc_t(std::size_t id, Vector<T, D>& loc) const;
+  void getLoc_t(std::size_t id, Vector<T, D>& pos) const;
   Vector<T, D> getLoc_t(std::size_t id) const;
   Vector<T, D> getLoc_t(Vector<int, D>& locidx) const;
 
@@ -355,6 +388,15 @@ class BasicBlock : public AABB<T, D> {
   // find which face the point is in, return -1 if not on face
   int whichFace(const Vector<int, D>& pt) const;
   int whichFace(std::size_t idx) const;
+  int whichFace(const BasicBlock<T, D>& nbr) const;
+  
+  // get the AABB of the face of the block
+  AABB<T, 3> getFace(NbrDirection face) const;
+
+  // find which nbr type the nblock is to the current block
+  // input nbr block should be baseblock WITHOUT any extension
+  // 1. corner 2. edge 3. face 0. NOT nbr
+  int whichNbrType(const BasicBlock<T, D>& nbr) const;
 
   // get indices of refined cells based on the current cell index
   // delta level should be 1
@@ -856,6 +898,42 @@ T ComputeBlockNStdDev(const std::vector<BasicBlock<T, D>> &Blocks) {
   }
   stdDev = std::sqrt(stdDev / Blocks.size());
   return stdDev;
+}
+
+// only 1 layer of overlapped cells will be considered
+template <typename T>
+std::size_t ComputeOverlappedCellNum(const std::vector<BasicBlock<T, 3>> &Blocks) {
+  std::size_t sum{};
+
+  for (std::size_t iblock = 0; iblock < Blocks.size(); ++iblock) {
+    const BasicBlock<T, 3> &block = Blocks[iblock];
+
+    for (std::size_t jblock = 0; jblock < Blocks.size(); ++jblock) {
+      if (iblock == jblock) continue;
+
+      const BasicBlock<T, 3> &nblock = Blocks[jblock];
+      if (block.whichNbrType(nblock) == 3) {
+        // has face neighbor
+        // get intersection
+        const AABB<T, 3> intsec = getIntersection(block, nblock);
+        // get extension
+        Vector<int, 3> ext{};
+        for (unsigned int i = 0; i < 3; ++i) {
+          ext[i] = int(std::round(intsec.getExtension()[i] / block.getVoxelSize()));
+        }
+        // calculate the number of overlapped cells
+        if (ext[0] == 0) {
+          sum += ext[1] * ext[2];
+        } else if (ext[1] == 0) {
+          sum += ext[0] * ext[2];
+        } else if (ext[2] == 0) {
+          sum += ext[0] * ext[1];
+        }
+      }
+    }
+  }
+
+  return sum;
 }
 
 using CellTagType = std::uint8_t;
