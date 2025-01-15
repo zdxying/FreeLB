@@ -366,6 +366,9 @@ void BasicBlock<T, D>::resize(int deltaX, NbrDirection fromDir) {
     IndexBlock = AABB<int, D>(IndexBlock.getMin(), IndexBlock.getMax() + Vector<int, D>{0, 0, deltaX});
     Mesh[2] += deltaX;
   }
+  // init AABB
+  AABB<T, D>::_extension = AABB<T, D>::_max - AABB<T, D>::_min;
+  AABB<T, D>::_center = (AABB<T, D>::_min + AABB<T, D>::_max) / T(2);
   // set N and Projection
   if constexpr (D == 2) {
     N = Mesh[0] * Mesh[1];

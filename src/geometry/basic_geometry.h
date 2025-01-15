@@ -171,7 +171,7 @@ template <typename T, typename U, unsigned int D>
 bool isOverlapped(const AABB<T, D>& aabb0, const AABB<U, D>& aabb1) {
   static_assert(D == 2 || D == 3, "Error: Dimension is not supported!");
   // prevent blocks sharing the same edge or face from being considered as overlapped
-  constexpr T eps = std::numeric_limits<T>::epsilon() * 1000;
+  constexpr T eps = std::numeric_limits<T>::epsilon(); // * 1000;
   if constexpr (D == 2) {
     return ((aabb0.getMin()[0] + eps) < aabb1.getMax()[0] &&
             (aabb0.getMin()[1] + eps) < aabb1.getMax()[1] &&
@@ -537,9 +537,14 @@ static void DivideBlock2D(int NX, int NY, int blocknum, const AABB<int, 2>& idxA
     Vector<int, 2> max0 = Vector<int, 2>{idxAABBs.getMax()[0], min0[1] + seg_Y - 1};
     Vector<int, 2> min1 = Vector<int, 2>{min0[0], min0[1] + seg_Y};
     Vector<int, 2> max1 = idxAABBs.getMax();
-    AABB<int, 2> Child_0(min0, max0);
+    // 2025/01/15: Yblocks - rest may be 0, seg_Y - 1 may be -1, causing incorrect AABB
+    // FreeLB always checks the correctness of the AABB in construction
+    // so here we must prevent creating incorrect AABB
+    if (seg_Y - 1 >= 0) {
+      AABB<int, 2> Child_0(min0, max0);
+      Child_0.divide(Xblocks, Yblocks - rest, blocksvec);
+    }
     AABB<int, 2> Child_1(min1, max1);
-    Child_0.divide(Xblocks, Yblocks - rest, blocksvec);
     Child_1.divide(Xblocks + 1, rest, blocksvec);
   } else {
     // divide along x direction
@@ -552,9 +557,12 @@ static void DivideBlock2D(int NX, int NY, int blocknum, const AABB<int, 2>& idxA
     Vector<int, 2> max0 = Vector<int, 2>{min0[0] + seg_X - 1, idxAABBs.getMax()[1]};
     Vector<int, 2> min1 = Vector<int, 2>{min0[0] + seg_X, min0[1]};
     Vector<int, 2> max1 = idxAABBs.getMax();
-    AABB<int, 2> Child_0(min0, max0);
+    // 2025/01/15: prevent creating incorrect AABB
+    if (seg_X - 1 >= 0) {
+      AABB<int, 2> Child_0(min0, max0);
+      Child_0.divide(Xblocks - rest, Yblocks, blocksvec);
+    }
     AABB<int, 2> Child_1(min1, max1);
-    Child_0.divide(Xblocks - rest, Yblocks, blocksvec);
     Child_1.divide(rest, Yblocks + 1, blocksvec);
   }
 }

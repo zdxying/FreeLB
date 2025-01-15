@@ -237,6 +237,8 @@ class BlockGeometryHelper3D : public BasicBlock<T, 3> {
   std::unique_ptr<BlockGeometry3D<T>> _BlockGeometry3D;
 #endif
 
+  // pointer to stlreader
+  const StlReader<T>* _Reader = nullptr;
 
  public:
   // domain of Nx * Ny will be divided into (Nx/blocklen)*(Ny/blocklen) blocks
@@ -345,7 +347,7 @@ class BlockGeometryHelper3D : public BasicBlock<T, 3> {
   // find if one cell of the block is outside the octree
   bool hasOutSideCell(Octree<T>* tree, const BasicBlock<T, 3> &block) const;
   // create block from BlockCells, this should be called after refinement
-  void CreateBlocks(bool CreateFromInsideTag = false);
+  void CreateBlocks(bool CreateFromInsideTag = false, bool outputinfo = true);
   // create blocks manually, if used, AdaptiveOptimization() is NOT necessary
   void CreateBlocks(int blockXNum, int blockYNum, int blockZNum);
   // tag neighbor refine cells
@@ -357,7 +359,7 @@ class BlockGeometryHelper3D : public BasicBlock<T, 3> {
 
   // shrink created BasicBlocks to fit geometry held by octree
   // this should be called after CreateBlocks(bool CreateFromInsideTag);
-  void ShrinkBasicBlocks(const StlReader<T>& reader);
+  void RemoveUnusedCells(const StlReader<T>& reader, bool outputinfo = true);
 
   // lambda function for each cell block
   template <typename Func>
@@ -372,12 +374,23 @@ class BlockGeometryHelper3D : public BasicBlock<T, 3> {
   void Optimize(int ProcessNum, bool enforce = true, bool info = false);
   void Optimize(std::vector<BasicBlock<T, 3>>& Blocks, int ProcessNum,
                 bool enforce = true);
+
+  T IterateAndOptimizeImp(int ProcNum, int BlockCellLen);
+  // this will iterate all int blockcell length within the input range
+  // each trial will divide(and merge and do LoadOptimization) the domain into ProcNum blocks
+  // and calculate the standard deviation of the number of cells in each block
+  // the best blockcell length will be the one with the smallest standard deviation
+  void IterateAndOptimize(int ProcNum, int MinBlockCellLen = 10, int MaxBlockCellLen = 100, bool stepinfo = true);
 	
 	// optimize block's geometry to make each block has similar number of cells
-	// this should be the FINAL step before LoadBalancing() and should be called after ShrinkBasicBlocks()
+	// this should be the FINAL step before LoadBalancing() and should be called after RemoveUnusedCells()
 	// LoadOptimization() will NOT create or delete blocks, it changes the position and size of blocks
 	// to get the best load result
-  void LoadOptimization(int maxiter = 1000, T tolstddev = T(0.05));
+  void LoadOptimization(int maxiter = 1000, T tolstddev = T(0.05), bool outputinfo = true);
+  
+  // init GeoHelper using a (different) blockcelllen, 
+	// this function is valid only if GeoHelper is constructed from stlreader
+  void Init(int blockcelllen);
 	
 	// greedy algorithm to balance the load of each process
   void LoadBalancing(int ProcessNum = mpi().getSize());
