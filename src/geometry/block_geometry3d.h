@@ -214,6 +214,22 @@ class BlockGeometryHelper3D : public BasicBlock<T, 3> {
   // overlap of blocks
   int _Overlap;
   // extension of the whole domain
+  // 2025/1/18: _Ext is used to create boundary flag from void flag
+  // set _Ext to 1, then at the whole domain's boundary(the boundary of the overall AABB),
+  // additional 1 layer of cells will be created and tagged with VoidFlag
+  // reading octree will NOT set them to AABBFlag
+  // however this is NOT perfect for complex geometry:
+  // when creating blocks from inside flag, the blockcell containing only voidflag(find no cell in octree)
+  // will be neglected, it is possible that some of the rest blockcells lost the additional 1 layer of cells created by _Ext
+  // this could be partially solved by using AddVoidCellLayer() after CreateBlocks()
+  // however when the resulting BlockGeometry has hollows inside, and the size of the hollow does not match the adjacent block
+  // AddVoidCellLayer() could not solve the problem
+  // we may design another work flow for complex geometry:
+  // 1. read stl, create octree
+  // 2. read octree and store all kinds of flags in a buffer flag field
+  //    note that the buffer flag field will NOT affect the subsequent real FlagField
+  // 2. tag block cells, NOT from octree, from buffer flag field instead
+  // 3. create blocks from tagged block cells, and do optimization...
   int _Ext;
   // max level limit
   std::uint8_t _LevelLimit;
@@ -360,6 +376,8 @@ class BlockGeometryHelper3D : public BasicBlock<T, 3> {
   // shrink created BasicBlocks to fit geometry held by octree
   // this should be called after CreateBlocks(bool CreateFromInsideTag);
   void RemoveUnusedCells(const StlReader<T>& reader, bool outputinfo = true);
+  // this works not well for complex geometry, may be removed
+  void AddVoidCellLayer(const StlReader<T>& reader, bool outputinfo = true);
 
   // lambda function for each cell block
   template <typename Func>

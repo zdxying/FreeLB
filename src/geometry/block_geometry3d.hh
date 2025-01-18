@@ -107,7 +107,7 @@ void Block3D<T>::SetupBoundary(FieldType &field, typename FieldType::value_type 
 typename FieldType::value_type voidvalue, typename FieldType::value_type bdvalue) {
   // temp flag field store the transition flag
   GenericArray<bool> TransFlag(BasicBlock<T, 3>::N, false);
-  const int overlap = 0;
+  const int overlap = _overlap;
   for (int z = overlap; z < BasicBlock<T, 3>::Mesh[2] - overlap; ++z) {
     for (int y = overlap; y < BasicBlock<T, 3>::Mesh[1] - overlap; ++y) {
       for (int x = overlap; x < BasicBlock<T, 3>::Mesh[0] - overlap; ++x) {
@@ -1230,21 +1230,21 @@ BlockGeometryHelper3D<T>::BlockGeometryHelper3D(const StlReader<T>& reader, int 
   int NewNx = CellsNx * BlockCellLen;
   int NewNy = CellsNy * BlockCellLen;
   int NewNz = CellsNz * BlockCellLen;
-  T MeshSizeX = T(NewNx) * _BaseBlock.getVoxelSize();
-  T MeshSizeY = T(NewNy) * _BaseBlock.getVoxelSize();
-  T MeshSizeZ = T(NewNz) * _BaseBlock.getVoxelSize();
+  T MeshSizeX = NewNx * _BaseBlock.getVoxelSize();
+  T MeshSizeY = NewNy * _BaseBlock.getVoxelSize();
+  T MeshSizeZ = NewNz * _BaseBlock.getVoxelSize();
 
   // ext is already included in the _BaseBlock, CellsNx, CellsNy, CellsNz
   static_cast<BasicBlock<T, 3>&>(*this) = BasicBlock<T, 3>(
     reader.getVoxelSize(), 
     AABB<T, 3>(reader.getMesh().getMin() - (olap+ext)*reader.getVoxelSize(), 
-               reader.getMesh().getMin() + olap*reader.getVoxelSize() + Vector<T, 3>{MeshSizeX, MeshSizeY, MeshSizeZ}),
+               reader.getMesh().getMin() - (olap+ext)*reader.getVoxelSize() + Vector<T, 3>{MeshSizeX, MeshSizeY, MeshSizeZ} + 2*olap*reader.getVoxelSize()),
     AABB<int, 3>(Vector<int, 3>{}, 
                  Vector<int, 3>{NewNx + 2*olap-1, NewNy + 2*olap-1, NewNz + 2*olap-1}));
   _BaseBlock = BasicBlock<T, 3>(
     reader.getVoxelSize(), 
     AABB<T, 3>(reader.getMesh().getMin() - ext*reader.getVoxelSize(), 
-               reader.getMesh().getMin() + Vector<T, 3>{MeshSizeX, MeshSizeY, MeshSizeZ}),
+               reader.getMesh().getMin() - ext*reader.getVoxelSize() + Vector<T, 3>{MeshSizeX, MeshSizeY, MeshSizeZ}),
     AABB<int, 3>(Vector<int, 3>{olap}, 
                  Vector<int, 3>{NewNx + olap-1, NewNy + olap-1, NewNz + olap-1}));
 
@@ -1295,7 +1295,7 @@ void BlockGeometryHelper3D<T>::CreateBlockCells() {
   // create cell blocks from cell aabbs
   _BlockCells.reserve(CellsN);
   int blockid = 0;
-  T voxsize = BasicBlock<T, 3>::getVoxelSize();
+  const T voxsize = BasicBlock<T, 3>::getVoxelSize();
   Vector<T, 3> _Min = BasicBlock<T, 3>::_min;
   for (const AABB<int, 3> &aabbcell : AABBCells) {
     Vector<T, 3> MIN = aabbcell.getMin() * voxsize + _Min;
@@ -1616,12 +1616,10 @@ void BlockGeometryHelper3D<T>::Optimize(std::vector<BasicBlock<T, 3>> &Blocks,
     // make size = ProcessNum
     std::size_t count = Blocks.size();
     while (count < static_cast<std::size_t>(ProcessNum) && it != Blocks.end()) {
-      T ratio = std::round(static_cast<T>(it->getN()) / NumPerProcess);
-      if (ratio < 1) { break; }
+      T ratio = static_cast<T>(it->getN()) / NumPerProcess;
+      if (ratio <= T{1}) { break; }
       int part = static_cast<int>(ratio);
-      if (ratio < 2) {
-        part = 2;
-      }
+      if (ratio <= T{2}) { part = 2; }
       if ((count + part - 1) > static_cast<std::size_t>(ProcessNum)) {
         part = ProcessNum - count + 1;
       }
@@ -1635,7 +1633,7 @@ void BlockGeometryHelper3D<T>::Optimize(std::vector<BasicBlock<T, 3>> &Blocks,
   } else {
     while (it != Blocks.end()) {
       T ratio = std::round(static_cast<T>(it->getN()) / NumPerProcess);
-      if (ratio >= 2) {
+      if (ratio >= T{2}) {
         // divide block
         DivideBlock3D(*it, static_cast<int>(ratio), NewBasicBlocks);
         // remove block
@@ -1667,8 +1665,9 @@ struct FaceNbrInfo {
 };
 
 template <typename T>
-void buildFaceNbrInfos(const std::vector<BasicBlock<T, 3>> &Blocks,
+void buildFaceNbrInfosImpl(const std::vector<BasicBlock<T, 3>> &Blocks,
                        std::vector<std::vector<FaceNbrInfo>> &NbrInfos) {
+  if (Blocks.size() == 1) return;
   NbrInfos.clear();
   NbrInfos.resize(Blocks.size(), std::vector<FaceNbrInfo>{});
 
@@ -1696,6 +1695,44 @@ void buildFaceNbrInfos(const std::vector<BasicBlock<T, 3>> &Blocks,
           NbrInfo.emplace_back(jblock, dir, false);
         }
       }
+    }
+    // check NbrInfo
+    // 2025/1/16: in some cases, NbrInfo of one block may be empty
+    // we do not know how to handle this
+    // for now each time we use NbrInfo, we check if it is empty
+    // if (NbrInfo.empty()) {
+    //   IF_MPI_RANK(0){
+    //     std::cerr << "[buildFaceNbrInfos<T>]: NbrInfo is empty" << std::endl;
+    //   }
+    // }
+  }
+}
+template <typename T>
+void buildFaceNbrInfos(std::vector<BasicBlock<T, 3>> &Blocks,
+                       std::vector<std::vector<FaceNbrInfo>> &NbrInfos) {
+  if (Blocks.size() == 1) return;
+  // build NbrInfos
+  buildFaceNbrInfosImpl(Blocks, NbrInfos);
+  // 2025/1/17: empty NbrInfo may be caused by RemoveUnusedCells()
+  // block without face neighbor is bad block
+  // we could remove the block if NbrInfo is empty
+  // check NbrInfos of each block and remove the block if NbrInfo is empty
+  bool removed = true;
+  while (removed) {
+    removed = false;
+    typename std::vector<BasicBlock<T, 3>>::iterator it = Blocks.begin();
+    while (it != Blocks.end()) {
+      if (NbrInfos[it->getBlockId()].empty()) {
+        it = Blocks.erase(it);
+        removed = true;
+      } else {
+        ++it;
+      }
+    }
+    // if removed, rebuild block index and NbrInfos
+    if (removed) {
+      for (std::size_t i = 0; i < Blocks.size(); ++i) Blocks[i].setBlockId(i);
+      buildFaceNbrInfosImpl(Blocks, NbrInfos);
     }
   }
 }
@@ -1803,11 +1840,12 @@ void AdjustAdjacentBlockSize_byStep(BasicBlock<T, 3>& base, BasicBlock<T, 3>& nb
   base.resize(-step, direction);
   nbr.resize(step, getOpposite(direction));
 }
+
 // Blocks[id] will be merged into Blocks[NbrId]
 // note that MergeBlock() will NOT update NbrInfos
 template <typename T>
-void MergeBlock(std::vector<BasicBlock<T, 3>> &Blocks, 
-  std::vector<std::vector<FaceNbrInfo>>& NbrInfos, std::size_t id, std::size_t NbrId) {
+bool MergeBlock(std::vector<BasicBlock<T, 3>> &Blocks, 
+  std::vector<std::vector<FaceNbrInfo>>& NbrInfos, std::vector<FaceNbrInfo>& IdNbrInfo, std::size_t id, std::size_t NbrId) {
   // find which face is shared by Blocks[id] and Blocks[NbrId]
   NbrDirection dir{};
   for (const FaceNbrInfo &info : NbrInfos[NbrId]) {
@@ -1816,47 +1854,54 @@ void MergeBlock(std::vector<BasicBlock<T, 3>> &Blocks,
       break;
     }
   }
+  // check if the merge operation could be performed
+  BasicBlock<T, 3> &smallblock = Blocks[id];
   BasicBlock<T, 3> &nblock = Blocks[NbrId];
-  // this is a test block buffer to check if the resize is valid
-  BasicBlock<T, 3> nblock_buffer = nblock;
-  // adjust block size along dir
-  if (util::isFlag(dir, NbrDirection::XN | NbrDirection::XP)) {
-    nblock_buffer.resize(Blocks[id].getNx(), dir);
-  } else if (util::isFlag(dir, NbrDirection::YN | NbrDirection::YP)) {
-    nblock_buffer.resize(Blocks[id].getNy(), dir);
-  } else if (util::isFlag(dir, NbrDirection::ZN | NbrDirection::ZP)) {
-    nblock_buffer.resize(Blocks[id].getNz(), dir);
-  }
-  // check if the resize is valid: use overlapped criteria
-  bool valid = true;
-  for (const BasicBlock<T, 3> &block : Blocks) {
-    if (block.getBlockId() == int(id) || block.getBlockId() == int(NbrId)) continue;
-    if (isOverlapped(nblock_buffer, block)) valid = false;
-  }
-  if (valid) {
-    // perform resize
-    nblock = nblock_buffer;
-  } else {
-    // erase Blocks[NbrId] from nbr list of Blocks[id]
-    typename std::vector<FaceNbrInfo>::iterator it = NbrInfos[id].begin();
-    while (it != NbrInfos[id].end()) {
-      if (it->NbrBlockId == NbrId) it = NbrInfos[id].erase(it);
-      else ++it;
+  AABB<T, 3> smallface = smallblock.getFace(getOpposite(dir));
+  AABB<T, 3> nface = nblock.getFace(dir);
+  if (isInside(smallface, nface)) {
+    // this is a test block buffer to check if the resize is valid
+    BasicBlock<T, 3> nblock_buffer = nblock;
+    // adjust block size along dir
+    if (util::isFlag(dir, NbrDirection::XN | NbrDirection::XP)) {
+      nblock_buffer.resize(Blocks[id].getNx(), dir);
+    } else if (util::isFlag(dir, NbrDirection::YN | NbrDirection::YP)) {
+      nblock_buffer.resize(Blocks[id].getNy(), dir);
+    } else if (util::isFlag(dir, NbrDirection::ZN | NbrDirection::ZP)) {
+      nblock_buffer.resize(Blocks[id].getNz(), dir);
     }
-    if (NbrInfos[id].empty()) return;
-    // find another neighbor block
-    std::size_t NbrIdx = NbrInfos[id][0].NbrBlockId;
-    std::size_t minN = Blocks[NbrIdx].getN();
-    for (const FaceNbrInfo &info : NbrInfos[id]) {
-      std::size_t nid = info.NbrBlockId;
-      if (Blocks[nid].getN() < minN) {
-        NbrIdx = nid;
-        minN = Blocks[nid].getN();
-      }
+    // check if the resize is valid: use overlapped criteria
+    bool valid = true;
+    for (const BasicBlock<T, 3> &block : Blocks) {
+      if (block.getBlockId() == int(id) || block.getBlockId() == int(NbrId)) continue;
+      if (isOverlapped(nblock_buffer, block)) valid = false;
     }
-    // recursively merge Blocks[id] into Blocks[NbrIdx]
-    MergeBlock(Blocks, NbrInfos, id, NbrIdx);
+    if (valid) {
+      // perform resize
+      nblock = nblock_buffer;
+      return true;
+    }
   }
+  // if not inside or resize is invalid:
+  // erase Blocks[NbrId] from nbr list of Blocks[id]
+  typename std::vector<FaceNbrInfo>::iterator it = IdNbrInfo.begin();
+  while (it != IdNbrInfo.end()) {
+    if (it->NbrBlockId == NbrId) it = IdNbrInfo.erase(it);
+    else ++it;
+  }
+  if (IdNbrInfo.empty()) return false;
+  // find another neighbor block
+  std::size_t NbrIdx = IdNbrInfo[0].NbrBlockId;
+  std::size_t minN = Blocks[NbrIdx].getN();
+  for (const FaceNbrInfo &info : IdNbrInfo) {
+    std::size_t nid = info.NbrBlockId;
+    if (Blocks[nid].getN() < minN) {
+      NbrIdx = nid;
+      minN = Blocks[nid].getN();
+    }
+  }
+  // recursively merge Blocks[id] into Blocks[NbrIdx]
+  return MergeBlock(Blocks, NbrInfos, IdNbrInfo, id, NbrIdx);
 }
 
 template <typename T>
@@ -1877,6 +1922,12 @@ void MergeSmallBlocks(std::vector<BasicBlock<T, 3>> &Blocks,
     if (it->getN() <= thN) {
       // find the neighbor block with the least cells
       std::size_t id = it->getBlockId();
+      // check empty
+      // if (NbrInfos[id].empty()) {
+      //   // we can't perform merge operation
+      //   ++it;
+      //   continue;
+      // }
       std::size_t NbrId = NbrInfos[id][0].NbrBlockId;
       std::size_t minN = Blocks[NbrId].getN();
       for (const FaceNbrInfo &info : NbrInfos[id]) {
@@ -1887,15 +1938,20 @@ void MergeSmallBlocks(std::vector<BasicBlock<T, 3>> &Blocks,
         }
       }
       // merge small block into the neighbor block
-      MergeBlock(Blocks, NbrInfos, id, NbrId);
-      // remove small block
-      it = Blocks.erase(it);
-      // update block id
-      for (std::size_t i = 0; i < Blocks.size(); ++i) {
-        Blocks[i].setBlockId(i);
+      std::vector<FaceNbrInfo> IdNbrInfo = NbrInfos[id];
+      bool merged = MergeBlock(Blocks, NbrInfos, IdNbrInfo, id, NbrId);
+      if (merged) {
+        // remove small block
+        it = Blocks.erase(it);
+        // update block id
+        for (std::size_t i = 0; i < Blocks.size(); ++i) {
+          Blocks[i].setBlockId(i);
+        }
+        // update NbrInfos
+        buildFaceNbrInfos(Blocks, NbrInfos);
+      } else {
+        ++it;
       }
-      // update NbrInfos
-      buildFaceNbrInfos(Blocks, NbrInfos);
     } else {
       ++it;
     }
@@ -1911,10 +1967,21 @@ void ForcedMergeSmallBlocks(std::vector<BasicBlock<T, 3>> &Blocks,
             [](const BasicBlock<T, 3> &a, const BasicBlock<T, 3> &b) {
               return a.getN() < b.getN();
             });
+  // DO NOT Forget to update block id and NbrInfos
+  for (std::size_t i = 0; i < Blocks.size(); ++i) {
+    Blocks[i].setBlockId(i);
+  }
+  buildFaceNbrInfos(Blocks, NbrInfos);
   // merge small blocks
   typename std::vector<BasicBlock<T, 3>>::iterator it = Blocks.begin();
-  while (Blocks.size() > static_cast<std::size_t>(TargetBlockNum)) {
+  while (Blocks.size() > static_cast<std::size_t>(TargetBlockNum) && it != Blocks.end()) {
     std::size_t id = it->getBlockId();
+    // check empty
+    // if (NbrInfos[id].empty()) {
+    //   // we can't perform merge operation
+    //   ++it;
+    //   continue;
+    // }
     std::size_t NbrId = NbrInfos[id][0].NbrBlockId;
     std::size_t minN = Blocks[NbrId].getN();
     for (const FaceNbrInfo &info : NbrInfos[id]) {
@@ -1925,15 +1992,20 @@ void ForcedMergeSmallBlocks(std::vector<BasicBlock<T, 3>> &Blocks,
       }
     }
     // merge small block into the neighbor block
-    MergeBlock(Blocks, NbrInfos, id, NbrId);
-    // remove small block
-    it = Blocks.erase(it);
-    // update block id
-    for (std::size_t i = 0; i < Blocks.size(); ++i) {
-      Blocks[i].setBlockId(i);
+    std::vector<FaceNbrInfo> IdNbrInfo = NbrInfos[id];
+    bool merged = MergeBlock(Blocks, NbrInfos, IdNbrInfo, id, NbrId);
+    if (merged) {
+      // remove small block
+      it = Blocks.erase(it);
+      // update block id
+      for (std::size_t i = 0; i < Blocks.size(); ++i) {
+        Blocks[i].setBlockId(i);
+      }
+      // update NbrInfos
+      buildFaceNbrInfos(Blocks, NbrInfos);
+    } else {
+      ++it;
     }
-    // update NbrInfos
-    buildFaceNbrInfos(Blocks, NbrInfos);
   }
 }
 
@@ -1942,8 +2014,9 @@ template <typename T>
 T BlockGeometryHelper3D<T>::IterateAndOptimizeImp(int ProcNum, int BlockCellLen) {
   // 1. initialize BlockGeometryHelper3D with BlockCellLen
   Init(BlockCellLen);
-  // 2. create blocks
+  // 2. create blocks and expand boundary blocks to ensure 1 layer of void cells
   CreateBlocks(true, false);
+  if (_Ext != 0) AddVoidCellLayer(*_Reader, false);
   // 3. remove unused cells
   RemoveUnusedCells(*_Reader, false);
   // 4. divide blocks into ProcNum parts, but will NOT enforce exactly ProcNum parts
@@ -1953,14 +2026,17 @@ T BlockGeometryHelper3D<T>::IterateAndOptimizeImp(int ProcNum, int BlockCellLen)
   //    build face neighbor infos for current BlockCellLen
   std::vector<std::vector<FaceNbrInfo>> NbrInfos;
   std::vector<BasicBlock<T, 3>> &Blocks = getAllBasicBlocks();
+  // update block id
+  for (std::size_t i = 0; i < Blocks.size(); ++i) Blocks[i].setBlockId(i);
   buildFaceNbrInfos(Blocks, NbrInfos);
   // 5. merge small blocks, use default threshold = 0.125
   //    this step mainly aims to eleminate small blocks created in step 2: CreateBlocks()
   //    if Blocks.size() > ProcNum, ForcedMergeSmallBlocks() will enforce exactly ProcNum parts
   //    otherwise, MergeSmallBlocks() will not enforce exactly ProcNum parts, instead, this will be done in step 6
   if (Blocks.size() > static_cast<std::size_t>(ProcNum)) 
-       ForcedMergeSmallBlocks(Blocks, NbrInfos, ProcNum);
-  else MergeSmallBlocks(Blocks, NbrInfos);
+    ForcedMergeSmallBlocks(Blocks, NbrInfos, ProcNum);
+  else 
+    MergeSmallBlocks(Blocks, NbrInfos);
   // 6. divide blocks again, this time enforce exactly ProcNum parts
   Optimize(ProcNum, true, false);
   //    and remove unused cells
@@ -1983,11 +2059,11 @@ void BlockGeometryHelper3D<T>::IterateAndOptimize(int ProcNum, int MinBlockCellL
     }
   }
   // iterate all possible blockcell length
-  for (int BlockCellLen = MinBlockCellLen; BlockCellLen < MaxBlockCellLen; ++BlockCellLen) {
+  for (int BlockCellLen = MinBlockCellLen; BlockCellLen < MaxBlockCellLen + 1; ++BlockCellLen) {
     // 8. get stdDev
     T newStdDev = IterateAndOptimizeImp(ProcNum, BlockCellLen);
-    // 9. update 
-    if (newStdDev < stdDev) {
+    // 9. update, for now we force the number of blocks to be exactly ProcNum
+    if (newStdDev < stdDev && getAllBasicBlocks().size() == static_cast<std::size_t>(ProcNum)) {
       stdDev = newStdDev;
       bestBlockCellLen = BlockCellLen;
     }
@@ -2302,21 +2378,21 @@ void BlockGeometryHelper3D<T>::Init(int blockcelllen) {
   int NewNx = CellsNx * BlockCellLen;
   int NewNy = CellsNy * BlockCellLen;
   int NewNz = CellsNz * BlockCellLen;
-  T MeshSizeX = T(NewNx) * _BaseBlock.getVoxelSize();
-  T MeshSizeY = T(NewNy) * _BaseBlock.getVoxelSize();
-  T MeshSizeZ = T(NewNz) * _BaseBlock.getVoxelSize();
+  T MeshSizeX = NewNx * _BaseBlock.getVoxelSize();
+  T MeshSizeY = NewNy * _BaseBlock.getVoxelSize();
+  T MeshSizeZ = NewNz * _BaseBlock.getVoxelSize();
 
   // _Ext is already included in the _BaseBlock, CellsNx, CellsNy, CellsNz
   static_cast<BasicBlock<T, 3>&>(*this) = BasicBlock<T, 3>(
     _Reader->getVoxelSize(), 
     AABB<T, 3>(_Reader->getMesh().getMin() - (_Overlap+_Ext)*_Reader->getVoxelSize(), 
-               _Reader->getMesh().getMin() + _Overlap*_Reader->getVoxelSize() + Vector<T, 3>{MeshSizeX, MeshSizeY, MeshSizeZ}),
+               _Reader->getMesh().getMin() - (_Overlap+_Ext)*_Reader->getVoxelSize() + Vector<T, 3>{MeshSizeX, MeshSizeY, MeshSizeZ} + 2*_Overlap*_Reader->getVoxelSize()),
     AABB<int, 3>(Vector<int, 3>{}, 
                  Vector<int, 3>{NewNx + 2*_Overlap-1, NewNy + 2*_Overlap-1, NewNz + 2*_Overlap-1}));
   _BaseBlock = BasicBlock<T, 3>(
     _Reader->getVoxelSize(), 
     AABB<T, 3>(_Reader->getMesh().getMin() - _Ext*_Reader->getVoxelSize(), 
-               _Reader->getMesh().getMin() + Vector<T, 3>{MeshSizeX, MeshSizeY, MeshSizeZ}),
+               _Reader->getMesh().getMin() - _Ext*_Reader->getVoxelSize() + Vector<T, 3>{MeshSizeX, MeshSizeY, MeshSizeZ}),
     AABB<int, 3>(Vector<int, 3>{_Overlap}, 
                  Vector<int, 3>{NewNx + _Overlap-1, NewNy + _Overlap-1, NewNz + _Overlap-1}));
 
@@ -2561,7 +2637,7 @@ void BlockGeometryHelper3D<T>::RemoveUnusedCells(const StlReader<T>& reader, boo
 
       // 2. XP face, shrink along -x direction
       int xplayer{};
-      for (int ix = block.getNx() - _Overlap; ix > 0; --ix) {
+      for (int ix = block.getNx() - 1; ix >= _Overlap; --ix) {
         // find if all cells on YZ plane are OUTSIDE
         bool alloutside = true;
         for (int iz = 0; iz < block.getNz(); ++iz) {
@@ -2623,7 +2699,7 @@ void BlockGeometryHelper3D<T>::RemoveUnusedCells(const StlReader<T>& reader, boo
 
       // 4. YP face, shrink along -y direction
       int yplayer{};
-      for (int iy = block.getNy() - _Overlap; iy > 0; --iy) {
+      for (int iy = block.getNy() - 1; iy >= _Overlap; --iy) {
         // find if all cells on XZ plane are OUTSIDE
         bool alloutside = true;
         for (int iz = 0; iz < block.getNz(); ++iz) {
@@ -2685,7 +2761,7 @@ void BlockGeometryHelper3D<T>::RemoveUnusedCells(const StlReader<T>& reader, boo
 
       // 6. ZP face, shrink along -z direction
       int zplayer{};
-      for (int iz = block.getNz() - _Overlap; iz > 0; --iz) {
+      for (int iz = block.getNz() - 1; iz >= _Overlap; --iz) {
         // find if all cells on XY plane are OUTSIDE
         bool alloutside = true;
         for (int iy = 0; iy < block.getNy(); ++iy) {
@@ -2727,5 +2803,205 @@ void BlockGeometryHelper3D<T>::RemoveUnusedCells(const StlReader<T>& reader, boo
   MPI_RANK(0)
   std::cout << "[BlockGeometryHelper3D<T>::RemoveUnusedCells]: \n" 
   << "  Removed: " << totalremoved << " cells\n"
+  << "  Total CellNum: " << Total << " -> " << TotalR << " cells\n";
+}
+
+template <typename T>
+void BlockGeometryHelper3D<T>::AddVoidCellLayer(const StlReader<T>& reader, bool outputinfo) {
+  if (_Ext == 0) return;
+
+  Octree<T>* tree = reader.getTree();
+  std::vector<BasicBlock<T, 3>> &BasicBlocks = getAllBasicBlocks();
+  if (BasicBlocks.size() == 1) return;
+  // build face neighbor infos
+  std::vector<std::vector<FaceNbrInfo>> NbrInfos;
+  // update block id
+  for (std::size_t i = 0; i < BasicBlocks.size(); ++i) BasicBlocks[i].setBlockId(i);
+  buildFaceNbrInfos(BasicBlocks, NbrInfos);
+
+  std::size_t Total{};
+  for (const BasicBlock<T, 3> &block : BasicBlocks) {
+    Total += block.getN();
+  }
+
+  // statistics
+  std::size_t totaladded{};
+
+  for (BasicBlock<T, 3> &block : BasicBlocks) {
+    const std::vector<FaceNbrInfo> &NbrInfo = NbrInfos[block.getBlockId()];
+
+    std::vector<NbrDirection> dirs{NbrDirection::XN, NbrDirection::XP, 
+      NbrDirection::YN, NbrDirection::YP, NbrDirection::ZN, NbrDirection::ZP};
+    // remove direction that has neighbor
+    for (const FaceNbrInfo &info : NbrInfo) {
+      dirs.erase(std::remove(dirs.begin(), dirs.end(), info.Direction), dirs.end());
+    }
+    if (dirs.empty()) continue;
+
+    for (NbrDirection dir : dirs) {
+      // 1. XN face, expand along -x direction
+      if (dir == NbrDirection::XN) {
+        int ix = 0;
+        // find if all cells on YZ plane are OUTSIDE
+        bool alloutside = true;
+        for (int iz = 0; iz < block.getNz(); ++iz) {
+          for (int iy = 0; iy < block.getNy(); ++iy) {
+            const Vector<int, 3> locidx{ix, iy, iz};
+            const Vector<T, 3> vox = block.getVoxel(locidx);
+            Octree<T>* node = tree->find(vox);
+            if (node != nullptr) {
+              if (node->isLeaf() && node->getInside()) {
+                alloutside = false;
+                goto xncheckalloutside;
+              }
+            }
+          }
+        }
+        xncheckalloutside:
+        if (!alloutside) {
+          // has inside cell, expand one layer
+          block.resize(1, NbrDirection::XN);
+          totaladded += block.getNy() * block.getNz();
+        }
+      }
+      // 2. XP face, expand along +x direction
+      if (dir == NbrDirection::XP) {
+        int ix = block.getNx() - 1;
+        // find if all cells on YZ plane are OUTSIDE
+        bool alloutside = true;
+        for (int iz = 0; iz < block.getNz(); ++iz) {
+          for (int iy = 0; iy < block.getNy(); ++iy) {
+            const Vector<int, 3> locidx{ix, iy, iz};
+            const Vector<T, 3> vox = block.getVoxel(locidx);
+            Octree<T>* node = tree->find(vox);
+            if (node != nullptr) {
+              if (node->isLeaf() && node->getInside()) {
+                alloutside = false;
+                goto xpcheckalloutside;
+              }
+            }
+          }
+        }
+        xpcheckalloutside:
+        if (!alloutside) {
+          // has inside cell, expand one layer
+          block.resize(1, NbrDirection::XP);
+          totaladded += block.getNy() * block.getNz();
+        }
+      }
+      // 3. YN face, expand along -y direction
+      if (dir == NbrDirection::YN) {
+        int iy = 0;
+        // find if all cells on XZ plane are OUTSIDE
+        bool alloutside = true;
+        for (int iz = 0; iz < block.getNz(); ++iz) {
+          for (int ix = 0; ix < block.getNx(); ++ix) {
+            const Vector<int, 3> locidx{ix, iy, iz};
+            const Vector<T, 3> vox = block.getVoxel(locidx);
+            Octree<T>* node = tree->find(vox);
+            if (node != nullptr) {
+              if (node->isLeaf() && node->getInside()) {
+                alloutside = false;
+                goto yncheckalloutside;
+              }
+            }
+          }
+        }
+        yncheckalloutside:
+        if (!alloutside) {
+          // has inside cell, expand one layer
+          block.resize(1, NbrDirection::YN);
+          totaladded += block.getNx() * block.getNz();
+        }
+      }
+      // 4. YP face, expand along +y direction
+      if (dir == NbrDirection::YP) {
+        int iy = block.getNy() - 1;
+        // find if all cells on XZ plane are OUTSIDE
+        bool alloutside = true;
+        for (int iz = 0; iz < block.getNz(); ++iz) {
+          for (int ix = 0; ix < block.getNx(); ++ix) {
+            const Vector<int, 3> locidx{ix, iy, iz};
+            const Vector<T, 3> vox = block.getVoxel(locidx);
+            Octree<T>* node = tree->find(vox);
+            if (node != nullptr) {
+              if (node->isLeaf() && node->getInside()) {
+                alloutside = false;
+                goto ypcheckalloutside;
+              }
+            }
+          }
+        }
+        ypcheckalloutside:
+        if (!alloutside) {
+          // has inside cell, expand one layer
+          block.resize(1, NbrDirection::YP);
+          totaladded += block.getNx() * block.getNz();
+        }
+      }
+      // 5. ZN face, expand along -z direction
+      if (dir == NbrDirection::ZN) {
+        int iz = 0;
+        // find if all cells on XY plane are OUTSIDE
+        bool alloutside = true;
+        for (int iy = 0; iy < block.getNy(); ++iy) {
+          for (int ix = 0; ix < block.getNx(); ++ix) {
+            const Vector<int, 3> locidx{ix, iy, iz};
+            const Vector<T, 3> vox = block.getVoxel(locidx);
+            Octree<T>* node = tree->find(vox);
+            if (node != nullptr) {
+              if (node->isLeaf() && node->getInside()) {
+                alloutside = false;
+                goto zncheckalloutside;
+              }
+            }
+          }
+        }
+        zncheckalloutside:
+        if (!alloutside) {
+          // has inside cell, expand one layer
+          block.resize(1, NbrDirection::ZN);
+          totaladded += block.getNx() * block.getNy();
+        }
+      }
+      // 6. ZP face, expand along +z direction
+      if (dir == NbrDirection::ZP) {
+        int iz = block.getNz() - 1;
+        // find if all cells on XY plane are OUTSIDE
+        bool alloutside = true;
+        for (int iy = 0; iy < block.getNy(); ++iy) {
+          for (int ix = 0; ix < block.getNx(); ++ix) {
+            const Vector<int, 3> locidx{ix, iy, iz};
+            const Vector<T, 3> vox = block.getVoxel(locidx);
+            Octree<T>* node = tree->find(vox);
+            if (node != nullptr) {
+              if (node->isLeaf() && node->getInside()) {
+                alloutside = false;
+                goto zpcheckalloutside;
+              }
+            }
+          }
+        }
+        zpcheckalloutside:
+        if (!alloutside) {
+          // has inside cell, expand one layer
+          block.resize(1, NbrDirection::ZP);
+          totaladded += block.getNx() * block.getNy();
+        }
+      }
+    }
+
+  }
+
+  std::size_t TotalR{};
+  for (const BasicBlock<T, 3> &block : BasicBlocks) {
+    TotalR += block.getN();
+  }
+
+  // print statistics
+  if (!outputinfo) return;
+  MPI_RANK(0)
+  std::cout << "[BlockGeometryHelper3D<T>::AddVoidCellLayer]: \n" 
+  << "  Added: " << totaladded << " cells\n"
   << "  Total CellNum: " << Total << " -> " << TotalR << " cells\n";
 }

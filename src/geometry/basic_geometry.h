@@ -138,7 +138,7 @@ AABB<T, D> getIntersection(const AABB<T, D>& aabb0, const AABB<T, D>& aabb1) {
 // if overlapped, also return true  
 template <typename T, unsigned int D>
 bool isAdjacent(const AABB<T, D>& aabb0, const AABB<T, D>& aabb1) {
-  constexpr T eps = std::numeric_limits<T>::epsilon() * 1000;
+  constexpr T eps = std::numeric_limits<T>::epsilon();
   if constexpr (D == 2) {
     Vector<T, 2> min{std::max(aabb0.getMin()[0], aabb1.getMin()[0]),
                      std::max(aabb0.getMin()[1], aabb1.getMin()[1])};
@@ -185,6 +185,18 @@ bool isOverlapped(const AABB<T, D>& aabb0, const AABB<U, D>& aabb1) {
             (aabb1.getMin()[1] + eps) < aabb0.getMax()[1] &&
             (aabb1.getMin()[2] + eps) < aabb0.getMax()[2]);
   }
+}
+
+// check if AABB a is inside AABB b, if a == b, return true
+template <typename T, unsigned int D>
+bool isInside(const AABB<T, D>& a, const AABB<T, D>& b) {
+  constexpr T eps = std::numeric_limits<T>::epsilon();
+  for (unsigned int i = 0; i < D; i++) {
+    if (a.getMin()[i] < b.getMin()[i] - eps || a.getMax()[i] > b.getMax()[i] + eps) {
+      return false;
+    }
+  }
+  return true;
 }
 
 
