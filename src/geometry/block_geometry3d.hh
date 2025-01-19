@@ -1316,6 +1316,30 @@ void BlockGeometryHelper3D<T>::TagBlockCells(const StlReader<T>& reader) {
     ++i;
   }
 }
+template <typename T>
+void BlockGeometryHelper3D<T>::TagBlockCells(std::uint8_t voidflag) {
+  std::size_t i{};
+  for (const BasicBlock<T, 3> &blockcell : _BlockCells) {
+    
+    bool has_stl = false;
+    for (int z = 0; z < blockcell.getNz(); ++z) {
+      for (int y = 0; y < blockcell.getNy(); ++y) {
+        for (int x = 0; x < blockcell.getNx(); ++x) {
+          const Vector<T, 3> vox = blockcell.getVoxel(Vector<int, 3>{x, y, z});
+          if (_FlagField[vox] != voidflag) {
+            has_stl = true;
+            goto check_has_stl;
+          }
+        }
+      }
+    }
+    check_has_stl:
+    if (has_stl) {
+      _BlockCellTags[i] = BlockCellTag::inside;
+    }
+    ++i;
+  }
+}
 
 template <typename T>
 bool BlockGeometryHelper3D<T>::IsInside(Octree<T>* tree, const BasicBlock<T, 3> &block) const {
@@ -2013,12 +2037,14 @@ void ForcedMergeSmallBlocks(std::vector<BasicBlock<T, 3>> &Blocks,
 template <typename T>
 T BlockGeometryHelper3D<T>::IterateAndOptimizeImp(int ProcNum, int BlockCellLen) {
   // 1. initialize BlockGeometryHelper3D with BlockCellLen
+  //    blockcells will be tagged with _FlagField instead of _Reader
+  //    make sure that _FlagField is initialized before calling this function
   Init(BlockCellLen);
-  // 2. create blocks and expand boundary blocks to ensure 1 layer of void cells
+  // 2. create blocks
   CreateBlocks(true, false);
-  if (_Ext != 0) AddVoidCellLayer(*_Reader, false);
-  // 3. remove unused cells
-  RemoveUnusedCells(*_Reader, false);
+  // if (_Ext != 0) AddVoidCellLayer(*_Reader, false);
+  // 3. remove unused cells using _FlagField
+  RemoveUnusedCells(std::uint8_t{1}, false);
   // 4. divide blocks into ProcNum parts, but will NOT enforce exactly ProcNum parts
   //    even if the Blocks.size() > ProcNum, when one block has number of cells more than twice of the average
   //    it will be divided into x parts, x = std::round(block.getN() / average)
@@ -2039,8 +2065,8 @@ T BlockGeometryHelper3D<T>::IterateAndOptimizeImp(int ProcNum, int BlockCellLen)
     MergeSmallBlocks(Blocks, NbrInfos);
   // 6. divide blocks again, this time enforce exactly ProcNum parts
   Optimize(ProcNum, true, false);
-  //    and remove unused cells
-  RemoveUnusedCells(*_Reader, false);
+  //    and remove unused cells using _FlagField
+  RemoveUnusedCells(std::uint8_t{1}, false);
   // 7. do load optimization, this will go beyond the limit of blockcells 
   //    and try to make the number of cells in each block as close as possible
   LoadOptimization(500, 0.01, false);
@@ -2404,7 +2430,7 @@ void BlockGeometryHelper3D<T>::Init(int blockcelllen) {
     [&](int i) { return D3Q27<T>::c[i + 1] * Projection; });
 
   CreateBlockCells();
-  TagBlockCells(*_Reader);
+  TagBlockCells();
 }
 
 
@@ -2791,6 +2817,214 @@ void BlockGeometryHelper3D<T>::RemoveUnusedCells(const StlReader<T>& reader, boo
       }
 
     }
+  }
+
+  std::size_t TotalR{};
+  for (const BasicBlock<T, 3> &block : BasicBlocks) {
+    TotalR += block.getN();
+  }
+
+  // print statistics
+  if (!outputinfo) return;
+  MPI_RANK(0)
+  std::cout << "[BlockGeometryHelper3D<T>::RemoveUnusedCells]: \n" 
+  << "  Removed: " << totalremoved << " cells\n"
+  << "  Total CellNum: " << Total << " -> " << TotalR << " cells\n";
+}
+
+template <typename T>
+void BlockGeometryHelper3D<T>::RemoveUnusedCells(std::uint8_t voidflag, bool outputinfo) {
+
+  std::vector<BasicBlock<T, 3>> &BasicBlocks = getAllBasicBlocks();
+
+  std::size_t Total{};
+  for (const BasicBlock<T, 3> &block : BasicBlocks) {
+    Total += block.getN();
+  }
+
+  // statistics
+  std::size_t totalremoved{};
+
+  for (BasicBlock<T, 3> &block : BasicBlocks) {
+
+    // if contains cell outside of the geometry, test if it could be shrinked
+    bool has_void = false;
+    for (int z = 0; z < block.getNz(); ++z) {
+      for (int y = 0; y < block.getNy(); ++y) {
+        for (int x = 0; x < block.getNx(); ++x) {
+          const Vector<T, 3> vox = block.getVoxel(Vector<int, 3>{x, y, z});
+          if (_FlagField[vox] == voidflag) {
+            has_void = true;
+            goto check_has_void;
+          }
+        }
+      }
+    }
+    check_has_void:
+    if (has_void) {
+      // 1. XN face, shrink along +x direction
+      int xnlayer{};
+      for (int ix = 0; ix < block.getNx() - _Overlap; ++ix) {
+        // find if all cells on YZ plane are OUTSIDE
+        bool alloutside = true;
+        for (int iz = 0; iz < block.getNz(); ++iz) {
+          for (int iy = 0; iy < block.getNy(); ++iy) {
+            const Vector<T, 3> vox = block.getVoxel(Vector<int, 3>{ix, iy, iz});
+            if (_FlagField[vox] != voidflag) {
+              alloutside = false;
+              goto xncheckalloutside;
+            }
+          }
+        }
+        xncheckalloutside:
+        if (!alloutside) {
+          break;
+        } else {
+          ++xnlayer;
+        }
+      }
+      xnlayer -= _Ext;
+      if (xnlayer > 0) {
+        totalremoved += xnlayer * block.getNy() * block.getNz();
+        block.resize(-xnlayer, NbrDirection::XN);
+      }
+
+      // 2. XP face, shrink along -x direction
+      int xplayer{};
+      for (int ix = block.getNx() - 1; ix >= _Overlap; --ix) {
+        // find if all cells on YZ plane are OUTSIDE
+        bool alloutside = true;
+        for (int iz = 0; iz < block.getNz(); ++iz) {
+          for (int iy = 0; iy < block.getNy(); ++iy) {
+            const Vector<T, 3> vox = block.getVoxel(Vector<int, 3>{ix, iy, iz});
+            if (_FlagField[vox] != voidflag) {
+              alloutside = false;
+              goto xpcheckalloutside;
+            }
+          }
+        }
+        xpcheckalloutside:
+        if (!alloutside) {
+          break;
+        } else {
+          ++xplayer;
+        }
+      }
+      xplayer -= _Ext;
+      if (xplayer > 0) {
+        totalremoved += xplayer * block.getNy() * block.getNz();
+        block.resize(-xplayer, NbrDirection::XP);
+      }
+
+      // 3. YN face, shrink along +y direction
+      int ynlayer{};
+      for (int iy = 0; iy < block.getNy() - _Overlap; ++iy) {
+        // find if all cells on XZ plane are OUTSIDE
+        bool alloutside = true;
+        for (int iz = 0; iz < block.getNz(); ++iz) {
+          for (int ix = 0; ix < block.getNx(); ++ix) {
+            const Vector<T, 3> vox = block.getVoxel(Vector<int, 3>{ix, iy, iz});
+            if (_FlagField[vox] != voidflag) {
+              alloutside = false;
+              goto yncheckalloutside;
+            }
+          }
+        }
+        yncheckalloutside:
+        if (!alloutside) {
+          break;
+        } else {
+          ++ynlayer;
+        }
+      }
+      ynlayer -= _Ext;
+      if (ynlayer > 0) {
+        totalremoved += ynlayer * block.getNx() * block.getNz();
+        block.resize(-ynlayer, NbrDirection::YN);
+      }
+
+      // 4. YP face, shrink along -y direction
+      int yplayer{};
+      for (int iy = block.getNy() - 1; iy >= _Overlap; --iy) {
+        // find if all cells on XZ plane are OUTSIDE
+        bool alloutside = true;
+        for (int iz = 0; iz < block.getNz(); ++iz) {
+          for (int ix = 0; ix < block.getNx(); ++ix) {
+            const Vector<T, 3> vox = block.getVoxel(Vector<int, 3>{ix, iy, iz});
+            if (_FlagField[vox] != voidflag) {
+              alloutside = false;
+              goto ypcheckalloutside;
+            }
+          }
+        }
+        ypcheckalloutside:
+        if (!alloutside) {
+          break;
+        } else {
+          ++yplayer;
+        }
+      }
+      yplayer -= _Ext;
+      if (yplayer > 0) {
+        totalremoved += yplayer * block.getNx() * block.getNz();
+        block.resize(-yplayer, NbrDirection::YP);
+      }
+
+      // 5. ZN face, shrink along +z direction
+      int znlayer{};
+      for (int iz = 0; iz < block.getNz() - _Overlap; ++iz) {
+        // find if all cells on XY plane are OUTSIDE
+        bool alloutside = true;
+        for (int iy = 0; iy < block.getNy(); ++iy) {
+          for (int ix = 0; ix < block.getNx(); ++ix) {
+            const Vector<T, 3> vox = block.getVoxel(Vector<int, 3>{ix, iy, iz});
+            if (_FlagField[vox] != voidflag) {
+              alloutside = false;
+              goto zncheckalloutside;
+            }
+          }
+        }
+        zncheckalloutside:
+        if (!alloutside) {
+          break;
+        } else {
+          ++znlayer;
+        }
+      }
+      znlayer -= _Ext;
+      if (znlayer > 0) {
+        totalremoved += znlayer * block.getNx() * block.getNy();
+        block.resize(-znlayer, NbrDirection::ZN);
+      }
+
+      // 6. ZP face, shrink along -z direction
+      int zplayer{};
+      for (int iz = block.getNz() - 1; iz >= _Overlap; --iz) {
+        // find if all cells on XY plane are OUTSIDE
+        bool alloutside = true;
+        for (int iy = 0; iy < block.getNy(); ++iy) {
+          for (int ix = 0; ix < block.getNx(); ++ix) {
+            const Vector<T, 3> vox = block.getVoxel(Vector<int, 3>{ix, iy, iz});
+            if (_FlagField[vox] != voidflag) {
+              alloutside = false;
+              goto zpcheckalloutside;
+            }
+          }
+        }
+        zpcheckalloutside:
+        if (!alloutside) {
+          break;
+        } else {
+          ++zplayer;
+        }
+      }
+      zplayer -= _Ext;
+      if (zplayer > 0) {
+        totalremoved += zplayer * block.getNx() * block.getNy();
+        block.resize(-zplayer, NbrDirection::ZP);
+      }
+    }
+
   }
 
   std::size_t TotalR{};

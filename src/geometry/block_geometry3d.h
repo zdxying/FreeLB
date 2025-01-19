@@ -191,6 +191,123 @@ private:
 };
 
 template <typename T>
+class GeometryFlagField {
+  private:
+  // geometry info
+  int _Nx;
+  int _Ny;
+  int _Nz;
+  int _NxNy;
+  int _Ext;
+  // shift 1 in each direction
+  // avoid out-of-bound access when checking neighbors
+  int _Shift;
+  // voxel size
+  T _VoxelSize;
+  // min voxel position with extension
+  Vector<T, 3> _MinVoxel;
+  // flag field
+  std::uint8_t* _FlagField = nullptr;
+  std::uint8_t _VoidFlag = std::uint8_t{1};
+
+  void readOctree(Octree<T>* tree, std::uint8_t stlflag = std::uint8_t{2}) {
+    for (int z = 0; z < _Nz; ++z) {
+      for (int y = 0; y < _Ny; ++y) {
+        for (int x = 0; x < _Nx; ++x) {
+          const Vector<T, 3> vox = _MinVoxel + Vector<int, 3>{x, y, z} * _VoxelSize;
+          Octree<T>* node = tree->find(vox);
+          if (node != nullptr) {
+            if (node->isLeaf() && node->getInside())
+              _FlagField[z * _NxNy + y * _Nx + x + _Shift] = stlflag;
+          }
+        }
+      }
+    }
+  }
+
+  public:
+  GeometryFlagField() = default;
+  GeometryFlagField(const StlReader<T>& reader, int ext = 1, 
+    std::uint8_t stlflag = std::uint8_t{2}, 
+    std::uint8_t voidflag = std::uint8_t{1}) {
+      Init(reader, ext, stlflag, voidflag);
+    }
+  ~GeometryFlagField() {
+    if (_FlagField) delete[] _FlagField;
+  }
+
+  void Init(const StlReader<T>& reader, int ext = 1, 
+    std::uint8_t stlflag = std::uint8_t{2}, 
+    std::uint8_t voidflag = std::uint8_t{1}) {
+    _Nx = int(std::ceil(reader.getMesh().getMax_Min()[0] / reader.getVoxelSize())) + 2 * ext;
+    _Ny = int(std::ceil(reader.getMesh().getMax_Min()[1] / reader.getVoxelSize())) + 2 * ext;
+    _Nz = int(std::ceil(reader.getMesh().getMax_Min()[2] / reader.getVoxelSize())) + 2 * ext;
+    _NxNy = _Nx * _Ny;
+    _Ext = ext;
+    _Shift = _NxNy + _Nx + 1;
+    _VoxelSize = reader.getVoxelSize();
+    _MinVoxel = reader.getMesh().getMin() - ext * _VoxelSize / 2;
+    _VoidFlag = voidflag;
+    if (_FlagField) delete[] _FlagField;
+    const std::size_t actaulsize = (_Nx + 2) * (_Ny + 2) * (_Nz + 2);
+    _FlagField = new std::uint8_t[actaulsize];
+    std::fill(_FlagField, _FlagField + actaulsize, voidflag);
+    readOctree(reader.getTree(), stlflag);
+  }
+
+  std::uint8_t get(int x, int y, int z) const {
+    // boundary check
+    if (x < 0 || x >= _Nx || y < 0 || y >= _Ny || z < 0 || z >= _Nz) return _VoidFlag;
+    return _FlagField[z * _NxNy + y * _Nx + x + _Shift];
+  }
+  std::uint8_t operator[](const Vector<T, 3>& pos) const {
+    const int x = int(std::round((pos[0] - _MinVoxel[0]) / _VoxelSize));
+    const int y = int(std::round((pos[1] - _MinVoxel[1]) / _VoxelSize));
+    const int z = int(std::round((pos[2] - _MinVoxel[2]) / _VoxelSize));
+    return get(x, y, z);
+  }
+  void set(int x, int y, int z, std::uint8_t flag) {
+    // boundary check
+    if (x < 0 || x >= _Nx || y < 0 || y >= _Ny || z < 0 || z >= _Nz) return;
+    _FlagField[z * _NxNy + y * _Nx + x + _Shift] = flag;
+  }
+
+  template <typename LatSet>
+  void SetupBoundary(std::uint8_t fromvalue, std::uint8_t voidvalue, std::uint8_t bdvalue) {
+    // temp flag field store the transition flag
+    GenericArray<bool> TransFlag(_Nx*_Ny*_Nz, false);
+    // use 0 index, _FlagField is already extended, accessing neighbor cells is safe
+    for (int z = 0; z < _Nz; ++z) {
+      for (int y = 0; y < _Ny; ++y) {
+        for (int x = 0; x < _Nx; ++x) {
+          if (this->get(x, y, z) == fromvalue) {
+            for (unsigned int i = 1; i < LatSet::q; ++i) {
+              const int nx = x + latset::c<LatSet>(i)[0];
+              const int ny = y + latset::c<LatSet>(i)[1];
+              const int nz = z + latset::c<LatSet>(i)[2];
+              if (this->get(nx, ny, nz) == voidvalue) {
+                const std::size_t id = z * _NxNy + y * _Nx + x;
+                TransFlag.set(id, true);
+                break;
+              }
+            }
+          }
+        }
+      }
+    }
+  
+    for (int z = 0; z < _Nz; ++z) {
+      for (int y = 0; y < _Ny; ++y) {
+        for (int x = 0; x < _Nx; ++x) {
+          const std::size_t id = z * _NxNy + y * _Nx + x;
+          if (TransFlag[id]) this->set(x, y, z, bdvalue);
+        }
+      }
+    }
+  }
+};
+
+template <typename T>
 class BlockGeometryHelper3D : public BasicBlock<T, 3> {
   private:
   // base block
@@ -255,6 +372,8 @@ class BlockGeometryHelper3D : public BasicBlock<T, 3> {
 
   // pointer to stlreader
   const StlReader<T>* _Reader = nullptr;
+  // helper flag field
+  GeometryFlagField<T> _FlagField;
 
  public:
   // domain of Nx * Ny will be divided into (Nx/blocklen)*(Ny/blocklen) blocks
@@ -356,8 +475,13 @@ class BlockGeometryHelper3D : public BasicBlock<T, 3> {
   const BlockGeometry3D<T>& getBlockGeometry3D() const { return *_BlockGeometry3D; }
 #endif
 
+  GeometryFlagField<T>& getFlagField() { return _FlagField; }
+
   void CreateBlockCells();
+  // tag from stlreader
   void TagBlockCells(const StlReader<T>& reader);
+  // tag from helper flag field
+  void TagBlockCells(std::uint8_t voidflag = std::uint8_t{1});
   // find if one cell of the block is inside the octree
   bool IsInside(Octree<T>* tree, const BasicBlock<T, 3> &block) const;
   // find if one cell of the block is outside the octree
@@ -376,6 +500,8 @@ class BlockGeometryHelper3D : public BasicBlock<T, 3> {
   // shrink created BasicBlocks to fit geometry held by octree
   // this should be called after CreateBlocks(bool CreateFromInsideTag);
   void RemoveUnusedCells(const StlReader<T>& reader, bool outputinfo = true);
+  // remove cells using helper flag field
+  void RemoveUnusedCells(std::uint8_t voidflag = std::uint8_t{1}, bool outputinfo = true);
   // this works not well for complex geometry, may be removed
   void AddVoidCellLayer(const StlReader<T>& reader, bool outputinfo = true);
 
