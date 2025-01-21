@@ -307,6 +307,7 @@ class GeometryFlagField {
   }
 };
 
+
 template <typename T>
 class BlockGeometryHelper3D : public BasicBlock<T, 3> {
   private:
@@ -408,10 +409,8 @@ class BlockGeometryHelper3D : public BasicBlock<T, 3> {
   int getCellsNz() const { return CellsNz; }
 
   std::size_t getTotalBaseCellNum() {
-    std::size_t sum = 0;
-    for (BasicBlock<T, 3>& block : getAllBasicBlocks()) {
-      sum += block.getN();
-    }
+    std::size_t sum{};
+    for (BasicBlock<T, 3>& block : getAllBasicBlocks()) sum += block.getN();
     return sum;
   }
 
@@ -482,10 +481,6 @@ class BlockGeometryHelper3D : public BasicBlock<T, 3> {
   void TagBlockCells(const StlReader<T>& reader);
   // tag from helper flag field
   void TagBlockCells(std::uint8_t voidflag = std::uint8_t{1});
-  // find if one cell of the block is inside the octree
-  bool IsInside(Octree<T>* tree, const BasicBlock<T, 3> &block) const;
-  // find if one cell of the block is outside the octree
-  bool hasOutSideCell(Octree<T>* tree, const BasicBlock<T, 3> &block) const;
   // create block from BlockCells, this should be called after refinement
   void CreateBlocks(bool CreateFromInsideTag = false, bool outputinfo = true);
   // create blocks manually, if used, AdaptiveOptimization() is NOT necessary

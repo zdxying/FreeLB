@@ -1164,6 +1164,46 @@ void BlockGeometry3D<T>::BuildBlockIndexMap() {
 }
 
 
+// --- helper functions ---
+template <typename T>
+bool IsInside(Octree<T>* tree, const BasicBlock<T, 3> &block) {
+  for (int z = 0; z < block.getNz(); ++z) {
+    for (int y = 0; y < block.getNy(); ++y) {
+      for (int x = 0; x < block.getNx(); ++x) {
+        const Vector<T, 3> vox = block.getVoxel(Vector<int, 3>{x, y, z});
+        // get the node containing the voxel
+        Octree<T>* node = tree->find(vox);
+        if (node != nullptr) {
+          // check if it is a [leaf] node and if it is [inside]
+          if (node->isLeaf() && node->getInside()) {
+            return true;
+          }
+        }
+      }
+    }
+  }
+  return false;
+}
+template <typename T>
+bool hasOutSideCell(Octree<T>* tree, const BasicBlock<T, 3> &block) {
+  for (int z = 0; z < block.getNz(); ++z) {
+    for (int y = 0; y < block.getNy(); ++y) {
+      for (int x = 0; x < block.getNx(); ++x) {
+        const Vector<T, 3> vox = block.getVoxel(Vector<int, 3>{x, y, z});
+        // get the node containing the voxel
+        Octree<T>* node = tree->find(vox);
+        if (node == nullptr) {
+          return true;
+        } else if (node->isLeaf() && !node->getInside()) {
+          return true;
+        }
+      }
+    }
+  }
+  return false;
+}
+
+
 // BlockGeometryHelper3D
 #include "lbm/lattice_set.h"
 
@@ -1341,46 +1381,6 @@ void BlockGeometryHelper3D<T>::TagBlockCells(std::uint8_t voidflag) {
   }
 }
 
-template <typename T>
-bool BlockGeometryHelper3D<T>::IsInside(Octree<T>* tree, const BasicBlock<T, 3> &block) const {
-  for (int z = 0; z < block.getNz(); ++z) {
-    for (int y = 0; y < block.getNy(); ++y) {
-      for (int x = 0; x < block.getNx(); ++x) {
-        const Vector<int, 3> locidx{x, y, z};
-        const Vector<T, 3> vox = block.getVoxel(locidx);
-        // get the node containing the voxel
-        Octree<T>* node = tree->find(vox);
-        if (node != nullptr) {
-          // check if it is a [leaf] node and if it is [inside]
-          if (node->isLeaf() && node->getInside()) {
-            return true;
-          }
-        }
-      }
-    }
-  }
-  return false;
-}
-
-template <typename T>
-bool BlockGeometryHelper3D<T>::hasOutSideCell(Octree<T>* tree, const BasicBlock<T, 3> &block) const {
-  for (int z = 0; z < block.getNz(); ++z) {
-    for (int y = 0; y < block.getNy(); ++y) {
-      for (int x = 0; x < block.getNx(); ++x) {
-        const Vector<int, 3> locidx{x, y, z};
-        const Vector<T, 3> vox = block.getVoxel(locidx);
-        // get the node containing the voxel
-        Octree<T>* node = tree->find(vox);
-        if (node == nullptr) {
-          return true;
-        } else if (node->isLeaf() && !node->getInside()) {
-          return true;
-        }
-      }
-    }
-  }
-  return false;
-}
 
 template <typename T>
 void BlockGeometryHelper3D<T>::UpdateMaxLevel() {
@@ -1930,7 +1930,7 @@ bool MergeBlock(std::vector<BasicBlock<T, 3>> &Blocks,
 
 template <typename T>
 void MergeSmallBlocks(std::vector<BasicBlock<T, 3>> &Blocks, 
-  std::vector<std::vector<FaceNbrInfo>>& NbrInfos, T threshold = T{0.125}) {
+  std::vector<std::vector<FaceNbrInfo>>& NbrInfos, T threshold = T{0.25}) {
   // get total number of cells
   std::size_t Total{};
   for (const BasicBlock<T, 3> &block : Blocks) {
@@ -2036,6 +2036,7 @@ void ForcedMergeSmallBlocks(std::vector<BasicBlock<T, 3>> &Blocks,
 
 template <typename T>
 T BlockGeometryHelper3D<T>::IterateAndOptimizeImp(int ProcNum, int BlockCellLen) {
+  // ------ create blocks and remove unused cells ------
   // 1. initialize BlockGeometryHelper3D with BlockCellLen
   //    blockcells will be tagged with _FlagField instead of _Reader
   //    make sure that _FlagField is initialized before calling this function
@@ -2045,28 +2046,48 @@ T BlockGeometryHelper3D<T>::IterateAndOptimizeImp(int ProcNum, int BlockCellLen)
   // if (_Ext != 0) AddVoidCellLayer(*_Reader, false);
   // 3. remove unused cells using _FlagField
   RemoveUnusedCells(std::uint8_t{1}, false);
-  // 4. divide blocks into ProcNum parts, but will NOT enforce exactly ProcNum parts
-  //    even if the Blocks.size() > ProcNum, when one block has number of cells more than twice of the average
-  //    it will be divided into x parts, x = std::round(block.getN() / average)
-  Optimize(ProcNum, false, false);
   //    build face neighbor infos for current BlockCellLen
   std::vector<std::vector<FaceNbrInfo>> NbrInfos;
   std::vector<BasicBlock<T, 3>> &Blocks = getAllBasicBlocks();
-  // update block id
-  for (std::size_t i = 0; i < Blocks.size(); ++i) Blocks[i].setBlockId(i);
-  buildFaceNbrInfos(Blocks, NbrInfos);
+  
+  // ------ divide-merge loop ------
+  T maxRatio = T{2};
+  T minRatio = T{0.1};
+  int iter{};
+  while (maxRatio > T{1.2} && minRatio < T{0.5} && iter < 100) {
+    ++iter;
+  // 4. divide blocks into ProcNum parts, but will NOT enforce exactly ProcNum parts
+  //    even if the Blocks.size() > ProcNum, when one block has number of cells more than twice of the average
+  //    it will be divided into x parts, x = std::round(block.getN() / average)
+    Optimize(ProcNum, false, false);
+  //    update block id before building NbrInfos
+    for (std::size_t i = 0; i < Blocks.size(); ++i) Blocks[i].setBlockId(i);
+    buildFaceNbrInfos(Blocks, NbrInfos);
   // 5. merge small blocks, use default threshold = 0.125
   //    this step mainly aims to eleminate small blocks created in step 2: CreateBlocks()
   //    if Blocks.size() > ProcNum, ForcedMergeSmallBlocks() will enforce exactly ProcNum parts
   //    otherwise, MergeSmallBlocks() will not enforce exactly ProcNum parts, instead, this will be done in step 6
-  if (Blocks.size() > static_cast<std::size_t>(ProcNum)) 
-    ForcedMergeSmallBlocks(Blocks, NbrInfos, ProcNum);
-  else 
-    MergeSmallBlocks(Blocks, NbrInfos);
+    if (Blocks.size() > static_cast<std::size_t>(ProcNum)) 
+      ForcedMergeSmallBlocks(Blocks, NbrInfos, ProcNum);
+    else
+      MergeSmallBlocks(Blocks, NbrInfos);
   // 6. divide blocks again, this time enforce exactly ProcNum parts
-  Optimize(ProcNum, true, false);
+    Optimize(ProcNum, true, false);
   //    and remove unused cells using _FlagField
-  RemoveUnusedCells(std::uint8_t{1}, false);
+    RemoveUnusedCells(std::uint8_t{1}, false);
+  //    get max and min ratio
+    if (Blocks.size() != static_cast<std::size_t>(ProcNum)) continue;
+    std::size_t Total{};
+    for (const BasicBlock<T, 3> &block : Blocks) Total += block.getN();
+    std::size_t AverageN = Total / ProcNum;
+    for (const BasicBlock<T, 3> &block : Blocks) {
+      T ratio = static_cast<T>(block.getN()) / AverageN;
+      maxRatio = std::max(maxRatio, ratio);
+      minRatio = std::min(minRatio, ratio);
+    }
+  }
+
+  // ------ load optimization ------
   // 7. do load optimization, this will go beyond the limit of blockcells 
   //    and try to make the number of cells in each block as close as possible
   LoadOptimization(500, 0.01, false);
@@ -2079,7 +2100,8 @@ void BlockGeometryHelper3D<T>::IterateAndOptimize(int ProcNum, int MinBlockCellL
   T stdDev = std::numeric_limits<T>::max();
   int bestBlockCellLen = MinBlockCellLen;
   IF_MPI_RANK(0) {
-    std::cout << "[BlockGeometryHelper3D<T>::IterateAndOptimize]:" << std::endl;
+    std::cout << "[BlockGeometryHelper3D<T>::IterateAndOptimize]:\n"
+              << "  min BlockCellLen: " << MinBlockCellLen << ", max BlockCellLen: " << MaxBlockCellLen << std::endl;
     if (stepinfo) {
       std::cout << "  BlockCellLen | StdDev" << std::endl;
     }
