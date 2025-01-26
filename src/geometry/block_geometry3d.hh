@@ -1237,6 +1237,8 @@ BlockGeometryHelper3D<T>::BlockGeometryHelper3D(int Nx, int Ny, int Nz,
     CreateBlockCells();
   } else {
     std::vector<BasicBlock<T, 3>> &BasicBlocks = getAllOldBasicBlocks();
+    BasicBlocks.clear();
+    _Exchanged = !_Exchanged;
     BasicBlocks.push_back(_BaseBlock);
   }
 }
