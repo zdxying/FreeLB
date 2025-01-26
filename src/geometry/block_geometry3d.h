@@ -379,7 +379,7 @@ class BlockGeometryHelper3D : public BasicBlock<T, 3> {
  public:
   // domain of Nx * Ny will be divided into (Nx/blocklen)*(Ny/blocklen) blocks
   BlockGeometryHelper3D(int Nx, int Ny, int Nz, const AABB<T, 3>& AABBs, T voxelSize = T(1),
-                        int blockcelllen = 10, int olap = 1, int ext = 0, 
+                        int blockcelllen = 10, int olap = 1, int ext = 0, bool useblockcell = true,
                         std::uint8_t llimit = std::uint8_t(2));
   // olap is the num of overlapped cells between blocks
   // ext is the extension of the whole domain, used for creating solid cells after reading stl

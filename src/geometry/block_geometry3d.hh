@@ -1210,7 +1210,7 @@ bool hasOutSideCell(Octree<T>* tree, const BasicBlock<T, 3> &block) {
 template <typename T>
 BlockGeometryHelper3D<T>::BlockGeometryHelper3D(int Nx, int Ny, int Nz,
                                                 const AABB<T, 3> &AABBs, T voxelSize,
-                                                int blockcelllen, int olap, int ext, 
+                                                int blockcelllen, int olap, int ext, bool useblockcell,
                                                 std::uint8_t llimit)
   : BasicBlock<T, 3>(
       voxelSize, AABBs.getExtended(Vector<T, 3>{voxelSize * olap}),
@@ -1222,17 +1222,23 @@ BlockGeometryHelper3D<T>::BlockGeometryHelper3D(int Nx, int Ny, int Nz,
   if (BlockCellLen < 4) {
     std::cerr << "BlockGeometryHelper3D<T>, BlockCellLen < 4" << std::endl;
   }
-  CellsNx = std::ceil(T(_BaseBlock.getNx()) / T(BlockCellLen));
-  CellsNy = std::ceil(T(_BaseBlock.getNy()) / T(BlockCellLen));
-  CellsNz = std::ceil(T(_BaseBlock.getNz()) / T(BlockCellLen));
-  CellsN = CellsNx * CellsNy * CellsNz;
 
-  Vector<int, 3> Projection{1, CellsNx, CellsNx * CellsNy};
+  if (useblockcell){
+    CellsNx = std::ceil(T(_BaseBlock.getNx()) / T(BlockCellLen));
+    CellsNy = std::ceil(T(_BaseBlock.getNy()) / T(BlockCellLen));
+    CellsNz = std::ceil(T(_BaseBlock.getNz()) / T(BlockCellLen));
+    CellsN = CellsNx * CellsNy * CellsNz;
 
-  Delta_Cellidx = make_Array<int, D3Q27<T>::q - 1>(
-    [&](int i) { return D3Q27<T>::c[i + 1] * Projection; });
+    Vector<int, 3> Projection{1, CellsNx, CellsNx * CellsNy};
 
-  CreateBlockCells();
+    Delta_Cellidx = make_Array<int, D3Q27<T>::q - 1>(
+      [&](int i) { return D3Q27<T>::c[i + 1] * Projection; });
+
+    CreateBlockCells();
+  } else {
+    std::vector<BasicBlock<T, 3>> &BasicBlocks = getAllOldBasicBlocks();
+    BasicBlocks.push_back(_BaseBlock);
+  }
 }
 
 template <typename T>
