@@ -208,7 +208,6 @@ class GeometryFlagField {
   Vector<T, 3> _MinVoxel;
   // flag field
   std::uint8_t* _FlagField = nullptr;
-  std::uint8_t _VoidFlag = std::uint8_t{1};
 
   void readOctree(Octree<T>* tree, std::uint8_t stlflag = std::uint8_t{2}) {
     for (int z = 0; z < _Nz; ++z) {
@@ -226,6 +225,7 @@ class GeometryFlagField {
   }
 
   public:
+  std::uint8_t _VoidFlag = std::uint8_t{1};
   GeometryFlagField() = default;
   GeometryFlagField(const StlReader<T>& reader, int ext = 1, 
     std::uint8_t stlflag = std::uint8_t{2}, 
@@ -384,7 +384,8 @@ class BlockGeometryHelper3D : public BasicBlock<T, 3> {
   // olap is the num of overlapped cells between blocks
   // ext is the extension of the whole domain, used for creating solid cells after reading stl
   BlockGeometryHelper3D(const StlReader<T>& reader, int blockcelllen = 10, 
-                        int olap = 1, int ext = 0, std::uint8_t llimit = std::uint8_t(2));
+                        int olap = 1, int ext = 0, bool useblockcell = true, 
+                        std::uint8_t llimit = std::uint8_t(2));
   // construct blockgeometryhelper from blockreader
   BlockGeometryHelper3D(const BlockReader<T,3>& blockreader, bool useReaderOlap = true);
   ~BlockGeometryHelper3D() = default;
@@ -520,6 +521,11 @@ class BlockGeometryHelper3D : public BasicBlock<T, 3> {
   // and calculate the standard deviation of the number of cells in each block
   // the best blockcell length will be the one with the smallest standard deviation
   void IterateAndOptimize(int ProcNum, int MinBlockCellLen = 10, int MaxBlockCellLen = 100, bool stepinfo = true);
+
+  // recursive coordinate bisection based on _FlagField
+  // geometry is divided into exactly ProcNum blocks, ProcNum should be power of 2 for simplicity
+  // this will NOT use the _BlockCells
+  void RCBOptimization(int ProcNum, bool verbose = false);
 	
 	// optimize block's geometry to make each block has similar number of cells
 	// this should be the FINAL step before LoadBalancing() and should be called after RemoveUnusedCells()

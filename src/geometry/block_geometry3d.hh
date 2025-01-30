@@ -1245,7 +1245,7 @@ BlockGeometryHelper3D<T>::BlockGeometryHelper3D(int Nx, int Ny, int Nz,
 
 template <typename T>
 BlockGeometryHelper3D<T>::BlockGeometryHelper3D(const StlReader<T>& reader, int blockcelllen, 
-  int olap, int ext, std::uint8_t llimit)
+  int olap, int ext, bool useblockcell, std::uint8_t llimit)
   : BasicBlock<T, 3>(
       reader.getVoxelSize(), 
       reader.getMesh().getAABB().getExtended((olap+ext)*reader.getVoxelSize()),
@@ -1269,42 +1269,50 @@ BlockGeometryHelper3D<T>::BlockGeometryHelper3D(const StlReader<T>& reader, int 
   if (BlockCellLen < 4) {
     std::cerr << "BlockGeometryHelper3D<T>, BlockCellLen < 4" << std::endl;
   }
-  CellsNx = std::ceil(T(_BaseBlock.getNx()) / T(BlockCellLen));
-  CellsNy = std::ceil(T(_BaseBlock.getNy()) / T(BlockCellLen));
-  CellsNz = std::ceil(T(_BaseBlock.getNz()) / T(BlockCellLen));
-  CellsN = CellsNx * CellsNy * CellsNz;
 
-  // correct the mesh size by CellsNx, CellsNy, CellsNz
-  int NewNx = CellsNx * BlockCellLen;
-  int NewNy = CellsNy * BlockCellLen;
-  int NewNz = CellsNz * BlockCellLen;
-  T MeshSizeX = NewNx * _BaseBlock.getVoxelSize();
-  T MeshSizeY = NewNy * _BaseBlock.getVoxelSize();
-  T MeshSizeZ = NewNz * _BaseBlock.getVoxelSize();
+  if (useblockcell){
+    CellsNx = std::ceil(T(_BaseBlock.getNx()) / T(BlockCellLen));
+    CellsNy = std::ceil(T(_BaseBlock.getNy()) / T(BlockCellLen));
+    CellsNz = std::ceil(T(_BaseBlock.getNz()) / T(BlockCellLen));
+    CellsN = CellsNx * CellsNy * CellsNz;
 
-  // ext is already included in the _BaseBlock, CellsNx, CellsNy, CellsNz
-  static_cast<BasicBlock<T, 3>&>(*this) = BasicBlock<T, 3>(
-    reader.getVoxelSize(), 
-    AABB<T, 3>(reader.getMesh().getMin() - (olap+ext)*reader.getVoxelSize(), 
-               reader.getMesh().getMin() - (olap+ext)*reader.getVoxelSize() + Vector<T, 3>{MeshSizeX, MeshSizeY, MeshSizeZ} + 2*olap*reader.getVoxelSize()),
-    AABB<int, 3>(Vector<int, 3>{}, 
-                 Vector<int, 3>{NewNx + 2*olap-1, NewNy + 2*olap-1, NewNz + 2*olap-1}));
-  _BaseBlock = BasicBlock<T, 3>(
-    reader.getVoxelSize(), 
-    AABB<T, 3>(reader.getMesh().getMin() - ext*reader.getVoxelSize(), 
-               reader.getMesh().getMin() - ext*reader.getVoxelSize() + Vector<T, 3>{MeshSizeX, MeshSizeY, MeshSizeZ}),
-    AABB<int, 3>(Vector<int, 3>{olap}, 
-                 Vector<int, 3>{NewNx + olap-1, NewNy + olap-1, NewNz + olap-1}));
+    // correct the mesh size by CellsNx, CellsNy, CellsNz
+    int NewNx = CellsNx * BlockCellLen;
+    int NewNy = CellsNy * BlockCellLen;
+    int NewNz = CellsNz * BlockCellLen;
+    T MeshSizeX = NewNx * _BaseBlock.getVoxelSize();
+    T MeshSizeY = NewNy * _BaseBlock.getVoxelSize();
+    T MeshSizeZ = NewNz * _BaseBlock.getVoxelSize();
 
-  // end correct
+    // ext is already included in the _BaseBlock, CellsNx, CellsNy, CellsNz
+    static_cast<BasicBlock<T, 3>&>(*this) = BasicBlock<T, 3>(
+      reader.getVoxelSize(), 
+      AABB<T, 3>(reader.getMesh().getMin() - (olap+ext)*reader.getVoxelSize(), 
+                reader.getMesh().getMin() - (olap+ext)*reader.getVoxelSize() + Vector<T, 3>{MeshSizeX, MeshSizeY, MeshSizeZ} + 2*olap*reader.getVoxelSize()),
+      AABB<int, 3>(Vector<int, 3>{}, 
+                  Vector<int, 3>{NewNx + 2*olap-1, NewNy + 2*olap-1, NewNz + 2*olap-1}));
+    _BaseBlock = BasicBlock<T, 3>(
+      reader.getVoxelSize(), 
+      AABB<T, 3>(reader.getMesh().getMin() - ext*reader.getVoxelSize(), 
+                reader.getMesh().getMin() - ext*reader.getVoxelSize() + Vector<T, 3>{MeshSizeX, MeshSizeY, MeshSizeZ}),
+      AABB<int, 3>(Vector<int, 3>{olap}, 
+                  Vector<int, 3>{NewNx + olap-1, NewNy + olap-1, NewNz + olap-1}));
 
-  Vector<int, 3> Projection{1, CellsNx, CellsNx * CellsNy};
+    // end correct
 
-  Delta_Cellidx = make_Array<int, D3Q27<T>::q - 1>(
-    [&](int i) { return D3Q27<T>::c[i + 1] * Projection; });
+    Vector<int, 3> Projection{1, CellsNx, CellsNx * CellsNy};
 
-  CreateBlockCells();
-  TagBlockCells(reader);
+    Delta_Cellidx = make_Array<int, D3Q27<T>::q - 1>(
+      [&](int i) { return D3Q27<T>::c[i + 1] * Projection; });
+
+    CreateBlockCells();
+    TagBlockCells(reader);
+  } else {
+    std::vector<BasicBlock<T, 3>> &BasicBlocks = getAllOldBasicBlocks();
+    BasicBlocks.clear();
+    _Exchanged = !_Exchanged;
+    BasicBlocks.push_back(_BaseBlock);
+  }
 }
 
 template <typename T>
@@ -2153,6 +2161,184 @@ void BlockGeometryHelper3D<T>::IterateAndOptimize(int ProcNum, int MinBlockCellL
             << "  Min Block's CellNum: " << MinBlockCellNum << " \n"
             << "  StdDev:              " << stdDev << std::endl;
 }
+
+template <typename T>
+T ComputeBlockNStdDev(const std::vector<BasicBlock<T, 3>> &Blocks, const GeometryFlagField<T>& flagF) {
+  std::vector<std::size_t> Nvecs;
+  T mean{};
+  for (const BasicBlock<T, 3> &block : Blocks) {
+    std::size_t N{};
+    for (int z = 0; z < block.getNz(); ++z) {
+      for (int y = 0; y < block.getNy(); ++y) {
+        for (int x = 0; x < block.getNx(); ++x) {
+          const Vector<T, 3> vox = block.getVoxel(Vector<int, 3>{x, y, z});
+          if (flagF[vox] != flagF._VoidFlag) ++N;
+        }
+      }
+    }
+    Nvecs.push_back(N);
+    mean += static_cast<T>(N);
+  }
+  mean /= Blocks.size();
+  T stdDev{};
+  for (std::size_t N : Nvecs) {
+    stdDev += std::pow((static_cast<T>(N) / mean - T(1)), 2);
+  }
+  stdDev = std::sqrt(stdDev / Blocks.size());
+  return stdDev;
+}
+
+template <typename T>
+void buildSAT(int dir, const BasicBlock<T, 3>& block,
+  const GeometryFlagField<T>& flagF, std::vector<std::size_t> &SAT) {
+  SAT.clear();
+  const int Nx = block.getNx();
+  const int Ny = block.getNy();
+  const int Nz = block.getNz();
+  const std::uint8_t voidflag = flagF._VoidFlag;
+  if (dir == 0) {
+    SAT.reserve(Nx);
+    for (int x = 0; x < Nx; ++x) {
+      std::size_t sum{};
+      for (int z = 0; z < Nz; ++z) {
+        for (int y = 0; y < Ny; ++y) {
+          const Vector<T, 3> vox = block.getVoxel(Vector<int, 3>{x, y, z});
+          if (flagF[vox] != voidflag) ++sum; 
+        }
+      }
+      SAT.push_back(sum);
+    }
+  } else if (dir == 1) {
+    SAT.reserve(Ny);
+    for (int y = 0; y < Ny; ++y) {
+      std::size_t sum{};
+      for (int z = 0; z < Nz; ++z) {
+        for (int x = 0; x < Nx; ++x) {
+          const Vector<T, 3> vox = block.getVoxel(Vector<int, 3>{x, y, z});
+          if (flagF[vox] != voidflag) ++sum; 
+        }
+      }
+      SAT.push_back(sum);
+    }
+  } else if (dir == 2) {
+    SAT.reserve(Nz);
+    for (int z = 0; z < Nz; ++z) {
+      std::size_t sum{};
+      for (int y = 0; y < Ny; ++y) {
+        for (int x = 0; x < Nx; ++x) {
+          const Vector<T, 3> vox = block.getVoxel(Vector<int, 3>{x, y, z});
+          if (flagF[vox] != voidflag) ++sum; 
+        }
+      }
+      SAT.push_back(sum);
+    }
+  }
+}
+
+template <typename T>
+void cobisectImpl(BasicBlock<T, 3>& originBlock, std::vector<BasicBlock<T, 3>>& divideBlocks, 
+  const GeometryFlagField<T>& flagF) {
+  // 1. find the longest edge: 0 -> x, 1 -> y, 2 -> z
+  int longestEdge = 2;
+  NbrDirection dir = NbrDirection::ZN;
+  int maxEdgeLen = originBlock.getNz();
+  if (originBlock.getNy() > maxEdgeLen) {
+    longestEdge = 1;
+    dir = NbrDirection::YN;
+    maxEdgeLen = originBlock.getNy();
+  }
+  if (originBlock.getNx() > maxEdgeLen) {
+    longestEdge = 0;
+    dir = NbrDirection::XN;
+    maxEdgeLen = originBlock.getNx();
+  }
+  // 2. build the SAT of the longest edge from originBlock
+  std::vector<std::size_t> SAT;
+  buildSAT(longestEdge, originBlock, flagF, SAT);
+  // 3. divide the block along the longest edge into 2 parts
+  //    get the total number of cells and half total number of cells
+  std::size_t total{};
+  for (std::size_t i : SAT) total += i;
+  std::size_t halftotal = total / 2;
+  //   find the index where the sum of SAT is larger than halftotal
+  std::size_t sum{};
+  int idx{};
+  for (std::size_t i = 0; i < SAT.size(); ++i) {
+    sum += SAT[i];
+    ++idx;
+    if (sum > halftotal) break;
+  }
+  //    find which one is closer to halftotal
+  if (idx > 0) {
+    if (sum - halftotal > halftotal - sum + SAT[idx - 1]) --idx;
+  }
+  //    perform division
+  int restidx = maxEdgeLen - idx;
+  BasicBlock<T, 3> divideBlock1 = originBlock;
+  BasicBlock<T, 3> divideBlock2 = originBlock;
+  divideBlock1.resize(-restidx, getOpposite(dir));
+  divideBlock2.resize(-idx, dir);
+  //    add divideBlocks
+  divideBlocks.push_back(divideBlock1);
+  divideBlocks.push_back(divideBlock2);
+}
+
+template <typename T>
+void cobisect(std::vector<BasicBlock<T, 3>>& originBlocks, std::vector<BasicBlock<T, 3>>& divideBlocks, 
+  const GeometryFlagField<T>& flagF) {
+  for(BasicBlock<T, 3>& block : originBlocks) {
+    cobisectImpl(block, divideBlocks, flagF);
+  }
+}
+
+template <typename T>
+void BlockGeometryHelper3D<T>::RCBOptimization(int ProcNum, bool verbose) {
+  // 0. check if the ProcNum is power of 2 
+  //    and decide number of iterations
+  int ProcNumx = 1;
+  int iter{};
+  for (;ProcNumx < ProcNum;) {
+    ++iter;
+    ProcNumx *= 2;
+  }
+  if (ProcNumx != ProcNum) {
+    IF_MPI_RANK(0) {
+      std::cerr << "[BlockGeometryHelper3D<T>::RCBOptimization]: ProcNum must be power of 2" << std::endl;
+    }
+    exit(1);
+  }
+  
+  std::vector<BasicBlock<T, 3>> originBlocks;
+  originBlocks.push_back(_BaseBlock);
+  std::vector<BasicBlock<T, 3>> divideBlocks;
+  //    recursively divide blocks
+  for (int i = 0; i < iter; ++i) {
+    divideBlocks.clear();
+    cobisect(originBlocks, divideBlocks, _FlagField);
+    //  update originBlocks and divideBlocks
+    originBlocks.clear();
+    originBlocks = divideBlocks;
+  }
+  // 4. add divideBlocks to Blocks
+  std::vector<BasicBlock<T, 3>> &BasicBlocks = getAllBasicBlocks();
+  BasicBlocks.clear();
+  BasicBlocks = divideBlocks;
+
+  // 5. remove unused cells
+  RemoveUnusedCells(std::uint8_t{1}, false);
+  //    update block id
+  for (std::size_t i = 0; i < BasicBlocks.size(); ++i) {
+    BasicBlocks[i].setBlockId(i);
+  }
+
+  // 6. output info
+  T stddev = ComputeBlockNStdDev(BasicBlocks, _FlagField);
+  IF_MPI_RANK(0) {
+    std::cout << "[BlockGeometryHelper3D<T>::RCBOptimization]:\n"
+              << "  BlockNum: " << BasicBlocks.size() << "  with StdDev: " << stddev << std::endl;
+  }
+}
+
 
 template <typename T>
 void BlockGeometryHelper3D<T>::LoadOptimization(int maxiter, T tolstddev, bool outputinfo) {
