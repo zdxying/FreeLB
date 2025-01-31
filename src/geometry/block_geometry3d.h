@@ -172,7 +172,7 @@ class BlockGeometry3D : public BasicBlock<T, 3> {
   // construct uniform/ refined blockgeometry from GeoHelper and a vector of BasicBlock<T, 2>
   // for mpi communication with direction info 
   BlockGeometry3D(BlockGeometryHelper3D<T>& GeoHelper, 
-  std::vector<BasicBlock<T, 3>>& BasicBlocks);
+  std::vector<BasicBlock<T, 3>>& BasicBlocks, bool useHelperOlap = true);
 
   void InitMPIComm(BlockGeometryHelper3D<T>& GeoHelper);
   // Low level block(coarse) get info from High level block(fine) using average
@@ -544,7 +544,7 @@ class BlockGeometryHelper3D : public BasicBlock<T, 3> {
   // call this after LoadBalancing()
   void SetupMPINbrs();
   // construct BlockGeometry2D from BlockGeometryHelper2D's this pointer
-  void InitBlockGeometry3D();
+  void InitBlockGeometry3D(bool useHelperOlap = true);
   // find which rank the block belongs to
   int whichRank(int blockid);
 #endif

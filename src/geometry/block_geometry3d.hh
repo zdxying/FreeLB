@@ -189,7 +189,7 @@ BlockGeometry3D<T>::BlockGeometry3D(BlockGeometryHelper3D<T> &GeoHelper, bool us
   SetupNbrs();
   InitAllComm();
 #ifdef MPI_ENABLED
-  GeoHelper.InitBlockGeometry3D();
+  GeoHelper.InitBlockGeometry3D(useHelperOlap);
   InitAllMPIComm(GeoHelper);
 #endif
   PrintInfo();
@@ -502,12 +502,17 @@ void BlockGeometry3D<T>::InitAllComm() {
 
 template <typename T>
 BlockGeometry3D<T>::BlockGeometry3D(BlockGeometryHelper3D<T> &GeoHelper, 
-std::vector<BasicBlock<T, 3>>& BasicBlocks)
+std::vector<BasicBlock<T, 3>>& BasicBlocks, bool useHelperOlap)
     : BasicBlock<T, 3>(GeoHelper), _BaseBlock(GeoHelper.getBaseBlock()), 
       _overlap(GeoHelper.getOverlap()), _MaxLevel(GeoHelper.getMaxLevel()) {
   // create blocks from GeoHelper
   for (BasicBlock<T, 3>& baseblock : BasicBlocks) {
-    int overlap = (baseblock.getLevel() != std::uint8_t(0)) ? 2 : 1;
+    int overlap{};
+    if (useHelperOlap) {
+      overlap = _overlap;
+    } else {
+      overlap = (baseblock.getLevel() != std::uint8_t(0)) ? 2 : 1;
+    }
     _Blocks.emplace_back(baseblock, overlap);
     _BasicBlocks.emplace_back(baseblock);
   }
@@ -2745,8 +2750,8 @@ void BlockGeometryHelper3D<T>::SetupMPINbrs() {
 }
 
 template <typename T>
-void BlockGeometryHelper3D<T>::InitBlockGeometry3D() {
-  _BlockGeometry3D = std::make_unique<BlockGeometry3D<T>>(*this, getAllBasicBlocks());
+void BlockGeometryHelper3D<T>::InitBlockGeometry3D(bool useHelperOlap) {
+  _BlockGeometry3D = std::make_unique<BlockGeometry3D<T>>(*this, getAllBasicBlocks(), useHelperOlap);
 }
 
 template <typename T>
