@@ -153,6 +153,11 @@ struct BaseConverter final : public AbstractConverter<T> {
   T getOMEGA() const override { return OMEGA; }
   T getLatticeRho(T rho_phys) const override { return rho_phys / Conv_rho; }
   T getLatRhoInit() const override { return T(1); }
+  // = getPhysStrainRate()
+  T getLatTime(T Phys_Time) const { return Phys_Time / deltaT; }
+  // = getPhysTime()
+  T getLatStrainRate(T Phys_StrainRate) const { return Phys_StrainRate * deltaT; }
+  T getLatVisKine(T Phys_VisKine) const { return Phys_VisKine / Conv_VisKine; }
 
   // U method
   T getLatticeU(T U_phys) const override { return U_phys / Conv_U; }
@@ -167,8 +172,11 @@ struct BaseConverter final : public AbstractConverter<T> {
   }
 
   T getPhysRho(T Lattice_rho) const override { return Lattice_rho * Conv_rho; }
+  // = getLatStrainRate()
   T getPhysTime(T Lattice_Time) { return Lattice_Time * deltaT; }
+  // = getLatTime()
   T getPhysStrainRate(T Lattice_StrainRate) { return Lattice_StrainRate / deltaT; }
+  T getPhysVisKine(T Lattice_VisKine) { return Lattice_VisKine * Conv_VisKine; }
   /*--------------------Basic Converters--------------------*/
   void Converter(T deltaX_, T deltaT_, T rho_, T charL_, T charU_, T VisKine_,
                  T charP_ = T(0)) {
