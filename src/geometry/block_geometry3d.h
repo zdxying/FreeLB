@@ -522,11 +522,18 @@ class BlockGeometryHelper3D : public BasicBlock<T, 3> {
   // the best blockcell length will be the one with the smallest standard deviation
   void IterateAndOptimize(int ProcNum, int MinBlockCellLen = 10, int MaxBlockCellLen = 100, bool stepinfo = true);
 
-  // recursive coordinate bisection based on _FlagField
+  // recursive coordinate bisection along longest axis based on _FlagField
   // geometry is divided into exactly ProcNum blocks, ProcNum should be power of 2 for simplicity
   // this will NOT use the _BlockCells
   void RCBOptimization(int ProcNum, bool verbose = false);
-	
+
+  // (triple) recursive coordinate bisection along z - y - x axis based on _FlagField
+  // one z - y - x bisection makes 8 blocks of similar length ratio with the original block
+  // to get the minimal communication overhead
+  // geometry is divided into exactly ProcNum blocks, ProcNum should be power of 8 for best result
+  // this will NOT use the _BlockCells
+	void TRCBOptimization(int ProcNum, bool verbose = false);
+
 	// optimize block's geometry to make each block has similar number of cells
 	// this should be the FINAL step before LoadBalancing() and should be called after RemoveUnusedCells()
 	// LoadOptimization() will NOT create or delete blocks, it changes the position and size of blocks

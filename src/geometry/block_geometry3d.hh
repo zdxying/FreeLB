@@ -2289,10 +2289,65 @@ void cobisectImpl(BasicBlock<T, 3>& originBlock, std::vector<BasicBlock<T, 3>>& 
 }
 
 template <typename T>
+void cobisectImpl(int Edge, BasicBlock<T, 3>& originBlock, std::vector<BasicBlock<T, 3>>& divideBlocks, 
+  const GeometryFlagField<T>& flagF) {
+  // 1. find which edge
+  NbrDirection dir = NbrDirection::NONE;
+  int maxEdgeLen = originBlock.getMesh()[Edge];
+  if (Edge == 0) {
+    dir = NbrDirection::XN;
+  } else if (Edge == 1) {
+    dir = NbrDirection::YN;
+  } else if (Edge == 2) {
+    dir = NbrDirection::ZN;
+  } else {
+    IF_MPI_RANK(0) {std::cerr << "[cobisectImpl]: Edge must be 0, 1 or 2" << std::endl;}
+    exit(1);
+  }
+  // 2. build the SAT of the longest edge from originBlock
+  std::vector<std::size_t> SAT;
+  buildSAT(Edge, originBlock, flagF, SAT);
+  // 3. divide the block along the longest edge into 2 parts
+  //    get the total number of cells and half total number of cells
+  std::size_t total{};
+  for (std::size_t i : SAT) total += i;
+  std::size_t halftotal = total / 2;
+  //   find the index where the sum of SAT is larger than halftotal
+  std::size_t sum{};
+  int idx{};
+  for (std::size_t i = 0; i < SAT.size(); ++i) {
+    sum += SAT[i];
+    ++idx;
+    if (sum > halftotal) break;
+  }
+  //    find which one is closer to halftotal
+  if (idx > 0) {
+    if (sum - halftotal > halftotal - sum + SAT[idx - 1]) --idx;
+  }
+  //    perform division
+  int restidx = maxEdgeLen - idx;
+  BasicBlock<T, 3> divideBlock1 = originBlock;
+  BasicBlock<T, 3> divideBlock2 = originBlock;
+  divideBlock1.resize(-restidx, getOpposite(dir));
+  divideBlock2.resize(-idx, dir);
+  //    add divideBlocks
+  divideBlocks.push_back(divideBlock1);
+  divideBlocks.push_back(divideBlock2);
+}
+
+template <typename T>
 void cobisect(std::vector<BasicBlock<T, 3>>& originBlocks, std::vector<BasicBlock<T, 3>>& divideBlocks, 
   const GeometryFlagField<T>& flagF) {
   for(BasicBlock<T, 3>& block : originBlocks) {
     cobisectImpl(block, divideBlocks, flagF);
+  }
+}
+
+template <typename T>
+void cobisect(int Edge, std::vector<BasicBlock<T, 3>>& originBlocks, std::vector<BasicBlock<T, 3>>& divideBlocks, 
+  const GeometryFlagField<T>& flagF) {
+  for(BasicBlock<T, 3>& block : originBlocks) {
+    cobisectImpl(Edge, block, divideBlocks, flagF);
   }
 }
 
@@ -2318,6 +2373,65 @@ void BlockGeometryHelper3D<T>::RCBOptimization(int ProcNum, bool verbose) {
   std::vector<BasicBlock<T, 3>> divideBlocks;
   //    recursively divide blocks
   for (int i = 0; i < iter; ++i) {
+    divideBlocks.clear();
+    cobisect(originBlocks, divideBlocks, _FlagField);
+    //  update originBlocks and divideBlocks
+    originBlocks.clear();
+    originBlocks = divideBlocks;
+  }
+  // 4. add divideBlocks to Blocks
+  std::vector<BasicBlock<T, 3>> &BasicBlocks = getAllBasicBlocks();
+  BasicBlocks.clear();
+  BasicBlocks = divideBlocks;
+
+  // 5. remove unused cells
+  RemoveUnusedCells(std::uint8_t{1}, false);
+  //    update block id
+  for (std::size_t i = 0; i < BasicBlocks.size(); ++i) {
+    BasicBlocks[i].setBlockId(i);
+  }
+
+  // 6. output info
+  T stddev = ComputeBlockNStdDev(BasicBlocks, _FlagField);
+  IF_MPI_RANK(0) {
+    std::cout << "[BlockGeometryHelper3D<T>::RCBOptimization]:\n"
+              << "  BlockNum: " << BasicBlocks.size() << "  with StdDev: " << stddev << std::endl;
+  }
+}
+
+template <typename T>
+void BlockGeometryHelper3D<T>::TRCBOptimization(int ProcNum, bool verbose) {
+  // 0. check if the ProcNum is power of 2 
+  //    and decide number of iterations
+  int ProcNumx = 1;
+  int iter{};
+  for (;ProcNumx < ProcNum;) {
+    ++iter;
+    ProcNumx *= 2;
+  }
+  if (ProcNumx != ProcNum) {
+    IF_MPI_RANK(0) {
+      std::cerr << "[BlockGeometryHelper3D<T>::RCBOptimization]: ProcNum must be power of 2" << std::endl;
+    }
+    exit(1);
+  }
+  int titer = iter / 3;
+  int riter = iter - titer * 3;
+  
+  std::vector<BasicBlock<T, 3>> originBlocks;
+  originBlocks.push_back(_BaseBlock);
+  std::vector<BasicBlock<T, 3>> divideBlocks;
+  //    recursively divide blocks
+  for (int i = 0; i < titer; ++i) {
+    for (int j = 2; j >= 0; --j) {
+      divideBlocks.clear();
+      cobisect(j, originBlocks, divideBlocks, _FlagField);
+      //  update originBlocks and divideBlocks
+      originBlocks.clear();
+      originBlocks = divideBlocks;
+    }
+  }
+  for (int i = 0; i < riter; ++i) {
     divideBlocks.clear();
     cobisect(originBlocks, divideBlocks, _FlagField);
     //  update originBlocks and divideBlocks
