@@ -1313,6 +1313,30 @@ BlockGeometryHelper3D<T>::BlockGeometryHelper3D(const StlReader<T>& reader, int 
     CreateBlockCells();
     TagBlockCells(reader);
   } else {
+    // even if we do not use block cell, BasicBlock<T, 3> and _BaseBlock should be corrected
+    // to make mesh size = integer multiple of voxel size
+    const int Nx = _BaseBlock.getNx();
+    const int Ny = _BaseBlock.getNy();
+    const int Nz = _BaseBlock.getNz();
+    const T voxsize = _BaseBlock.getVoxelSize();
+    const T meshNx = Nx * voxsize;
+    const T meshNy = Ny * voxsize;
+    const T meshNz = Nz * voxsize;
+
+    static_cast<BasicBlock<T, 3>&>(*this) = BasicBlock<T, 3>(
+      voxsize, 
+      AABB<T, 3>(reader.getMesh().getMin() - (olap+ext)*voxsize, 
+                reader.getMesh().getMin() - (olap+ext)*voxsize + Vector<T, 3>{meshNx, meshNy, meshNz} + 2*olap*voxsize),
+      AABB<int, 3>(Vector<int, 3>{}, 
+                  Vector<int, 3>{Nx + 2*olap-1, Ny + 2*olap-1, Nz + 2*olap-1}));
+    
+    _BaseBlock = BasicBlock<T, 3>(
+      voxsize, 
+      AABB<T, 3>(reader.getMesh().getMin() - ext*voxsize, 
+                reader.getMesh().getMin() - ext*voxsize + Vector<T, 3>{meshNx, meshNy, meshNz}),
+      AABB<int, 3>(Vector<int, 3>{olap}, 
+                  Vector<int, 3>{Nx + olap-1, Ny + olap-1, Nz + olap-1}));
+
     std::vector<BasicBlock<T, 3>> &BasicBlocks = getAllOldBasicBlocks();
     BasicBlocks.clear();
     _Exchanged = !_Exchanged;
@@ -2353,7 +2377,7 @@ void cobisect(int Edge, std::vector<BasicBlock<T, 3>>& originBlocks, std::vector
 
 template <typename T>
 void BlockGeometryHelper3D<T>::RCBOptimization(int ProcNum, bool verbose) {
-  // 0. check if the ProcNum is power of 2 
+  // 1. check if the ProcNum is power of 2 
   //    and decide number of iterations
   int ProcNumx = 1;
   int iter{};
@@ -2371,7 +2395,7 @@ void BlockGeometryHelper3D<T>::RCBOptimization(int ProcNum, bool verbose) {
   std::vector<BasicBlock<T, 3>> originBlocks;
   originBlocks.push_back(_BaseBlock);
   std::vector<BasicBlock<T, 3>> divideBlocks;
-  //    recursively divide blocks
+  // 2. recursively divide blocks
   for (int i = 0; i < iter; ++i) {
     divideBlocks.clear();
     cobisect(originBlocks, divideBlocks, _FlagField);
@@ -2379,17 +2403,17 @@ void BlockGeometryHelper3D<T>::RCBOptimization(int ProcNum, bool verbose) {
     originBlocks.clear();
     originBlocks = divideBlocks;
   }
-  // 4. add divideBlocks to Blocks
+  // 3. add divideBlocks to Blocks
   std::vector<BasicBlock<T, 3>> &BasicBlocks = getAllBasicBlocks();
   BasicBlocks.clear();
   BasicBlocks = divideBlocks;
 
-  // 5. remove unused cells
-  RemoveUnusedCells(std::uint8_t{1}, false);
-  //    update block id
+  // 4. update block id
   for (std::size_t i = 0; i < BasicBlocks.size(); ++i) {
     BasicBlocks[i].setBlockId(i);
   }
+  // 5. remove unused cells
+  RemoveUnusedCells(std::uint8_t{1}, true);
 
   // 6. output info
   T stddev = ComputeBlockNStdDev(BasicBlocks, _FlagField);
