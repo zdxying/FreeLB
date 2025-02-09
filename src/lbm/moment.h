@@ -63,6 +63,9 @@ struct useFieldU {
   __any__ static inline void apply(CELL& cell, Vector<T, LatSet::d>& u) {
     u = cell.template get<VELOCITY<T, LatSet::d>>();
   }
+  __any__ static inline void apply(CELL& cell, T& rho, Vector<T, LatSet::d>& u) {
+    u = cell.template get<VELOCITY<T, LatSet::d>>();
+  }
 };
 
 template <typename CELLTYPE>
@@ -171,6 +174,9 @@ struct rho {
   }
 
   __any__ static inline void apply(CELL& cell, T& rho_value) {
+    rhoImpl<CELL, WriteToField>::apply(cell, rho_value);
+  }
+  __any__ static inline void apply(CELL& cell, T& rho_value, Vector<T, LatSet::d>& u_value) {
     rhoImpl<CELL, WriteToField>::apply(cell, rho_value);
   }
 };

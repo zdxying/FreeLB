@@ -283,6 +283,10 @@ struct TempConverter final : public AbstractConverter<T> {
     }
     return Lattice_T;
   }
+  // normalized temperature wothout check
+  T getLatRho(T T_phys) const {
+    return (T_phys - Tl) / Conv_dT;
+  }
   T getLatRhoInit() const override { return Lattice_TInit; }
   T getPhysRho(T Lattice_T) const override { return Lattice_T * Conv_dT + Tl; }
   T getLatticeDTemp(T dT_phys) { return dT_phys / Conv_dT; }
