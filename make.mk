@@ -76,3 +76,10 @@ omp: all
 mpi: FLAGS += -DMPI_ENABLED
 mpi: CXXC := mpic++
 mpi: all
+
+#-------------time----------------
+time: 
+	@echo "Starting timed compilation..."
+	@/usr/bin/time -f "User time: %U\nSystem time: %S\nElapsed time: %E\nCPU usage: %P" $(MAKE) all
+# $(MAKE) all
+# $(MAKECMDGOALS)
