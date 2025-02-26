@@ -176,15 +176,14 @@ int main() {
   using BBTask = tmp::Key_TypePair<BouncebackFlag, collision::BounceBack<CELL>>;
   using BBMVTask = tmp::Key_TypePair<BBMovingWallFlag, collision::BounceBackMovingWall<CELL>>;
   // task collection
-  // using TaskCollection = tmp::TupleWrapper<BulkTask, WallTask>;
-  using TaskCollection = tmp::TupleWrapper<BulkTask, BBTask, BBMVTask>;
+  // using TaskCollection = tmp::TupleWrapper<BulkTask, BBTask, BBMVTask>;
   // task executor
-  using NSTask = tmp::TaskSelector<TaskCollection, std::uint8_t, CELL>;
+  // using NSTask = tmp::TaskSelector<TaskCollection, std::uint8_t, CELL>;
+  using NSTask = TaskSelector<std::uint8_t, CELL, BulkTask, BBTask, BBMVTask>;
 
   // task: update rho and u
-  using RhoUTask = tmp::Key_TypePair<AABBFlag, moment::rhoU<CELL>>;
-  using TaskCollectionRhoU = tmp::TupleWrapper<RhoUTask>;
-  using TaskSelectorRhoU = tmp::TaskSelector<TaskCollectionRhoU, std::uint8_t, CELL>;
+  using RhoUtask = tmp::Key_TypePair<AABBFlag, moment::rhoU<CELL>>;
+  using RhoUTask = TaskSelector<std::uint8_t, CELL, RhoUtask>;
 
   // writers
   // vtmwriter::ScalarWriter RhoWriter("Rho", NSLattice.getField<RHO<T>>());
@@ -215,9 +214,9 @@ int main() {
     
     NSLattice.Stream();
 
-    // BM.Apply(MainLoopTimer());
+    // BM.Apply();
 
-    // NSLattice.Communicate(MainLoopTimer());
+    // NSLattice.Communicate();
 
     ++MainLoopTimer;
   }
@@ -225,7 +224,6 @@ int main() {
 
   Printer::Print_BigBanner(std::string("Calculation Complete!"));
   MainLoopTimer.Print_MainLoopPerformance(Geo.getTotalCellNum());
-  Printer::Print("Total PhysTime", BaseConv.getPhysTime(MainLoopTimer()));
   Printer::Endl();
 
   return 0;
