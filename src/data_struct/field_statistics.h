@@ -32,6 +32,7 @@ private:
 public:
 	using FieldDataType = typename BLOCKFIELDMANAGER::datatype;
 	using FloatType = typename BLOCKFIELDMANAGER::float_type;
+	static constexpr unsigned int dim = BLOCKFIELDMANAGER::dim;
 
 	FieldStatistics(const BLOCKFIELDMANAGER& bfm) : BFM(bfm) {}
 
@@ -104,6 +105,92 @@ public:
 	return TotalSum;
 	}
 
+	// get the average value of a field
+	template<typename FieldType, typename FlagType>
+	FieldDataType getAverage(const BlockFieldManager<FieldType, FloatType, dim>& FlagFM, FlagType flag, std::size_t fieldidx = 0, bool useolap = true) const {
+		FieldDataType TotalSum{};
+		mpi().barrier();
+
+		if (useolap) {
+#ifdef _OPENMP
+#pragma omp parallel for num_threads(Thread_Num) schedule(static) reduction(+ : TotalSum)
+#endif
+			for (std::size_t iField = 0; iField < BFM.getBlockFields().size(); ++iField) {
+				const auto& blockfield = BFM.getBlockField(iField);
+				const auto& field = blockfield.getFieldType().getField(fieldidx);
+				const auto& blockxd = blockfield.getBlock();
+				const int overlap = blockxd.getOverlap();
+				const int Nx = blockxd.getNx();
+				const int Ny = blockxd.getNy();
+				const int Nz = blockxd.getNz();
+
+				const auto& flagf = FlagFM.getBlockField(iField).getFieldType().getField(fieldidx);
+
+				FieldDataType sum{};
+				std::size_t size{};
+				std::size_t id{};
+				if constexpr (BLOCKFIELDMANAGER::dim == 2) {
+						for (int j = overlap; j < Ny - overlap; ++j) {
+							id = j * Nx + overlap;
+							for (int i = overlap; i < Nx - overlap; ++i) {
+								if (util::isFlag(flagf[id], flag)) {
+									sum += field[id];
+									++size;
+								}
+								++id;
+						}
+					}
+				} else if constexpr (BLOCKFIELDMANAGER::dim == 3) {
+					std::size_t NxNy = Nx * Ny;
+					for (int k = overlap; k < Nz - overlap; ++k) {
+						for (int j = overlap; j < Ny - overlap; ++j) {
+							id = k * NxNy + j * Nx + overlap;
+							for (int i = overlap; i < Nx - overlap; ++i) {
+								if (util::isFlag(flagf[id], flag)) {
+									sum += field[id];
+									++size;
+								}
+								++id;
+							}
+						}
+					}
+				}
+
+				FieldDataType temp = size == 0 ? FieldDataType{} : sum/size;
+				TotalSum += temp;
+			}
+		} else {
+#ifdef _OPENMP
+#pragma omp parallel for num_threads(Thread_Num) schedule(static) reduction(+ : TotalSum)
+#endif
+			for (std::size_t iField = 0; iField < BFM.getBlockFields().size(); ++iField) {
+				const auto& blockfield = BFM.getBlockField(iField);
+				const auto& field = blockfield.getFieldType().getField(fieldidx);
+				const std::size_t fieldsize = field.size();
+
+				const auto& flagf = FlagFM.getBlockField(iField).getFieldType().getField(fieldidx);
+
+				std::size_t size{};
+				FieldDataType sum{};
+				for (std::size_t id = 0; id < fieldsize; ++id) {
+					if (util::isFlag(flagf[id], flag)) {
+						sum += field[id];
+						++size;
+					}
+				}
+
+				FieldDataType temp = size == 0 ? FieldDataType{} : sum/size;
+				TotalSum += temp;
+			}
+		}
+
+		TotalSum /= BFM.size();
+#ifdef MPI_ENABLED
+		mpi().reduceAndBcast(TotalSum, MPI_SUM);
+		TotalSum /= mpi().getSize();
+#endif
+	return TotalSum;
+	}
 
 	// get the maximum value of a field
 	FieldDataType getMax(std::size_t fieldidx = 0, bool useolap = true) const {
