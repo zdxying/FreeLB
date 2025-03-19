@@ -589,8 +589,10 @@ struct strainRate {
   __any__ static inline void apply(CELL& cell, const T rho, const Vector<T, LatSet::d>& u, 
   std::array<T, util::SymmetricMatrixSize<LatSet::d>()>& strain_rate_tensor) {
     unsigned int i{};
-    // use cell.template get<OMEGA<T>>() here instead of cell.getOmega()
-    const T coeff = T{-1.5} * cell.template get<OMEGA<T>>() / cell.template get<typename CELL::GenericRho>();
+    T omega{};
+    if constexpr(cell.template hasField<OMEGA<T>>()) omega = cell.template get<OMEGA<T>>();
+    else omega = cell.getOmega();
+    const T coeff = T{-1.5} * omega / cell.template get<typename CELL::GenericRho>();
     for (unsigned int alpha = 0; alpha < LatSet::d; ++alpha) {
       for (unsigned int beta = alpha; beta < LatSet::d; ++beta) {
         T value{};

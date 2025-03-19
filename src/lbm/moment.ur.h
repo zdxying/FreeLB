@@ -1011,7 +1011,10 @@ using CELLTYPE = CELL<T, D2Q5<T>, TypePack>;
 using LatSet = D2Q5<T>;
 
 __any__ static inline void apply(CELLTYPE& cell, const T rho, const Vector<T, LatSet::d>& u, std::array<T, util::SymmetricMatrixSize<LatSet::d>()>& tensor){
-const T coeff = T{-1.5} * cell.getOmega() / cell.template get<typename CELLTYPE::GenericRho>();
+T omega{};
+if constexpr(cell.template hasField<OMEGA<T>>()) omega = cell.template get<OMEGA<T>>();
+else omega = cell.getOmega();
+const T coeff = T{-1.5} * omega / cell.template get<typename CELLTYPE::GenericRho>();
 tensor[0] = (cell[1]+cell[2]-rho*(u[0]*u[0]+LatSet::cs2)) * coeff;
 tensor[1] = (-rho*(u[0]*u[1])) * coeff;
 tensor[2] = (cell[3]+cell[4]-rho*(u[1]*u[1]+LatSet::cs2)) * coeff;
@@ -1024,7 +1027,10 @@ using CELLTYPE = CELL<T, D2Q9<T>, TypePack>;
 using LatSet = D2Q9<T>;
 
 __any__ static inline void apply(CELLTYPE& cell, const T rho, const Vector<T, LatSet::d>& u, std::array<T, util::SymmetricMatrixSize<LatSet::d>()>& tensor){
-const T coeff = T{-1.5} * cell.getOmega() / cell.template get<typename CELLTYPE::GenericRho>();
+T omega{};
+if constexpr(cell.template hasField<OMEGA<T>>()) omega = cell.template get<OMEGA<T>>();
+else omega = cell.getOmega();
+const T coeff = T{-1.5} * omega / cell.template get<typename CELLTYPE::GenericRho>();
 tensor[0] = (cell[1]+cell[2]+cell[5]+cell[6]+cell[7]+cell[8]-rho*(u[0]*u[0]+LatSet::cs2)) * coeff;
 tensor[1] = (cell[5]+cell[6]-cell[7]-cell[8]-rho*(u[0]*u[1])) * coeff;
 tensor[2] = (cell[3]+cell[4]+cell[5]+cell[6]+cell[7]+cell[8]-rho*(u[1]*u[1]+LatSet::cs2)) * coeff;
@@ -1037,7 +1043,10 @@ using CELLTYPE = CELL<T, D3Q7<T>, TypePack>;
 using LatSet = D3Q7<T>;
 
 __any__ static inline void apply(CELLTYPE& cell, const T rho, const Vector<T, LatSet::d>& u, std::array<T, util::SymmetricMatrixSize<LatSet::d>()>& tensor){
-const T coeff = T{-1.5} * cell.getOmega() / cell.template get<typename CELLTYPE::GenericRho>();
+T omega{};
+if constexpr(cell.template hasField<OMEGA<T>>()) omega = cell.template get<OMEGA<T>>();
+else omega = cell.getOmega();
+const T coeff = T{-1.5} * omega / cell.template get<typename CELLTYPE::GenericRho>();
 tensor[0] = (cell[1]+cell[2]-rho*(u[0]*u[0]+LatSet::cs2)) * coeff;
 tensor[1] = (-rho*(u[0]*u[1])) * coeff;
 tensor[2] = (-rho*(u[0]*u[2])) * coeff;
@@ -1053,7 +1062,10 @@ using CELLTYPE = CELL<T, D3Q15<T>, TypePack>;
 using LatSet = D3Q15<T>;
 
 __any__ static inline void apply(CELLTYPE& cell, const T rho, const Vector<T, LatSet::d>& u, std::array<T, util::SymmetricMatrixSize<LatSet::d>()>& tensor){
-const T coeff = T{-1.5} * cell.getOmega() / cell.template get<typename CELLTYPE::GenericRho>();
+T omega{};
+if constexpr(cell.template hasField<OMEGA<T>>()) omega = cell.template get<OMEGA<T>>();
+else omega = cell.getOmega();
+const T coeff = T{-1.5} * omega / cell.template get<typename CELLTYPE::GenericRho>();
 tensor[0] = (cell[1]+cell[2]+cell[7]+cell[8]+cell[9]+cell[10]+cell[11]+cell[12]+cell[13]+cell[14]-rho*(u[0]*u[0]+LatSet::cs2)) * coeff;
 tensor[1] = (cell[7]+cell[8]+cell[9]+cell[10]-cell[11]-cell[12]-cell[13]-cell[14]-rho*(u[0]*u[1])) * coeff;
 tensor[2] = (cell[7]+cell[8]-cell[9]-cell[10]+cell[11]+cell[12]-cell[13]-cell[14]-rho*(u[0]*u[2])) * coeff;
@@ -1069,7 +1081,10 @@ using CELLTYPE = CELL<T, D3Q19<T>, TypePack>;
 using LatSet = D3Q19<T>;
 
 __any__ static inline void apply(CELLTYPE& cell, const T rho, const Vector<T, LatSet::d>& u, std::array<T, util::SymmetricMatrixSize<LatSet::d>()>& tensor){
-const T coeff = T{-1.5} * cell.getOmega() / cell.template get<typename CELLTYPE::GenericRho>();
+T omega{};
+if constexpr(cell.template hasField<OMEGA<T>>()) omega = cell.template get<OMEGA<T>>();
+else omega = cell.getOmega();
+const T coeff = T{-1.5} * omega / cell.template get<typename CELLTYPE::GenericRho>();
 tensor[0] = (cell[1]+cell[2]+cell[7]+cell[8]+cell[9]+cell[10]+cell[13]+cell[14]+cell[15]+cell[16]-rho*(u[0]*u[0]+LatSet::cs2)) * coeff;
 tensor[1] = (cell[7]+cell[8]-cell[13]-cell[14]-rho*(u[0]*u[1])) * coeff;
 tensor[2] = (cell[9]+cell[10]-cell[15]-cell[16]-rho*(u[0]*u[2])) * coeff;
@@ -1085,7 +1100,10 @@ using CELLTYPE = CELL<T, D3Q27<T>, TypePack>;
 using LatSet = D3Q27<T>;
 
 __any__ static inline void apply(CELLTYPE& cell, const T rho, const Vector<T, LatSet::d>& u, std::array<T, util::SymmetricMatrixSize<LatSet::d>()>& tensor){
-const T coeff = T{-1.5} * cell.getOmega() / cell.template get<typename CELLTYPE::GenericRho>();
+T omega{};
+if constexpr(cell.template hasField<OMEGA<T>>()) omega = cell.template get<OMEGA<T>>();
+else omega = cell.getOmega();
+const T coeff = T{-1.5} * omega / cell.template get<typename CELLTYPE::GenericRho>();
 tensor[0] = (cell[1]+cell[2]+cell[7]+cell[8]+cell[9]+cell[10]+cell[13]+cell[14]+cell[15]+cell[16]+cell[19]+cell[20]+cell[21]+cell[22]+cell[23]+cell[24]+cell[25]+cell[26]-rho*(u[0]*u[0]+LatSet::cs2)) * coeff;
 tensor[1] = (cell[7]+cell[8]-cell[13]-cell[14]+cell[19]+cell[20]+cell[21]+cell[22]-cell[23]-cell[24]-cell[25]-cell[26]-rho*(u[0]*u[1])) * coeff;
 tensor[2] = (cell[9]+cell[10]-cell[15]-cell[16]+cell[19]+cell[20]-cell[21]-cell[22]+cell[23]+cell[24]-cell[25]-cell[26]-rho*(u[0]*u[2])) * coeff;
