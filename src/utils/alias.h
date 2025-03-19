@@ -231,6 +231,11 @@ using CONSTRHO = Data<T, CONSTRHOBase>;
 template <typename T, unsigned int D>
 using CONSTU = Data<Vector<T, D>, CONSTUBase>;
 
+template <typename T>
+using SMAGORINSKY = Data<T, SMAGORINSKYBase>;
+
+template <typename T>
+using OMEGA = GenericField<GenericArray<T>, OMEGABase>;
 #endif
 
 }  // namespace cudev

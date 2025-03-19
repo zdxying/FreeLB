@@ -2377,6 +2377,15 @@ void cobisect(int Edge, std::vector<BasicBlock<T, 3>>& originBlocks, std::vector
 
 template <typename T>
 void BlockGeometryHelper3D<T>::RCBOptimization(int ProcNum, bool verbose) {
+
+  if (ProcNum == 1) {
+    std::vector<BasicBlock<T, 3>> &BasicBlocks = getAllBasicBlocks();
+    BasicBlocks.clear();
+    BasicBlocks.push_back(_BaseBlock);
+    BasicBlocks[0].setBlockId(0);
+    RemoveUnusedCells(std::uint8_t{1}, true);
+    return;
+  }
   // 1. check if the ProcNum is power of 2 
   //    and decide number of iterations
   int ProcNumx = 1;
