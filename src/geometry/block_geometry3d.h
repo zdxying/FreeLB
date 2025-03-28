@@ -305,6 +305,74 @@ class GeometryFlagField {
       }
     }
   }
+
+  template <typename LatSet>
+  void CleanLonelyFlags(std::uint8_t flag = std::uint8_t{2}, std::uint8_t voidflag = std::uint8_t{1}, 
+    unsigned int lonelyth = 1, bool recursive = true) {
+    bool cleaned = false;
+    // statistic info
+    std::size_t total{};
+    IF_MPI_RANK(0) {
+      std::cout << "[GeometryFlagField::CleanLonelyFlags]: " << std::endl;
+    }
+    CleanLonelyFlagsImp<LatSet>(flag, voidflag, lonelyth, cleaned, total);
+    if (cleaned) {
+      if (recursive) CleanLonelyFlagsImp<LatSet>(flag, voidflag, lonelyth, cleaned, total);
+    }
+    IF_MPI_RANK(0) {
+      if (cleaned) {
+        std::cout << "  Total lonely cells cleaned：" << total << std::endl;
+      } else {
+        std::cout << "  No lonely cells cleaned" << std::endl;
+      }
+    }
+  }
+
+  template <typename LatSet>
+  void CleanLonelyFlagsImp(std::uint8_t flag, std::uint8_t voidflag, 
+    unsigned int lonelyth, bool& cleaned, std::size_t& total) {
+    std::size_t count{};
+    // temp flag field store the transition flag
+    GenericArray<bool> TransFlag(_Nx*_Ny*_Nz, false);
+    // use 0 index, _FlagField is already extended, accessing neighbor cells is safe
+    for (int z = 0; z < _Nz; ++z) {
+      for (int y = 0; y < _Ny; ++y) {
+        for (int x = 0; x < _Nx; ++x) {
+          if (this->get(x, y, z) == flag) {
+            unsigned int nbr_count{};
+            for (unsigned int i = 1; i < LatSet::q; ++i) {
+              const int nx = x + latset::c<LatSet>(i)[0];
+              const int ny = y + latset::c<LatSet>(i)[1];
+              const int nz = z + latset::c<LatSet>(i)[2];
+              if (this->get(nx, ny, nz) == flag) {
+                ++nbr_count;
+              }
+            }
+            if (nbr_count <= lonelyth) {
+              const std::size_t id = z * _NxNy + y * _Nx + x;
+              TransFlag.set(id, true);
+              cleaned = true;
+              ++count;
+            }
+          }
+        }
+      }
+    }
+    if (cleaned) {
+      for (int z = 0; z < _Nz; ++z) {
+        for (int y = 0; y < _Ny; ++y) {
+          for (int x = 0; x < _Nx; ++x) {
+            const std::size_t id = z * _NxNy + y * _Nx + x;
+            if (TransFlag[id]) this->set(x, y, z, voidflag);
+          }
+        }
+      }
+      total += count;
+      IF_MPI_RANK(0){
+        std::cout << count << " lonely cells cleaned" << std::endl;
+      }
+    }
+  }
 };
 
 
