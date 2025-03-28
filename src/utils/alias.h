@@ -188,6 +188,15 @@ struct POPBase : public FieldBase<q> {};
 struct SMAGORINSKYBase : public FieldBase<1> {};
 struct OMEGABase : public FieldBase<1> {};
 
+// non-newtonian
+struct MinShearRateBase : public FieldBase<1> {};
+struct MaxShearRateBase : public FieldBase<1> {};
+struct Cross_eta0Base : public FieldBase<1> {};
+struct Cross_tBase : public FieldBase<1> {};
+struct Cross_mBase : public FieldBase<1> {};
+struct PL_kBase : public FieldBase<1> {};
+struct PL_mBase : public FieldBase<1> {};
+
 
 namespace cudev {
 
@@ -236,6 +245,22 @@ using SMAGORINSKY = Data<T, SMAGORINSKYBase>;
 
 template <typename T>
 using OMEGA = GenericField<GenericArray<T>, OMEGABase>;
+
+template <typename T>
+using MinShearRate = Data<T, MinShearRateBase>;
+template <typename T>
+using MaxShearRate = Data<T, MaxShearRateBase>;
+template <typename T>
+using Cross_eta0 = Data<T, Cross_eta0Base>;
+template <typename T>
+using Cross_t = Data<T, Cross_tBase>;
+template <typename T>
+using Cross_m = Data<T, Cross_mBase>;
+template <typename T>
+using PL_k = Data<T, PL_kBase>;
+template <typename T>
+using PL_m = Data<T, PL_mBase>;
+
 #endif
 
 }  // namespace cudev
@@ -303,6 +328,21 @@ using SMAGORINSKY = Data<T, SMAGORINSKYBase>;
 
 template <typename T>
 using OMEGA = GenericField<GenericArray<T>, OMEGABase>;
+
+template <typename T>
+using MinShearRate = Data<T, MinShearRateBase>;
+template <typename T>
+using MaxShearRate = Data<T, MaxShearRateBase>;
+template <typename T>
+using Cross_eta0 = Data<T, Cross_eta0Base>;
+template <typename T>
+using Cross_t = Data<T, Cross_tBase>;
+template <typename T>
+using Cross_m = Data<T, Cross_mBase>;
+template <typename T>
+using PL_k = Data<T, PL_kBase>;
+template <typename T>
+using PL_m = Data<T, PL_mBase>;
 
 // #endif
 

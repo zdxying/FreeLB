@@ -24,61 +24,67 @@
 
 #include "lbm/moment.ur.h"
 
-// m
-struct ConsistencyIndexBase : public FieldBase<1> {};
-// n-1
-struct BehaviorIndexMinus1Base : public FieldBase<1> {};
-// max nu
-struct MaxNuBase : public FieldBase<1> {};
-// min nu
-struct MinNuBase : public FieldBase<1> {};
 
 template <typename T>
-using ConsistencyIndex = Data<T, ConsistencyIndexBase>;
-template <typename T>
-using BehaviorIndexMinus1 = Data<T, BehaviorIndexMinus1Base>;
-template <typename T>
-using MaxNu = Data<T, MaxNuBase>;
-template <typename T>
-using MinNu = Data<T, MinNuBase>;
+using PowerLawPARAMS = TypePack<PL_k<T>, PL_m<T>, MinShearRate<T>, MaxShearRate<T>>;
 
-template <typename T>
-using PowerLawPARAMS = TypePack<ConsistencyIndex<T>, BehaviorIndexMinus1<T>, MinNu<T>, MaxNu<T>>;
-// power-law dynamics for non-Newtonian fluid
-
-// in power-law dynamics: compute omega from magnitude of shear rate
+// power-law dynamics: compute omega from magnitude of shear rate
 template <typename CELLTYPE>
 struct PowerLaw_Omega {
   using CELL = CELLTYPE;
   using T = typename CELL::FloatType;
   using LatSet = typename CELL::LatticeSet;
-
+  // in lattice unit
   static inline T get(T gamma, CELL& cell) {
-    // if (gamma < std::numeric_limits<T>::epsilon()) {
-    //   return cell.getOmega();
-    // }
-    // test gamma
-    // cell.template get<StrainRateMag<T>>() = gamma;
-    // end test gamma
-    T m = cell.template get<ConsistencyIndex<T>>();
-    T n_minus1 = cell.template get<BehaviorIndexMinus1<T>>();
-    // Ostwald-de Waele/ power-law
-    // nu = m * gamma^(n-1)
-    T nu = m * std::pow(gamma, n_minus1);
-    
-    nu = std::min(nu, cell.template get<MaxNu<T>>());
-    nu = std::max(nu, cell.template get<MinNu<T>>());
-    
-    // nu = cs^2 * (tau - 0.5) = (1/omega - 0.5)/3
-    T omega = T{1} / (nu * LatSet::InvCs2 + T{0.5});
+    const T gamma_min = cell.template get<MinShearRate<T>>();
+    const T gamma_max = cell.template get<MaxShearRate<T>>();
+    const T k = cell.template get<PL_k<T>>();
+    const T m = cell.template get<PL_m<T>>();
+
+    if (gamma < gamma_min) gamma = gamma_min;
+    else if (gamma > gamma_max) gamma = gamma_max;
+    // Ostwald-de Waele/ power-law: nu = k * gamma^(m)
+    const T nu = k * std::pow(gamma, m);
+    // lat_nu = cs^2 * (tau - 0.5) = (1/omega - 0.5)/3
+    const T omega = T{1} / (nu * LatSet::InvCs2 + T{0.5});
+    cell.template get<OMEGA<T>>() = omega;
     return omega;
   }
 };
 
+
+template <typename T>
+using CrossPARAMS = TypePack<Cross_eta0<T>, Cross_t<T>, Cross_m<T>, MinShearRate<T>, MaxShearRate<T>>;
+
+template <typename CELLTYPE>
+struct Cross_Omega {
+  using CELL = CELLTYPE;
+  using T = typename CELL::FloatType;
+  using LatSet = typename CELL::LatticeSet;
+  // in lattice unit
+  static inline T get(T gamma, CELL& cell) {
+    const T gamma_min = cell.template get<MinShearRate<T>>();
+    const T gamma_max = cell.template get<MaxShearRate<T>>();
+    const T cross_eta0 = cell.template get<Cross_eta0<T>>();
+    const T cross_t = cell.template get<Cross_t<T>>();
+    const T cross_m = cell.template get<Cross_m<T>>();
+
+    if (gamma < gamma_min) gamma = gamma_min;
+    else if (gamma > gamma_max) gamma = gamma_max;
+    // cross
+    const T nu = cross_eta0/(1+std::pow(cross_t*gamma, cross_m));
+    // lat_nu = cs^2 * (tau - 0.5) = (1/omega - 0.5)/3
+    const T omega = T{1} / (nu * LatSet::InvCs2 + T{0.5});
+    cell.template get<OMEGA<T>>() = omega;
+    return omega;
+  }
+};
+
+
 namespace collision {
 
-template <typename MomentaScheme, typename EquilibriumScheme>
-struct PowerLaw_BGK {
+template <typename MomentaScheme, typename EquilibriumScheme, typename RheologyOemga>
+struct Rheology_BGK {
   using CELL = typename EquilibriumScheme::CELLTYPE;
   using T = typename CELL::FloatType;
   using LatSet = typename CELL::LatticeSet;
@@ -97,8 +103,8 @@ struct PowerLaw_BGK {
     // equilibrium distribution function
     std::array<T, LatSet::q> feq{};
     EquilibriumScheme::apply(feq, rho, u);
-    // BGK collision
-    const T omega = PowerLaw_Omega<CELL>::get(gamma, cell);
+    // Rheology omega
+    const T omega = RheologyOemga::get(gamma, cell);
     const T _omega = T{1} - omega;
 
     for (unsigned int i = 0; i < LatSet::q; ++i) {
@@ -107,8 +113,8 @@ struct PowerLaw_BGK {
   }
 };
 
-template <typename MomentaScheme, typename EquilibriumScheme, typename ForceScheme>
-struct PowerLaw_BGKForce {
+template <typename MomentaScheme, typename EquilibriumScheme, typename ForceScheme, typename RheologyOemga>
+struct Rheology_BGKForce {
   using CELL = typename EquilibriumScheme::CELLTYPE;
   using T = typename CELL::FloatType;
   using LatSet = typename CELL::LatticeSet;
@@ -132,8 +138,8 @@ struct PowerLaw_BGKForce {
     // equilibrium distribution function
     std::array<T, LatSet::q> feq{};
     EquilibriumScheme::apply(feq, rho, u);
-    // PowerLaw-BGK collision
-    const T omega = PowerLaw_Omega<CELL>::get(gamma, cell);
+    // Rheology omega
+    const T omega = RheologyOemga::get(gamma, cell);
     const T _omega = T{1} - omega;
     const T fomega = T{1} - T{0.5} * omega;
 

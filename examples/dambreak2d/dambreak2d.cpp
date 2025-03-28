@@ -220,7 +220,6 @@ int main(int argc, char* argv[]) {
   //// end free surface
 
   // ------------------ define task/ dynamics ------------------
-  // NS task  PowerLaw_BGKForce
   // openlb used BGK dynamics for Gas cells
   using NSBulkTask =
     tmp::Key_TypePair<olbfs::FSType::Fluid | olbfs::FSType::Interface | olbfs::FSType::Gas,
