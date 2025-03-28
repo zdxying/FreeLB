@@ -26,7 +26,7 @@
 
 
 template <typename T>
-using PowerLawPARAMS = TypePack<PL_k<T>, PL_m<T>, MinShearRate<T>, MaxShearRate<T>, OMEGA<T>>;
+using PowerLawPARAMS = TypePack<MinShearRate<T>, MaxShearRate<T>, PL_k<T>, PL_m<T>, OMEGA<T>>;
 
 // power-law dynamics: compute omega from magnitude of shear rate
 template <typename CELLTYPE>
@@ -54,7 +54,7 @@ struct PowerLaw_Omega {
 
 
 template <typename T>
-using CrossPARAMS = TypePack<Cross_eta0<T>, Cross_t<T>, Cross_m<T>, MinShearRate<T>, MaxShearRate<T>, OMEGA<T>>;
+using CrossPARAMS = TypePack<MinShearRate<T>, MaxShearRate<T>, Cross_eta0<T>, Cross_t<T>, Cross_m<T>, OMEGA<T>>;
 
 template <typename CELLTYPE>
 struct Cross_Omega {
