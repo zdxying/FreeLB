@@ -222,15 +222,22 @@ struct MassTransfer {
 };
 
 // to fluid neighbor conversion
-template <typename CELLTYPE>
+template <typename CELLTYPE, unsigned int scalardir>
 struct ToFluidNbrConversion {
   using CELL = CELLTYPE;
   using T = typename CELL::FloatType;
   using LatSet = typename CELL::LatticeSet;
 
+  static constexpr bool hasForce = (
+    CELL::template hasField<FORCE<T, LatSet::d>>() || 
+    CELL::template hasField<SCALARFORCE<T>>() || 
+    CELL::template hasField<CONSTFORCE<T, LatSet::d>>() || 
+    CELL::template hasField<SCALARCONSTFORCE<T>>());
   // here only 2 force schemes are considered
-  using ForceScheme = std::conditional_t<CELL::template hasField<CONSTFORCE<T, LatSet::d>>(), 
-  force::ConstForce<CELL>, force::ScalarConstForce<CELL>>;
+  using ForceScheme = std::conditional_t<CELL::template hasField<FORCE<T, LatSet::d>>(), force::Force<CELL>, 
+                        std::conditional_t<CELL::template hasField<SCALARFORCE<T>>(), force::ScalarForce<CELL, scalardir>, 
+                          std::conditional_t<CELL::template hasField<CONSTFORCE<T, LatSet::d>>(), force::ConstForce<CELL>, 
+                            std::conditional_t<CELL::template hasField<SCALARCONSTFORCE<T>>(), force::ScalarConstForce<CELL, scalardir>, void>>>>;
 
   static void apply(CELL& cell) {
 
@@ -250,7 +257,8 @@ struct ToFluidNbrConversion {
             // we have to use forcerhoU here
             T rho{};
             Vector<T, LatSet::d> u{};
-            moment::forcerhoU<CELL, ForceScheme>::apply(celln, rho, u);
+            if constexpr (hasForce) moment::forcerhoU<CELL, ForceScheme>::apply(celln, rho, u);
+            else moment::rhoU<CELL>::apply(celln, rho, u);
             averho += rho;
             aveu += u;
 						++count;
@@ -420,7 +428,8 @@ struct FreeSurfaceApply {
   using T = typename CELL::FloatType;
   using LatSet = typename CELL::LatticeSet;
 
-static void Apply(LATTICEMANAGERTYPE& latManager) {
+  template <unsigned int scalardir = 2>
+  static void Apply(LATTICEMANAGERTYPE& latManager) {
     // mass transfer
     latManager.template ApplyInnerCellDynamics<MassTransfer<CELL>>();
     latManager.template getField<FLAG>().AllNormalCommunicate();
@@ -431,7 +440,7 @@ static void Apply(LATTICEMANAGERTYPE& latManager) {
 
 
     // to fluid neighbor conversion
-    latManager.template ApplyInnerCellDynamics<ToFluidNbrConversion<CELL>>();
+    latManager.template ApplyInnerCellDynamics<ToFluidNbrConversion<CELL, scalardir>>();
     latManager.template getField<FLAG>().AllNormalCommunicate();
     // communicate equilibrium fi from nbr Fluid/Interface cells' rho and u for a Gas->Interface cell
     // this is NOT a post-stream process, so we must communicate fi in each direction
@@ -462,6 +471,7 @@ static void Apply(LATTICEMANAGERTYPE& latManager) {
     latManager.ForEachBlockLattice([&](auto& blocklat) { blocklat.template getField<MASSEX<T, LatSet::q>>().Init(Vector<T,LatSet::q>{}); });
   }
 
+  template <unsigned int scalardir = 2>
   static void Apply(LATTICEMANAGERTYPE& latManager, std::int64_t count) {
     // mass transfer
     latManager.template ApplyInnerCellDynamics<MassTransfer<CELL>>(count);
@@ -473,7 +483,7 @@ static void Apply(LATTICEMANAGERTYPE& latManager) {
 
 
     // to fluid neighbor conversion
-    latManager.template ApplyInnerCellDynamics<ToFluidNbrConversion<CELL>>(count);
+    latManager.template ApplyInnerCellDynamics<ToFluidNbrConversion<CELL, scalardir>>(count);
     latManager.template getField<FLAG>().AllNormalCommunicate(count);
     // communicate equilibrium fi from nbr Fluid/Interface cells' rho and u for a Gas->Interface cell
     // this is NOT a post-stream process, so we must communicate fi in each direction
