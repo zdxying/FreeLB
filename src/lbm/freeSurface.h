@@ -424,7 +424,6 @@ struct FinalizeConversion {
 template <typename LATTICEMANAGERTYPE>
 struct FreeSurfaceApply {
   using CELL = typename LATTICEMANAGERTYPE::CellType;
-  using BLOCKLAT = typename LATTICEMANAGERTYPE::BLOCKLATTICE;
   using T = typename CELL::FloatType;
   using LatSet = typename CELL::LatticeSet;
 
@@ -513,6 +512,134 @@ struct FreeSurfaceApply {
     // clear EXCESSMASS<T,LatSet::q>
     latManager.ForEachBlockLattice(
       count, [&](auto& blocklat) { blocklat.template getField<MASSEX<T, LatSet::q>>().Init(Vector<T,LatSet::q>{}); });
+  }
+};
+
+// to fluid neighbor conversion
+template <typename NSCELLTYPE, typename XCELLTYPE, unsigned int scalardir>
+struct CoupledToFluidNbrConversion {
+  using CELL = NSCELLTYPE;
+  using XCELL = XCELLTYPE;
+  using XGenericRho = typename XCELL::GenericRho;
+  using T = typename CELL::FloatType;
+  using LatSet = typename CELL::LatticeSet;
+
+  static constexpr bool hasForce = (
+    CELL::template hasField<FORCE<T, LatSet::d>>() || 
+    CELL::template hasField<SCALARFORCE<T>>() || 
+    CELL::template hasField<CONSTFORCE<T, LatSet::d>>() || 
+    CELL::template hasField<SCALARCONSTFORCE<T>>());
+  static_assert(CELL::template hasField<XGenericRho>(), "CoupledToFluidNbrConversion: CELL must has ref of XCELL's GenericRho");
+  // here only 2 force schemes are considered
+  using ForceScheme = 
+    std::conditional_t<CELL::template hasField<FORCE<T, LatSet::d>>(), force::Force<CELL>, 
+      std::conditional_t<CELL::template hasField<SCALARFORCE<T>>(), force::ScalarForce<CELL, scalardir>, 
+        std::conditional_t<CELL::template hasField<CONSTFORCE<T, LatSet::d>>(), force::ConstForce<CELL>, 
+          std::conditional_t<CELL::template hasField<SCALARCONSTFORCE<T>>(), force::ScalarConstForce<CELL, scalardir>, void>>>>;
+
+  static void apply(CELL& cell, XCELL& xcell) {
+
+    if (util::isFlag(cell.template get<STATE>(), FSType::Gas)) {
+      if (hasNeighborFlag(cell, FSFlag::To_Fluid)) {
+        // set to_interface
+        cell.template get<FLAG>() = FSFlag::To_Interface;
+				// init fi using [fluid|interface] neighbor cells
+				T averho{};
+        T avexrho{};
+				Vector<T, LatSet::d> aveu{};
+				int count{};
+				for (unsigned int k = 1; k < LatSet::q; ++k) {
+					CELL celln = cell.getNeighbor(k);
+					if (util::isFlag(celln.template get<STATE>(), (FSType::Fluid | FSType::Interface))) {
+						// openlb uses: cellC.computeRhoU(rho_tmp, u_tmp);
+            // however FreeLB can't get dynamics from a single cell
+            // we have to use forcerhoU here
+            T rho{};
+            Vector<T, LatSet::d> u{};
+            if constexpr (hasForce) moment::forcerhoU<CELL, ForceScheme>::apply(celln, rho, u);
+            else moment::rhoU<CELL>::apply(celln, rho, u);
+            averho += rho;
+            avexrho += celln.template get<XGenericRho>();
+            aveu += u;
+						++count;
+					}
+				}
+				if (count > 0) {
+					averho /= count;
+					aveu /= count;
+          avexrho /= count;
+				}
+        cell.template get<XGenericRho>() = avexrho;
+				// set fi, openlb uses: cell.iniEquilibrium(rho_avg, u_avg);
+				T aveu2 = aveu.getnorm2();
+				for (unsigned int k = 0; k < LatSet::q; ++k) {
+					cell[k] = equilibrium::SecondOrder<CELL>::get(k, aveu, averho, aveu2);
+          xcell[k] = equilibrium::SecondOrder<XCELL>::get(k, aveu, avexrho, aveu2);
+				}
+      }
+    } else if (util::isFlag(cell.template get<FLAG>(), FSFlag::To_Gas)) {
+      if (hasNeighborFlag(cell, FSFlag::To_Fluid)) {
+        // remove to_gas flag, in openlb: clear transition flag
+        cell.template get<FLAG>() = FSFlag::None;
+      }
+    }
+  }
+};
+
+template <typename LatManagerCouplingTYPE>
+struct CoupledFreeSurfaceApply {
+  using CELL = typename LatManagerCouplingTYPE::CELL0;
+  using XCELL = typename LatManagerCouplingTYPE::CELL1;
+  using GenericRho = typename CELL::GenericRho;
+  using XGenericRho = typename XCELL::GenericRho;
+  using T = typename CELL::FloatType;
+  using LatSet = typename CELL::LatticeSet;
+
+  template <unsigned int scalardir = 2>
+  static void Apply(LatManagerCouplingTYPE& latManagerCoupling) {
+    auto& latManager = latManagerCoupling.getLat0();
+    auto& xlatManager = latManagerCoupling.getLat1();
+    // mass transfer
+    latManager.template ApplyInnerCellDynamics<MassTransfer<CELL>>();
+    latManager.template getField<FLAG>().AllNormalCommunicate();
+    latManager.template getField<MASS<T>>().AllNormalCommunicate();
+    // communicate reconstructed pops streamed in from a gas cell
+    // this is NOT a post-stream process, so we must communicate fi in each direction
+    latManager.NormalAllCommunicate();
+
+
+    // to fluid neighbor conversion
+    latManagerCoupling.template ApplyInnerCellDynamics<CoupledToFluidNbrConversion<CELL, XCELL, scalardir>>();
+    latManager.template getField<FLAG>().AllNormalCommunicate();
+    xlatManager.template getField<XGenericRho>().AllNormalCommunicate();
+    // communicate equilibrium fi from nbr Fluid/Interface cells' rho and u for a Gas->Interface cell
+    // this is NOT a post-stream process, so we must communicate fi in each direction
+    latManager.NormalAllCommunicate();
+    xlatManager.NormalAllCommunicate();
+
+
+    // to gas neighbor conversion
+    latManager.template ApplyInnerCellDynamics<ToGasNbrConversion<CELL>>();
+    latManager.template getField<FLAG>().AllNormalCommunicate();
+		latManager.template getField<MASS<T>>().AllNormalCommunicate();
+
+
+    // interface excess mass
+    latManager.template ApplyInnerCellDynamics<InterfaceExcessMass<CELL>>();
+    latManager.template getField<MASS<T>>().AllNormalCommunicate();
+    latManager.template getField<MASSEX<T, LatSet::q>>().AllNormalCommunicate();
+
+
+    // finalize conversion
+    latManager.template ApplyInnerCellDynamics<FinalizeConversion<CELL>>();
+    latManager.template getField<STATE>().AllNormalCommunicate();
+    latManager.template getField<MASS<T>>().AllNormalCommunicate();
+    latManager.template getField<VOLUMEFRAC<T>>().AllNormalCommunicate();
+    latManager.template getField<PREVIOUS_VELOCITY<T,LatSet::d>>().AllNormalCommunicate();
+
+
+    // clear EXCESSMASS<T,LatSet::q>
+    latManager.ForEachBlockLattice([&](auto& blocklat) { blocklat.template getField<MASSEX<T, LatSet::q>>().Init(Vector<T,LatSet::q>{}); });
   }
 };
 

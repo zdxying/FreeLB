@@ -438,27 +438,176 @@ class BlockLatManagerCoupling {
   using T = typename BlockLatManager0::FloatType;
   using CELL0 = typename BlockLatManager0::CellType;
   using CELL1 = typename BlockLatManager1::CellType;
+  using LatSet0 = typename BlockLatManager0::LatticeSet;
+  using LatSet1 = typename BlockLatManager1::LatticeSet;
 
   BlockLatManagerCoupling(BlockLatManager0& blocklatman0, BlockLatManager1& blocklatman1)
       : BlockLatMan0(blocklatman0), BlockLatMan1(blocklatman1) {}
+
+  BlockLatManager0& getLat0() {return BlockLatMan0;}
+  BlockLatManager1& getLat1() {return BlockLatMan1;}
 
   template <typename CELLDYNAMICS, typename BLOCKFIELDMANAGER>
   void ApplyCellDynamics(std::int64_t count, const BLOCKFIELDMANAGER& BFM) {
     int size = static_cast<int>(BlockLatMan0.getBlockLats().size());
 #pragma omp parallel for num_threads(Thread_Num)
-    for (int i = 0; i < size; ++i) {
-      auto& blocklat0 = BlockLatMan0.getBlockLat(i);
-      auto& blocklat1 = BlockLatMan1.getBlockLat(i);
-      const int deLevel =
-        static_cast<int>(BlockLatMan0.getMaxLevel() - blocklat0.getLevel());
+    for (int iblock = 0; iblock < size; ++iblock) {
+      auto& blocklat0 = BlockLatMan0.getBlockLat(iblock);
+      auto& blocklat1 = BlockLatMan1.getBlockLat(iblock);
+      const int deLevel = static_cast<int>(BlockLatMan0.getMaxLevel() - blocklat0.getLevel());
       if (count % (static_cast<int>(std::pow(2, deLevel))) == 0) {
-        const auto& flagArray = BFM.getBlockField(i).getField(0);
+        const auto& flagArray = BFM.getBlockField(iblock).getField(0);
         CELL0 cell0(0, blocklat0);
         CELL1 cell1(0, blocklat1);
         for (std::size_t id = 0; id < blocklat0.getN(); ++id) {
           cell0.setId(id);
           cell1.setId(id);
           CELLDYNAMICS::Execute(flagArray[id], cell0, cell1);
+        }
+      }
+    }
+  }
+
+  template <typename CELLDYNAMICS, typename BLOCKFIELDMANAGER>
+  void ApplyCellDynamics(const BLOCKFIELDMANAGER& BFM) {
+    int size = static_cast<int>(BlockLatMan0.getBlockLats().size());
+#pragma omp parallel for num_threads(Thread_Num)
+    for (int iblock = 0; iblock < size; ++iblock) {
+      auto& blocklat0 = BlockLatMan0.getBlockLat(iblock);
+      auto& blocklat1 = BlockLatMan1.getBlockLat(iblock);
+      const auto& flagArray = BFM.getBlockField(iblock).getField(0);
+      CELL0 cell0(0, blocklat0);
+      CELL1 cell1(0, blocklat1);
+      for (std::size_t id = 0; id < blocklat0.getN(); ++id) {
+        cell0.setId(id);
+        cell1.setId(id);
+        CELLDYNAMICS::Execute(flagArray[id], cell0, cell1);
+      }
+    }
+  }
+
+  template <typename DYNAMICS>
+  void ApplyCellDynamics() {
+    int size = static_cast<int>(BlockLatMan0.getBlockLats().size());
+#pragma omp parallel for num_threads(Thread_Num)
+    for (int iblock = 0; iblock < size; ++iblock) {
+      auto& blocklat0 = BlockLatMan0.getBlockLat(iblock);
+      auto& blocklat1 = BlockLatMan1.getBlockLat(iblock);
+      CELL0 cell0(0, blocklat0);
+      CELL1 cell1(0, blocklat1);
+      for (std::size_t id = 0; id < blocklat0.getN(); ++id) {
+        cell0.setId(id);
+        cell1.setId(id);
+        DYNAMICS::apply(cell0, cell1);
+      }
+    }
+  }
+
+  template <typename CELLDYNAMICS, typename BLOCKFIELDMANAGER>
+  void ApplyInnerCellDynamics(std::int64_t count, const BLOCKFIELDMANAGER& BFM) {
+    int size = static_cast<int>(BlockLatMan0.getBlockLats().size());
+#pragma omp parallel for num_threads(Thread_Num)
+    for (int iblock = 0; iblock < size; ++iblock) {
+      auto& blocklat0 = BlockLatMan0.getBlockLat(iblock);
+      auto& blocklat1 = BlockLatMan1.getBlockLat(iblock);
+      const int deLevel = static_cast<int>(BlockLatMan0.getMaxLevel() - blocklat0.getLevel());
+      if (count % (static_cast<int>(std::pow(2, deLevel))) == 0) {
+        const auto& flagArray = BFM.getBlockField(iblock).getField(0);
+        CELL0 cell0(0, blocklat0);
+        CELL1 cell1(0, blocklat1);
+        if constexpr (LatSet0::d == 2) {
+          for (int j = blocklat0.getOverlap(); j < blocklat0.getNy() - blocklat0.getOverlap(); ++j) {
+            std::size_t id = j * blocklat0.getNx() + blocklat0.getOverlap();
+            for (int i = blocklat0.getOverlap(); i < blocklat0.getNx() - blocklat0.getOverlap(); ++i) {
+              cell0.setId(id);
+              cell1.setId(id);
+              CELLDYNAMICS::Execute(flagArray[id], cell0, cell1);
+              ++id;
+            }
+          }
+        } else if constexpr (LatSet0::d == 3) {
+          for (int k = blocklat0.getOverlap(); k < blocklat0.getNz() - blocklat0.getOverlap(); ++k) {
+            for (int j = blocklat0.getOverlap(); j < blocklat0.getNy() - blocklat0.getOverlap(); ++j) {
+              std::size_t id = k * blocklat0.getProjection()[2] + j * blocklat0.getProjection()[1] + blocklat0.getOverlap();
+              for (int i = blocklat0.getOverlap(); i < blocklat0.getNx() - blocklat0.getOverlap(); ++i) {
+                cell0.setId(id);
+                cell1.setId(id);
+                CELLDYNAMICS::Execute(flagArray[id], cell0, cell1);
+                ++id;
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+
+  template <typename CELLDYNAMICS, typename BLOCKFIELDMANAGER>
+  void ApplyInnerCellDynamics(const BLOCKFIELDMANAGER& BFM) {
+    int size = static_cast<int>(BlockLatMan0.getBlockLats().size());
+#pragma omp parallel for num_threads(Thread_Num)
+    for (int iblock = 0; iblock < size; ++iblock) {
+      auto& blocklat0 = BlockLatMan0.getBlockLat(iblock);
+      auto& blocklat1 = BlockLatMan1.getBlockLat(iblock);
+      const auto& flagArray = BFM.getBlockField(iblock).getField(0);
+      CELL0 cell0(0, blocklat0);
+      CELL1 cell1(0, blocklat1);
+      if constexpr (LatSet0::d == 2) {
+        for (int j = blocklat0.getOverlap(); j < blocklat0.getNy() - blocklat0.getOverlap(); ++j) {
+          std::size_t id = j * blocklat0.getNx() + blocklat0.getOverlap();
+          for (int i = blocklat0.getOverlap(); i < blocklat0.getNx() - blocklat0.getOverlap(); ++i) {
+            cell0.setId(id);
+            cell1.setId(id);
+            CELLDYNAMICS::Execute(flagArray[id], cell0, cell1);
+            ++id;
+          }
+        }
+      } else if constexpr (LatSet0::d == 3) {
+        for (int k = blocklat0.getOverlap(); k < blocklat0.getNz() - blocklat0.getOverlap(); ++k) {
+          for (int j = blocklat0.getOverlap(); j < blocklat0.getNy() - blocklat0.getOverlap(); ++j) {
+            std::size_t id = k * blocklat0.getProjection()[2] + j * blocklat0.getProjection()[1] + blocklat0.getOverlap();
+            for (int i = blocklat0.getOverlap(); i < blocklat0.getNx() - blocklat0.getOverlap(); ++i) {
+              cell0.setId(id);
+              cell1.setId(id);
+              CELLDYNAMICS::Execute(flagArray[id], cell0, cell1);
+              ++id;
+            }
+          }
+        }
+      }
+    }
+  }
+
+  template <typename DYNAMICS>
+  void ApplyInnerCellDynamics() {
+    int size = static_cast<int>(BlockLatMan0.getBlockLats().size());
+#pragma omp parallel for num_threads(Thread_Num)
+    for (int iblock = 0; iblock < size; ++iblock) {
+      auto& blocklat0 = BlockLatMan0.getBlockLat(iblock);
+      auto& blocklat1 = BlockLatMan1.getBlockLat(iblock);
+      CELL0 cell0(0, blocklat0);
+      CELL1 cell1(0, blocklat1);
+      if constexpr (LatSet0::d == 2) {
+        for (int j = blocklat0.getOverlap(); j < blocklat0.getNy() - blocklat0.getOverlap(); ++j) {
+          std::size_t id = j * blocklat0.getNx() + blocklat0.getOverlap();
+          for (int i = blocklat0.getOverlap(); i < blocklat0.getNx() - blocklat0.getOverlap(); ++i) {
+            cell0.setId(id);
+            cell1.setId(id);
+            DYNAMICS::apply(cell0, cell1);
+            ++id;
+          }
+        }
+      } else if constexpr (LatSet0::d == 3) {
+        for (int k = blocklat0.getOverlap(); k < blocklat0.getNz() - blocklat0.getOverlap(); ++k) {
+          for (int j = blocklat0.getOverlap(); j < blocklat0.getNy() - blocklat0.getOverlap(); ++j) {
+            std::size_t id = k * blocklat0.getProjection()[2] + j * blocklat0.getProjection()[1] + blocklat0.getOverlap();
+            for (int i = blocklat0.getOverlap(); i < blocklat0.getNx() - blocklat0.getOverlap(); ++i) {
+              cell0.setId(id);
+              cell1.setId(id);
+              DYNAMICS::apply(cell0, cell1);
+              ++id;
+            }
+          }
         }
       }
     }
