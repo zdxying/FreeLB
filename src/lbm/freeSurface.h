@@ -523,6 +523,7 @@ struct CoupledToFluidNbrConversion {
   using XGenericRho = typename XCELL::GenericRho;
   using T = typename CELL::FloatType;
   using LatSet = typename CELL::LatticeSet;
+  using XLatSet = typename XCELL::LatticeSet;
 
   static constexpr bool hasForce = (
     CELL::template hasField<FORCE<T, LatSet::d>>() || 
@@ -574,6 +575,8 @@ struct CoupledToFluidNbrConversion {
 				T aveu2 = aveu.getnorm2();
 				for (unsigned int k = 0; k < LatSet::q; ++k) {
 					cell[k] = equilibrium::SecondOrder<CELL>::get(k, aveu, averho, aveu2);
+				}
+        for (unsigned int k = 0; k < XLatSet::q; ++k) {
           xcell[k] = equilibrium::SecondOrder<XCELL>::get(k, aveu, avexrho, aveu2);
 				}
       }
