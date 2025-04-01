@@ -151,5 +151,30 @@ struct FirstOrder {
   }
 };
 
+// Init feq
+// common use: Init<moment::useFieldrhoU<CELL>, equilibrium::SecondOrder<CELL>>
+template <typename MomentaScheme, typename EquilibriumScheme>
+struct Init {
+  using CELL = typename EquilibriumScheme::CELLTYPE;
+  using T = typename CELL::FloatType;
+  using LatSet = typename CELL::LatticeSet;
+  using equilibriumscheme = EquilibriumScheme;
+  using GenericRho = typename CELL::GenericRho;
+
+  __any__ static void apply(CELL& cell) {
+    // macroscopic variables, usually from field value
+    T rho{};
+    Vector<T, LatSet::d> u{};
+    MomentaScheme::apply(cell, rho, u);
+    // equilibrium distribution function
+    std::array<T, LatSet::q> feq{};
+    EquilibriumScheme::apply(feq, rho, u);
+
+    for (unsigned int i = 0; i < LatSet::q; ++i) {
+      cell[i] = feq[i];
+    }
+  }
+
+};
 
 }  // namespace equilibrium
