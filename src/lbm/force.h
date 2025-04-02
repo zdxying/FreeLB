@@ -64,6 +64,8 @@ template <typename CELL>
 struct Force {
   using T = typename CELL::FloatType;
   using LatSet = typename CELL::LatticeSet;
+  // scalardir will NOT be used in Force<>
+  static constexpr unsigned int scalardir = 0;
 
   __any__ static void apply(CELL &cell, std::array<T, LatSet::q> &Fi) {
     const Vector<T, LatSet::d> &u = cell.template get<VELOCITY<T, LatSet::d>>();
@@ -84,6 +86,8 @@ template <typename CELL>
 struct ConstForce {
   using T = typename CELL::FloatType;
   using LatSet = typename CELL::LatticeSet;
+  // scalardir will NOT be used in ConstForce<>
+  static constexpr unsigned int scalardir = 0;
 
   __any__ static void apply(CELL &cell, std::array<T, LatSet::q> &Fi) {
     const Vector<T, LatSet::d> &u = cell.template get<VELOCITY<T, LatSet::d>>();
@@ -105,7 +109,6 @@ template <typename CELL, unsigned int dir = 2>
 struct ScalarForce {
   using T = typename CELL::FloatType;
   using LatSet = typename CELL::LatticeSet;
-
   static constexpr unsigned int scalardir = dir >= 2 ? LatSet::d - 1 : dir;
 
   __any__ static void apply(CELL &cell, std::array<T, LatSet::q> &Fi) {
@@ -132,7 +135,6 @@ template <typename CELL, unsigned int dir = 2>
 struct ScalarConstForce {
   using T = typename CELL::FloatType;
   using LatSet = typename CELL::LatticeSet;
-
   static constexpr unsigned int scalardir = dir >= 2 ? LatSet::d - 1 : dir;
 
   __any__ static void apply(CELL &cell, std::array<T, LatSet::q> &Fi) {

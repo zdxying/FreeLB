@@ -304,13 +304,11 @@ struct UImplgen : public codegenbase {
 };
 
 
-// template <typename CELLTYPE, typename ForceScheme, bool WriteToField, unsigned int dir>
+// template <typename CELLTYPE, typename ForceScheme, bool WriteToField>
 // struct forceUImpl {
 //   using CELL = CELLTYPE;
 //   using T = typename CELL::FloatType;
 //   using LatSet = typename CELL::LatticeSet;
-//   using GenericRho = typename CELL::GenericRho;
-//   static constexpr unsigned int scalardir = dir >= 2 ? LatSet::d - 1 : dir;
 //   __any__ static inline void apply(CELL& cell, const Vector<T, LatSet::d>& f_alpha, Vector<T, LatSet::d>& u_value) {
 //     u_value.clear();
 //     T rho_value{};
@@ -330,7 +328,7 @@ struct UImplgen : public codegenbase {
 //       rho_value += cell[i];
 //       u_value += latset::c<LatSet>(i) * cell[i];
 //     }
-//     u_value[scalardir] += f * T{0.5};
+//     u_value[ForceScheme::scalardir] += f * T{0.5};
 //     u_value /= rho_value;
 //     if constexpr (WriteToField) cell.template get<VELOCITY<T, LatSet::d>>() = u_value;
 //   }
@@ -341,10 +339,9 @@ template<typename... LatSets>
 struct forceUImplgen : public codegenbase {
   forceUImplgen(const std::string& filename) { _filename = filename; }
 
-  std::string _template = "template <typename T, typename TypePack, typename ForceScheme, bool WriteToField, unsigned int dir>";
+  std::string _template = "template <typename T, typename TypePack, typename ForceScheme, bool WriteToField>";
   std::string _struct = "struct forceUImpl";
 
-  std::string _staticconstexpr = "static constexpr unsigned int scalardir = dir >= 2 ? LatSet::d - 1 : dir;";
   std::string _function0 = "__any__ static inline void apply(CELLTYPE& cell, const Vector<T, LatSet::d>& f_alpha, Vector<T, LatSet::d>& u_value)";
   std::string _function1 = "__any__ static inline void apply(CELLTYPE& cell, const T f, Vector<T, LatSet::d>& u_value)";
 
@@ -362,13 +359,11 @@ struct forceUImplgen : public codegenbase {
   template<typename LatSet>
   void generate(std::ofstream& file){
     std::string _using = "using CELLTYPE = " + cellname(LatSet::name("<T>"), "T", "TypePack") +  ";" +
-                         "\nusing LatSet = " + LatSet::name("<T>") + ";" + 
-                         "\nusing GenericRho = typename CELLTYPE::GenericRho;";
+                         "\nusing LatSet = " + LatSet::name("<T>") + ";";
 
     file << _template << std::endl;
-    file << _struct << "<"<< cellname(LatSet::name("<T>"), "T", "TypePack") << ", ForceScheme, WriteToField, dir>" << _brace << std::endl;
+    file << _struct << "<"<< cellname(LatSet::name("<T>"), "T", "TypePack") << ", ForceScheme, WriteToField>" << _brace << std::endl;
     file << _using << "\n"<< std::endl;
-    file << _staticconstexpr << "\n" << std::endl;
 
     // function 0
     file << _function0 << _brace << std::endl;
@@ -420,7 +415,7 @@ struct forceUImplgen : public codegenbase {
       }
       file << ";" << std::endl;
     }
-    file << "u_value[scalardir] += f * T{0.5};" << std::endl;
+    file << "u_value[ForceScheme::scalardir] += f * T{0.5};" << std::endl;
     for (unsigned int dim = 0; dim < LatSet::d; ++dim) {
       file << "u_value[" << dim << "] /= rho_value;" << std::endl;
     }
@@ -519,13 +514,12 @@ struct rhoUImplgen : public codegenbase {
 };
 
 
-// template <typename CELLTYPE, typename ForceScheme, bool WriteToField, unsigned int dir>
+// template <typename CELLTYPE, typename ForceScheme, bool WriteToField>
 // struct forcerhoUImpl {
 //   using CELL = CELLTYPE;
 //   using T = typename CELL::FloatType;
 //   using LatSet = typename CELL::LatticeSet;
 //   using GenericRho = typename CELL::GenericRho;
-//   static constexpr unsigned int scalardir = dir >= 2 ? LatSet::d - 1 : dir;
 //   __any__ static inline void apply(CELL& cell, const Vector<T, LatSet::d>& f_alpha, T& rho_value, Vector<T, LatSet::d>& u_value) {
 //     rho_value = T{};
 //     u_value.clear();
@@ -548,7 +542,7 @@ struct rhoUImplgen : public codegenbase {
 //       rho_value += cell[i];
 //       u_value += latset::c<LatSet>(i) * cell[i];
 //     }
-//     u_value[scalardir] += f * T{0.5};
+//     u_value[ForceScheme::scalardir] += f * T{0.5};
 //     u_value /= rho_value;
 //     if constexpr (WriteToField) {
 //       cell.template get<GenericRho>() = rho_value;
@@ -560,10 +554,9 @@ template<typename... LatSets>
 struct forcerhoUImplgen : public codegenbase {
   forcerhoUImplgen(const std::string& filename) { _filename = filename; }
 
-  std::string _template = "template <typename T, typename TypePack, typename ForceScheme, bool WriteToField, unsigned int dir>";
+  std::string _template = "template <typename T, typename TypePack, typename ForceScheme, bool WriteToField>";
   std::string _struct = "struct forcerhoUImpl";
 
-  std::string _staticconstexpr = "static constexpr unsigned int scalardir = dir >= 2 ? LatSet::d - 1 : dir;";
   std::string _function0 = "__any__ static inline void apply(CELLTYPE& cell, const Vector<T, LatSet::d>& f_alpha, T& rho_value, Vector<T, LatSet::d>& u_value)";
   std::string _function1 = "__any__ static inline void apply(CELLTYPE& cell, const T f, T& rho_value, Vector<T, LatSet::d>& u_value)";
 
@@ -585,9 +578,8 @@ struct forcerhoUImplgen : public codegenbase {
                          "\nusing GenericRho = typename CELLTYPE::GenericRho;";
 
     file << _template << std::endl;
-    file << _struct << "<"<< cellname(LatSet::name("<T>"), "T", "TypePack") << ", ForceScheme, WriteToField, dir>" << _brace << std::endl;
+    file << _struct << "<"<< cellname(LatSet::name("<T>"), "T", "TypePack") << ", ForceScheme, WriteToField>" << _brace << std::endl;
     file << _using << "\n"<< std::endl;
-    file << _staticconstexpr << "\n" << std::endl;
 
     // function 0
     file << _function0 << _brace << std::endl;
@@ -639,7 +631,7 @@ struct forcerhoUImplgen : public codegenbase {
       }
       file << ";" << std::endl;
     }
-    file << "u_value[scalardir] += f * T{0.5};" << std::endl;
+    file << "u_value[ForceScheme::scalardir] += f * T{0.5};" << std::endl;
     for (unsigned int dim = 0; dim < LatSet::d; ++dim) {
       file << "u_value[" << dim << "] /= rho_value;" << std::endl;
     }

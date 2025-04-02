@@ -276,13 +276,11 @@ struct U {
 };
 
 
-template <typename CELLTYPE, typename ForceScheme, bool WriteToField, unsigned int dir>
+template <typename CELLTYPE, typename ForceScheme, bool WriteToField>
 struct forceUImpl {
   using CELL = CELLTYPE;
   using T = typename CELL::FloatType;
   using LatSet = typename CELL::LatticeSet;
-  using GenericRho = typename CELL::GenericRho;
-  static constexpr unsigned int scalardir = dir >= 2 ? LatSet::d - 1 : dir;
 
   __any__ static inline void apply(CELL& cell, const Vector<T, LatSet::d>& f_alpha, Vector<T, LatSet::d>& u_value) {
     u_value.clear();
@@ -303,19 +301,19 @@ struct forceUImpl {
       rho_value += cell[i];
       u_value += latset::c<LatSet>(i) * cell[i];
     }
-    u_value[scalardir] += f * T{0.5};
+    u_value[ForceScheme::scalardir] += f * T{0.5};
     u_value /= rho_value;
     if constexpr (WriteToField) cell.template get<VELOCITY<T, LatSet::d>>() = u_value;
   }
 };
 
-template <typename CELLTYPE, typename ForceScheme, bool WriteToField = false, unsigned int dir = 2>
+template <typename CELLTYPE, typename ForceScheme, bool WriteToField = false>
 struct forceU {
   using CELL = CELLTYPE;
   using T = typename CELL::FloatType;
   using LatSet = typename CELL::LatticeSet;
   using GenericRho = typename CELL::GenericRho;
-  static constexpr unsigned int scalardir = dir >= 2 ? LatSet::d - 1 : dir;
+  static constexpr unsigned int scalardir = ForceScheme::scalardir;
 
   __any__ static inline Vector<T, LatSet::d> get(CELL& cell) {
     const auto force = ForceScheme::getForce(cell);
@@ -349,11 +347,11 @@ struct forceU {
   }
 
   __any__ static inline void apply(CELL& cell, const Vector<T, LatSet::d>& f_alpha, Vector<T, LatSet::d>& u_value) {
-    forceUImpl<CELL, ForceScheme, WriteToField, dir>::apply(cell, f_alpha, u_value);
+    forceUImpl<CELL, ForceScheme, WriteToField>::apply(cell, f_alpha, u_value);
   }
   // for scalar force
   __any__ static inline void apply(CELL& cell, const T f, Vector<T, LatSet::d>& u_value) {
-    forceUImpl<CELL, ForceScheme, WriteToField, dir>::apply(cell, f, u_value);
+    forceUImpl<CELL, ForceScheme, WriteToField>::apply(cell, f, u_value);
   }
 };
 
@@ -400,13 +398,12 @@ struct rhoU {
 };
 
 
-template <typename CELLTYPE, typename ForceScheme, bool WriteToField, unsigned int dir>
+template <typename CELLTYPE, typename ForceScheme, bool WriteToField>
 struct forcerhoUImpl {
   using CELL = CELLTYPE;
   using T = typename CELL::FloatType;
   using LatSet = typename CELL::LatticeSet;
   using GenericRho = typename CELL::GenericRho;
-  static constexpr unsigned int scalardir = dir >= 2 ? LatSet::d - 1 : dir;
 
   __any__ static inline void apply(CELL& cell, const Vector<T, LatSet::d>& f_alpha, T& rho_value,
                            Vector<T, LatSet::d>& u_value) {
@@ -431,7 +428,7 @@ struct forcerhoUImpl {
       rho_value += cell[i];
       u_value += latset::c<LatSet>(i) * cell[i];
     }
-    u_value[scalardir] += f * T{0.5};
+    u_value[ForceScheme::scalardir] += f * T{0.5};
     u_value /= rho_value;
     if constexpr (WriteToField) {
       cell.template get<GenericRho>() = rho_value;
@@ -440,13 +437,13 @@ struct forcerhoUImpl {
   }
 };
 
-template <typename CELLTYPE, typename ForceScheme, bool WriteToField = false, unsigned int dir = 2>
+template <typename CELLTYPE, typename ForceScheme, bool WriteToField = false>
 struct forcerhoU {
   using CELL = CELLTYPE;
   using T = typename CELL::FloatType;
   using LatSet = typename CELL::LatticeSet;
   using GenericRho = typename CELL::GenericRho;
-  static constexpr unsigned int scalardir = dir >= 2 ? LatSet::d - 1 : dir;
+  static constexpr unsigned int scalardir = ForceScheme::scalardir;
 
   __any__ static inline void apply(CELL& cell) {
     static_assert(WriteToField, "forcerhoU::apply(CELL& cell) must write to field");
@@ -473,11 +470,11 @@ struct forcerhoU {
 
   __any__ static inline void apply(CELL& cell, const Vector<T, LatSet::d>& f_alpha, T& rho_value,
                            Vector<T, LatSet::d>& u_value) {
-    forcerhoUImpl<CELL, ForceScheme, WriteToField, dir>::apply(cell, f_alpha, rho_value, u_value);
+    forcerhoUImpl<CELL, ForceScheme, WriteToField>::apply(cell, f_alpha, rho_value, u_value);
   }
   // for scalar force
   __any__ static inline void apply(CELL& cell, const T f, T& rho_value, Vector<T, LatSet::d>& u_value) {
-    forcerhoUImpl<CELL, ForceScheme, WriteToField, dir>::apply(cell, f, rho_value, u_value);
+    forcerhoUImpl<CELL, ForceScheme, WriteToField>::apply(cell, f, rho_value, u_value);
   }
 };
 

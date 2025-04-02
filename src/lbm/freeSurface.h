@@ -421,13 +421,13 @@ struct FinalizeConversion {
 };
 
 // apply all the free surface dynamics
-template <typename LATTICEMANAGERTYPE>
+template <typename LATTICEMANAGERTYPE, unsigned int dir = 2>
 struct FreeSurfaceApply {
   using CELL = typename LATTICEMANAGERTYPE::CellType;
   using T = typename CELL::FloatType;
   using LatSet = typename CELL::LatticeSet;
+  static constexpr unsigned int scalardir = dir >= 2 ? LatSet::d - 1 : dir;
 
-  template <unsigned int scalardir = 2>
   static void Apply(LATTICEMANAGERTYPE& latManager) {
     // mass transfer
     latManager.template ApplyInnerCellDynamics<MassTransfer<CELL>>();
@@ -470,7 +470,6 @@ struct FreeSurfaceApply {
     latManager.ForEachBlockLattice([&](auto& blocklat) { blocklat.template getField<MASSEX<T, LatSet::q>>().Init(Vector<T,LatSet::q>{}); });
   }
 
-  template <unsigned int scalardir = 2>
   static void Apply(LATTICEMANAGERTYPE& latManager, std::int64_t count) {
     // mass transfer
     latManager.template ApplyInnerCellDynamics<MassTransfer<CELL>>(count);
@@ -589,7 +588,7 @@ struct CoupledToFluidNbrConversion {
   }
 };
 
-template <typename LatManagerCouplingTYPE>
+template <typename LatManagerCouplingTYPE, unsigned int dir = 2>
 struct CoupledFreeSurfaceApply {
   using CELL = typename LatManagerCouplingTYPE::CELL0;
   using XCELL = typename LatManagerCouplingTYPE::CELL1;
@@ -597,8 +596,8 @@ struct CoupledFreeSurfaceApply {
   using XGenericRho = typename XCELL::GenericRho;
   using T = typename CELL::FloatType;
   using LatSet = typename CELL::LatticeSet;
+  static constexpr unsigned int scalardir = dir >= 2 ? LatSet::d - 1 : dir;
 
-  template <unsigned int scalardir = 2>
   static void Apply(LatManagerCouplingTYPE& latManagerCoupling) {
     auto& latManager = latManagerCoupling.getLat0();
     auto& xlatManager = latManagerCoupling.getLat1();

@@ -293,13 +293,10 @@ if constexpr (WriteToField) cell.template get<VELOCITY<T, LatSet::d>>() = u_valu
 
 //------------------------------------
 
-template <typename T, typename TypePack, typename ForceScheme, bool WriteToField, unsigned int dir>
-struct forceUImpl<CELL<T, D2Q5<T>, TypePack>, ForceScheme, WriteToField, dir>{
+template <typename T, typename TypePack, typename ForceScheme, bool WriteToField>
+struct forceUImpl<CELL<T, D2Q5<T>, TypePack>, ForceScheme, WriteToField>{
 using CELLTYPE = CELL<T, D2Q5<T>, TypePack>;
 using LatSet = D2Q5<T>;
-using GenericRho = typename CELLTYPE::GenericRho;
-
-static constexpr unsigned int scalardir = dir >= 2 ? LatSet::d - 1 : dir;
 
 __any__ static inline void apply(CELLTYPE& cell, const Vector<T, LatSet::d>& f_alpha, Vector<T, LatSet::d>& u_value){
 const T rho_value = cell[0]+cell[1]+cell[2]+cell[3]+cell[4];
@@ -311,20 +308,17 @@ __any__ static inline void apply(CELLTYPE& cell, const T f, Vector<T, LatSet::d>
 const T rho_value = cell[0]+cell[1]+cell[2]+cell[3]+cell[4];
 u_value[0] = cell[1]-cell[2];
 u_value[1] = cell[3]-cell[4];
-u_value[scalardir] += f * T{0.5};
+u_value[ForceScheme::scalardir] += f * T{0.5};
 u_value[0] /= rho_value;
 u_value[1] /= rho_value;
 if constexpr (WriteToField) cell.template get<VELOCITY<T, LatSet::d>>() = u_value;
 }
 };
 
-template <typename T, typename TypePack, typename ForceScheme, bool WriteToField, unsigned int dir>
-struct forceUImpl<CELL<T, D2Q9<T>, TypePack>, ForceScheme, WriteToField, dir>{
+template <typename T, typename TypePack, typename ForceScheme, bool WriteToField>
+struct forceUImpl<CELL<T, D2Q9<T>, TypePack>, ForceScheme, WriteToField>{
 using CELLTYPE = CELL<T, D2Q9<T>, TypePack>;
 using LatSet = D2Q9<T>;
-using GenericRho = typename CELLTYPE::GenericRho;
-
-static constexpr unsigned int scalardir = dir >= 2 ? LatSet::d - 1 : dir;
 
 __any__ static inline void apply(CELLTYPE& cell, const Vector<T, LatSet::d>& f_alpha, Vector<T, LatSet::d>& u_value){
 const T rho_value = cell[0]+cell[1]+cell[2]+cell[3]+cell[4]+cell[5]+cell[6]+cell[7]+cell[8];
@@ -336,20 +330,17 @@ __any__ static inline void apply(CELLTYPE& cell, const T f, Vector<T, LatSet::d>
 const T rho_value = cell[0]+cell[1]+cell[2]+cell[3]+cell[4]+cell[5]+cell[6]+cell[7]+cell[8];
 u_value[0] = cell[1]-cell[2]+cell[5]-cell[6]+cell[7]-cell[8];
 u_value[1] = cell[3]-cell[4]+cell[5]-cell[6]-cell[7]+cell[8];
-u_value[scalardir] += f * T{0.5};
+u_value[ForceScheme::scalardir] += f * T{0.5};
 u_value[0] /= rho_value;
 u_value[1] /= rho_value;
 if constexpr (WriteToField) cell.template get<VELOCITY<T, LatSet::d>>() = u_value;
 }
 };
 
-template <typename T, typename TypePack, typename ForceScheme, bool WriteToField, unsigned int dir>
-struct forceUImpl<CELL<T, D3Q7<T>, TypePack>, ForceScheme, WriteToField, dir>{
+template <typename T, typename TypePack, typename ForceScheme, bool WriteToField>
+struct forceUImpl<CELL<T, D3Q7<T>, TypePack>, ForceScheme, WriteToField>{
 using CELLTYPE = CELL<T, D3Q7<T>, TypePack>;
 using LatSet = D3Q7<T>;
-using GenericRho = typename CELLTYPE::GenericRho;
-
-static constexpr unsigned int scalardir = dir >= 2 ? LatSet::d - 1 : dir;
 
 __any__ static inline void apply(CELLTYPE& cell, const Vector<T, LatSet::d>& f_alpha, Vector<T, LatSet::d>& u_value){
 const T rho_value = cell[0]+cell[1]+cell[2]+cell[3]+cell[4]+cell[5]+cell[6];
@@ -363,7 +354,7 @@ const T rho_value = cell[0]+cell[1]+cell[2]+cell[3]+cell[4]+cell[5]+cell[6];
 u_value[0] = cell[1]-cell[2];
 u_value[1] = cell[3]-cell[4];
 u_value[2] = cell[5]-cell[6];
-u_value[scalardir] += f * T{0.5};
+u_value[ForceScheme::scalardir] += f * T{0.5};
 u_value[0] /= rho_value;
 u_value[1] /= rho_value;
 u_value[2] /= rho_value;
@@ -371,13 +362,10 @@ if constexpr (WriteToField) cell.template get<VELOCITY<T, LatSet::d>>() = u_valu
 }
 };
 
-template <typename T, typename TypePack, typename ForceScheme, bool WriteToField, unsigned int dir>
-struct forceUImpl<CELL<T, D3Q15<T>, TypePack>, ForceScheme, WriteToField, dir>{
+template <typename T, typename TypePack, typename ForceScheme, bool WriteToField>
+struct forceUImpl<CELL<T, D3Q15<T>, TypePack>, ForceScheme, WriteToField>{
 using CELLTYPE = CELL<T, D3Q15<T>, TypePack>;
 using LatSet = D3Q15<T>;
-using GenericRho = typename CELLTYPE::GenericRho;
-
-static constexpr unsigned int scalardir = dir >= 2 ? LatSet::d - 1 : dir;
 
 __any__ static inline void apply(CELLTYPE& cell, const Vector<T, LatSet::d>& f_alpha, Vector<T, LatSet::d>& u_value){
 const T rho_value = cell[0]+cell[1]+cell[2]+cell[3]+cell[4]+cell[5]+cell[6]+cell[7]+cell[8]+cell[9]+cell[10]+cell[11]+cell[12]+cell[13]+cell[14];
@@ -391,7 +379,7 @@ const T rho_value = cell[0]+cell[1]+cell[2]+cell[3]+cell[4]+cell[5]+cell[6]+cell
 u_value[0] = cell[1]-cell[2]+cell[7]-cell[8]+cell[9]-cell[10]+cell[11]-cell[12]-cell[13]+cell[14];
 u_value[1] = cell[3]-cell[4]+cell[7]-cell[8]+cell[9]-cell[10]-cell[11]+cell[12]+cell[13]-cell[14];
 u_value[2] = cell[5]-cell[6]+cell[7]-cell[8]-cell[9]+cell[10]+cell[11]-cell[12]+cell[13]-cell[14];
-u_value[scalardir] += f * T{0.5};
+u_value[ForceScheme::scalardir] += f * T{0.5};
 u_value[0] /= rho_value;
 u_value[1] /= rho_value;
 u_value[2] /= rho_value;
@@ -399,13 +387,10 @@ if constexpr (WriteToField) cell.template get<VELOCITY<T, LatSet::d>>() = u_valu
 }
 };
 
-template <typename T, typename TypePack, typename ForceScheme, bool WriteToField, unsigned int dir>
-struct forceUImpl<CELL<T, D3Q19<T>, TypePack>, ForceScheme, WriteToField, dir>{
+template <typename T, typename TypePack, typename ForceScheme, bool WriteToField>
+struct forceUImpl<CELL<T, D3Q19<T>, TypePack>, ForceScheme, WriteToField>{
 using CELLTYPE = CELL<T, D3Q19<T>, TypePack>;
 using LatSet = D3Q19<T>;
-using GenericRho = typename CELLTYPE::GenericRho;
-
-static constexpr unsigned int scalardir = dir >= 2 ? LatSet::d - 1 : dir;
 
 __any__ static inline void apply(CELLTYPE& cell, const Vector<T, LatSet::d>& f_alpha, Vector<T, LatSet::d>& u_value){
 const T rho_value = cell[0]+cell[1]+cell[2]+cell[3]+cell[4]+cell[5]+cell[6]+cell[7]+cell[8]+cell[9]+cell[10]+cell[11]+cell[12]+cell[13]+cell[14]+cell[15]+cell[16]+cell[17]+cell[18];
@@ -419,7 +404,7 @@ const T rho_value = cell[0]+cell[1]+cell[2]+cell[3]+cell[4]+cell[5]+cell[6]+cell
 u_value[0] = cell[1]-cell[2]+cell[7]-cell[8]+cell[9]-cell[10]+cell[13]-cell[14]+cell[15]-cell[16];
 u_value[1] = cell[3]-cell[4]+cell[7]-cell[8]+cell[11]-cell[12]-cell[13]+cell[14]+cell[17]-cell[18];
 u_value[2] = cell[5]-cell[6]+cell[9]-cell[10]+cell[11]-cell[12]-cell[15]+cell[16]-cell[17]+cell[18];
-u_value[scalardir] += f * T{0.5};
+u_value[ForceScheme::scalardir] += f * T{0.5};
 u_value[0] /= rho_value;
 u_value[1] /= rho_value;
 u_value[2] /= rho_value;
@@ -427,13 +412,10 @@ if constexpr (WriteToField) cell.template get<VELOCITY<T, LatSet::d>>() = u_valu
 }
 };
 
-template <typename T, typename TypePack, typename ForceScheme, bool WriteToField, unsigned int dir>
-struct forceUImpl<CELL<T, D3Q27<T>, TypePack>, ForceScheme, WriteToField, dir>{
+template <typename T, typename TypePack, typename ForceScheme, bool WriteToField>
+struct forceUImpl<CELL<T, D3Q27<T>, TypePack>, ForceScheme, WriteToField>{
 using CELLTYPE = CELL<T, D3Q27<T>, TypePack>;
 using LatSet = D3Q27<T>;
-using GenericRho = typename CELLTYPE::GenericRho;
-
-static constexpr unsigned int scalardir = dir >= 2 ? LatSet::d - 1 : dir;
 
 __any__ static inline void apply(CELLTYPE& cell, const Vector<T, LatSet::d>& f_alpha, Vector<T, LatSet::d>& u_value){
 const T rho_value = cell[0]+cell[1]+cell[2]+cell[3]+cell[4]+cell[5]+cell[6]+cell[7]+cell[8]+cell[9]+cell[10]+cell[11]+cell[12]+cell[13]+cell[14]+cell[15]+cell[16]+cell[17]+cell[18]+cell[19]+cell[20]+cell[21]+cell[22]+cell[23]+cell[24]+cell[25]+cell[26];
@@ -447,7 +429,7 @@ const T rho_value = cell[0]+cell[1]+cell[2]+cell[3]+cell[4]+cell[5]+cell[6]+cell
 u_value[0] = cell[1]-cell[2]+cell[7]-cell[8]+cell[9]-cell[10]+cell[13]-cell[14]+cell[15]-cell[16]+cell[19]-cell[20]+cell[21]-cell[22]+cell[23]-cell[24]-cell[25]+cell[26];
 u_value[1] = cell[3]-cell[4]+cell[7]-cell[8]+cell[11]-cell[12]-cell[13]+cell[14]+cell[17]-cell[18]+cell[19]-cell[20]+cell[21]-cell[22]-cell[23]+cell[24]+cell[25]-cell[26];
 u_value[2] = cell[5]-cell[6]+cell[9]-cell[10]+cell[11]-cell[12]-cell[15]+cell[16]-cell[17]+cell[18]+cell[19]-cell[20]-cell[21]+cell[22]+cell[23]-cell[24]+cell[25]-cell[26];
-u_value[scalardir] += f * T{0.5};
+u_value[ForceScheme::scalardir] += f * T{0.5};
 u_value[0] /= rho_value;
 u_value[1] /= rho_value;
 u_value[2] /= rho_value;
@@ -555,13 +537,11 @@ if constexpr (WriteToField) {cell.template get<GenericRho>() = rho_value; cell.t
 
 //------------------------------------
 
-template <typename T, typename TypePack, typename ForceScheme, bool WriteToField, unsigned int dir>
-struct forcerhoUImpl<CELL<T, D2Q5<T>, TypePack>, ForceScheme, WriteToField, dir>{
+template <typename T, typename TypePack, typename ForceScheme, bool WriteToField>
+struct forcerhoUImpl<CELL<T, D2Q5<T>, TypePack>, ForceScheme, WriteToField>{
 using CELLTYPE = CELL<T, D2Q5<T>, TypePack>;
 using LatSet = D2Q5<T>;
 using GenericRho = typename CELLTYPE::GenericRho;
-
-static constexpr unsigned int scalardir = dir >= 2 ? LatSet::d - 1 : dir;
 
 __any__ static inline void apply(CELLTYPE& cell, const Vector<T, LatSet::d>& f_alpha, T& rho_value, Vector<T, LatSet::d>& u_value){
 rho_value = cell[0]+cell[1]+cell[2]+cell[3]+cell[4];
@@ -573,20 +553,18 @@ __any__ static inline void apply(CELLTYPE& cell, const T f, T& rho_value, Vector
 rho_value = cell[0]+cell[1]+cell[2]+cell[3]+cell[4];
 u_value[0] = cell[1]-cell[2];
 u_value[1] = cell[3]-cell[4];
-u_value[scalardir] += f * T{0.5};
+u_value[ForceScheme::scalardir] += f * T{0.5};
 u_value[0] /= rho_value;
 u_value[1] /= rho_value;
 if constexpr (WriteToField) {cell.template get<GenericRho>() = rho_value; cell.template get<VELOCITY<T, LatSet::d>>() = u_value;}
 }
 };
 
-template <typename T, typename TypePack, typename ForceScheme, bool WriteToField, unsigned int dir>
-struct forcerhoUImpl<CELL<T, D2Q9<T>, TypePack>, ForceScheme, WriteToField, dir>{
+template <typename T, typename TypePack, typename ForceScheme, bool WriteToField>
+struct forcerhoUImpl<CELL<T, D2Q9<T>, TypePack>, ForceScheme, WriteToField>{
 using CELLTYPE = CELL<T, D2Q9<T>, TypePack>;
 using LatSet = D2Q9<T>;
 using GenericRho = typename CELLTYPE::GenericRho;
-
-static constexpr unsigned int scalardir = dir >= 2 ? LatSet::d - 1 : dir;
 
 __any__ static inline void apply(CELLTYPE& cell, const Vector<T, LatSet::d>& f_alpha, T& rho_value, Vector<T, LatSet::d>& u_value){
 rho_value = cell[0]+cell[1]+cell[2]+cell[3]+cell[4]+cell[5]+cell[6]+cell[7]+cell[8];
@@ -598,20 +576,18 @@ __any__ static inline void apply(CELLTYPE& cell, const T f, T& rho_value, Vector
 rho_value = cell[0]+cell[1]+cell[2]+cell[3]+cell[4]+cell[5]+cell[6]+cell[7]+cell[8];
 u_value[0] = cell[1]-cell[2]+cell[5]-cell[6]+cell[7]-cell[8];
 u_value[1] = cell[3]-cell[4]+cell[5]-cell[6]-cell[7]+cell[8];
-u_value[scalardir] += f * T{0.5};
+u_value[ForceScheme::scalardir] += f * T{0.5};
 u_value[0] /= rho_value;
 u_value[1] /= rho_value;
 if constexpr (WriteToField) {cell.template get<GenericRho>() = rho_value; cell.template get<VELOCITY<T, LatSet::d>>() = u_value;}
 }
 };
 
-template <typename T, typename TypePack, typename ForceScheme, bool WriteToField, unsigned int dir>
-struct forcerhoUImpl<CELL<T, D3Q7<T>, TypePack>, ForceScheme, WriteToField, dir>{
+template <typename T, typename TypePack, typename ForceScheme, bool WriteToField>
+struct forcerhoUImpl<CELL<T, D3Q7<T>, TypePack>, ForceScheme, WriteToField>{
 using CELLTYPE = CELL<T, D3Q7<T>, TypePack>;
 using LatSet = D3Q7<T>;
 using GenericRho = typename CELLTYPE::GenericRho;
-
-static constexpr unsigned int scalardir = dir >= 2 ? LatSet::d - 1 : dir;
 
 __any__ static inline void apply(CELLTYPE& cell, const Vector<T, LatSet::d>& f_alpha, T& rho_value, Vector<T, LatSet::d>& u_value){
 rho_value = cell[0]+cell[1]+cell[2]+cell[3]+cell[4]+cell[5]+cell[6];
@@ -625,7 +601,7 @@ rho_value = cell[0]+cell[1]+cell[2]+cell[3]+cell[4]+cell[5]+cell[6];
 u_value[0] = cell[1]-cell[2];
 u_value[1] = cell[3]-cell[4];
 u_value[2] = cell[5]-cell[6];
-u_value[scalardir] += f * T{0.5};
+u_value[ForceScheme::scalardir] += f * T{0.5};
 u_value[0] /= rho_value;
 u_value[1] /= rho_value;
 u_value[2] /= rho_value;
@@ -633,13 +609,11 @@ if constexpr (WriteToField) {cell.template get<GenericRho>() = rho_value; cell.t
 }
 };
 
-template <typename T, typename TypePack, typename ForceScheme, bool WriteToField, unsigned int dir>
-struct forcerhoUImpl<CELL<T, D3Q15<T>, TypePack>, ForceScheme, WriteToField, dir>{
+template <typename T, typename TypePack, typename ForceScheme, bool WriteToField>
+struct forcerhoUImpl<CELL<T, D3Q15<T>, TypePack>, ForceScheme, WriteToField>{
 using CELLTYPE = CELL<T, D3Q15<T>, TypePack>;
 using LatSet = D3Q15<T>;
 using GenericRho = typename CELLTYPE::GenericRho;
-
-static constexpr unsigned int scalardir = dir >= 2 ? LatSet::d - 1 : dir;
 
 __any__ static inline void apply(CELLTYPE& cell, const Vector<T, LatSet::d>& f_alpha, T& rho_value, Vector<T, LatSet::d>& u_value){
 rho_value = cell[0]+cell[1]+cell[2]+cell[3]+cell[4]+cell[5]+cell[6]+cell[7]+cell[8]+cell[9]+cell[10]+cell[11]+cell[12]+cell[13]+cell[14];
@@ -653,7 +627,7 @@ rho_value = cell[0]+cell[1]+cell[2]+cell[3]+cell[4]+cell[5]+cell[6]+cell[7]+cell
 u_value[0] = cell[1]-cell[2]+cell[7]-cell[8]+cell[9]-cell[10]+cell[11]-cell[12]-cell[13]+cell[14];
 u_value[1] = cell[3]-cell[4]+cell[7]-cell[8]+cell[9]-cell[10]-cell[11]+cell[12]+cell[13]-cell[14];
 u_value[2] = cell[5]-cell[6]+cell[7]-cell[8]-cell[9]+cell[10]+cell[11]-cell[12]+cell[13]-cell[14];
-u_value[scalardir] += f * T{0.5};
+u_value[ForceScheme::scalardir] += f * T{0.5};
 u_value[0] /= rho_value;
 u_value[1] /= rho_value;
 u_value[2] /= rho_value;
@@ -661,13 +635,11 @@ if constexpr (WriteToField) {cell.template get<GenericRho>() = rho_value; cell.t
 }
 };
 
-template <typename T, typename TypePack, typename ForceScheme, bool WriteToField, unsigned int dir>
-struct forcerhoUImpl<CELL<T, D3Q19<T>, TypePack>, ForceScheme, WriteToField, dir>{
+template <typename T, typename TypePack, typename ForceScheme, bool WriteToField>
+struct forcerhoUImpl<CELL<T, D3Q19<T>, TypePack>, ForceScheme, WriteToField>{
 using CELLTYPE = CELL<T, D3Q19<T>, TypePack>;
 using LatSet = D3Q19<T>;
 using GenericRho = typename CELLTYPE::GenericRho;
-
-static constexpr unsigned int scalardir = dir >= 2 ? LatSet::d - 1 : dir;
 
 __any__ static inline void apply(CELLTYPE& cell, const Vector<T, LatSet::d>& f_alpha, T& rho_value, Vector<T, LatSet::d>& u_value){
 rho_value = cell[0]+cell[1]+cell[2]+cell[3]+cell[4]+cell[5]+cell[6]+cell[7]+cell[8]+cell[9]+cell[10]+cell[11]+cell[12]+cell[13]+cell[14]+cell[15]+cell[16]+cell[17]+cell[18];
@@ -681,7 +653,7 @@ rho_value = cell[0]+cell[1]+cell[2]+cell[3]+cell[4]+cell[5]+cell[6]+cell[7]+cell
 u_value[0] = cell[1]-cell[2]+cell[7]-cell[8]+cell[9]-cell[10]+cell[13]-cell[14]+cell[15]-cell[16];
 u_value[1] = cell[3]-cell[4]+cell[7]-cell[8]+cell[11]-cell[12]-cell[13]+cell[14]+cell[17]-cell[18];
 u_value[2] = cell[5]-cell[6]+cell[9]-cell[10]+cell[11]-cell[12]-cell[15]+cell[16]-cell[17]+cell[18];
-u_value[scalardir] += f * T{0.5};
+u_value[ForceScheme::scalardir] += f * T{0.5};
 u_value[0] /= rho_value;
 u_value[1] /= rho_value;
 u_value[2] /= rho_value;
@@ -689,13 +661,11 @@ if constexpr (WriteToField) {cell.template get<GenericRho>() = rho_value; cell.t
 }
 };
 
-template <typename T, typename TypePack, typename ForceScheme, bool WriteToField, unsigned int dir>
-struct forcerhoUImpl<CELL<T, D3Q27<T>, TypePack>, ForceScheme, WriteToField, dir>{
+template <typename T, typename TypePack, typename ForceScheme, bool WriteToField>
+struct forcerhoUImpl<CELL<T, D3Q27<T>, TypePack>, ForceScheme, WriteToField>{
 using CELLTYPE = CELL<T, D3Q27<T>, TypePack>;
 using LatSet = D3Q27<T>;
 using GenericRho = typename CELLTYPE::GenericRho;
-
-static constexpr unsigned int scalardir = dir >= 2 ? LatSet::d - 1 : dir;
 
 __any__ static inline void apply(CELLTYPE& cell, const Vector<T, LatSet::d>& f_alpha, T& rho_value, Vector<T, LatSet::d>& u_value){
 rho_value = cell[0]+cell[1]+cell[2]+cell[3]+cell[4]+cell[5]+cell[6]+cell[7]+cell[8]+cell[9]+cell[10]+cell[11]+cell[12]+cell[13]+cell[14]+cell[15]+cell[16]+cell[17]+cell[18]+cell[19]+cell[20]+cell[21]+cell[22]+cell[23]+cell[24]+cell[25]+cell[26];
@@ -709,7 +679,7 @@ rho_value = cell[0]+cell[1]+cell[2]+cell[3]+cell[4]+cell[5]+cell[6]+cell[7]+cell
 u_value[0] = cell[1]-cell[2]+cell[7]-cell[8]+cell[9]-cell[10]+cell[13]-cell[14]+cell[15]-cell[16]+cell[19]-cell[20]+cell[21]-cell[22]+cell[23]-cell[24]-cell[25]+cell[26];
 u_value[1] = cell[3]-cell[4]+cell[7]-cell[8]+cell[11]-cell[12]-cell[13]+cell[14]+cell[17]-cell[18]+cell[19]-cell[20]+cell[21]-cell[22]-cell[23]+cell[24]+cell[25]-cell[26];
 u_value[2] = cell[5]-cell[6]+cell[9]-cell[10]+cell[11]-cell[12]-cell[15]+cell[16]-cell[17]+cell[18]+cell[19]-cell[20]-cell[21]+cell[22]+cell[23]-cell[24]+cell[25]-cell[26];
-u_value[scalardir] += f * T{0.5};
+u_value[ForceScheme::scalardir] += f * T{0.5};
 u_value[0] /= rho_value;
 u_value[1] /= rho_value;
 u_value[2] /= rho_value;
