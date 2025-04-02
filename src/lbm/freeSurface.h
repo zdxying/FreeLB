@@ -233,7 +233,6 @@ struct ToFluidNbrConversion {
     CELL::template hasField<SCALARFORCE<T>>() || 
     CELL::template hasField<CONSTFORCE<T, LatSet::d>>() || 
     CELL::template hasField<SCALARCONSTFORCE<T>>());
-  // here only 2 force schemes are considered
   using ForceScheme = std::conditional_t<CELL::template hasField<FORCE<T, LatSet::d>>(), force::Force<CELL>, 
                         std::conditional_t<CELL::template hasField<SCALARFORCE<T>>(), force::ScalarForce<CELL, scalardir>, 
                           std::conditional_t<CELL::template hasField<CONSTFORCE<T, LatSet::d>>(), force::ConstForce<CELL>, 
@@ -368,10 +367,16 @@ struct FinalizeConversion {
   using CELL = CELLTYPE;
   using T = typename CELL::FloatType;
   using LatSet = typename CELL::LatticeSet;
-
-  // here only 2 force schemes are considered
-  using ForceScheme = std::conditional_t<CELL::template hasField<CONSTFORCE<T, LatSet::d>>(), 
-  force::ConstForce<CELL>, force::ScalarConstForce<CELL>>;
+  
+  static constexpr bool hasForce = (
+    CELL::template hasField<FORCE<T, LatSet::d>>() || 
+    CELL::template hasField<SCALARFORCE<T>>() || 
+    CELL::template hasField<CONSTFORCE<T, LatSet::d>>() || 
+    CELL::template hasField<SCALARCONSTFORCE<T>>());
+  using ForceScheme = std::conditional_t<CELL::template hasField<FORCE<T, LatSet::d>>(), force::Force<CELL>, 
+    std::conditional_t<CELL::template hasField<SCALARFORCE<T>>(), force::ScalarForce<CELL, scalardir>, 
+      std::conditional_t<CELL::template hasField<CONSTFORCE<T, LatSet::d>>(), force::ConstForce<CELL>, 
+        std::conditional_t<CELL::template hasField<SCALARCONSTFORCE<T>>(), force::ScalarConstForce<CELL, scalardir>, void>>>>;
 
   static void apply(CELL& cell) {
     // update state
@@ -402,7 +407,8 @@ struct FinalizeConversion {
       // we have to use forcerhoU here
 			T rho;
 			Vector<T, LatSet::d> u{};
-			moment::forcerhoU<CELL, ForceScheme>::apply(cell, rho, u);
+      if constexpr (hasForce) moment::forcerhoU<CELL, ForceScheme>::apply(cell, rho, u);
+      else moment::rhoU<CELL>::apply(cell, rho, u);
 
 			cell.template get<MASS<T>>() = mass_tmp;
 			cell.template get<VOLUMEFRAC<T>>() = mass_tmp / rho;
