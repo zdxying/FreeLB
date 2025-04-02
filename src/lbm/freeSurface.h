@@ -362,7 +362,7 @@ struct InterfaceExcessMass {
 };
 
 // finalize conversion
-template <typename CELLTYPE>
+template <typename CELLTYPE, unsigned int scalardir>
 struct FinalizeConversion {
   using CELL = CELLTYPE;
   using T = typename CELL::FloatType;
@@ -465,7 +465,7 @@ struct FreeSurfaceApply {
 
 
     // finalize conversion
-    latManager.template ApplyInnerCellDynamics<FinalizeConversion<CELL>>();
+    latManager.template ApplyInnerCellDynamics<FinalizeConversion<CELL, scalardir>>();
     latManager.template getField<STATE>().AllNormalCommunicate();
     latManager.template getField<MASS<T>>().AllNormalCommunicate();
     latManager.template getField<VOLUMEFRAC<T>>().AllNormalCommunicate();
@@ -507,7 +507,7 @@ struct FreeSurfaceApply {
 
 
     // finalize conversion
-    latManager.template ApplyInnerCellDynamics<FinalizeConversion<CELL>>(count);
+    latManager.template ApplyInnerCellDynamics<FinalizeConversion<CELL, scalardir>>(count);
     latManager.template getField<STATE>().AllNormalCommunicate(count);
     latManager.template getField<MASS<T>>().AllNormalCommunicate(count);
     latManager.template getField<VOLUMEFRAC<T>>().AllNormalCommunicate(count);
@@ -639,7 +639,7 @@ struct CoupledFreeSurfaceApply {
 
 
     // finalize conversion
-    latManager.template ApplyInnerCellDynamics<FinalizeConversion<CELL>>();
+    latManager.template ApplyInnerCellDynamics<FinalizeConversion<CELL, scalardir>>();
     latManager.template getField<STATE>().AllNormalCommunicate();
     latManager.template getField<MASS<T>>().AllNormalCommunicate();
     latManager.template getField<VOLUMEFRAC<T>>().AllNormalCommunicate();
