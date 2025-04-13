@@ -223,10 +223,10 @@ T calculateCubeOffset(T volume, const Vector<T, LatSet::d>& normal) {
   std::sort(abs_normal.begin(), abs_normal.end());
 
   if constexpr (LatSet::d == 2) {
-    abs_normal[0] = std::max(normal[0], 1e-5);
+    abs_normal[0] = std::max(normal[0], T{1e-5});
   } else if (LatSet::d == 3) {
-    abs_normal[0] = std::max(normal[0], 1e-12);
-    abs_normal[1] = std::max(normal[1], 1e-12);
+    abs_normal[0] = std::max(normal[0], T{1e-12});
+    abs_normal[1] = std::max(normal[1], T{1e-12});
   }
 
   T d{};
@@ -411,7 +411,7 @@ typename CELL::FloatType ComputeCurvature2D(CELL& cell) {
   T denom = std::sqrt(1. + solved_fit[1] * solved_fit[1]);
   denom = denom * denom * denom;
   T curvature = 2. * solved_fit[0] / denom;
-  return std::max(-1., std::min(1., curvature));
+  return std::max(T{-1.}, std::min(T{1.}, curvature));
 }
 
 // openlb
@@ -598,7 +598,7 @@ typename CELL::FloatType ComputeCurvature3D(CELL& cell) {
                  solved_fit[3] * solved_fit[4] * solved_fit[2]) /
                 denom;
 
-  return std::max(-1., std::min(1., curvature));
+  return std::max(T{-1.}, std::min(T{1.}, curvature));
 }
 
 
@@ -914,7 +914,7 @@ typename CELL::FloatType ComputeCurvature3D(CELL& cell) {
   const T temp = T{1} / std::sqrt(H * H + I * I + T{1});
   const T K = (A * (I * I + 1.0f) + B * (H * H + 1.0f) - C * H * I) *
               (temp * temp * temp);  // mean curvature of Monge patch (x, y, f(x, y))
-  return std::max(-1., std::min(1., K));
+  return std::max(T{-1.}, std::min(T{1.}, K));
 }
 
 template <typename CELL>
