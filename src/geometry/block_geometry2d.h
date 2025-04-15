@@ -25,6 +25,7 @@
 #include "geometry/basic_geometry.h"
 #include "io/block_reader.h"
 
+#include "data_struct/voxel_map.h"
 // basic block 2d structure, BasicBlock stores the original AABB and index AABB(not
 // extended)
 
@@ -41,6 +42,11 @@ class Block2D : public BasicBlock<T, 2> {
 
   // overlap
   int _overlap;
+
+#ifdef _VOX_ENABLED
+  // vox map
+  VoxelMap _VoxMap;
+#endif
 
  public:
   // construct directly from basicblock
@@ -75,6 +81,18 @@ class Block2D : public BasicBlock<T, 2> {
 
   Communicator& getCommunicator() { return _Comm; }
   const Communicator& getCommunicator() const { return _Comm; }
+
+  #ifdef _VOX_ENABLED
+  VoxelMap& getVoxelMap() { return _VoxMap; }
+  const VoxelMap& getVoxelMap() const { return _VoxMap; }
+  #endif
+  std::size_t getVoxNum() const {
+    #ifdef _VOX_ENABLED
+    return _VoxMap.getVoxNum() > std::size_t{} ? _VoxMap.getVoxNum() : this->getN();
+    #else
+    return this->getN();
+    #endif
+  }
 };
 
 template <typename T>
@@ -112,6 +130,9 @@ class BlockGeometry2D : public BasicBlock<T, 2> {
   void PrintInfo() const;
   void Init(BlockGeometryHelper2D<T>& GeoHelper);
 
+  template <typename FieldType>
+  void InitVoxelMap(FieldType& FieldM, std::uint8_t voidflag = std::uint8_t{1});
+  
   const BasicBlock<T, 2>& getSelfBlock() const { return *this; }
   const BasicBlock<T, 2>& getBaseBlock() const { return _BaseBlock; }
 

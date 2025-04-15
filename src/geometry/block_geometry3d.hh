@@ -275,6 +275,172 @@ void BlockGeometry3D<T>::Init(BlockGeometryHelper3D<T> &GeoHelper) {
   PrintInfo();
 }
 
+
+template <typename T>
+template <typename FieldType>
+void BlockGeometry3D<T>::InitVoxelMap(FieldType& FieldM, std::uint8_t voidflag) {
+  #ifdef _VOX_ENABLED
+  std::size_t TotalRemoved{};
+  int iblock{};
+  for (Block3D<T>& block : _Blocks) {
+    auto& field = FieldM.getBlockField(iblock).getFieldType().getField(0);
+    std::size_t N = block.getN();
+    std::size_t voxNum{};
+    std::vector<std::size_t> vox_to_aabb;
+    vox_to_aabb.reserve(N);
+
+    for (std::size_t id = 0; id < N; ++id) {
+      if (field[id] != voidflag) {
+        vox_to_aabb.emplace_back(id);
+        ++voxNum;
+      }
+    }
+
+    block.getVoxelMap().Init(voxNum);
+    std::size_t* vox_aabb = block.getVoxelMap().getVox_to_AABB();
+    for (std::size_t idx = 0; idx < voxNum; ++idx) {
+      vox_aabb[idx] = vox_to_aabb[idx];
+    }
+
+    // remove void cells from communicator
+    // remove void cells from communicator
+    Communicator& COMM = block.getCommunicator();
+    // comm
+    std::vector<SharedComm>& comms = COMM.Comm.Comms;
+    for (SharedComm& comm : comms) {
+      // because indices are ordered as: Scell0, Rcell0; Scell1, Rcell1, ...
+      // use iterator seems complex, we create a new vector instead
+      std::vector<std::size_t> newSendRecvs;
+      newSendRecvs.reserve(comm.SendRecvCells.size());
+      for (std::size_t i = 0; i < comm.SendRecvCells.size(); i += 2) {
+        if (field[comm.SendRecvCells[i+1]] != voidflag) {
+          newSendRecvs.emplace_back(comm.SendRecvCells[i]);
+          newSendRecvs.emplace_back(comm.SendRecvCells[i+1]);
+        }
+      }
+      if (newSendRecvs.size() != comm.SendRecvCells.size()) {
+        comm.SendRecvCells = newSendRecvs;
+        comm.SendRecvCells.shrink_to_fit();
+      }
+    }
+    // all comm
+    std::vector<SharedComm>& allcomms = COMM.AllComm.Comms;
+    for (SharedComm& comm : allcomms) {
+      // because indices are ordered as: Scell0, Rcell0; Scell1, Rcell1, ...
+      // use iterator seems complex, we create a new vector instead
+      std::vector<std::size_t> newSendRecvs;
+      newSendRecvs.reserve(comm.SendRecvCells.size());
+      for (std::size_t i = 0; i < comm.SendRecvCells.size(); i += 2) {
+        if (field[comm.SendRecvCells[i+1]] != voidflag) {
+          newSendRecvs.emplace_back(comm.SendRecvCells[i]);
+          newSendRecvs.emplace_back(comm.SendRecvCells[i+1]);
+        }
+      }
+      if (newSendRecvs.size() != comm.SendRecvCells.size()) {
+        TotalRemoved += (comm.SendRecvCells.size() - newSendRecvs.size()) / 2;
+        comm.SendRecvCells = newSendRecvs;
+        comm.SendRecvCells.shrink_to_fit();
+      }
+    }
+
+  #ifdef MPI_ENABLED
+
+    std::vector<DistributedComm>& Recvs = COMM.MPIComm.Recvs;
+    for (DistributedComm& comm : Recvs) {
+      std::vector<std::size_t> newcells;
+      newcells.reserve(comm.Cells.size());
+      for (std::size_t id : comm.Cells) {
+        if (field[id] != voidflag) newcells.emplace_back(id);
+      }
+      if (newcells.size() != comm.Cells.size()) {
+        comm.Cells = newcells;
+        comm.Cells.shrink_to_fit();
+      }
+    }
+
+    std::vector<DistributedComm>& Sends = COMM.MPIComm.Sends;
+    for (DistributedComm& comm : Sends) {
+      std::vector<std::size_t> newcells;
+      newcells.reserve(comm.Cells.size());
+      for (std::size_t id : comm.Cells) {
+        if (field[id] != voidflag) newcells.emplace_back(id);
+      }
+      if (newcells.size() != comm.Cells.size()) {
+        comm.Cells = newcells;
+        comm.Cells.shrink_to_fit();
+      }
+    }
+
+    std::vector<DistributedComm>& allRecvs = COMM.AllMPIComm.Recvs;
+    for (DistributedComm& comm : allRecvs) {
+      std::vector<std::size_t> newcells;
+      newcells.reserve(comm.Cells.size());
+      for (std::size_t id : comm.Cells) {
+        if (field[id] != voidflag) newcells.emplace_back(id);
+      }
+      if (newcells.size() != comm.Cells.size()) {
+        TotalRemoved += comm.Cells.size() - newcells.size();
+        comm.Cells = newcells;
+        comm.Cells.shrink_to_fit();
+      }
+    }
+
+    std::vector<DistributedComm>& allSends = COMM.AllMPIComm.Sends;
+    for (DistributedComm& comm : allSends) {
+      std::vector<std::size_t> newcells;
+      newcells.reserve(comm.Cells.size());
+      for (std::size_t id : comm.Cells) {
+        if (field[id] != voidflag) newcells.emplace_back(id);
+      }
+      if (newcells.size() != comm.Cells.size()) {
+        comm.Cells = newcells;
+        comm.Cells.shrink_to_fit();
+      }
+    }
+
+    std::vector<DistributedComm>& dirRecvs = COMM.DirRecvs;
+    for (DistributedComm& comm : dirRecvs) {
+      std::vector<std::size_t> newcells;
+      newcells.reserve(comm.Cells.size());
+      for (std::size_t id : comm.Cells) {
+        if (field[id] != voidflag) newcells.emplace_back(id);
+      }
+      if (newcells.size() != comm.Cells.size()) {
+        comm.Cells = newcells;
+        comm.Cells.shrink_to_fit();
+      }
+    }
+
+    std::vector<DistributedComm>& dirSends = COMM.DirSends;
+    for (DistributedComm& comm : dirSends) {
+      std::vector<std::size_t> newcells;
+      newcells.reserve(comm.Cells.size());
+      for (std::size_t id : comm.Cells) {
+        if (field[id] != voidflag) newcells.emplace_back(id);
+      }
+      if (newcells.size() != comm.Cells.size()) {
+        comm.Cells = newcells;
+        comm.Cells.shrink_to_fit();
+      }
+    }
+
+  #endif
+
+    ++iblock;
+  }
+
+  #ifdef MPI_ENABLED
+		mpi().reduceAndBcast(TotalRemoved, MPI_MAX);
+  #endif
+
+  MPI_RANK(0)
+  std::cout << "[BlockGeometry::InitVoxelMap]:\n"
+              << "  Removed: " << TotalRemoved << " cell pairs in Communicator" << std::endl;
+  
+  #endif
+}
+
+
 template <typename T>
 std::size_t BlockGeometry3D<T>::getTotalCellNum() const {
   std::size_t sum{};

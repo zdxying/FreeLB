@@ -26,6 +26,7 @@
 // AbstractConverter
 #include "lbm/unit_converter.h"
 
+#include "data_struct/voxel_map.h"
 
 // block structure for refined lattice
 template <typename T, typename LatSet, typename TypePack>
@@ -459,10 +460,20 @@ class BlockLatManagerCoupling {
         const auto& flagArray = BFM.getBlockField(iblock).getField(0);
         CELL0 cell0(0, blocklat0);
         CELL1 cell1(0, blocklat1);
-        for (std::size_t id = 0; id < blocklat0.getN(); ++id) {
+        const std::size_t voxNum = blocklat0.getVoxNum();
+        #ifdef _VOX_ENABLED
+        const VoxelMap& map = blocklat0.getBlock().getVoxelMap();
+        #endif
+        for (std::size_t id = 0; id < voxNum; ++id) {
+          #ifdef _VOX_ENABLED
+          cell0.setId(map[id]);
+          cell1.setId(map[id]);
+          CELLDYNAMICS::Execute(flagArray[map[id]], cell0, cell1);
+          #else
           cell0.setId(id);
           cell1.setId(id);
           CELLDYNAMICS::Execute(flagArray[id], cell0, cell1);
+          #endif
         }
       }
     }
@@ -478,10 +489,20 @@ class BlockLatManagerCoupling {
       const auto& flagArray = BFM.getBlockField(iblock).getField(0);
       CELL0 cell0(0, blocklat0);
       CELL1 cell1(0, blocklat1);
-      for (std::size_t id = 0; id < blocklat0.getN(); ++id) {
+      const std::size_t voxNum = blocklat0.getVoxNum();
+      #ifdef _VOX_ENABLED
+      const VoxelMap& map = blocklat0.getBlock().getVoxelMap();
+      #endif
+      for (std::size_t id = 0; id < voxNum; ++id) {
+        #ifdef _VOX_ENABLED
+        cell0.setId(map[id]);
+        cell1.setId(map[id]);
+        CELLDYNAMICS::Execute(flagArray[map[id]], cell0, cell1);
+        #else
         cell0.setId(id);
         cell1.setId(id);
         CELLDYNAMICS::Execute(flagArray[id], cell0, cell1);
+        #endif
       }
     }
   }
@@ -495,9 +516,18 @@ class BlockLatManagerCoupling {
       auto& blocklat1 = BlockLatMan1.getBlockLat(iblock);
       CELL0 cell0(0, blocklat0);
       CELL1 cell1(0, blocklat1);
-      for (std::size_t id = 0; id < blocklat0.getN(); ++id) {
+      const std::size_t voxNum = blocklat0.getVoxNum();
+      #ifdef _VOX_ENABLED
+      const VoxelMap& map = blocklat0.getBlock().getVoxelMap();
+      #endif
+      for (std::size_t id = 0; id < voxNum; ++id) {
+        #ifdef _VOX_ENABLED
+        cell0.setId(map[id]);
+        cell1.setId(map[id]);
+        #else
         cell0.setId(id);
         cell1.setId(id);
+        #endif
         DYNAMICS::apply(cell0, cell1);
       }
     }

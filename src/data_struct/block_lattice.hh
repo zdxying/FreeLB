@@ -73,12 +73,21 @@ template <typename T, typename LatSet, typename TypePack>
 template <typename CELLDYNAMICS, typename ArrayType>
 void BlockLattice<T, LatSet, TypePack>::ApplyCellDynamics(const ArrayType& flagarr) {
   Cell<T, LatSet, TypePack> cell(0, *this);
+  const std::size_t voxNum = this->getVoxNum();
+  #ifdef _VOX_ENABLED
+  const VoxelMap& map = this->getBlock().getVoxelMap();
+  #endif
 #ifdef SingleBlock_OMP
 #pragma omp parallel for num_threads(Thread_Num) schedule(static) firstprivate(cell)
 #endif
-  for (std::size_t id = 0; id < this->getN(); ++id) {
+  for (std::size_t id = 0; id < voxNum; ++id) {
+    #ifdef _VOX_ENABLED
+    cell.setId(map[id]);
+    CELLDYNAMICS::Execute(flagarr[map[id]], cell);
+    #else
     cell.setId(id);
     CELLDYNAMICS::Execute(flagarr[id], cell);
+    #endif
   }
 }
 
@@ -86,12 +95,20 @@ template <typename T, typename LatSet, typename TypePack>
 template <typename CELLDYNAMICS>
 void BlockLattice<T, LatSet, TypePack>::ApplyCellDynamics() {
   Cell<T, LatSet, TypePack> cell(0, *this);
+  const std::size_t voxNum = this->getVoxNum();
+  #ifdef _VOX_ENABLED
+  const VoxelMap& map = this->getBlock().getVoxelMap();
+  #endif
 #ifdef SingleBlock_OMP
 #pragma omp parallel for num_threads(Thread_Num) schedule(static) firstprivate(cell)
 #endif
-  for (std::size_t id = 0; id < this->getN(); ++id) {
+  for (std::size_t id = 0; id < voxNum; ++id) {
+    #ifdef _VOX_ENABLED
+    cell.setId(map[id]);
+    #else
     cell.setId(id);
     CELLDYNAMICS::apply(cell);
+    #endif
   }
 }
 

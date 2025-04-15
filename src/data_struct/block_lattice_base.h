@@ -188,6 +188,7 @@ class BlockLatticeBase {
   int getNy() const { return BlockGeo.getNy(); }
   int getNz() const { return BlockGeo.getNz(); }
   std::size_t getN() const { return BlockGeo.getN(); }
+  std::size_t getVoxNum() const { return BlockGeo.getVoxNum(); }
   int getOverlap() const { return BlockGeo.getOverlap(); }
   std::uint8_t getLevel() const { return BlockGeo.getLevel(); }
   const Vector<int, LatSet::d>& getProjection() const { return BlockGeo.getProjection(); }

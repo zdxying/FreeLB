@@ -26,6 +26,8 @@
 #include "io/stlreader.h"
 #include "io/block_reader.h"
 
+#include "data_struct/voxel_map.h"
+
 template <typename T>
 class Block3D : public BasicBlock<T, 3> {
  private:
@@ -39,6 +41,11 @@ class Block3D : public BasicBlock<T, 3> {
 
   // overlap
   int _overlap;
+
+#ifdef _VOX_ENABLED
+  // vox map
+  VoxelMap _VoxMap;
+#endif
 
  public:
   // constructors
@@ -81,6 +88,18 @@ class Block3D : public BasicBlock<T, 3> {
 
   Communicator& getCommunicator() { return _Comm; }
   const Communicator& getCommunicator() const { return _Comm; }
+
+  #ifdef _VOX_ENABLED
+  VoxelMap& getVoxelMap() { return _VoxMap; }
+  const VoxelMap& getVoxelMap() const { return _VoxMap; }
+  #endif
+  std::size_t getVoxNum() const {
+    #ifdef _VOX_ENABLED
+    return _VoxMap.getVoxNum() > std::size_t{} ? _VoxMap.getVoxNum() : this->getN();
+    #else
+    return this->getN();
+    #endif
+  }
 };
 
 template <typename T>
@@ -121,6 +140,9 @@ class BlockGeometry3D : public BasicBlock<T, 3> {
 
   void PrintInfo() const;
   void Init(BlockGeometryHelper3D<T>& GeoHelper);
+
+  template <typename FieldType>
+  void InitVoxelMap(FieldType& FieldM, std::uint8_t voidflag = std::uint8_t{1});
 
   const BasicBlock<T, 3>& getSelfBlock() const { return *this; }
   const BasicBlock<T, 3>& getBaseBlock() const { return _BaseBlock; }
