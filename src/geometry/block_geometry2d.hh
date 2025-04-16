@@ -195,6 +195,7 @@ template <typename FieldType>
 void BlockGeometry2D<T>::InitVoxelMap(FieldType& FieldM, std::uint8_t voidflag) {
   #ifdef _VOX_ENABLED
   std::size_t TotalRemoved{};
+  std::size_t TotalvoxNum{};
   int iblock{};
   for (Block2D<T>& block : _Blocks) {
     auto& field = FieldM.getBlockField(iblock).getFieldType().getField(0);
@@ -209,6 +210,7 @@ void BlockGeometry2D<T>::InitVoxelMap(FieldType& FieldM, std::uint8_t voidflag) 
         ++voxNum;
       }
     }
+    TotalvoxNum += voxNum;
     
     block.getVoxelMap().Init(voxNum);
     std::size_t* vox_aabb = block.getVoxelMap().getVox_to_AABB();
@@ -343,12 +345,14 @@ void BlockGeometry2D<T>::InitVoxelMap(FieldType& FieldM, std::uint8_t voidflag) 
   }
 
   #ifdef MPI_ENABLED
-		mpi().reduceAndBcast(TotalRemoved, MPI_MAX);
+		mpi().reduceAndBcast(TotalRemoved, MPI_SUM);
+    mpi().reduceAndBcast(TotalvoxNum, MPI_SUM);
   #endif
 
   MPI_RANK(0)
   std::cout << "[BlockGeometry::InitVoxelMap]:\n"
-              << "  Removed: " << TotalRemoved << " cell pairs in Communicator" << std::endl;
+            << "  Total voxel number: " << TotalvoxNum << "\n"
+            << "  Removed: " << TotalRemoved << " cell pairs in Communicator" << std::endl;
 
   #endif
 }
