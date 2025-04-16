@@ -38,11 +38,11 @@ class VoxelMap {
   std::size_t* Vox_to_AABB;
 
  public:
-  VoxelMap() = default;
+  VoxelMap() : VoxNum(0), Vox_to_AABB(nullptr) {}
   VoxelMap(std::size_t voxnum) : 
     VoxNum(voxnum), Vox_to_AABB(new std::size_t[voxnum]{}) {}
 
-  ~VoxelMap(){ delete[] Vox_to_AABB; }
+  ~VoxelMap(){ if (Vox_to_AABB) delete[] Vox_to_AABB; }
 
   void Init(std::size_t voxnum) {
     VoxNum = voxnum;
