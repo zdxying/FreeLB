@@ -57,6 +57,7 @@ The following table shows the performance of FreeLB in simulating the lid-driven
 | Device | Platform | FP32 MLUPs |
 | :----- | :---- | :---- |
 | i9-14900K       | Ubuntu 22.04      | 651 | 
+| Ryzen 9 9950X (Thanks to Wu Kai) | Ubuntu 24.04 WSL2 | 645 |
 | E5-2699v4       | Ubuntu 20.04 WSL2 | 553 |
 | i7-11800H       | Ubuntu 22.04 WSL2 | 173 |
 | i7-8750H        | Ubuntu 22.04 WSL2 | 124 |
@@ -68,4 +69,4 @@ The following table shows the performance of FreeLB in simulating the lid-driven
 FreeLB is licensed under the GNU GPL v3 license.
 
 ## Acknowledgement
-The author would like to thank OpenLB project for the inspiration of this code and thank Prof. Tao Jing for his help in the development of this code.
+The author would like to thank OpenLB project for the inspiration of this code and thank Prof. Jing Tao for his support in the development of this code.
