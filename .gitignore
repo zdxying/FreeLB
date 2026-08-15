@@ -39,6 +39,10 @@
 
 # ignore all directories with the name temp including their files
 temp/
+*build/
+*vtune*/
+*hpctoolkit*/
+*.hpcstruct
 
 
 # vtk

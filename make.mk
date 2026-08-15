@@ -22,17 +22,20 @@ OBJS = $(SRCS:.$(SRC_EXT)=.o)
 DEPS = $(SRCS:.$(SRC_EXT)=.d)
 
 FLAGS += -std=c++17
+FLAGS += -flto
 
 ifneq ($(CXXC),nvcc)
 FLAGS += -fno-diagnostics-show-template-tree
 endif
 
 # linker flags
-LINKFLAGS := -L$(ROOT)/lib -lrt 
+# LINKFLAGS := -L$(ROOT)/lib -lrt 
 # use the following when compiling error: 
 # undefined reference to `tbb::detail::r1::execution_slot(tbb::detail::d1::execution_data const*)'
 # with -g -fopenmp flag
 # LINKFLAGS := -L$(ROOT)/lib -lrt -ltbb
+
+LINKFLAGS := -L$(ROOT)/src/xcore/build/install/lib -lxcore
 
 ifeq ($(CXXC),nvcc)
 	LINKFLAGS += -lcuda

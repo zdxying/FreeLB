@@ -119,15 +119,15 @@ int main(int argc, char* argv[]) {
     Vector<T, 2>{T((Ni - 1) * Cell_Len), T(Nj * Cell_Len)});
 
   // method 1: dirctly define geometry, [serial][openmp]
-  BlockGeometry2D<T> Geo(Ni, Nj, Thread_Num, cavity, Cell_Len);
+  // BlockGeometry2D<T> Geo(Ni, Nj, Thread_Num, cavity, Cell_Len);
   // end method 1
 
   // method 2: use geohelper for complex geometry, [mpi]
-  // BlockGeometryHelper2D<T> GeoHelper(Ni, Nj, cavity, Cell_Len, BlockCellLen);
-  // GeoHelper.CreateBlocks();
-  // GeoHelper.AdaptiveOptimization(mpi().getSize());
-  // GeoHelper.LoadBalancing(mpi().getSize());
-  // BlockGeometry2D<T> Geo(GeoHelper);
+  BlockGeometryHelper2D<T> GeoHelper(Ni, Nj, cavity, Cell_Len, BlockCellLen);
+  GeoHelper.CreateBlocks();
+  GeoHelper.AdaptiveOptimization(mpi().getSize());
+  GeoHelper.LoadBalancing(mpi().getSize());
+  BlockGeometry2D<T> Geo(GeoHelper);
   // end method 2
 
   // ------------------ define flag field ------------------
@@ -208,24 +208,40 @@ int main(int argc, char* argv[]) {
   Printer::Print_BigBanner(std::string("Start Calculation..."));
 
   while (MainLoopTimer() < MaxStep && res > tol) {
-    NSLattice.ApplyCellDynamics<NSTask>(FlagFM);
+    // normal comm
+    // NSLattice.ApplyCellDynamics<NSTask>(FlagFM);
+    // NSLattice.Stream();
+    // NSLattice.NormalCommunicate();
+    //
+
+    // hidden comm
     NSLattice.Stream();
+    NSLattice.ApplyCellDynamicsWithHiddenComm<NSTask>(FlagFM);
+    //
+    
     // BM.Apply(MainLoopTimer());
-    NSLattice.NormalCommunicate();
+    
 
     ++MainLoopTimer;
     ++OutputTimer;
 
     if (MainLoopTimer() % OutputStep == 0) {
+      // normal comm
+      //
+      // hidden comm
+      NSLattice.NormalFullCommunicate();
+      //
       NSLattice.ApplyCellDynamics<TaskSelectorRhoU>(FlagFM);
 
       res = NSLattice.getToleranceU(-1);
       OutputTimer.Print_InnerLoopPerformance(Geo.getTotalCellNum(), OutputStep);
       Printer::Print_Res<T>(res);
       Printer::Endl();
-      NSWriter.WriteBinary(MainLoopTimer());
+      // NSWriter.WriteBinary(MainLoopTimer());
     }
   }
+
+  xcore::MemoryPool::getInstance().print_status();
 
   Printer::Print_BigBanner(std::string("Calculation Complete!"));
   MainLoopTimer.Print_MainLoopPerformance(Geo.getTotalCellNum());

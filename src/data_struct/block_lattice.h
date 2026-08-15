@@ -27,6 +27,8 @@
 #include "lbm/unit_converter.h"
 
 #include "data_struct/voxel_map.h"
+#include "xcore/src/memory/poolAllocator.h"
+
 
 // block structure for refined lattice
 template <typename T, typename LatSet, typename TypePack>
@@ -50,6 +52,11 @@ class BlockLattice : public BlockLatticeBase<T, LatSet, TypePack> {
 #ifdef MPI_ENABLED
   std::vector<std::vector<unsigned int>> RecvDirection;
   std::vector<std::vector<unsigned int>> SendDirection;
+
+  std::vector<std::size_t> _firstSends;
+  std::vector<std::size_t> _lastSends;
+
+  void initHiddenCommunication();
 #endif
 
   // omega = 1 / tau
@@ -121,6 +128,12 @@ class BlockLattice : public BlockLatticeBase<T, LatSet, TypePack> {
   template <typename CELLDYNAMICS>
   void ApplyCellDynamics(const Genericvector<std::size_t>& Idx);
 
+#ifdef MPI_ENABLED
+  template <typename CELLDYNAMICS, typename ArrayType, typename buffer_type>
+  void ApplyCellDynamicsWithHiddenComm(const ArrayType& flagarr, std::vector<MPI_Request>& SendRequests,
+    std::vector<MPI_Request>& RecvRequests, std::vector<buffer_type>& SendBuffers);
+#endif
+
   template <typename DYNAMICS, typename elementType>
   void ApplyDynamics(const Genericvector<elementType>& Idx);
 
@@ -153,11 +166,13 @@ class BlockLattice : public BlockLatticeBase<T, LatSet, TypePack> {
 
 #ifdef MPI_ENABLED
 
+  template <typename buffer_type>
   void mpiNormalSend(std::vector<MPI_Request>& SendRequests, 
-  std::vector<std::vector<T>>& SendBuffers, const std::vector<DistributedComm>& MPISends);
+  std::vector<buffer_type>& SendBuffers, const std::vector<DistributedComm>& MPISends);
 
+  template <typename buffer_type>
   void mpiNormalFullSend(std::vector<MPI_Request>& SendRequests, 
-  std::vector<std::vector<T>>& SendBuffers, const std::vector<DistributedComm>& MPISends);
+  std::vector<buffer_type>& SendBuffers, const std::vector<DistributedComm>& MPISends);
 
   void mpiAverSend(std::vector<MPI_Request>& SendRequests,
   std::vector<std::vector<T>>& SendBuffers, const std::vector<DistributedComm>& MPISends);
@@ -165,17 +180,21 @@ class BlockLattice : public BlockLatticeBase<T, LatSet, TypePack> {
   void mpiIntpSend(std::vector<MPI_Request>& SendRequests, 
   std::vector<std::vector<T>>& SendBuffers, const std::vector<DistributedComm>& MPISends);
 
+  template <typename buffer_type>
   void mpiNormalRecv(std::vector<MPI_Request>& RecvRequests, 
-  std::vector<std::vector<T>>& RecvBuffers, const std::vector<DistributedComm>& MPIRecvs);
+  std::vector<buffer_type>& RecvBuffers, const std::vector<DistributedComm>& MPIRecvs);
 
+  template <typename buffer_type>
   void mpiFullRecv(std::vector<MPI_Request>& RecvRequests, 
-  std::vector<std::vector<T>>& RecvBuffers, const std::vector<DistributedComm>& MPIRecvs);
+  std::vector<buffer_type>& RecvBuffers, const std::vector<DistributedComm>& MPIRecvs);
 
+  template <typename buffer_type>
   void mpiNormalSet(int& reqidx, std::vector<MPI_Request>& RecvRequests,
-  const std::vector<std::vector<T>>& RecvBuffers, const std::vector<DistributedComm>& MPIRecvs);
+  const std::vector<buffer_type>& RecvBuffers, const std::vector<DistributedComm>& MPIRecvs);
 
+  template <typename buffer_type>
   void mpiNormalFullSet(int& reqidx, std::vector<MPI_Request>& RecvRequests,
-  const std::vector<std::vector<T>>& RecvBuffers, const std::vector<DistributedComm>& MPIRecvs);
+  const std::vector<buffer_type>& RecvBuffers, const std::vector<DistributedComm>& MPIRecvs);
 
   void mpiAverIntpSet(int& reqidx, std::vector<MPI_Request>& RecvRequests,
   const std::vector<std::vector<T>>& RecvBuffers, const std::vector<DistributedComm>& MPIRecvs);
@@ -249,6 +268,8 @@ class BlockLatticeManager : public BlockLatticeManagerBase<T, LatSet, TypePack> 
  private:
   std::vector<BlockLattice<T, LatSet, ALLFIELDS>> BlockLats;
   AbstractConverter<T>& Conv;
+
+  using buffer_type = std::vector<T, xcore::PoolAllocator<T>>; // std::vector<T>;
 
  public:
   template <typename... FIELDPTRTYPES>
@@ -390,6 +411,12 @@ class BlockLatticeManager : public BlockLatticeManagerBase<T, LatSet, TypePack> 
   void MPIInterpolateCommunicate(std::int64_t count);
 
 #endif
+
+
+  // ApplyCellDynamics with hidden communicate, no barrier
+  template <typename CELLDYNAMICS, typename FieldType>
+  void ApplyCellDynamicsWithHiddenComm(const BlockFieldManager<FieldType, T, LatSet::d>& BFM);
+
 
   void NormalCommunicate();
   void NormalCommunicate(std::int64_t count);

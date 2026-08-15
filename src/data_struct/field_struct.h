@@ -25,6 +25,7 @@
 #include "data_struct/field.h"
 #include "parallel/communicator.h"
 #include "utils/alias.h"
+#include "xcore/src/memory/poolAllocator.h"
 
 #ifdef __CUDACC__
 #include "data_struct/cuda_field_struct.h"
@@ -77,24 +78,29 @@ class BlockField : public FieldType {
 
 #ifdef MPI_ENABLED
   // send data for mpi normal communication
+  template <typename buffer_type>
   void mpiNormalSend(std::vector<MPI_Request>& SendRequests, 
-    std::vector<std::vector<datatype>>& SendBuffers, const std::vector<DistributedComm>& MPISends);
+    std::vector<buffer_type>& SendBuffers, const std::vector<DistributedComm>& MPISends);
 
   // send data for mpi average communication
+  template <typename buffer_type>
   void mpiAverSend(std::vector<MPI_Request>& SendRequests,
-    std::vector<std::vector<datatype>>& SendBuffers, const std::vector<DistributedComm>& MPISends);
+    std::vector<buffer_type>& SendBuffers, const std::vector<DistributedComm>& MPISends);
 
   // send data for mpi interp communication
+  template <typename buffer_type>
   void mpiIntpSend(std::vector<MPI_Request>& SendRequests, 
-    std::vector<std::vector<datatype>>& SendBuffers, const std::vector<DistributedComm>& MPISends);
+    std::vector<buffer_type>& SendBuffers, const std::vector<DistributedComm>& MPISends);
   
   // recv data for mpi communication
+  template <typename buffer_type>
   void mpiRecv(std::vector<MPI_Request>& RecvRequests, 
-    std::vector<std::vector<datatype>>& RecvBuffers, const std::vector<DistributedComm>& MPIRecvs);
+    std::vector<buffer_type>& RecvBuffers, const std::vector<DistributedComm>& MPIRecvs);
 
   // set data for mpi communication
+  template <typename buffer_type>
   void mpiSet(int& reqidx, std::vector<MPI_Request>& RecvRequests,
-    const std::vector<std::vector<datatype>>& RecvBuffers, const std::vector<DistributedComm>& MPIRecvs);
+    const std::vector<buffer_type>& RecvBuffers, const std::vector<DistributedComm>& MPIRecvs);
 #endif
 
   // copy assignment operator
@@ -329,6 +335,10 @@ class BlockFieldManager {
 #endif
     return *this;
   }
+
+ private:
+  using buffer_type = std::vector<datatype, xcore::PoolAllocator<datatype>>;
+
 };
 
 
