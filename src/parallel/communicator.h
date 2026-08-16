@@ -27,6 +27,7 @@
 #include "parallel/mpi_manager.h"
 #include "utils/alias.h"
 #include "lbm/lattice_set.h"
+#include "xcore/src/util/assert.h"
 
 #ifdef __CUDACC__
 #include "utils/cuda_device.h"
@@ -387,11 +388,13 @@ struct BasicCommSet {
     for (const auto& comm : Sends) {
       if (comm.TargetBlockId == BlockId) return comm;
     }
+    ERROR_MESSAGE("no SendComm with BlockId " + std::to_string(BlockId));
   }
   const BasicComm<T, D>& getRecvComm(int BlockId) const { 
     for (const auto& comm : Recvs) {
       if (comm.TargetBlockId == BlockId) return comm;
     }
+    ERROR_MESSAGE("no RecvComm with BlockId " + std::to_string(BlockId));
   }
 
 };

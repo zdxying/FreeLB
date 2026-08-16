@@ -32,7 +32,7 @@ CXXFLAGS = -O0 -g -std=c++17 -Wall -Wextra -fPIC
 CPPFLAGS = -Isrc -DDEBUG -DMEMPOOL_TRACK
 else
 CONFIG := install
-CXXFLAGS = -O2 -std=c++17 -march=native -Wall -Wextra -fPIC
+CXXFLAGS = -O2 -std=c++17 -Wall -Wextra -fPIC
 CPPFLAGS = -Isrc
 endif
 

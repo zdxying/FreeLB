@@ -32,7 +32,7 @@ namespace xcore {
 
 namespace detail {
 
-inline void assert_fail_impl(
+[[noreturn]] inline void assert_fail_impl(
   const char* expr, const char* file, int line, const char* func) {
   std::cerr << "Assertion failed: " << expr << '\n'
             << "File: " << file << '\n'
@@ -41,7 +41,7 @@ inline void assert_fail_impl(
   std::abort();
 }
 
-inline void error_message_impl(
+[[noreturn]] inline void error_message_impl(
   const std::string& message, const char* file, int line, const char* func) {
   std::cerr << "Error: " << message << '\n'
             << "File: " << file << '\n'
@@ -52,12 +52,14 @@ inline void error_message_impl(
 
 }  // namespace detail
 
+}  // namespace xcore
+
 #ifdef DEBUG
 
 // only enabled in DEBUG is defined
 #define ASSERT(x)                                                             \
   do {                                                                        \
-    if (!(x)) detail::assert_fail_impl(#x, __FILE__, __LINE__, __FUNCTION__); \
+    if (!(x)) xcore::detail::assert_fail_impl(#x, __FILE__, __LINE__, __FUNCTION__); \
   } while (false)
 
 #else
@@ -69,7 +71,7 @@ inline void error_message_impl(
 
 #define ENSURE(x)                                                             \
   do {                                                                        \
-    if (!(x)) detail::assert_fail_impl(#x, __FILE__, __LINE__, __FUNCTION__); \
+    if (!(x)) xcore::detail::assert_fail_impl(#x, __FILE__, __LINE__, __FUNCTION__); \
   } while (false)
 
 
@@ -77,9 +79,7 @@ inline void error_message_impl(
   do {                                                                         \
     std::ostringstream error_msg;                                              \
     error_msg << stream_expr;                                                  \
-    detail::error_message_impl(error_msg.str(), __FILE__, __LINE__, __func__); \
+    xcore::detail::error_message_impl(error_msg.str(), __FILE__, __LINE__, __func__); \
   } while (0)
-
-}  // namespace xcore
 
 #endif  // XCORE_UTIL_ASSERT_H

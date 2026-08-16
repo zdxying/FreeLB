@@ -156,8 +156,8 @@ void BlockLattice<T, LatSet, TypePack>::ApplyCellDynamics() {
     cell.setId(map[id]);
     #else
     cell.setId(id);
-    CELLDYNAMICS::apply(cell);
     #endif
+    CELLDYNAMICS::apply(cell);
   }
 }
 

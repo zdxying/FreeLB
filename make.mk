@@ -35,7 +35,8 @@ endif
 # with -g -fopenmp flag
 # LINKFLAGS := -L$(ROOT)/lib -lrt -ltbb
 
-LINKFLAGS := -L$(ROOT)/src/xcore/build/install/lib -lxcore
+# LINKFLAGS := -L$(ROOT)/src/xcore/build/install/lib -lxcore
+LINKFLAGS := $(ROOT)/src/xcore/build/install/lib/libxcore.a
 
 ifeq ($(CXXC),nvcc)
 	LINKFLAGS += -lcuda
