@@ -2,7 +2,6 @@
 
 > **迁移说明**：本目录旧的解释器/优化器（约 2900 行）已被独立仓库 `cse`
 > （`third_party/cse` submodule，`main` 分支）中的通用 DAG-CSE 引擎取代。
-> 原 `freelb-port` 工作已合入 `main`。
 > 本目录现在只做两件事：把引擎接进 FreeLB 构建、提供 `csegen <in.h> <out.h>`
 > 驱动与数值验证脚本。引擎侧的完整状态见
 > `third_party/cse/docs/freelb_port_status.md`。
@@ -131,7 +130,6 @@ tools/cse/
   verify_moment.py
   reference/*.ur.h    手写参考快照
   out/*.ur.h          gen 输出
-  PORT_STATUS.md      指针：迁移状态的唯一权威副本在引擎侧
   DESIGN.md           本文档
 ```
 
@@ -158,18 +156,17 @@ tests/csegen/   equilibrium force moment
 
 ```bash
 # 生成并验证（不修改 src/lbm）
-cd tools/cse && make verify
+make -C tools/cse verify
 
 # 生成到 generated/ 供 -D_UNROLLFOR 示例使用
-cd tools/cse && make gen
-cd ../../examples/cavity3d && make        # FLAGS 需含 -D_UNROLLFOR
+make -C tools/cse gen
+make -C examples/cavity3d                    # FLAGS 需含 -D_UNROLLFOR
 
 # 用生成版覆盖手写 .ur.h
-cd tools/cse && make install
+make -C tools/cse install
 ```
 
 ## 相关文档
 
 - `third_party/cse/docs/freelb_port_status.md`：迁移完成项与 TODO（唯一权威）。
 - `third_party/cse/docs/architecture.md`：引擎通用架构。
-- `PORT_STATUS.md`：本目录内的占位指针，指向上方引擎文档。

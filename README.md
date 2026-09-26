@@ -45,7 +45,13 @@ Optional(If parallel computing is needed, install):
 ## Build
 To build the code, make sure you installed the above dependencies.
 
-### Quick Start (without CSE optimization)
+If you cloned without submodules, fetch them first (needed for the full build;
+Quick Start works without them):
+```bash
+git submodule update --init third_party/cse
+```
+
+### Quick Start (no xcore/csegen required)
 ```bash
 cd ./examples/cavity2d
 make
@@ -60,7 +66,7 @@ cd ./examples/cavity2d
 make
 ```
 - **xcore** (`src/xcore/`): High-performance pool allocator. If not built, the build system automatically falls back to `std::allocator` (with a warning).
-- **csegen** (`tools/cse/c`): CSE code generator for `-D_UNROLLFOR` examples. If not built, the build system falls back to hand-written `.ur.h` files in `src/lbm/` (with a warning).
+- **csegen** (`tools/cse/`): CSE code generator for `-D_UNROLLFOR` examples. If not built, the build system falls back to hand-written `.ur.h` files in `src/lbm/` (with a warning).
 
 You can also build xcore and csegen separately:
 ```bash
