@@ -43,12 +43,40 @@ Optional(If parallel computing is needed, install):
 
 
 ## Build
-To build the code, make sure you installed the above dependencies, then you just need to run the following command in the root directory of the code:
+To build the code, make sure you installed the above dependencies.
+
+### Quick Start (without CSE optimization)
 ```bash
 cd ./examples/cavity2d
 make
 ```
-The executable file will be generated in the same directory with .exe extension(please note that .exe extension is used to make the executable file recognized by .gitignore, the author did NOT test the code on Windows, but WSL is OK!)
+The executable file will be generated in the same directory with .exe extension (please note that .exe extension is used to make the executable file recognized by .gitignore, the author did NOT test the code on Windows, but WSL is OK!)
+
+### Full Build (with xcore memory pool + CSE code generation)
+For optimal performance, build the xcore library and CSE tools first from the root directory:
+```bash
+make              # builds xcore library + csegen tool
+cd ./examples/cavity2d
+make
+```
+- **xcore** (`src/xcore/`): High-performance pool allocator. If not built, the build system automatically falls back to `std::allocator` (with a warning).
+- **csegen** (`tools/cse/c`): CSE code generator for `-D_UNROLLFOR` examples. If not built, the build system falls back to hand-written `.ur.h` files in `src/lbm/` (with a warning).
+
+You can also build xcore and csegen separately:
+```bash
+make lib          # build xcore library only
+make tools        # build csegen tool only
+```
+
+### Available Make Targets
+| Target | Description |
+|--------|-------------|
+| `make` | Build xcore + csegen (from root) |
+| `make lib` | Build xcore library only |
+| `make tools` | Build csegen tool only |
+| `make install-ur` | Generate and install `.ur.h` specializations into `src/lbm/` |
+| `make libclean` | Clean xcore build artifacts |
+| `make tools-clean` | Clean csegen build artifacts |
 
 
 ## Benchmark

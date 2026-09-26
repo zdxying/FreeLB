@@ -26,6 +26,7 @@
 
 namespace force {
 
+// @cse
 template <typename T, typename LatSet>
 struct ForcePopImpl {
   __any__ static inline void compute(std::array<T, LatSet::q> &Fi, const Vector<T, LatSet::d> &u, const Vector<T, LatSet::d> &F) {
@@ -35,6 +36,7 @@ struct ForcePopImpl {
   }
 };
 
+// @cse
 template <typename T, typename LatSet, unsigned int d>
 struct ScalarForcePopImpl {
   __any__ static inline void compute(std::array<T, LatSet::q> &Fi, const Vector<T, LatSet::d> &u, const T F) {

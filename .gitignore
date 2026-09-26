@@ -62,3 +62,9 @@ temp/
 # *.STL
 *.FCBak
 # *.stl
+# cse-generated unrolled-for specializations (shadow copies)
+/generated/
+
+# cse tool build artifacts
+tools/cse/csegen
+tools/cse/out/

@@ -1,8 +1,8 @@
 # ============================================================================
 # Makefile for xcore MemoryPool library
 #
-# Builds a static library (libxcore_mem.a) and/or a shared library
-# (libxcore_mem.so) that other programs can link against.
+# Builds a static library (libxcore.a) and/or a shared library
+# (libxcore.so) that other programs can link against.
 #
 # Usage:
 #   make            build both static and shared libraries (release)

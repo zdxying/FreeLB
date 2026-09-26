@@ -241,7 +241,9 @@ int main(int argc, char* argv[]) {
     }
   }
 
+#ifdef XCORE_ENABLED
   xcore::MemoryPool::getInstance().print_status();
+#endif
 
   Printer::Print_BigBanner(std::string("Calculation Complete!"));
   MainLoopTimer.Print_MainLoopPerformance(Geo.getTotalCellNum());

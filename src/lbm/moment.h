@@ -141,6 +141,7 @@ struct constU {
 // ----------------------------------------------------------------------------
 // moment calculation
 
+// @cse
 template <typename CELLTYPE, bool WriteToField>
 struct rhoImpl {
   using CELL = CELLTYPE;
@@ -182,6 +183,7 @@ struct rho {
 };
 
 
+// @cse
 template <typename CELLTYPE, typename SOURCE, bool WriteToField>
 struct sourcerhoImpl {
   using CELL = CELLTYPE;
@@ -233,6 +235,7 @@ struct sourcerho {
 };
 
 
+// @cse
 template <typename CELLTYPE, bool WriteToField>
 struct UImpl {
   using CELL = CELLTYPE;
@@ -276,6 +279,7 @@ struct U {
 };
 
 
+// @cse
 template <typename CELLTYPE, typename ForceScheme, bool WriteToField>
 struct forceUImpl {
   using CELL = CELLTYPE;
@@ -356,6 +360,7 @@ struct forceU {
 };
 
 
+// @cse
 template <typename CELLTYPE, bool WriteToField>
 struct rhoUImpl {
   using CELL = CELLTYPE;
@@ -398,6 +403,7 @@ struct rhoU {
 };
 
 
+// @cse
 template <typename CELLTYPE, typename ForceScheme, bool WriteToField>
 struct forcerhoUImpl {
   using CELL = CELLTYPE;
@@ -480,6 +486,7 @@ struct forcerhoU {
 
 
 // second moment of non-equilibrium part of the distribution function
+// @cse
 template <typename CELLTYPE>
 struct Pi_ab_neq {
   using CELL = CELLTYPE;
@@ -508,6 +515,7 @@ struct Pi_ab_neq {
 };
 
 // second moment of non-equilibrium part of the distribution function with force
+// @cse
 template <typename CELLTYPE>
 struct forcePi_ab_neq {
   using CELL = CELLTYPE;
@@ -541,6 +549,7 @@ struct forcePi_ab_neq {
 };
 
 // stress tensor
+// @cse
 template <typename CELLTYPE>
 struct stress {
   using CELL = CELLTYPE;
@@ -572,6 +581,7 @@ struct stress {
 };
 
 // strain rate tensor/ rate of deformation matrix
+// @cse
 template <typename CELLTYPE>
 struct strainRate {
   using CELL = CELLTYPE;
@@ -609,6 +619,7 @@ struct strainRate {
 };
 
 
+// @cse
 template <typename CELLTYPE>
 struct shearRateMagImpl {
   using CELL = CELLTYPE;

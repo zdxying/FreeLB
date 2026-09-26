@@ -25,7 +25,6 @@
 #include "data_struct/field.h"
 #include "parallel/communicator.h"
 #include "utils/alias.h"
-#include "xcore/src/memory/poolAllocator.h"
 
 #ifdef __CUDACC__
 #include "data_struct/cuda_field_struct.h"
@@ -337,7 +336,7 @@ class BlockFieldManager {
   }
 
  private:
-  using buffer_type = std::vector<datatype, xcore::PoolAllocator<datatype>>;
+  using buffer_type = ::buffer_type<datatype>;
 
 };
 

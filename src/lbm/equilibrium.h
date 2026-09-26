@@ -76,6 +76,7 @@ struct Equilibrium {
 
 namespace equilibrium {
 
+// @cse
 template <typename CELL>
 struct SecondOrderImpl {
   using T = typename CELL::FloatType;

@@ -28,6 +28,16 @@
 #include <cstdint>
 
 #include "head.h"
+#include "xcore/src/memory/poolAllocator.h"
+
+// Buffer type used for MPI communication and population storage.
+// Uses xcore's pool allocator when available, std::allocator otherwise.
+template <typename T>
+#ifdef XCORE_ENABLED
+using buffer_type = std::vector<T, xcore::PoolAllocator<T>>;
+#else
+using buffer_type = std::vector<T>;
+#endif
 
 
 

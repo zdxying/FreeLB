@@ -27,7 +27,6 @@
 #include "lbm/unit_converter.h"
 
 #include "data_struct/voxel_map.h"
-#include "xcore/src/memory/poolAllocator.h"
 
 
 // block structure for refined lattice
@@ -269,7 +268,7 @@ class BlockLatticeManager : public BlockLatticeManagerBase<T, LatSet, TypePack> 
   std::vector<BlockLattice<T, LatSet, ALLFIELDS>> BlockLats;
   AbstractConverter<T>& Conv;
 
-  using buffer_type = std::vector<T, xcore::PoolAllocator<T>>; // std::vector<T>;
+  using buffer_type = ::buffer_type<T>;
 
  public:
   template <typename... FIELDPTRTYPES>
