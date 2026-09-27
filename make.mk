@@ -59,6 +59,14 @@ all: $(TARGET)
 # $(GEN_DIR) by the tools/cse/csegen source-to-source translator; the
 # -I$(GEN_DIR) flag below shadows src/lbm/*.ur.h for those files only
 # (unlisted hand-written .ur.h files fall back to src/lbm/ untouched).
+# 
+# Key points for GEN_DIR handling:
+# - GEN_DIR is only used when csegen binary EXISTS (wildcard check)
+# - If csegen exists: -I$(GEN_DIR) shadows src/lbm/; pattern rule generates on-demand
+#   * Directory is auto-created by @mkdir -p in pattern rule
+#   * Timestamp-based regeneration if source header changes
+# - If csegen missing: NO -I$(GEN_DIR), NO pattern rule → falls back to src/lbm/
+# - The existence of generated/ directory itself is irrelevant; it's created lazily
 ifneq (,$(findstring -D_UNROLLFOR,$(FLAGS)))
 CSEGEN := $(ROOT)/tools/cse/csegen
 ifneq (,$(wildcard $(CSEGEN)))
