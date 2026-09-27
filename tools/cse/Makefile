@@ -10,6 +10,8 @@
 #   make verify   numerically compare generated .ur.h against the pinned
 #                 hand-written references in reference/
 #   make install  gen + copy generated .ur.h into src/lbm/ (after verify)
+#   make cost     FLOP cost analysis via csegen (same pipeline as the emitted
+#                 .ur.h); override lattice sets with LATTICES="D2Q9 D3Q19"
 #
 # All three marked headers (moment, equilibrium, force) are ported.
 
@@ -20,6 +22,9 @@ CSEGEN     := csegen
 LBM_HDR := ../../src/lbm
 REFS    := reference
 INPUTS  := moment equilibrium force
+
+# Lattice sets costed by `make cost` (csegen emits/costs these only).
+LATTICES ?= D2Q9 D3Q19
 
 # Canonical output location (shared with make.mk build system)
 GEN_DIR := ../../generated/lbm
@@ -68,4 +73,15 @@ clean:
 	rm -f $(CSEGEN)
 	rm -rf out
 
-.PHONY: all engine gen gen-refs verify verify_equilibrium verify_force verify_moment install clean
+.PHONY: all engine gen gen-refs verify verify_equilibrium verify_force verify_moment install cost clean
+
+# Cost is measured by csegen itself (same pipeline that emits the .ur.h), so it
+# always matches the generated code (vector lowering / counter-prop / recombine
+# choices included). Override lattice sets with LATTICES="D2Q9 D3Q15 D3Q19".
+cost: $(CSEGEN)
+	@echo "=== FLOP cost analysis (csegen pipeline) ==="
+	@for f in $(INPUTS); do \
+		./$(CSEGEN) --cost $(addprefix --lattice ,$(LATTICES)) \
+			$(LBM_HDR)/$$f.h /tmp/cse_$$f.ur.h; \
+	done
+	@rm -f /tmp/cse_*.ur.h
