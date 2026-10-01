@@ -21,7 +21,7 @@ ARCH ?= native
 ifeq ($(ARCH),native)
 FLAGS += -arch=native
 else
-FLAGS += -gencode arch=compute_$(ARCH),code=sm_$(ARCH)
+FLAGS += -gencode arch=compute_$(ARCH),code=[sm_$(ARCH),compute_$(ARCH)]
 endif
 
 FLAGS += -O3
