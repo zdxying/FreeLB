@@ -241,6 +241,7 @@ struct SelectTask {
 
 template <typename TUPLE, typename FlagType, typename CELL>
 struct TaskSelector {
+  using CellType = CELL;
   __any__ static void Execute(FlagType flag, CELL &cell) {
     SelectTask<TUPLE, FlagType, CELL, typename TUPLE::make_key_sequence>::execute(flag,
                                                                                   cell);
@@ -303,6 +304,7 @@ struct SelectTask<FlagType, CELL, FirstTask>{
 
 template <typename FlagType, typename CELL, typename... Tasks>
 struct TaskSelector {
+  using CellType = CELL;
   __any__ static void Execute(FlagType flag, CELL &cell) {
     SelectTask<FlagType, CELL, Tasks...>::execute(flag, cell);
   }
@@ -319,12 +321,14 @@ struct TaskSelector {
 //
 // That failure mode is nasty because it is invisible at runtime -- results stay
 // correct -- and shows up only as a much higher global-load count in the SASS.
-// It is exactly what happens if cudev::RegCell is used without rebuilding the
-// task list for it.
+// It is exactly what happens if a cudev::Cell with a different POPPOLICY (say
+// cudev::RegPop) is used without rebuilding the task list for it.
 //
 // ReplaceCell substitutes the cell type throughout the tree, which lets
-// CuDevApplyCellDynamicsReg accept the caller's existing task list instead of
-// every benchmark hand-writing a second one.
+// CuDevApplyCellDynamics accept the caller's existing task list instead of
+// every benchmark hand-writing a second one.  Both TaskSelector overloads expose
+// the cell they were built around as CellType, so the kernel can static_assert
+// that the two agree.
 // ---------------------------------------------------------------------------
 
 namespace collision {
@@ -429,11 +433,13 @@ struct ReplaceCell<TupleWrapper<Ts...>, OLD, NEW> {
 //   using RegCELL = cudev::RegCell<T, LatSet, cudevFIELDS>;
 //   using RegTask = tmp::RebindSelector<RegCELL, TaskCollection, CELL,
 //                                       std::uint8_t>;
-//   lattice.CuDevApplyCellDynamicsReg<RegTask>(flag);
+//   lattice.CuDevApplyCellDynamics<RegTask, RegCELL>(flag);
 //
 // RebindSelector is built on the task list rather than on the selector itself
 // because TaskSelector has two coexisting definitions (fixed arity and
-// variadic) and pattern matching either of them is fragile.
+// variadic) and pattern matching either of them is fragile.  That fragility is
+// also why the cell type is passed to CuDevApplyCellDynamics explicitly instead
+// of being deduced from CELLDYNAMICS.
 // ---------------------------------------------------------------------------
 template <typename TUPLE, typename OLDCELL, typename NEWCELL>
 using RebindTaskList = typename ReplaceCell<TUPLE, OLDCELL, NEWCELL>::type;

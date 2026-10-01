@@ -48,8 +48,9 @@ def parse_and_run(path, latname):
     lat = LAT[latname]
     q, d = lat['q'], lat['d']
 
-    # Find the struct for this LatSet
-    pattern = rf'struct SecondOrderImpl<CELL<T, {latname}<T>, TypePack>>\{{(.*?)\n\}};'
+    # Find the struct for this LatSet.  POPPOLICY is the POP storage strategy
+    # csegen forwards into every specialisation.
+    pattern = rf'struct SecondOrderImpl<CELL<T, {latname}<T>, TypePack(?:, POPPOLICY)?>>\{{(.*?)\n\}};'
     m = re.search(pattern, src, re.S)
     if not m:
         raise ValueError(f"struct for {latname} not found")

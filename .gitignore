@@ -68,6 +68,7 @@ temp/
 # cse tool build artifacts
 tools/cse/csegen
 tools/cse/out/
+__pycache__/
 
 # velocity-field comparison dumps (solver run outputs)
 benchmarks/cavity3d/profile_cpu.txt

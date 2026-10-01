@@ -22,7 +22,7 @@
 | `src/data_struct/cuda_field.h` (`cudev::CyclicArray`) | 块内 streaming 是**指针旋转**,O(1) 与格子数无关;跨 block 与跨分辨率不适用 |
 | `src/data_struct/block_lattice.hh` (`NormalCommunicate`, `MPI*Communicate`) | 块间通信**全部走宿主内存**;无 device 端版本 |
 | `src/data_struct/block_lattice.h:97` | 每 block 一套 `dev_Delta_Index` + `dev_Fields` + `devOmega/dev_Omega/dev_fOmega`(3 次 1 元素 `cudaMalloc`)+ `dev_BlockLat` |
-| `src/data_struct/block_lattice.h:267` | `CuDevApplyCellDynamicsRegKernel` **没有 `idx < N` 边界检查**(带 N 的重载存在但 launch 未使用) |
+| `src/data_struct/block_lattice.h` (`CuDevApplyCellDynamicsKernel`) | 已补 `idx < N` 边界检查;`Reg` 变体已并入同一个 kernel,POP 策略由 `cudev::Cell` 的 `POPPOLICY` 模板参数决定 |
 | `src/utils/field_checksum.h` | `PopChecksumDevice` 单 block;调用处 `getBlockLat(0)` |
 | `src/data_struct/block_lattice.h:64` | Omega / _Omega / fOmega 已是**每 block 独立** —— 不同分辨率用不同 τ 的结构已经具备 |
 | `src/geometry/block_geometry3d.h:172` | `getMaxLevel()` 存在 → AMR 多分辨率 block 是一等公民(CPU 侧) |
@@ -116,7 +116,7 @@ MSYS_NO_PATHCONV=1 wsl.exe -- bash -lc \
 | 占用率不足 | 常驻容量 = 30 SM × 5 CTA(96 regs × 128 thr = 12288 regs/CTA,65536/12288 = 5)= **150 CTA = 19200 cell**;block 小于此值时 SM 吃不饱 | 小块 | 同上 |
 | **overlap 冗余** | `(B+2)³/B³ − 1`:50³ → 12.5%,25³ → 26%,16³ → 42% | 块越小越差 | 块尺寸下限;overlap 已是参数 |
 | **halo 交换** | 流量 O(N²ᐟ³) vs 计算 O(N),量级上小;**但若走 D2H→CPU comm→H2D,每步 ~9 MB + 两次同步 ≈ ms 级,直接毁掉全部收益** | 面体比 | **必须写 device 端 halo kernel**,宿主 `normalCommunicate` 不能直接用 |
-| RegCell 寄存器驻留 | 96 regs(FP16 时 REG:96 / LOCAL:0);运行时按 blockIdx 动态分派会打断驻留 | 实现相关 | 每 block 一个模板实例化的 kernel,block 索引作为**编译期**实参,不做运行时分派 |
+| RegPop 寄存器驻留 | 96 regs / LOCAL:0(D3Q19 FP32,已实测);运行时按 blockIdx 动态分派会打断驻留 | 实现相关 | 每 block 一个模板实例化的 kernel,block 索引作为**编译期**实参,不做运行时分派 |
 | 显存/对象开销 | 每 block 约 5–6 次 `cudaMalloc` + H2D | ∝ block 数 | 一次性分配大块 + 指针偏移,初始化期成本,可接受 |
 
 ### 3.3 换算到真实 solver(100³,FP32 2211 MLUPS ⇒ 452 µs/步)
@@ -242,3 +242,123 @@ MSYS_NO_PATHCONV=1 wsl.exe -- bash -lc \
 ## 附:探针
 
 `benchmarks/multiblock_probe/gpu_multiblock_probe.cu` —— 空 kernel launch 开销、固定工作量拆分代价、CUDA Graph 对照,三者合一。§3.1 全部数据由它产出,可直接复跑。
+
+---
+
+## 8. 补充:复杂几何下的 void 代价与显存取舍(2026-09-26)
+
+针对"单卡、短期内不上多 GPU、但复杂几何包围盒远大于实体"的具体纠结。结论是
+**先别在多 block 上做取舍 —— 有一笔账还没算,而且它不是显存账。**
+
+### 8.1 void 单元当前是全额付费的,付的是带宽
+
+默认路径(`--reg`,即 `cudev::Cell<..., cudev::RegPop>`):
+
+```cpp
+cudev::Cell<..., cudev::RegPop> cell(idx, blocklat);  // 构造函数里:
+                                                      //   getPopArray 解析一次地址
+                                                      //   PopCache::load: v[d] = p[d][0]
+                                                      //   → 19 次 load 已经发生
+CELLDYNAMICS::Execute(flagarr->operator[](idx), cell);   // flag 分派在这之后
+cell.flush();                                         // → PopCache::store,19 次 store 也必然发生
+```
+
+`src/data_struct/cell.h` 里 RegPop 特化下的构造函数无条件搬运全部 q 个分布函数
+(这是寄存器驻留的设计前提,不是 bug);`flag` 判定在搬运之后。
+
+对照 baseline 路径(`--base`):`cudev::Cell::operator[]` 只返回全局内存引用,
+惰性求值,void cell 不触发任何访存。
+
+**推论**:
+
+- `--base`:void 单元不产生流量;
+- `--reg`(默认):void 单元产生完整的 152 B/cell 流量;
+- 100³ cavity 是 100% 填满的,所以这笔开销在现有基准里**完全不可见**;
+- 按有用格点算,**有效 MLUPS = 实测 MLUPS × φ**(φ = 实体占包围盒的体积比)。
+  φ = 0.3 时,2211 MLUPS 实际只有约 663 有效 MLUPS —— 已经是 3x 量级的隐形损失,
+  比多 block 的 −30% 大一个数量级。
+
+### 8.2 于是正确的顺序是:先拿纯收益的那一步
+
+**活跃索引压缩 + 延迟搬运**(约 1 天,与多 block 正交;即让 RegPop 的 load 延后到 flag 判定之后)
+
+- kernel 不再从 `0..N−1` 起线程,而是从活跃 cell 索引表起线程
+  (已有 `GenericvectorManager<std::size_t> BulkTaskIds(Geo.getBlockNum(), FlagFM, AABBFlag)`,
+  本来就是 per-block 的);
+- **旋转 streaming 让这件事异常干净**:pull 模式下每个线程只访问自己那条 cell 的
+  19 个 slot(`data_d[i]`),不 gather 邻居。所以压缩索引**不需要邻居表、不需要改
+  CyclicArray、不需要 halo**;
+- 收益:每步流量 ∝ N_active;代价:仍是 1 次 launch,访存局部性取决于活跃格点在
+  最快轴上的连续游程长度;
+- **不省显存**。
+
+这一步在"做多 block"和"不做多 block"两种结局下都赢,不可能亏。
+
+### 8.3 显存这笔账 —— 以及明确的门槛
+
+每 cell 约 93 B(POP 19×4 + rho 4 + u 12 + flag 1),6 GB ⇒ 约 6.5e7 cell ≈ 400³。
+
+```
+N_bbox × 93 B ≤ 0.7 × 可用显存   →   只做 §8.2,不要碰多 block(维持 §7 的 No-Go)
+否则                              →   显存成为真瓶颈,才谈 tiled 分配
+```
+
+理由很直白:**浪费你已经拥有的显存没有成本。** 只有当"算不了"或"必须降分辨率"
+时,tile 才值得 —— 降分辨率损失的精度远大于 halo 的 20–40%。
+
+### 8.4 若显存真卡住:tile 的尺寸张力是真的
+
+tile 边长 m、实体体积 V、表面积 A(格点数):
+
+- 需分配显存 ≈ V·(1 + 6/m) + A·m
+- 每步时间 penalty ≈ 6/m(halo 冗余计算)+ launch 开销
+- VRAM 最优解 m* = √(6V/A):球(R=100)→ m ≈ 14;厚 8 格的薄板 → m ≈ 5
+
+**VRAM 最优点落在小 tile(halo penalty 40%–100%),而时间 penalty 要求大 tile。**
+这是真实且无法消除的张力 —— 用户原本的顾虑并非错觉。
+
+**但张力里的 launch 项不是本质的,是实现决定的。**破局:不要写成"每 block 一次
+launch",而写成**一个 kernel 遍历 tile 表**(grid-stride over tiles),launch 数
+恒为 O(1)/步,§3.1 实测的 6.6 µs/launch 就不再是 tile 数的函数。剩下的 6/m
+躲不掉,所以 m 的选取准则变为:**在显存预算允许范围内取最大的 m**,而非 VRAM 最优的 m*。
+
+### 8.5 第三条路已被实测否掉:虚存稀疏提交
+
+设想:保持稠密索引不变(所有常偏移、rotate streaming、合并访存一概不变),只给非空
+VA 区间提交物理页 —— 理论上是零性能代价的省显存。仓库里已有现成 VMM 代码:
+`StreamMapArray::setDevMap()` 的 `cuMemAddressReserve` + `cuMemCreate` +
+`cuMemMap` + `cuMemSetAccess`。
+
+**实测否定**(本卡,`benchmarks/multiblock_probe/vmm_granularity_probe.cu`):
+
+```
+device=NVIDIA GeForce RTX 3060 Laptop GPU  VMM supported=1
+granularity MIN=2097152 (2.00 MB)  REC=2097152 (2.00 MB)
+FP32 POP: 524288 cells/chunk → 等效立方边长 80.6;nx=400 时是 3.27 个 xy 平面
+FP16 POP: 1048576 cells/chunk
+```
+
+单个 chunk 覆盖单个方向数组上 524288 个**连续** cell。在线性 (i,j,k) 序下,只要几何
+沿最慢轴铺开,一个 chunk 都省不掉。要拿到细粒度必须改成 Morton 序,而那会破坏常偏移
+→ 旋转 streaming 失效 → 退回 gather streaming。**在不改 streaming 机制的前提下这条路
+不成立。**
+
+副作用知识:`getPageAlignedCount` 会把 19 个方向各自向上取整到 2 MB,这是
+StreamMapArray 在小算例上会多占一大块显存的原因 —— 也是当初默认切到 CyclicArray
+的一个合理理由。
+
+### 8.6 顺带:最便宜的显存杠杆已经在手
+
+FP16 存储已落地(§见 docs/FP16_PLAN.md,4113 MLUPS):每 cell 93 B → 约 55 B,
+**可算规模直接放大 1.69 倍**,且不引入任何 tile/halo/launch 复杂度。
+在动多 block 之前,先把这个杠杆用满。
+
+### 8.7 决定这件事的两个测量(都很快)
+
+1. **判定 8.1 是否成立**:现有代码不动,cavity3d 里把一部分 cell 的 flag 设为 void
+   (保持 N 不变),看 MLUPS 是否变化。**若 MLUPS 基本不动 → 证实 void 单元在全额
+   消耗带宽**,那么 §8.2 就是当下收益最大的一件事。
+2. **拿到真实几何的 φ 与 A/V**:对实际复杂几何统计 `getTotalCellNum()` vs 按 flag
+   计数的 active 数。φ > 0.5 且 400³ 以内装得下 ⇒ §8.2 做完即止,多 block 永远不做。
+
+在这两个数字出来之前,关于多 block 的所有性能讨论都只是估值。

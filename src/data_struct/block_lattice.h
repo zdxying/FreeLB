@@ -146,22 +146,17 @@ class BlockLattice : public BlockLatticeBase<T, LatSet, TypePack> {
 
   void CuDevStream();
 
-  template <typename CELLDYNAMICS, typename ArrayType>
+  // Cell dynamics on the GPU.  CELLTYPE is the cell the task selector was built
+  // around; its trailing POPPOLICY parameter selects the POP storage strategy
+  // (cudev::DirectPop streams from global memory, cudev::RegPop keeps the q
+  // populations in registers for the duration of the dynamics).  The block size
+  // is derived from the strategy: the register footprint wants a multiple of the
+  // warp size rather than THREADS_PER_BLOCK.  See docs/CELL_POLICY_PLAN.md.
+  template <typename CELLDYNAMICS, typename CELLTYPE, typename ArrayType>
   void CuDevApplyCellDynamics(ArrayType& flagarr);
 
-  template <typename CELLDYNAMICS>
+  template <typename CELLDYNAMICS, typename CELLTYPE>
   void CuDevApplyCellDynamics();
-
-  // Register-resident cell dynamics -- same signature, but the populations stay
-  // in registers between the moment pass and the collision pass.  Around 1.3x
-  // faster for D3Q19 collision on sm_86; see cudev::RegCell.
-  // blockSize defaults to 128 because the register footprint (96 regs for
-  // D3Q19) wants a multiple of the warp size rather than THREADS_PER_BLOCK.
-  template <typename CELLDYNAMICS, typename ArrayType>
-  void CuDevApplyCellDynamicsReg(ArrayType& flagarr, unsigned int blockSize = 128);
-
-  template <typename CELLDYNAMICS>
-  void CuDevApplyCellDynamicsReg();
 
 #endif
 
@@ -225,45 +220,39 @@ __global__ void CuDevStreamKernel(cudev::BlockLattice<T, LatSet, TypePack>* bloc
   blocklat->Stream(id);
 }
 
-template <typename T, typename LatSet, typename TypePack, typename CELLDYNAMICS, typename ArrayType>
-__global__ void CuDevApplyCellDynamicsKernel(cudev::BlockLattice<T, LatSet, TypePack>* blocklat, ArrayType* flagarr, std::size_t n) {
-  std::size_t idx = blockIdx.x * blockDim.x + threadIdx.x;
-  if (idx >= n) return;  // grid is rounded up to the block size
-  cudev::Cell<T, LatSet, TypePack> cell(idx, blocklat);
-  CELLDYNAMICS::Execute(flagarr->operator[](idx), cell);
-}
-
-template <typename T, typename LatSet, typename TypePack, typename CELLDYNAMICS>
-__global__ void CuDevApplyCellDynamicsKernel(cudev::BlockLattice<T, LatSet, TypePack>* blocklat, std::size_t n) {
-  std::size_t idx = blockIdx.x * blockDim.x + threadIdx.x;
-  if (idx >= n) return;  // grid is rounded up to the block size
-  cudev::Cell<T, LatSet, TypePack> cell(idx, blocklat);
-  CELLDYNAMICS::apply(cell);
-}
-
 // (the old bounds-checked kernel variants were removed: the active kernels
 // above now take the cell count and early-return themselves)
-// Register-resident variant of CuDevApplyCellDynamicsKernel; see cudev::RegCell
-// for why it exists.  CELLDYNAMICS must be a task selector built around
-// cudev::RegCell<T, LatSet, TypePack>; derive it from the selector you already
-// have with tmp::RebindSelector or tmp::RebindTaskList.
-template <typename T, typename LatSet, typename TypePack, typename CELLDYNAMICS,
-          typename ArrayType>
-__global__ void CuDevApplyCellDynamicsRegKernel(
+//
+// One kernel serves both POP storage strategies: CELLTYPE is the cell the task
+// selector was built around, and its trailing POPPOLICY parameter decides
+// whether the populations stream from global memory (DirectPop) or stay in
+// registers for the whole dynamics (RegPop).  Cell::flush() is a no-op under
+// DirectPop, which is what allows the unconditional call below.
+// See docs/CELL_POLICY_PLAN.md.
+template <typename T, typename LatSet, typename TypePack, typename CELLTYPE,
+          typename CELLDYNAMICS, typename ArrayType>
+__global__ void CuDevApplyCellDynamicsKernel(
     cudev::BlockLattice<T, LatSet, TypePack>* blocklat, ArrayType* flagarr, std::size_t n) {
+  static_assert(std::is_same_v<typename CELLDYNAMICS::CellType, CELLTYPE>,
+                "the cell type must match the one the task selector was built around; "
+                "rebuild the task list with tmp::RebindSelector");
   std::size_t idx = blockIdx.x * blockDim.x + threadIdx.x;
   if (idx >= n) return;  // grid is rounded up to the block size
-  cudev::RegCell<T, LatSet, TypePack> cell(idx, blocklat);
+  CELLTYPE cell(idx, blocklat);
   CELLDYNAMICS::Execute(flagarr->operator[](idx), cell);
   cell.flush();
 }
 
-template <typename T, typename LatSet, typename TypePack, typename CELLDYNAMICS>
-__global__ void CuDevApplyCellDynamicsRegKernel(
+template <typename T, typename LatSet, typename TypePack, typename CELLTYPE,
+          typename CELLDYNAMICS>
+__global__ void CuDevApplyCellDynamicsKernel(
     cudev::BlockLattice<T, LatSet, TypePack>* blocklat, std::size_t n) {
+  static_assert(std::is_same_v<typename CELLDYNAMICS::CellType, CELLTYPE>,
+                "the cell type must match the one the task selector was built around; "
+                "rebuild the task list with tmp::RebindSelector");
   std::size_t idx = blockIdx.x * blockDim.x + threadIdx.x;
   if (idx >= n) return;  // grid is rounded up to the block size
-  cudev::RegCell<T, LatSet, TypePack> cell(idx, blocklat);
+  CELLTYPE cell(idx, blocklat);
   CELLDYNAMICS::apply(cell);
   cell.flush();
 }
@@ -387,19 +376,14 @@ class BlockLatticeManager : public BlockLatticeManagerBase<T, LatSet, TypePack> 
 
   void CuDevStream();
 
-  template <typename CELLDYNAMICS, typename FieldType>
+  // Forwards to BlockLattice::CuDevApplyCellDynamics, threading CELLTYPE (the
+  // cell the task selector was built around) through so that the POP storage
+  // strategy reaches the kernel.  See docs/CELL_POLICY_PLAN.md.
+  template <typename CELLDYNAMICS, typename CELLTYPE, typename FieldType>
   void CuDevApplyCellDynamics(BlockFieldManager<FieldType, T, LatSet::d>& BFM);
 
-  template <typename CELLDYNAMICS>
+  template <typename CELLDYNAMICS, typename CELLTYPE>
   void CuDevApplyCellDynamics();
-
-  // register-resident cell dynamics; see cudev::RegCell
-  template <typename CELLDYNAMICS, typename FieldType>
-  void CuDevApplyCellDynamicsReg(BlockFieldManager<FieldType, T, LatSet::d>& BFM,
-                                 unsigned int blockSize = 128);
-
-  template <typename CELLDYNAMICS>
-  void CuDevApplyCellDynamicsReg();
 
 #endif
 

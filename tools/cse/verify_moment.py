@@ -15,8 +15,11 @@ LAT = {
 def parse(path):
     src = open(path).read()
     fns = {}
-    # struct Name<CELL<T, LAT<T>, TypePack>[, Extra]*>{
-    for m in re.finditer(r'struct (\w+)<CELL<T, (\w+)<T>, TypePack>((?:, \w+)*)>\{(.*?)\n\};', src, re.S):
+    # struct Name<CELL<T, LAT<T>, TypePack(?:, POPPOLICY)?>[, Extra]*>{
+    # POPPOLICY is the POP storage strategy csegen forwards into every
+    # specialisation (cudev::DirectPop / cudev::RegPop); it was added when the
+    # cell stopped being one concrete type.
+    for m in re.finditer(r'struct (\w+)<CELL<T, (\w+)<T>, TypePack(?:, POPPOLICY)?>((?:, \w+)*)>\{(.*?)\n\};', src, re.S):
         name, lat, extra, body = m.group(1), m.group(2), m.group(3), m.group(4)
         am = re.search(r'apply\((.*?)\)\{(.*?)\n  \}', body, re.S)
         if not am:

@@ -24,13 +24,21 @@
 // lattice boltzmann method implementations
 
 // #include "data_struct/Vector.h"
+#include "data_struct/pop_policy.h"
 #include "lbm/lattice_set.h"
 
 template <typename T, typename LatSet, typename TypePack>
 class Cell;
 
 namespace cudev {
-  template <typename T, typename LatSet, typename TypePack>
+  // The trailing POPPOLICY must match the declaration in data_struct/cell.h.
+  // The default (DirectPop) belongs HERE rather than on that definition: a
+  // default argument may be supplied only once, on the first declaration, and
+  // this header is always seen before cell.h -- it is what the generated .ur.h
+  // files include.  cudev::DirectPop is declared outside __CUDACC__ so a host
+  // build can name it too.
+  template <typename T, typename LatSet, typename TypePack,
+            typename POPPOLICY = DirectPop>
   class Cell;
 }  // namespace cudev
 

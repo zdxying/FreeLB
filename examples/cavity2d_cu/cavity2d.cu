@@ -206,7 +206,7 @@ int main() {
   while (MainLoopTimer() < MaxStep && res > tol) {
 
     // NSLattice.ApplyCellDynamics<NSTask>(FlagFM);
-    NSLattice.CuDevApplyCellDynamics<NSTask>(FlagFM);
+    NSLattice.CuDevApplyCellDynamics<NSTask, CELL>(FlagFM);
     // NSLattice.CuDevApplyCellDynamics<collision::BGK<moment::rhoU<CELL>, equilibrium::SecondOrder<CELL>>>();
     
     // NSLattice.Stream();
@@ -219,7 +219,7 @@ int main() {
     ++OutputTimer;
 
     if (MainLoopTimer() % OutputStep == 0) {
-      NSLattice.CuDevApplyCellDynamics<TaskSelectorRhoU>(FlagFM);
+      NSLattice.CuDevApplyCellDynamics<TaskSelectorRhoU, CELL>(FlagFM);
       cudaDeviceSynchronize();
       NSLattice.getBlockLat(0).getField<RHO<T>>().copyToHost();
       NSLattice.getBlockLat(0).getField<VELOCITY<T, LatSet::d>>().copyToHost();

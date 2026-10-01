@@ -293,40 +293,21 @@ void BlockLattice<T, LatSet, TypePack>::CuDevStream() {
 }
 
 template <typename T, typename LatSet, typename TypePack>
-template <typename CELLDYNAMICS, typename ArrayType>
+template <typename CELLDYNAMICS, typename CELLTYPE, typename ArrayType>
 void BlockLattice<T, LatSet, TypePack>::CuDevApplyCellDynamics(ArrayType& flagarr) {
-  const unsigned int blockSize = THREADS_PER_BLOCK;
+  // the launch geometry is a property of the cell's POP storage strategy
+  const unsigned int blockSize = CELLTYPE::block_size;
   const unsigned int blockNum = (this->getN() + blockSize - 1) / blockSize;
-  CuDevApplyCellDynamicsKernel<T, LatSet, cudev_TypePack, CELLDYNAMICS, typename ArrayType::cudev_array_type><<<blockNum, blockSize>>>(dev_BlockLat, flagarr.get_devObj(), this->getN());
-  // CuDevApplyCellDynamicsKernel<T, LatSet, cudev_TypePack, CELLDYNAMICS, typename ArrayType::cudev_array_type><<<blockNum, blockSize>>>(dev_BlockLat, flagarr.get_devObj(), this->getN());
+  CuDevApplyCellDynamicsKernel<T, LatSet, cudev_TypePack, CELLTYPE, CELLDYNAMICS, typename ArrayType::cudev_array_type><<<blockNum, blockSize>>>(dev_BlockLat, flagarr.get_devObj(), this->getN());
 }
 
 template <typename T, typename LatSet, typename TypePack>
-template <typename CELLDYNAMICS>
+template <typename CELLDYNAMICS, typename CELLTYPE>
 void BlockLattice<T, LatSet, TypePack>::CuDevApplyCellDynamics() {
-  const unsigned int blockSize = THREADS_PER_BLOCK;
+  // the launch geometry is a property of the cell's POP storage strategy
+  const unsigned int blockSize = CELLTYPE::block_size;
   const unsigned int blockNum = (this->getN() + blockSize - 1) / blockSize;
-  CuDevApplyCellDynamicsKernel<T, LatSet, cudev_TypePack, CELLDYNAMICS><<<blockNum, blockSize>>>(dev_BlockLat, this->getN());
-  // CuDevApplyCellDynamicsKernel<T, LatSet, cudev_TypePack, CELLDYNAMICS><<<blockNum, blockSize>>>(dev_BlockLat, this->getN());
-}
-
-template <typename T, typename LatSet, typename TypePack>
-template <typename CELLDYNAMICS, typename ArrayType>
-void BlockLattice<T, LatSet, TypePack>::CuDevApplyCellDynamicsReg(ArrayType& flagarr,
-                                                                 unsigned int blockSize) {
-  const unsigned int blockNum = (this->getN() + blockSize - 1) / blockSize;
-  CuDevApplyCellDynamicsRegKernel<T, LatSet, cudev_TypePack, CELLDYNAMICS,
-                                  typename ArrayType::cudev_array_type>
-      <<<blockNum, blockSize>>>(dev_BlockLat, flagarr.get_devObj(), this->getN());
-}
-
-template <typename T, typename LatSet, typename TypePack>
-template <typename CELLDYNAMICS>
-void BlockLattice<T, LatSet, TypePack>::CuDevApplyCellDynamicsReg() {
-  const unsigned int blockSize = 128;
-  const unsigned int blockNum = (this->getN() + blockSize - 1) / blockSize;
-  CuDevApplyCellDynamicsRegKernel<T, LatSet, cudev_TypePack, CELLDYNAMICS>
-      <<<blockNum, blockSize>>>(dev_BlockLat, this->getN());
+  CuDevApplyCellDynamicsKernel<T, LatSet, cudev_TypePack, CELLTYPE, CELLDYNAMICS><<<blockNum, blockSize>>>(dev_BlockLat, this->getN());
 }
 
 #endif
@@ -1030,45 +1011,22 @@ void BlockLatticeManager<T, LatSet, TypePack>::CuDevStream(){
 }
 
 template <typename T, typename LatSet, typename TypePack>
-template <typename CELLDYNAMICS, typename FieldType>
+template <typename CELLDYNAMICS, typename CELLTYPE, typename FieldType>
 void BlockLatticeManager<T, LatSet, TypePack>::CuDevApplyCellDynamics(BlockFieldManager<FieldType, T, LatSet::d>& BFM){
-  BlockLats[0].template CuDevApplyCellDynamics<CELLDYNAMICS, typename FieldType::array_type>(
+  BlockLats[0].template CuDevApplyCellDynamics<CELLDYNAMICS, CELLTYPE, typename FieldType::array_type>(
           BFM.getBlockField(0).getField(0));
   // for (std::size_t i = 0; i < BlockLats.size(); ++i) {
-  //     BlockLats[i].template CuDevApplyCellDynamics<CELLDYNAMICS, typename FieldType::array_type>(
+  //     BlockLats[i].template CuDevApplyCellDynamics<CELLDYNAMICS, CELLTYPE, typename FieldType::array_type>(
   //         BFM.getBlockField(i).getField(0));
   // }
 }
 
 template <typename T, typename LatSet, typename TypePack>
-template <typename CELLDYNAMICS>
+template <typename CELLDYNAMICS, typename CELLTYPE>
 void BlockLatticeManager<T, LatSet, TypePack>::CuDevApplyCellDynamics(){
-  BlockLats[0].template CuDevApplyCellDynamics<CELLDYNAMICS>();
+  BlockLats[0].template CuDevApplyCellDynamics<CELLDYNAMICS, CELLTYPE>();
   // for (std::size_t i = 0; i < BlockLats.size(); ++i) {
-  //   BlockLats[i].template CuDevApplyCellDynamics<CELLDYNAMICS>();
-  // }
-}
-
-template <typename T, typename LatSet, typename TypePack>
-template <typename CELLDYNAMICS, typename FieldType>
-void BlockLatticeManager<T, LatSet, TypePack>::CuDevApplyCellDynamicsReg(
-    BlockFieldManager<FieldType, T, LatSet::d>& BFM, unsigned int blockSize) {
-  BlockLats[0].template CuDevApplyCellDynamicsReg<CELLDYNAMICS,
-                                                 typename FieldType::array_type>(
-      BFM.getBlockField(0).getField(0), blockSize);
-  // for (std::size_t i = 0; i < BlockLats.size(); ++i) {
-  //     BlockLats[i].template CuDevApplyCellDynamicsReg<
-  //         CELLDYNAMICS, typename FieldType::array_type>(
-  //         BFM.getBlockField(i).getField(0), blockSize);
-  // }
-}
-
-template <typename T, typename LatSet, typename TypePack>
-template <typename CELLDYNAMICS>
-void BlockLatticeManager<T, LatSet, TypePack>::CuDevApplyCellDynamicsReg() {
-  BlockLats[0].template CuDevApplyCellDynamicsReg<CELLDYNAMICS>();
-  // for (std::size_t i = 0; i < BlockLats.size(); ++i) {
-  //   BlockLats[i].template CuDevApplyCellDynamicsReg<CELLDYNAMICS>();
+  //   BlockLats[i].template CuDevApplyCellDynamics<CELLDYNAMICS, CELLTYPE>();
   // }
 }
 

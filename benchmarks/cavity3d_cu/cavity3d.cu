@@ -115,12 +115,20 @@ void readParam() {
             << "----------------------------------------------" << std::endl;
 }
 
-// Which cell-dynamics kernel to run.  Both solve the same problem; the
-// register-resident path keeps the q populations in registers between the
-// moment pass and the collision pass instead of re-reading them from global
-// memory (see cudev::RegCell).  --base restores the original kernel.
+// Which POP storage strategy the cell dynamics runs with.  Both solve the same
+// problem and, since the strategy is a template parameter of cudev::Cell, both
+// use the same CSE-generated arithmetic.  RegPop keeps the q populations in
+// registers between the moment pass and the collision pass instead of re-reading
+// them from global memory; DirectPop streams them.  --base selects DirectPop.
+//
+// Both strategies work with FP16 storage.  DirectPop used to go NaN within 100
+// steps because cudev::Cell::operator[] hands back a PopRef prvalue and
+// `cell[i] = cell[iopp]` (collision::BounceBack) bound it to PopRef's implicit
+// copy-assignment instead of the converting operator=, so the bounce-back stores
+// never reached memory; PopRef is now assign transparent.  This used to be
+// papered over by forcing RegPop under -DFREELB_POP_FP16, but that also threw
+// away the ability to select the strategy.
 static bool g_UseRegCell = true;
-static unsigned int g_BlockSize = 128;
 
 static void parseArgs(int argc, char** argv) {
   for (int i = 1; i < argc; ++i) {
@@ -128,11 +136,10 @@ static void parseArgs(int argc, char** argv) {
       g_UseRegCell = false;
     } else if (std::strcmp(argv[i], "--reg") == 0) {
       g_UseRegCell = true;
-    } else if (std::strncmp(argv[i], "--block=", 8) == 0) {
-      int b = std::atoi(argv[i] + 8);
-      if (b > 0) g_BlockSize = static_cast<unsigned int>(b);
     } else {
-      std::cerr << "usage: cavity3d [--reg|--base] [--block=N]\n";
+      // the block size is no longer a knob: it is derived from the cell's POP
+      // storage strategy, because the register footprint differs per policy
+      std::cerr << "usage: cavity3d [--reg|--base]\n";
       std::exit(2);
     }
   }
@@ -262,20 +269,12 @@ int main(int argc, char** argv) {
   // Timer OutputTimer;
   // NSWriter.WriteBinary(MainLoopTimer());
 
-#ifdef FREELB_POP_FP16
-  if (!g_UseRegCell) {
-    std::cout << "[cavity3d] FP16 storage requires the register-resident cell"
-              << " (the baseline PopRef path is not supported); forcing reg."
-              << std::endl;
-    g_UseRegCell = true;
-  }
-#endif
   for(int i = 0; i < 10; ++i){
     // NSLattice.ApplyCellDynamics<NSTask>(FlagFM);
     if (g_UseRegCell) {
-      NSLattice.CuDevApplyCellDynamicsReg<NSRegTask>(FlagFM, g_BlockSize);
+      NSLattice.CuDevApplyCellDynamics<NSRegTask, RegCELL>(FlagFM);
     } else {
-      NSLattice.CuDevApplyCellDynamics<NSTask>(FlagFM);
+      NSLattice.CuDevApplyCellDynamics<NSTask, CELL>(FlagFM);
     }
     // NSLattice.Stream();
     NSLattice.CuDevStream();
@@ -286,9 +285,9 @@ int main(int argc, char** argv) {
 
     // NSLattice.ApplyCellDynamics<NSTask>(FlagFM);
     if (g_UseRegCell) {
-      NSLattice.CuDevApplyCellDynamicsReg<NSRegTask>(FlagFM, g_BlockSize);
+      NSLattice.CuDevApplyCellDynamics<NSRegTask, RegCELL>(FlagFM);
     } else {
-      NSLattice.CuDevApplyCellDynamics<NSTask>(FlagFM);
+      NSLattice.CuDevApplyCellDynamics<NSTask, CELL>(FlagFM);
     }
     // NSLattice.Stream();
     NSLattice.CuDevStream();
@@ -318,10 +317,11 @@ int main(int argc, char** argv) {
             << std::endl;
 
   std::cout << "[cavity3d] cell dynamics: "
-            << (g_UseRegCell ? "register-resident (cudev::RegCell)"
-                             : "baseline (cudev::Cell)")
+            << (g_UseRegCell ? "register-resident (cudev::RegPop)"
+                             : "streaming (cudev::DirectPop)")
             << ", blockSize="
-            << (g_UseRegCell ? g_BlockSize : (unsigned int)THREADS_PER_BLOCK)
+            << cudev::RegPop::block_size << " / "
+            << cudev::DirectPop::block_size
             << std::endl;
 
   Printer::Print_BigBanner(std::string("Calculation Complete!"));
@@ -331,7 +331,7 @@ int main(int argc, char** argv) {
 
   // macroscopic fields: compute rho/u from pops on device, pull velocity
   // back, and dump the full u vector for CPU/GPU profile comparison
-  NSLattice.CuDevApplyCellDynamics<TaskSelectorRhoU>(FlagFM);
+  NSLattice.CuDevApplyCellDynamics<TaskSelectorRhoU, CELL>(FlagFM);
   cudaDeviceSynchronize();
   NSLattice.getBlockLat(0).getField<VELOCITY<T, LatSet::d>>().copyToHost();
   {

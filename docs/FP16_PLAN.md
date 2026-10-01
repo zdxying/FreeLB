@@ -34,9 +34,10 @@
 2. **基线路径用代理引用**:`cudev::Cell::operator[]` 返回 `decltype(auto)`——
    存储类型 == 计算类型时返回 `T&`(现状);否则返回 `PopRef` 代理
    (隐式转 float + 从 float 赋值)。46 处 dynamics 代码原样编译,零改动。
-3. **RegCell 几乎零改动**:`pop_` 指针改为存储类型;`cache_[d] = pop_[d][0]` 与
-   `pop_[d][0] = cache_[d]` 依赖 `__half` 的隐式 float 转换(cuda_fp16.h 提供,
-   device 端为硬件指令)。
+3. **RegPop 几乎零改动**:缓存数组 `PopCache<T, Q, RegPop>::v` 为 `T`(float)类型,
+   经 `p[d][0]` 的 `__half` 隐式转换读写 `__half` 存储。(注:该转换走的是
+   `__half` 的隐式转换而非 `PopRef` 代理;曾评估统一到 `PopRef`,结论是两者落到
+   同一条 SASS 指令、且都依赖 `__half::operator=(float)`,收益仅可读性,不值得改。)
 4. **只动 POP**:RHO/VELOCITY/flag 保持 float(流量占比 <5%,无收益)。
 5. **开关默认关闭**:`FREELB_POP_FP16` 不定义时与现状逐位相同,零风险合入。
    宿主 CPU 构建(g++)不受影响(特征退化为 T)。
@@ -47,7 +48,7 @@
 |---|---|---|---|
 | S1 | `PopStorage<T>` 特征 + `cuda_fp16.h` 引入 + POP 别名(宿主/cudev 两处)改用 `PopStorage<T>` | alias.h | ~20 行 |
 | S2 | `PopRef` 代理 + `cudev::Cell::operator[]` 与宿主 `Cell::operator[]` 改 `decltype(auto)` 条件返回 | cell.h | ~45 行 |
-| S3 | `getPopArray` 指针类型 `T**` → `PopStorage<T>**`;`RegCell::pop_` 同步 | cuda_block_lattice.h, cell.h | ~8 行 |
+| S3 | `getPopArray` 指针类型 `T**` → `PopStorage<T>**`;RegPop 缓存同步 | cuda_block_lattice.h, cell.h | ~8 行 |
 | S4 | cavity3d_cu Makefile:`FP16 ?= 0` → `-DFREELB_POP_FP16` | Makefile | ~5 行 |
 | S5 | 校验和/宿主侧转换核对(依赖 `__half` 隐式转换,预计零改动,编译器验证) | cavity3d.cu | ~0-10 行 |
 | S6 | 验证(下节) | - | - |
@@ -89,6 +90,10 @@
 
 寄存器用量 REG:96、LOCAL:0(无溢出);mangled name 确认 POP 已是
 `CyclicArray<__half>`。与 FluidX3D 同卡 FP32/FP16S(4012 MLUPs)相当。
+
+> 此表为 2026-09-26 的测量,背景是**策略化之前**的 `RegCell`(CSE 未命中该 cell 类型)。
+> POP 策略化之后重测的完整 2×2 矩阵见文末「FP16 x POP 策略 性能矩阵」,
+> FP16+RegPop 的结论一致(约 4100 MLUPS)。
 
 ### 正确性(1000 步)
 
@@ -141,13 +146,65 @@ FP32(默认)。长期步数(>1 万步)的精度表现待后续评估。**
 
 ## 已知限制与后续修复(2026-09-26 晚)
 
-1. **内核边界检查缺失(已修复)**:CuDevApplyCellDynamics* 四个内核原本不做
+1. **内核边界检查缺失(已修复)**:cell-dynamics 内核原本不做
    idx < N 检查,N 非 block 整数倍时每步 24-40 个越界线程读写相邻数组。
    FP32 下漂移极小(+23/1000 步)未被发现;FP16 下放大为全场 NaN。
    现已全部加 n 参数 + 早退守卫,调用侧传 this->getN()。
    修复后 FP32/FP16 校验和与修复前逐位一致(越界写从未进入有效区)。
-2. **FP16 + baseline 路径产生 NaN(已知缺陷,未修)**:PopRef 代理路径
-   100 步内 92% 值变 NaN(首个在 cell 0 pop 0),reg 路径同存储完全正常。
-   机制未查明(疑似代理在基线内核中的某处重载解析/寻址问题)。
-   处置:cavity3d_cu 在 FP16 下强制 reg 路径(带提示);baseline 仅供 FP32 对比。
+   (当时是四个内核;POP 策略化后合并为两个模板。)
+2. **FP16 + DirectPop 路径产生 NaN —— 已定位并修复。**
+   机制:`cudev::Cell::operator[]` 在存储类型 != 计算类型时返回
+   `PopRef<__half, float>` **prvalue**。`collision::BounceBack` 写的是
+   `cell[i] = cell[iopp];`(碰撞版 `collision.ur.h` 里有 13 处展开形态)。
+   对这个赋值,`PopRef` **隐式声明的拷贝赋值** `operator=(const PopRef&)`
+   是精确匹配,而转换用的 `operator=(CT)` 需要一次用户自定义转换 ——
+   重载解析选中前者。于是 `ptr` 被复制,写入落在一个被立即丢弃的临时量上,
+   **完全没有到达显存**。壁面反弹的 pop 从未被写过,场在 100 步内 95% 变 NaN。
+   编译无警告、数值"看起来在跑",只有 checksum 才暴露。
+   修复:`PopRef` 增加一个写穿(pass-through)的拷贝赋值,让引用代理对赋值透明:
+
+   ```cpp
+   __device__ PopRef& operator=(const PopRef& rhs) { *ptr = *rhs.ptr; return *this; }
+   ```
+
+   修复后同一算例 NaN 计数 19,151,655 → **0**,checksum 与 RegPop 路径一致
+   (FP16 量化噪声内)。FP32 下 `PopRef` 不会被实例化,故对 FP32 零影响
+   (FP32 的 --reg/--base 校验和逐位不变)。
+   `cavity3d_cu` 里 FP16 的"强制 reg"逻辑保留,但显式 `--base` 现在会被尊重。
+
 3. NaN 诊断已并入 field_checksum.h(NaN 计数 + 首个 flat 索引)。
+
+## FP16 x POP 策略 性能矩阵（实测）
+
+D3Q19 / `CyclicArray` / RTX 3060 (sm_86) / 100³ lid-driven cavity / 1000 步,
+每格 3 遍。单位 MLUPS。
+
+| | RegPop(寄存器驻留) | DirectPop(流式) |
+| --- | --- | --- |
+| **FP32** | 2179 / 2179 / 2175 | 1396 / 1338 / 1364 |
+| **FP16** | 4162 / 4113 / 3960 | 1444 / 1413 / 1348 |
+
+结论:
+
+- **RegPop + FP16 是最快的组合**,比 FP32 + RegPop 快 **+87%**,
+  比 FP16 + DirectPop 快 **2.9x**。访存仍是主要瓶颈,所以"把 pop 缓存进寄存器"
+  和"把 pop 减半"两个手段是叠加的,不是互斥的。
+- **DirectPop 下 FP16 几乎没有收益**(1366 → 1402,+2.6%)。它每次元素访问都
+  重新解析容器地址,数据访存没省下来。
+- 因此 FP16 必须配合 RegPop 使用。`cavity3d_cu` 的默认(RegPop)是正确的默认。
+
+### 一个曾经踩过的坑:D4(逐方向重算地址)
+
+曾把 RegPop 的 `pop_[Q]` 指针数组去掉,改成在 load/flush 循环里逐方向重算地址。
+理由是省寄存器(FP32 实测 96 → 56,occupancy 更好)。
+
+**在 FP32 上看不出问题(吞吐持平),但在 FP16 上慢了 1.75 倍(2400 vs 4000)。**
+数据访存两侧一致,变的是 64 位地址 load:90 → 217(+141%)。FP16 把载荷减半之后,
+地址解析开销成为主导项,省下来的寄存器根本不够赔。
+
+已回退为"构造时解析一次并保留指针数组",FP16 的地址 load 回到 4,
+吞吐 4178 MLUPS,REG:96 / LOCAL:0。
+
+**教训:局部优化必须在所有相关配置上验证。** 只量 FP32 会漏掉 1.75x 的回退,
+而 FP16 正是这个 solver 的主目标配置。
+
