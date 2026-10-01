@@ -518,6 +518,15 @@ class CyclicArray {
   std::array<T*, 2> start;
   // facilitate the access of data before the last shift(rotate)
   std::ptrdiff_t Offset;
+#ifdef __CUDACC__
+  // device mirror handles; see the device block at the end of this class
+  cudev::CyclicArray<T>* dev_CyclicArray;
+  std::size_t* dev_count;
+  T* dev_data;
+  std::ptrdiff_t* dev_shift;
+  std::size_t* dev_remainder;
+  std::ptrdiff_t* dev_Offset;
+#endif
 
  public:
   using value_type = T;
@@ -527,16 +536,29 @@ class CyclicArray {
 #endif
 
   CyclicArray()
-      : count(0), data(nullptr), shift(0), remainder(0), start{}, Offset(0) {}
+      : count(0), data(nullptr), shift(0), remainder(0), start{}, Offset(0) {
+#ifdef __CUDACC__
+    nullDeviceData();
+    InitDeviceData();
+#endif
+  }
   CyclicArray(std::size_t size)
       : count(size), data(new T[size]{}), shift(0), remainder(size), Offset(0) {
     std::fill(data, data + size, T{});
     refresh();
+#ifdef __CUDACC__
+    nullDeviceData();
+    InitDeviceData();
+#endif
   }
   CyclicArray(std::size_t size, T InitValue)
       : count(size), data(new T[size]{}), shift(0), remainder(size), Offset(0) {
     std::fill(data, data + size, InitValue);
     refresh();
+#ifdef __CUDACC__
+    nullDeviceData();
+    InitDeviceData();
+#endif
   }
   // Copy constructor
   CyclicArray(const CyclicArray& arr)
@@ -544,6 +566,10 @@ class CyclicArray {
         remainder(arr.remainder), Offset(arr.Offset) {
     std::copy(arr.data, arr.data + count, data);
     refresh();
+#ifdef __CUDACC__
+    nullDeviceData();
+    InitDeviceData();
+#endif
   }
   // Move constructor
   CyclicArray(CyclicArray&& arr) noexcept
@@ -563,10 +589,19 @@ class CyclicArray {
     arr.remainder = 0;
     arr.start = {};
     arr.Offset = 0;
+    refresh();
+#ifdef __CUDACC__
+    nullDeviceData();
+    InitDeviceData();
+#endif
   }
   // Copy assignment operator
   CyclicArray& operator=(const CyclicArray& arr) {
     if (&arr == this) return *this;
+#ifdef __CUDACC__
+    freeDeviceData();
+    nullDeviceData();
+#endif
     delete[] data;
     count = arr.count;
     data = new T[arr.count]{};
@@ -575,11 +610,18 @@ class CyclicArray {
     remainder = arr.remainder;
     Offset = arr.Offset;
     refresh();
+#ifdef __CUDACC__
+    InitDeviceData();
+#endif
     return *this;
   }
   // Move assignment operator
   CyclicArray& operator=(CyclicArray&& arr) noexcept {
     if (&arr == this) return *this;
+#ifdef __CUDACC__
+    freeDeviceData();
+    nullDeviceData();
+#endif
     delete[] data;
     // Steal the data from 'arr'
     count = arr.count;
@@ -596,6 +638,9 @@ class CyclicArray {
     arr.start = {};
     arr.Offset = 0;
     refresh();
+#ifdef __CUDACC__
+    InitDeviceData();
+#endif
     return *this;
   }
 
@@ -603,7 +648,12 @@ class CyclicArray {
     std::fill(data, data + count, InitValue); 
     Offset = offset;
   }
-  void setOffset(int offset) { Offset = offset; }
+  void setOffset(int offset) {
+    Offset = offset;
+#ifdef __CUDACC__
+    copyToDevice();
+#endif
+  }
 
   void Resize(std::size_t size) {
     if (size == count) return;
@@ -616,7 +666,12 @@ class CyclicArray {
     refresh();
   }
 
-  ~CyclicArray() { delete[] data; }
+  ~CyclicArray() {
+    delete[] data;
+#ifdef __CUDACC__
+    freeDeviceData();
+#endif
+  }
 
   // get more info to achieve higher performance
   std::size_t getRemainder() const { return remainder; }
@@ -695,359 +750,81 @@ class CyclicArray {
     }
     refresh();
   }
-};
-
-
-// a modified version of CyclicArray
-
-// #include <execution>
-
-template <typename T>
-class StreamArray {
- private:
-  // number of elements
-  std::size_t count;
-  // base pointer to the data
-  T* data;
-  // shift
-  std::ptrdiff_t shift;
-  T* start;
-  // facilitate the access of data before the last shift(rotate)
-  std::ptrdiff_t Offset;
 
 #ifdef __CUDACC__
-  std::size_t* dev_count;
-  // device pointer to the data
-  T* dev_data;
-  T* dev_start;
-  std::ptrdiff_t* dev_shift;
-  std::ptrdiff_t* dev_Offset;
-  cudev::StreamArray<T>* dev_StreamArray;
-#endif
+  // -------------------------------------------------------------------------
+  // device mirror (host-driven), same pattern as the other containers: the device
+  // object aliases device copies of the scalars it needs, so the caller must
+  // call copyToDevice() after any host mutation of count/shift/remainder/start
+  // (Resize, Init, setOffset, rotate).  Additive only -- no existing member or
+  // behaviour is changed, and none of this is compiled on the CPU path.
+  // -------------------------------------------------------------------------
 
- public:
-  using value_type = T;
-  using array_type = StreamArray<T>;
-#ifdef __CUDACC__
-  using cudev_array_type = cudev::StreamArray<T>;
-#endif
+  T* get_devptr() { return dev_data; }
+  cudev::CyclicArray<T>* get_devObj() { return dev_CyclicArray; }
+  const cudev::CyclicArray<T>* get_devObj() const { return dev_CyclicArray; }
 
-  StreamArray() : count(0), data(nullptr), shift(0), start(nullptr), Offset(0) {
-#ifdef __CUDACC__
+  void nullDeviceData() {
     dev_count = nullptr;
     dev_data = nullptr;
-    dev_start = nullptr;
     dev_shift = nullptr;
+    dev_remainder = nullptr;
     dev_Offset = nullptr;
-#endif
+    dev_CyclicArray = nullptr;
   }
-  StreamArray(std::size_t size)
-      : count(size), data(new T[2 * size]{}), shift(0), Offset(0) {
-    std::fill(data, data + 2 * size, T{});
-    set_start();
-    InitDeviceData();
-  }
-  StreamArray(std::size_t size, T InitValue)
-      : count(size), data(new T[2 * size]{}), shift(0), Offset(0) {
-    std::fill(data, data + 2 * size, InitValue);
-    set_start();
-    InitDeviceData();
-  }
-  // Copy constructor
-  StreamArray(const StreamArray& arr)
-      : count(arr.count), data(new T[2 * arr.count]{}), shift(arr.shift),
-        Offset(arr.Offset) {
-    std::copy(arr.data, arr.data + 2 * count, data);
-    set_start();
-#ifdef __CUDACC__
-    dev_count = cuda_malloc<std::size_t>(1);
-    dev_data = cuda_malloc<T>(2 * count);
-    dev_start = cuda_malloc<T>(1);
-    dev_shift = cuda_malloc<std::ptrdiff_t>(1);
-    dev_Offset = cuda_malloc<std::ptrdiff_t>(1);
-    device_to_device(dev_count, arr.dev_count, 1);
-    device_to_device(dev_data, arr.dev_data, 2 * count);
-    device_to_device(dev_start, arr.dev_start, 1);
-    device_to_device(dev_shift, arr.dev_shift, 1);
-    device_to_device(dev_Offset, arr.dev_Offset, 1);
-    constructInDevice();
-#endif
-  }
-  // Move constructor
-  StreamArray(StreamArray&& arr) noexcept
-      : count(arr.count), data(arr.data), shift(arr.shift), start(arr.start),
-        Offset(arr.Offset) {
-    set_start();
-    arr.count = 0;
-    arr.data = nullptr;
-    arr.shift = 0;
-    arr.start = nullptr;
-    arr.Offset = 0;
-#ifdef __CUDACC__
-    dev_count = arr.dev_count;
-    dev_data = arr.dev_data;
-    dev_start = arr.dev_start;
-    dev_shift = arr.dev_shift;
-    dev_Offset = arr.dev_Offset;
-    arr.dev_count = nullptr;
-    arr.dev_data = nullptr;
-    arr.dev_start = nullptr;
-    arr.dev_shift = nullptr;
-    arr.dev_Offset = nullptr;
-    constructInDevice();
-#endif
-  }
-  // Copy assignment operator
-  StreamArray& operator=(const StreamArray& arr) {
-    if (&arr == this) return *this;
-    if (count != arr.count) {
-      delete[] data;
-      data = new T[2 * arr.count]{};
-    }
-    std::copy(arr.data, arr.data + 2 * arr.count, data);
-    shift = arr.shift;
-    Offset = arr.Offset;
-    set_start();
-#ifdef __CUDACC__
-    if (count != arr.count) {
-      cuda_free(dev_data);
-      dev_data = cuda_malloc<T>(2 * arr.count);
-    }
-    device_to_device(dev_count, arr.dev_count, 1);
-    device_to_device(dev_data, arr.dev_data, 2 * arr.count);
-    device_to_device(dev_start, arr.dev_start, 1);
-    device_to_device(dev_shift, arr.dev_shift, 1);
-    device_to_device(dev_Offset, arr.dev_Offset, 1);
-#endif
-    count = arr.count;
-    return *this;
-  }
-  // Move assignment operator
-  StreamArray& operator=(StreamArray&& arr) noexcept {
-    if (&arr == this) return *this;
-    delete[] data;
-    // Steal the data from 'arr'
-    count = arr.count;
-    data = arr.data;
-    shift = arr.shift;
-    start = arr.start;
-    Offset = arr.Offset;
-    // Reset 'arr'
-    arr.count = 0;
-    arr.data = nullptr;
-    arr.shift = 0;
-    arr.start = nullptr;
-    arr.Offset = 0;
-    set_start();
-#ifdef __CUDACC__
-    dev_count = arr.dev_count;
-    dev_data = arr.dev_data;
-    dev_start = arr.dev_start;
-    dev_shift = arr.dev_shift;
-    dev_Offset = arr.dev_Offset;
-    arr.dev_count = nullptr;
-    arr.dev_data = nullptr;
-    arr.dev_start = nullptr;
-    arr.dev_shift = nullptr;
-    arr.dev_Offset = nullptr;
-#endif
-    return *this;
-  }
-
-  ~StreamArray() {
-    delete[] data;
-#ifdef __CUDACC__
+  void freeDeviceData() {
     if (dev_count) cuda_free(dev_count);
     if (dev_data) cuda_free(dev_data);
-    if (dev_start) cuda_free(dev_start);
     if (dev_shift) cuda_free(dev_shift);
+    if (dev_remainder) cuda_free(dev_remainder);
     if (dev_Offset) cuda_free(dev_Offset);
-    if (dev_StreamArray) cuda_free(dev_StreamArray);
-#endif
+    if (dev_CyclicArray) cuda_free(dev_CyclicArray);
   }
 
   void InitDeviceData() {
-#ifdef __CUDACC__
     dev_count = cuda_malloc<std::size_t>(1);
-    dev_data = cuda_malloc<T>(2 * count);
-    dev_start = cuda_malloc<T>(1);
+    dev_data = cuda_malloc<T>(count);
     dev_shift = cuda_malloc<std::ptrdiff_t>(1);
+    dev_remainder = cuda_malloc<std::size_t>(1);
     dev_Offset = cuda_malloc<std::ptrdiff_t>(1);
     copyToDevice();
     constructInDevice();
-#endif
   }
 
-#ifdef __CUDACC__
-
+  // push the host scalars and the data buffer to the device
   void copyToDevice() {
+    if (!dev_data) return;
     host_to_device(dev_count, &count, 1);
-    host_to_device(dev_data, data, 2 * count);
+    host_to_device(dev_data, data, count);
     host_to_device(dev_shift, &shift, 1);
+    host_to_device(dev_remainder, &remainder, 1);
     host_to_device(dev_Offset, &Offset, 1);
   }
-  // do not copy start pointer
+  // pull the data buffer and the scalars back; start[] is re-derived on the host
   void copyToHost() {
+    if (!dev_data) return;
     device_to_host(&count, dev_count, 1);
-    device_to_host(data, dev_data, 2 * count);
+    device_to_host(data, dev_data, count);
     device_to_host(&shift, dev_shift, 1);
+    device_to_host(&remainder, dev_remainder, 1);
     device_to_host(&Offset, dev_Offset, 1);
-    set_start();
+    refresh();
   }
-  T* get_devptr() { return dev_data; }
-  std::size_t get_devcount() const {
-    std::size_t temp;
-    device_to_host(&temp, dev_count, 1);
-    return temp;
-  }
-  cudev::StreamArray<T>* get_devObj() { return dev_StreamArray; }
+  // build the device object; start[] is NOT copied -- the host pointers are
+  // meaningless on the device, so the device object starts unrotated from
+  // dev_data and is rotated on the device from there, exactly like
+  // constructInDevice(): assemble the mirror object from device buffers
   void constructInDevice() {
-    dev_StreamArray = cuda_malloc<cudev::StreamArray<T>>(1);
-    // temp host object
-    cudev::StreamArray<T> temp(dev_count, dev_data, dev_shift, dev_start, dev_Offset);
-    // copy to device
-    host_to_device(dev_StreamArray, &temp, 1);
+    dev_CyclicArray = cuda_malloc<cudev::CyclicArray<T>>(1);
+    T* dev_base = dev_data;
+    cudev::CyclicArray<T> temp(count, dev_base, dev_shift, dev_remainder,
+                               dev_Offset);
+    host_to_device(dev_CyclicArray, &temp, 1);
   }
 
-#endif
-
-  void Init(T InitValue, int offset = 0) {
-    std::fill(data, data + 2 * count, InitValue);
-    Offset = offset;
-#ifdef __CUDACC__
-    copyToDevice();
-#endif
-  }
-
-  void setOffset(int offset) {
-    Offset = offset;
-#ifdef __CUDACC__
-    copyToDevice();
-#endif
-  }
-
-  void Resize(std::size_t size) {
-    if (size == count) return;
-    delete[] data;
-    data = new T[2 * size]{};
-    count = size;
-    shift = 0;
-    Offset = 0;
-    set_start();
-#ifdef __CUDACC__
-    if (dev_count) cuda_free(dev_count);
-    if (dev_data) cuda_free(dev_data);
-    if (dev_start) cuda_free(dev_start);
-    if (dev_shift) cuda_free(dev_shift);
-    if (dev_Offset) cuda_free(dev_Offset);
-    if (dev_StreamArray) cuda_free(dev_StreamArray);
-    InitDeviceData();
-#endif
-  }
-
-
-  const T& operator[](std::size_t i) const { return start[i]; }
-  T& operator[](std::size_t i) { return start[i]; }
-
-  inline void set(std::size_t i, T value) { start[i] = value; }
-  std::size_t size() const { return count; }
-  // return the pointer of ith element
-  T* getdataPtr(std::size_t i = 0) { return start + i; }
-  const T* getdataPtr(std::size_t i = 0) const { return start + i; }
-
-  // get data before the last shift(rotate), used in bcs
-  T& getPrevious(std::size_t i) {
-    std::ptrdiff_t prevIndex = i + Offset;
-    if (prevIndex < 0) {
-      prevIndex += count;
-    } else if (prevIndex >= static_cast<std::ptrdiff_t>(count)) {
-      prevIndex -= count;
-    }
-    return start[static_cast<std::size_t>(prevIndex)];
-  }
-
-  // calc start pointer
-  void set_start() {
-    T* const base = data;
-    start = base + shift;
-  }
-
-  void rotate() {
-    const std::ptrdiff_t n = count;
-    shift -= Offset;
-    if (shift >= n) {
-      shift -= n;
-      copyToFront(shift);
-    } else if (shift < 0) {
-      shift += n;
-      copyToBack(shift);
-    }
-    set_start();
-  }
-
-  // compatible with code using cyclic array
-  void rotate(std::ptrdiff_t offset) {
-    const std::ptrdiff_t n = count;
-    Offset = offset;
-    shift -= offset;
-    if (shift >= n) {
-      shift -= n;
-      copyToFront(shift);
-    } else if (shift < 0) {
-      shift += n;
-      copyToBack(shift);
-    }
-    set_start();
-  }
-
-  void copyToBack(std::ptrdiff_t endoffset = 0) {
-    T* const base = data;
-    endoffset = endoffset == 0 ? count : endoffset;
-    // parallel copy
-    // if (count > 100000) {
-    //   std::copy(std::execution::par, base, base + endoffset, base + count);
-    // } else {
-      std::copy(base, base + endoffset, base + count);
-    // }
-  }
-  void copyToFront(std::ptrdiff_t startoffset = 0) {
-    T* const base = data;
-    // if (count > 100000) {
-    //   std::copy(std::execution::par, base + count + startoffset, base + 2 * count,
-    //             base + startoffset);
-    // } else {
-      std::copy(base + count + startoffset, base + 2 * count, base + startoffset);
-    // }
-  }
-#ifdef __CUDACC__
-  void dev_rotate() {
-    device_to_host(start, dev_start, 1);
-    device_to_host(&shift, dev_shift, 1);
-    const std::ptrdiff_t n = count;
-    shift -= Offset;
-    if (shift >= n) {
-      shift -= n;
-      dev_copyToFront(shift);
-    } else if (shift < 0) {
-      shift += n;
-      dev_copyToBack(shift);
-    }
-    set_start();
-    host_to_device(dev_start, start, 1);
-    host_to_device(dev_shift, &shift, 1);
-  }
-
-  void dev_copyToBack(std::ptrdiff_t endoffset = 0) {
-    endoffset = endoffset == 0 ? count : endoffset;
-    device_to_device(dev_data + count, dev_data, endoffset);
-  }
-  void dev_copyToFront(std::ptrdiff_t startoffset = 0) {
-    device_to_device(dev_data + startoffset, dev_data + count + startoffset,
-                     count - startoffset);
-  }
-  void rotate_dev() { Stream_kernel<<<1, 1>>>(dev_StreamArray); }
 #endif
 };
+
 
 
 // avoid explicit memory copying by memory mapping

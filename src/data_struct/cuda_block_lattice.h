@@ -108,6 +108,15 @@ class BlockLatticeBase {
     return id + Delta_Index[dir];
   }
   __device__ const int* getDelta_Index() const { return Delta_Index; }
+
+  // Fill ptr_arr[i] with the address of the i-th distribution function of cell
+  // `id`, resolving the whole object graph once.  cudev::RegCell uses this to
+  // keep the q element addresses in registers instead of re-deriving them on
+  // every element access.  Works for any POP container that provides
+  // getdataPtr(): StreamMapArray and CyclicArray.
+  __device__ void getPopArray(std::size_t id, T** ptr_arr) {
+    this->template getField<POP<T, LatSet::q>>().getArray(id, ptr_arr);
+  }
 };
 
 

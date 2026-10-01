@@ -152,6 +152,17 @@ class BlockLattice : public BlockLatticeBase<T, LatSet, TypePack> {
   template <typename CELLDYNAMICS>
   void CuDevApplyCellDynamics();
 
+  // Register-resident cell dynamics -- same signature, but the populations stay
+  // in registers between the moment pass and the collision pass.  Around 1.3x
+  // faster for D3Q19 collision on sm_86; see cudev::RegCell.
+  // blockSize defaults to 128 because the register footprint (96 regs for
+  // D3Q19) wants a multiple of the warp size rather than THREADS_PER_BLOCK.
+  template <typename CELLDYNAMICS, typename ArrayType>
+  void CuDevApplyCellDynamicsReg(ArrayType& flagarr, unsigned int blockSize = 128);
+
+  template <typename CELLDYNAMICS>
+  void CuDevApplyCellDynamicsReg();
+
 #endif
 
   // tolerance
@@ -245,6 +256,29 @@ __global__ void CuDevApplyCellDynamicsKernel(cudev::BlockLattice<T, LatSet, Type
     cudev::Cell<T, LatSet, TypePack> cell(idx, blocklat);
     CELLDYNAMICS::apply(cell);
   }
+}
+
+// Register-resident variant of CuDevApplyCellDynamicsKernel; see cudev::RegCell
+// for why it exists.  CELLDYNAMICS must be a task selector built around
+// cudev::RegCell<T, LatSet, TypePack>; derive it from the selector you already
+// have with tmp::RebindSelector or tmp::RebindTaskList.
+template <typename T, typename LatSet, typename TypePack, typename CELLDYNAMICS,
+          typename ArrayType>
+__global__ void CuDevApplyCellDynamicsRegKernel(
+    cudev::BlockLattice<T, LatSet, TypePack>* blocklat, ArrayType* flagarr) {
+  std::size_t idx = blockIdx.x * blockDim.x + threadIdx.x;
+  cudev::RegCell<T, LatSet, TypePack> cell(idx, blocklat);
+  CELLDYNAMICS::Execute(flagarr->operator[](idx), cell);
+  cell.flush();
+}
+
+template <typename T, typename LatSet, typename TypePack, typename CELLDYNAMICS>
+__global__ void CuDevApplyCellDynamicsRegKernel(
+    cudev::BlockLattice<T, LatSet, TypePack>* blocklat) {
+  std::size_t idx = blockIdx.x * blockDim.x + threadIdx.x;
+  cudev::RegCell<T, LatSet, TypePack> cell(idx, blocklat);
+  CELLDYNAMICS::apply(cell);
+  cell.flush();
 }
 
 #endif
@@ -371,6 +405,14 @@ class BlockLatticeManager : public BlockLatticeManagerBase<T, LatSet, TypePack> 
 
   template <typename CELLDYNAMICS>
   void CuDevApplyCellDynamics();
+
+  // register-resident cell dynamics; see cudev::RegCell
+  template <typename CELLDYNAMICS, typename FieldType>
+  void CuDevApplyCellDynamicsReg(BlockFieldManager<FieldType, T, LatSet::d>& BFM,
+                                 unsigned int blockSize = 128);
+
+  template <typename CELLDYNAMICS>
+  void CuDevApplyCellDynamicsReg();
 
 #endif
 

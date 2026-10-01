@@ -308,6 +308,142 @@ struct TaskSelector {
   }
 };
 
+// ---------------------------------------------------------------------------
+// Rebuild a task list so its tasks operate on a different cell type.
+//
+// Every task bakes its cell type into itself, e.g.
+// collision::BGK<moment::rhoU<CELL>, equilibrium::SecondOrder<CELL>>, so a
+// different cell cannot simply be handed to the same collection: a task's
+// apply() takes its own CELL& and a derived cell passed in gets sliced down to
+// the base, silently falling back to the base cell's element accessor.
+//
+// That failure mode is nasty because it is invisible at runtime -- results stay
+// correct -- and shows up only as a much higher global-load count in the SASS.
+// It is exactly what happens if cudev::RegCell is used without rebuilding the
+// task list for it.
+//
+// ReplaceCell substitutes the cell type throughout the tree, which lets
+// CuDevApplyCellDynamicsReg accept the caller's existing task list instead of
+// every benchmark hand-writing a second one.
+// ---------------------------------------------------------------------------
+
+namespace collision {
+template <typename MomentaScheme, typename EquilibriumScheme>
+struct BGK;
+template <typename CELLTYPE>
+struct BounceBack;
+template <typename CELLTYPE>
+struct BounceBackMovingWall;
+}  // namespace collision
+
+namespace moment {
+// the real declaration adds `= false` for WriteToField; a default may be
+// introduced by a later declaration but not repeated, so it is omitted here
+template <typename CELLTYPE, bool WriteToField>
+struct rhoU;
+template <typename CELLTYPE>
+struct useFieldrho;
+template <typename CELLTYPE>
+struct useFieldU;
+template <typename CELLTYPE>
+struct useFieldrhoU;
+}  // namespace moment
+
+namespace equilibrium {
+template <typename CELL>
+struct SecondOrder;
+}  // namespace equilibrium
+
+namespace tmp {
+
+// default: a leaf that is not the cell type is left alone
+template <typename T, typename OLD, typename NEW>
+struct ReplaceCell {
+  using type = T;
+};
+
+// the cell type itself
+template <typename OLD, typename NEW>
+struct ReplaceCell<OLD, OLD, NEW> {
+  using type = NEW;
+};
+
+// --- collision models ----------------------------------------------------
+template <typename A, typename B, typename OLD, typename NEW>
+struct ReplaceCell<collision::BGK<A, B>, OLD, NEW> {
+  using type = collision::BGK<typename ReplaceCell<A, OLD, NEW>::type,
+                              typename ReplaceCell<B, OLD, NEW>::type>;
+};
+
+template <typename A, typename OLD, typename NEW>
+struct ReplaceCell<collision::BounceBack<A>, OLD, NEW> {
+  using type = collision::BounceBack<typename ReplaceCell<A, OLD, NEW>::type>;
+};
+
+template <typename A, typename OLD, typename NEW>
+struct ReplaceCell<collision::BounceBackMovingWall<A>, OLD, NEW> {
+  using type = collision::BounceBackMovingWall<typename ReplaceCell<A, OLD, NEW>::type>;
+};
+
+// --- momenta / equilibrium ----------------------------------------------
+// rhoU carries a non-type second parameter, so it needs its own specialization
+template <typename A, bool WriteToField, typename OLD, typename NEW>
+struct ReplaceCell<moment::rhoU<A, WriteToField>, OLD, NEW> {
+  using type = moment::rhoU<typename ReplaceCell<A, OLD, NEW>::type, WriteToField>;
+};
+
+template <typename A, typename OLD, typename NEW>
+struct ReplaceCell<moment::useFieldrho<A>, OLD, NEW> {
+  using type = moment::useFieldrho<typename ReplaceCell<A, OLD, NEW>::type>;
+};
+
+template <typename A, typename OLD, typename NEW>
+struct ReplaceCell<moment::useFieldU<A>, OLD, NEW> {
+  using type = moment::useFieldU<typename ReplaceCell<A, OLD, NEW>::type>;
+};
+
+template <typename A, typename OLD, typename NEW>
+struct ReplaceCell<moment::useFieldrhoU<A>, OLD, NEW> {
+  using type = moment::useFieldrhoU<typename ReplaceCell<A, OLD, NEW>::type>;
+};
+
+template <typename A, typename OLD, typename NEW>
+struct ReplaceCell<equilibrium::SecondOrder<A>, OLD, NEW> {
+  using type = equilibrium::SecondOrder<typename ReplaceCell<A, OLD, NEW>::type>;
+};
+
+// --- collection wrappers -------------------------------------------------
+template <auto KeyValue, typename A, typename OLD, typename NEW>
+struct ReplaceCell<Key_TypePair<KeyValue, A>, OLD, NEW> {
+  using type = Key_TypePair<KeyValue, typename ReplaceCell<A, OLD, NEW>::type>;
+};
+
+template <typename... Ts, typename OLD, typename NEW>
+struct ReplaceCell<TupleWrapper<Ts...>, OLD, NEW> {
+  using type = TupleWrapper<typename ReplaceCell<Ts, OLD, NEW>::type...>;
+};
+
+// ---------------------------------------------------------------------------
+// Public entry points.  One line at the call site:
+//
+//   using RegCELL = cudev::RegCell<T, LatSet, cudevFIELDS>;
+//   using RegTask = tmp::RebindSelector<RegCELL, TaskCollection, CELL,
+//                                       std::uint8_t>;
+//   lattice.CuDevApplyCellDynamicsReg<RegTask>(flag);
+//
+// RebindSelector is built on the task list rather than on the selector itself
+// because TaskSelector has two coexisting definitions (fixed arity and
+// variadic) and pattern matching either of them is fragile.
+// ---------------------------------------------------------------------------
+template <typename TUPLE, typename OLDCELL, typename NEWCELL>
+using RebindTaskList = typename ReplaceCell<TUPLE, OLDCELL, NEWCELL>::type;
+
+template <typename NEWCELL, typename TUPLE, typename OLDCELL, typename FlagType>
+using RebindSelector =
+    TaskSelector<RebindTaskList<TUPLE, OLDCELL, NEWCELL>, FlagType, NEWCELL>;
+
+}  // namespace tmp
+
 // COUPLED TASK SELECTOR
 template <typename FlagType, typename CELL0, typename CELL1, typename FirstTask, typename... RestTasks>
 struct SelectCoupledTask {

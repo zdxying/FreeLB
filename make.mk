@@ -22,9 +22,13 @@ OBJS = $(SRCS:.$(SRC_EXT)=.o)
 DEPS = $(SRCS:.$(SRC_EXT)=.d)
 
 FLAGS += -std=c++17
-FLAGS += -flto
 
+# -flto is a host-compiler (g++) option; nvcc rejects it outright
+# ('Unknown option -flto'), so it must stay inside this guard. Every target
+# built with CXXC=nvcc compiles with this file, and any -flto on the nvcc
+# command line is a hard build failure.
 ifneq ($(CXXC),nvcc)
+FLAGS += -flto
 FLAGS += -fno-diagnostics-show-template-tree
 endif
 
@@ -90,8 +94,9 @@ $(GEN_DIR)/%.ur.h: $(ROOT)/src/%.h $(CSEGEN)
 endif
 
 # ------------target----------------
+# -MMD -MP: write a header-dependency file next to the object.  -include
 %.o: %.$(SRC_EXT)
-	$(CXXC) $(FLAGS) -I$(ROOT)/src/ -c $< -o $@
+	$(CXXC) $(FLAGS) -I$(ROOT)/src/ -MMD -MP -MF $(@:.o=.d) -c $< -o $@
 
 ifneq (,$(strip $(UR_GEN_FILES)))
 # rebuild objects whenever the generated specializations change

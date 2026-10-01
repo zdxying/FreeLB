@@ -63,21 +63,21 @@ void addvector(Genericvector<T> &a, T value) {
   addvector_kernel<<<blockNum, blockSize>>>(a.get_devObj(), value);
 }
 
-// StreamArray
+// StreamMapArray
 template <typename T>
-__any__ void addStreamArrayImp(cudev::StreamMapArray<T> &a, std::size_t id) {
+__any__ void addStreamMapArrayImp(cudev::StreamMapArray<T> &a, std::size_t id) {
   a[id] = id + 1;
 }
 template <typename T>
-__global__ void addStreamArray_kernel(cudev::StreamMapArray<T> *a) {
+__global__ void addStreamMapArray_kernel(cudev::StreamMapArray<T> *a) {
   int idx = blockIdx.x * blockDim.x + threadIdx.x;
-  addStreamArrayImp(*a, idx);
+  addStreamMapArrayImp(*a, idx);
 }
 template <typename T>
-void addStreamArray(StreamMapArray<T> &a) {
+void addStreamMapArray(StreamMapArray<T> &a) {
   const unsigned int blockSize = THREADS_PER_BLOCK;
   const unsigned int blockNum = (a.size() + blockSize - 1) / blockSize;
-  addStreamArray_kernel<<<blockNum, blockSize>>>(a.get_devObj());
+  addStreamMapArray_kernel<<<blockNum, blockSize>>>(a.get_devObj());
 }
 
 void set(StreamMapArray<T> &arr) {
@@ -177,7 +177,7 @@ int main() {
   set(sarr);
   sarr.copyToDevice();
   print(sarr);
-  addStreamArray(sarr);
+  addStreamMapArray(sarr);
   sarr.copyToHost();
   print(sarr);
   Stream_kernel<<<1,1>>>(sarr.get_devObj());  
@@ -186,7 +186,7 @@ int main() {
   // Timer MainLoopTimer;
   // MainLoopTimer.START_TIMER();
   // for(int i = 0; i < 10000; ++i) {
-  //   addStreamArray(sarr);
+  //   addStreamMapArray(sarr);
   //   // sarr.dev_rotate();
   //   sarr.rotate_dev();
   // }

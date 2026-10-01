@@ -22,6 +22,28 @@
 
 #pragma once
 
+// ---------------------------------------------------------------------------
+// Distribution-function container selection.
+//
+// The GPU block-lattice path resolves POP by *type* in GenericFieldBase, so the
+// alias inside namespace cudev and the alias at global scope must name the same
+// container.  Changing only one makes the lookup fail with "the type T in
+// std::get<T> must occur exactly once in the tuple".  The host and cudev
+// containers share their names, so a single selection macro drives both.
+//
+//   -DFREELB_POP_CYCLIC     -> CyclicArray
+//   default (CUDA)          -> CyclicArray
+//
+// Inside namespace cudev the name resolves to the device mirror, at global
+// scope to the host class, so one selection drives both -- and both must be
+// switched together, because POP is looked up by type.
+// ---------------------------------------------------------------------------
+#if defined(FREELB_POP_STREAMMAP)
+#  define FREELB_POP_ARRAY StreamMapArray
+#else
+#  define FREELB_POP_ARRAY CyclicArray
+#endif
+
 // std::array
 #include <array>
 // size_t, uint8_t
@@ -118,9 +140,6 @@ template <typename T>
 class CyclicArray;
 
 template <typename T>
-class StreamArray;
-
-template <typename T>
 class StreamMapArray;
 
 namespace cudev {
@@ -139,9 +158,6 @@ class GenericArray;
 
 template <typename T>
 class CyclicArray;
-
-template <typename T>
-class StreamArray;
 
 template <typename T>
 class StreamMapArray;
@@ -170,7 +186,6 @@ using VectorFieldSoA = GenericFieldBase<GenericArray<T>, D>;
 
 template <typename T, unsigned int q>
 // using PopulationField = GenericFieldBase<StreamMapArray<T>, q>;
-// using PopulationField = GenericFieldBase<StreamArray<T>, q>;
 using PopulationField = GenericFieldBase<CyclicArray<T>, q>;
 
 
@@ -231,8 +246,7 @@ using CONSTFORCE = Data<Vector<T, D>, CONSTFORCEBase>;
 template <typename T>
 using SCALARCONSTFORCE = Data<T, SCALARCONSTFORCEBase>;
 template <typename T, unsigned int q>
-using POP = GenericField<StreamMapArray<T>, POPBase<q>>;
-// using POP = GenericField<StreamArray<T>, POPBase<q>>;
+using POP = GenericField<FREELB_POP_ARRAY<T>, POPBase<q>>;
 // using POP = GenericField<CyclicArray<T>, POPBase<q>>;
 template <typename T>
 using RHOINIT = Data<T, RHOINITBase>;
@@ -305,12 +319,11 @@ using StrainRateMag = GenericField<GenericArray<T>, StrainRateMagBase>;
 
 #ifdef __CUDACC__
 template <typename T, unsigned int q>
-using POP = GenericField<StreamMapArray<T>, POPBase<q>>;
-// using POP = GenericField<StreamArray<T>, POPBase<q>>;
+using POP = GenericField<FREELB_POP_ARRAY<T>, POPBase<q>>;
 // using POP = GenericField<CyclicArray<T>, POPBase<q>>;
 
 #else
-// we find that CyclicArray seems faster than StreamArray in benchmarks/cavity3d
+// CPU default POP container
 template <typename T, unsigned int q>
 using POP = GenericField<CyclicArray<T>, POPBase<q>>;
 // using POP = GenericField<StreamMapArray<T>, POPBase<q>>;

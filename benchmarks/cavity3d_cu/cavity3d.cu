@@ -34,6 +34,10 @@
 #include "freelb.h"
 #include "freelb.hh"
 
+#include <cstdlib>
+#include <cstring>
+#include <iomanip>
+
 
 // using T = FLOAT;
 using T = float;
@@ -108,7 +112,57 @@ void readParam() {
             << "----------------------------------------------" << std::endl;
 }
 
-int main() {
+// Which cell-dynamics kernel to run.  Both solve the same problem; the
+// register-resident path keeps the q populations in registers between the
+// moment pass and the collision pass instead of re-reading them from global
+// memory (see cudev::RegCell).  --base restores the original kernel.
+static bool g_UseRegCell = true;
+static unsigned int g_BlockSize = 128;
+
+static void parseArgs(int argc, char** argv) {
+  for (int i = 1; i < argc; ++i) {
+    if (std::strcmp(argv[i], "--base") == 0) {
+      g_UseRegCell = false;
+    } else if (std::strcmp(argv[i], "--reg") == 0) {
+      g_UseRegCell = true;
+    } else if (std::strncmp(argv[i], "--block=", 8) == 0) {
+      int b = std::atoi(argv[i] + 8);
+      if (b > 0) g_BlockSize = static_cast<unsigned int>(b);
+    } else {
+      std::cerr << "usage: cavity3d [--reg|--base] [--block=N]\n";
+      std::exit(2);
+    }
+  }
+}
+
+// Reduction over every distribution function of every cell.  All POP
+// containers address the same bytes with the same values, so their checksums
+// must agree bit for bit; a mismatch means one of them is misaddressing.
+template <typename TT, typename LS, typename TP>
+__global__ void PopStatsKernel(cudev::BlockLattice<TT, LS, TP>* blocklat,
+                               std::size_t N, double* out) {
+  double s1 = 0.0, s2 = 0.0, mx = 0.0;
+  auto& popf = blocklat->template getField<cudev::POP<TT, LS::q>>();
+  for (std::size_t i = (std::size_t)blockIdx.x * blockDim.x + threadIdx.x; i < N;
+       i += (std::size_t)gridDim.x * blockDim.x) {
+#pragma unroll
+    for (unsigned int d = 0; d < LS::q; ++d) {
+      const double v = static_cast<double>(popf.getField(d).getdataPtr(i)[0]);
+      s1 += v;
+      s2 += v * v;
+      const double a = v < 0 ? -v : v;
+      mx = a > mx ? a : mx;
+    }
+  }
+  atomicAdd(&out[0], s1);
+  atomicAdd(&out[1], s2);
+  // non-negative doubles, so an integer atomicMax on the bit pattern works
+  atomicMax(reinterpret_cast<unsigned long long*>(&out[2]),
+            __double_as_longlong(mx));
+}
+
+int main(int argc, char** argv) {
+  parseArgs(argc, argv);
   constexpr std::uint8_t VoidFlag = std::uint8_t(1);
   constexpr std::uint8_t AABBFlag = std::uint8_t(2);
   constexpr std::uint8_t BouncebackFlag = std::uint8_t(4);
@@ -190,7 +244,12 @@ int main() {
   // using TaskCollection = tmp::TupleWrapper<BulkTask, WallTask>;
   using TaskCollection = tmp::TupleWrapper<BulkTask, BBTask, BBMVTask>;
   // task executor
+  // The same task list drives both cell implementations: tmp::RebindSelector
+  // substitutes the cell type inside every task (moment, equilibrium, collision)
+  // so there is no second task collection to keep in sync.
   using NSTask = tmp::TaskSelector<TaskCollection, std::uint8_t, CELL>;
+  using RegCELL = cudev::RegCell<T, LatSet, cudevFIELDS>;
+  using NSRegTask = tmp::RebindSelector<RegCELL, TaskCollection, CELL, std::uint8_t>;
 
   // task: update rho and u
   using RhoUTask = tmp::Key_TypePair<AABBFlag, moment::rhoU<CELL>>;
@@ -217,7 +276,11 @@ int main() {
 
   for(int i = 0; i < 10; ++i){
     // NSLattice.ApplyCellDynamics<NSTask>(FlagFM);
-    NSLattice.CuDevApplyCellDynamics<NSTask>(FlagFM);
+    if (g_UseRegCell) {
+      NSLattice.CuDevApplyCellDynamicsReg<NSRegTask>(FlagFM, g_BlockSize);
+    } else {
+      NSLattice.CuDevApplyCellDynamics<NSTask>(FlagFM);
+    }
     // NSLattice.Stream();
     NSLattice.CuDevStream();
   }
@@ -226,7 +289,11 @@ int main() {
   while (MainLoopTimer() < MaxStep) {
 
     // NSLattice.ApplyCellDynamics<NSTask>(FlagFM);
-    NSLattice.CuDevApplyCellDynamics<NSTask>(FlagFM);
+    if (g_UseRegCell) {
+      NSLattice.CuDevApplyCellDynamicsReg<NSRegTask>(FlagFM, g_BlockSize);
+    } else {
+      NSLattice.CuDevApplyCellDynamics<NSTask>(FlagFM);
+    }
     // NSLattice.Stream();
     NSLattice.CuDevStream();
     // BM.Apply(MainLoopTimer());
@@ -235,7 +302,40 @@ int main() {
     ++MainLoopTimer;
   }
   cudaDeviceSynchronize();
+  {
+    // an unchecked launch is what hid the sm_89 / -rdc failure, which reported
+    // "Calculation Complete!" and 0.001 s for 1000 steps
+    cudaError_t err = cudaGetLastError();
+    if (err != cudaSuccess) {
+      std::cerr << "[cavity3d] kernel launch failed: " << cudaGetErrorString(err)
+                << std::endl;
+      return 3;
+    }
+  }
   MainLoopTimer.END_TIMER();
+
+  // distribution-function checksum; identical across POP containers
+  {
+    double* d_stats = nullptr;
+    cudaMalloc(&d_stats, 3 * sizeof(double));
+    cudaMemset(d_stats, 0, 3 * sizeof(double));
+    PopStatsKernel<T, LatSet, cudevFIELDS><<<1024, 256>>>(
+        NSLattice.getBlockLat(0).get_devObj(), NSLattice.getBlockLat(0).getN(),
+        d_stats);
+    double h_stats[3] = {0, 0, 0};
+    cudaMemcpy(h_stats, d_stats, 3 * sizeof(double), cudaMemcpyDeviceToHost);
+    cudaFree(d_stats);
+    std::cout << "[cavity3d] checksum: sum " << std::setprecision(10)
+              << h_stats[0] << "  sumsq " << h_stats[1] << "  maxabs "
+              << h_stats[2] << std::endl;
+  }
+
+  std::cout << "[cavity3d] cell dynamics: "
+            << (g_UseRegCell ? "register-resident (cudev::RegCell)"
+                             : "baseline (cudev::Cell)")
+            << ", blockSize="
+            << (g_UseRegCell ? g_BlockSize : (unsigned int)THREADS_PER_BLOCK)
+            << std::endl;
 
   Printer::Print_BigBanner(std::string("Calculation Complete!"));
   MainLoopTimer.Print_MainLoopPerformance(Geo.getTotalCellNum());
