@@ -39,7 +39,6 @@ FLAGS += --expt-relaxed-constexpr
 # useful for comparing cache behaviour of the different cudev arrays.
 #   make POP=cyclic      (default) CyclicArray
 #   make POP=streammap             StreamMapArray
-#   make POP=cyclic                CyclicArray
 # ---------------------------------------------------------------------------
 # FP16 POP storage (FP32 compute): traffic halves, ~2x MLUPS
 FP16 ?= 0

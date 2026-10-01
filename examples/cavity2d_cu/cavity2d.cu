@@ -232,6 +232,17 @@ int main() {
     }
   }
 
+  // an unchecked launch is what hid the sm_89 / -rdc failure on this machine:
+  // the run printed "Calculation Complete!" while every kernel had failed
+  {
+    cudaError_t err = cudaGetLastError();
+    if (err != cudaSuccess) {
+      std::cerr << "[cavity2d] kernel launch failed: " << cudaGetErrorString(err)
+                << std::endl;
+      return 3;
+    }
+  }
+
   Printer::Print_BigBanner(std::string("Calculation Complete!"));
   MainLoopTimer.Print_MainLoopPerformance(Geo.getTotalCellNum());
   Printer::Print("Total PhysTime", BaseConv.getPhysTime(MainLoopTimer()));
