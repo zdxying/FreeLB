@@ -297,7 +297,7 @@ template <typename CELLDYNAMICS, typename ArrayType>
 void BlockLattice<T, LatSet, TypePack>::CuDevApplyCellDynamics(ArrayType& flagarr) {
   const unsigned int blockSize = THREADS_PER_BLOCK;
   const unsigned int blockNum = (this->getN() + blockSize - 1) / blockSize;
-  CuDevApplyCellDynamicsKernel<T, LatSet, cudev_TypePack, CELLDYNAMICS, typename ArrayType::cudev_array_type><<<blockNum, blockSize>>>(dev_BlockLat, flagarr.get_devObj());
+  CuDevApplyCellDynamicsKernel<T, LatSet, cudev_TypePack, CELLDYNAMICS, typename ArrayType::cudev_array_type><<<blockNum, blockSize>>>(dev_BlockLat, flagarr.get_devObj(), this->getN());
   // CuDevApplyCellDynamicsKernel<T, LatSet, cudev_TypePack, CELLDYNAMICS, typename ArrayType::cudev_array_type><<<blockNum, blockSize>>>(dev_BlockLat, flagarr.get_devObj(), this->getN());
 }
 
@@ -306,7 +306,7 @@ template <typename CELLDYNAMICS>
 void BlockLattice<T, LatSet, TypePack>::CuDevApplyCellDynamics() {
   const unsigned int blockSize = THREADS_PER_BLOCK;
   const unsigned int blockNum = (this->getN() + blockSize - 1) / blockSize;
-  CuDevApplyCellDynamicsKernel<T, LatSet, cudev_TypePack, CELLDYNAMICS><<<blockNum, blockSize>>>(dev_BlockLat);
+  CuDevApplyCellDynamicsKernel<T, LatSet, cudev_TypePack, CELLDYNAMICS><<<blockNum, blockSize>>>(dev_BlockLat, this->getN());
   // CuDevApplyCellDynamicsKernel<T, LatSet, cudev_TypePack, CELLDYNAMICS><<<blockNum, blockSize>>>(dev_BlockLat, this->getN());
 }
 
@@ -317,7 +317,7 @@ void BlockLattice<T, LatSet, TypePack>::CuDevApplyCellDynamicsReg(ArrayType& fla
   const unsigned int blockNum = (this->getN() + blockSize - 1) / blockSize;
   CuDevApplyCellDynamicsRegKernel<T, LatSet, cudev_TypePack, CELLDYNAMICS,
                                   typename ArrayType::cudev_array_type>
-      <<<blockNum, blockSize>>>(dev_BlockLat, flagarr.get_devObj());
+      <<<blockNum, blockSize>>>(dev_BlockLat, flagarr.get_devObj(), this->getN());
 }
 
 template <typename T, typename LatSet, typename TypePack>
@@ -326,7 +326,7 @@ void BlockLattice<T, LatSet, TypePack>::CuDevApplyCellDynamicsReg() {
   const unsigned int blockSize = 128;
   const unsigned int blockNum = (this->getN() + blockSize - 1) / blockSize;
   CuDevApplyCellDynamicsRegKernel<T, LatSet, cudev_TypePack, CELLDYNAMICS>
-      <<<blockNum, blockSize>>>(dev_BlockLat);
+      <<<blockNum, blockSize>>>(dev_BlockLat, this->getN());
 }
 
 #endif

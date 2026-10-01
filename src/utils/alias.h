@@ -44,6 +44,25 @@
 #  define FREELB_POP_ARRAY CyclicArray
 #endif
 
+// POP storage element type: with FREELB_POP_FP16 (CUDA builds only) the
+// distributions are stored as __half while every computation stays float --
+// half the memory traffic, same arithmetic.  Identity mapping otherwise.
+#if defined(FREELB_POP_FP16) && defined(__CUDACC__)
+#include <cuda_fp16.h>
+#endif
+template <typename T>
+struct PopStorageTrait {
+  using type = T;
+};
+#if defined(FREELB_POP_FP16) && defined(__CUDACC__)
+template <>
+struct PopStorageTrait<float> {
+  using type = __half;
+};
+#endif
+template <typename T>
+using PopStorage = typename PopStorageTrait<T>::type;
+
 // std::array
 #include <array>
 // size_t, uint8_t
@@ -246,7 +265,7 @@ using CONSTFORCE = Data<Vector<T, D>, CONSTFORCEBase>;
 template <typename T>
 using SCALARCONSTFORCE = Data<T, SCALARCONSTFORCEBase>;
 template <typename T, unsigned int q>
-using POP = GenericField<FREELB_POP_ARRAY<T>, POPBase<q>>;
+using POP = GenericField<FREELB_POP_ARRAY<PopStorage<T>>, POPBase<q>>;
 // using POP = GenericField<CyclicArray<T>, POPBase<q>>;
 template <typename T>
 using RHOINIT = Data<T, RHOINITBase>;
@@ -319,7 +338,7 @@ using StrainRateMag = GenericField<GenericArray<T>, StrainRateMagBase>;
 
 #ifdef __CUDACC__
 template <typename T, unsigned int q>
-using POP = GenericField<FREELB_POP_ARRAY<T>, POPBase<q>>;
+using POP = GenericField<FREELB_POP_ARRAY<PopStorage<T>>, POPBase<q>>;
 // using POP = GenericField<CyclicArray<T>, POPBase<q>>;
 
 #else

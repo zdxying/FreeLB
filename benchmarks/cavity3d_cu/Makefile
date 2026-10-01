@@ -41,6 +41,12 @@ FLAGS += --expt-relaxed-constexpr
 #   make POP=streammap             StreamMapArray
 #   make POP=cyclic                CyclicArray
 # ---------------------------------------------------------------------------
+# FP16 POP storage (FP32 compute): traffic halves, ~2x MLUPS
+FP16 ?= 0
+ifeq ($(FP16),1)
+FLAGS += -DFREELB_POP_FP16
+endif
+
 POP ?= cyclic
 ifeq ($(POP),streammap)
 FLAGS += -DFREELB_POP_STREAMMAP

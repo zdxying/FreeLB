@@ -34,6 +34,8 @@
 #include "freelb.h"
 #include "freelb.hh"
 
+#include "utils/field_checksum.h"
+
 #include <iomanip>
 
 
@@ -225,23 +227,11 @@ int main() {
   MainLoopTimer.END_TIMER();
 
   // distribution-function checksum; same accumulation order per cell as the
-  // GPU solver's PopStatsKernel (double accumulators), for GPU/CPU comparison
-  {
-    auto& popf = NSLattice.getBlockLat(0).getField<POP<T, LatSet::q>>();
-    const std::size_t N = NSLattice.getBlockLat(0).getN();
-    double s1 = 0.0, s2 = 0.0, mx = 0.0;
-    for (std::size_t i = 0; i < N; ++i) {
-      for (unsigned int d = 0; d < LatSet::q; ++d) {
-        const double v = static_cast<double>(popf.getField(d)[i]);
-        s1 += v;
-        s2 += v * v;
-        const double a = v < 0 ? -v : v;
-        mx = a > mx ? a : mx;
-      }
-    }
-    std::cout << "[cavity3d] checksum: sum " << std::setprecision(10)
-              << s1 << "  sumsq " << s2 << "  maxabs " << mx << std::endl;
-  }
+  // GPU solver, for GPU/CPU comparison
+  frelb_diag::PrintChecksum(
+      "[cavity3d]",
+      frelb_diag::PopChecksumHost(NSLattice.getBlockLat(0).getField<POP<T, LatSet::q>>(),
+                                  NSLattice.getBlockLat(0).getN(), LatSet::q));
 
   Printer::Print_BigBanner(std::string("Calculation Complete!"));
   MainLoopTimer.Print_MainLoopPerformance(Geo.getTotalCellNum());

@@ -268,6 +268,21 @@ class BlockLattice;
 template <typename T, typename LatSet, typename TypePack>
 class BlockLatticeBase;
 
+// proxy reference for reduced-precision POP storage (FP16): converts to the
+// compute type on read and back to the storage type on write, so dynamics
+// code (cell[i] = omega * feq[i] + _omega * cell[i]) compiles unchanged.
+// Only instantiated when the storage type differs from the compute type.
+template <typename ST, typename CT>
+struct PopRef {
+  ST* ptr;
+  __device__ PopRef(ST* p) : ptr(p) {}
+  __device__ operator CT() const { return static_cast<CT>(*ptr); }
+  __device__ PopRef& operator=(CT v) {
+    *ptr = static_cast<ST>(v);
+    return *this;
+  }
+};
+
 template <typename T, typename LatSet, typename TypePack>
 class Cell {
  protected:
@@ -285,9 +300,24 @@ class Cell {
   __device__ Cell(std::size_t id, BlockLattice<T, LatSet, TypePack>* lat)
       : Id(id), Lat(lat) {}
 
-  // get population
-  __device__ const T& operator[](int i) const { return Lat->template getField<POP<T, LatSet::q>>().getField(i)[Id]; }
-  __device__ T& operator[](int i) { return Lat->template getField<POP<T, LatSet::q>>().getField(i)[Id]; }
+  // get population; with reduced-precision storage (FP16) this returns a
+  // converting proxy instead of a bare reference
+  __device__ decltype(auto) operator[](int i) const {
+    if constexpr (std::is_same_v<PopStorage<T>, T>) {
+      return Lat->template getField<POP<T, LatSet::q>>().getField(i)[Id];
+    } else {
+      return PopRef<PopStorage<T>, T>{
+          &Lat->template getField<POP<T, LatSet::q>>().getField(i)[Id]};
+    }
+  }
+  __device__ decltype(auto) operator[](int i) {
+    if constexpr (std::is_same_v<PopStorage<T>, T>) {
+      return Lat->template getField<POP<T, LatSet::q>>().getField(i)[Id];
+    } else {
+      return PopRef<PopStorage<T>, T>{
+          &Lat->template getField<POP<T, LatSet::q>>().getField(i)[Id]};
+    }
+  }
 
   template <typename FieldType, unsigned int i = 0>
   __device__ auto& get() {
@@ -391,8 +421,9 @@ class RegCell : public Cell<T, LatSet, TypePack> {
   static constexpr unsigned int Q = LatSet::q;
 
  private:
-  // addresses of the q distribution functions of this cell
-  T* pop_[Q];
+  // addresses of the q distribution functions of this cell (storage type;
+  // loads/stores convert through __half's implicit float conversions)
+  PopStorage<T>* pop_[Q];
   // the q values themselves -- these are what stay in registers
   T cache_[Q];
 

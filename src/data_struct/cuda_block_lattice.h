@@ -114,7 +114,7 @@ class BlockLatticeBase {
   // keep the q element addresses in registers instead of re-deriving them on
   // every element access.  Works for any POP container that provides
   // getdataPtr(): StreamMapArray and CyclicArray.
-  __device__ void getPopArray(std::size_t id, T** ptr_arr) {
+  __device__ void getPopArray(std::size_t id, PopStorage<T>** ptr_arr) {
     this->template getField<POP<T, LatSet::q>>().getArray(id, ptr_arr);
   }
 };

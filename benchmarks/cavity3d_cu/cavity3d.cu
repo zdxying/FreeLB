@@ -34,6 +34,8 @@
 #include "freelb.h"
 #include "freelb.hh"
 
+#include "utils/field_checksum.h"
+
 #include <cstdlib>
 #include <cstring>
 #include <iomanip>
@@ -138,28 +140,8 @@ static void parseArgs(int argc, char** argv) {
 // Reduction over every distribution function of every cell.  All POP
 // containers address the same bytes with the same values, so their checksums
 // must agree bit for bit; a mismatch means one of them is misaddressing.
-template <typename TT, typename LS, typename TP>
-__global__ void PopStatsKernel(cudev::BlockLattice<TT, LS, TP>* blocklat,
-                               std::size_t N, double* out) {
-  double s1 = 0.0, s2 = 0.0, mx = 0.0;
-  auto& popf = blocklat->template getField<cudev::POP<TT, LS::q>>();
-  for (std::size_t i = (std::size_t)blockIdx.x * blockDim.x + threadIdx.x; i < N;
-       i += (std::size_t)gridDim.x * blockDim.x) {
-#pragma unroll
-    for (unsigned int d = 0; d < LS::q; ++d) {
-      const double v = static_cast<double>(popf.getField(d).getdataPtr(i)[0]);
-      s1 += v;
-      s2 += v * v;
-      const double a = v < 0 ? -v : v;
-      mx = a > mx ? a : mx;
-    }
-  }
-  atomicAdd(&out[0], s1);
-  atomicAdd(&out[1], s2);
-  // non-negative doubles, so an integer atomicMax on the bit pattern works
-  atomicMax(reinterpret_cast<unsigned long long*>(&out[2]),
-            __double_as_longlong(mx));
-}
+// pop-field checksum lives in utils/field_checksum.h (shared with the CPU
+// solver), so the GPU/CPU comparison uses the exact same accumulation order.
 
 int main(int argc, char** argv) {
   parseArgs(argc, argv);
@@ -269,11 +251,24 @@ int main(int argc, char** argv) {
   NSLattice.getField<RHO<T>>().copyToDevice();
   NSLattice.getField<VELOCITY<T, LatSet::d>>().copyToDevice();
 
+  // DEBUG probe: checksum of the freshly uploaded field, before any dynamics
+  frelb_diag::PrintChecksum(
+      "[cavity3d][post-upload]",
+      frelb_diag::PopChecksumDevice(NSLattice.getBlockLat(0)));
+
   // count and timer
   Timer MainLoopTimer;
   // Timer OutputTimer;
   // NSWriter.WriteBinary(MainLoopTimer());
 
+#ifdef FREELB_POP_FP16
+  if (!g_UseRegCell) {
+    std::cout << "[cavity3d] FP16 storage requires the register-resident cell"
+              << " (the baseline PopRef path is not supported); forcing reg."
+              << std::endl;
+    g_UseRegCell = true;
+  }
+#endif
   for(int i = 0; i < 10; ++i){
     // NSLattice.ApplyCellDynamics<NSTask>(FlagFM);
     if (g_UseRegCell) {
@@ -315,20 +310,11 @@ int main(int argc, char** argv) {
   MainLoopTimer.END_TIMER();
 
   // distribution-function checksum; identical across POP containers
-  {
-    double* d_stats = nullptr;
-    cudaMalloc(&d_stats, 3 * sizeof(double));
-    cudaMemset(d_stats, 0, 3 * sizeof(double));
-    PopStatsKernel<T, LatSet, cudevFIELDS><<<1024, 256>>>(
-        NSLattice.getBlockLat(0).get_devObj(), NSLattice.getBlockLat(0).getN(),
-        d_stats);
-    double h_stats[3] = {0, 0, 0};
-    cudaMemcpy(h_stats, d_stats, 3 * sizeof(double), cudaMemcpyDeviceToHost);
-    cudaFree(d_stats);
-    std::cout << "[cavity3d] checksum: sum " << std::setprecision(10)
-              << h_stats[0] << "  sumsq " << h_stats[1] << "  maxabs "
-              << h_stats[2] << std::endl;
-  }
+  const auto cs = frelb_diag::PopChecksumDevice(NSLattice.getBlockLat(0));
+  frelb_diag::PrintChecksum("[cavity3d]", cs);
+  std::cout << "[cavity3d] NaN count = " << frelb_diag::nan_count_
+            << ", first NaN at flat (cell*q+pop) = " << frelb_diag::first_nan_
+            << std::endl;
 
   std::cout << "[cavity3d] cell dynamics: "
             << (g_UseRegCell ? "register-resident (cudev::RegCell)"

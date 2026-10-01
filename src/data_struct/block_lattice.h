@@ -226,38 +226,23 @@ __global__ void CuDevStreamKernel(cudev::BlockLattice<T, LatSet, TypePack>* bloc
 }
 
 template <typename T, typename LatSet, typename TypePack, typename CELLDYNAMICS, typename ArrayType>
-__global__ void CuDevApplyCellDynamicsKernel(cudev::BlockLattice<T, LatSet, TypePack>* blocklat, ArrayType* flagarr) {
+__global__ void CuDevApplyCellDynamicsKernel(cudev::BlockLattice<T, LatSet, TypePack>* blocklat, ArrayType* flagarr, std::size_t n) {
   std::size_t idx = blockIdx.x * blockDim.x + threadIdx.x;
+  if (idx >= n) return;  // grid is rounded up to the block size
   cudev::Cell<T, LatSet, TypePack> cell(idx, blocklat);
   CELLDYNAMICS::Execute(flagarr->operator[](idx), cell);
 }
 
 template <typename T, typename LatSet, typename TypePack, typename CELLDYNAMICS>
-__global__ void CuDevApplyCellDynamicsKernel(cudev::BlockLattice<T, LatSet, TypePack>* blocklat) {
+__global__ void CuDevApplyCellDynamicsKernel(cudev::BlockLattice<T, LatSet, TypePack>* blocklat, std::size_t n) {
   std::size_t idx = blockIdx.x * blockDim.x + threadIdx.x;
+  if (idx >= n) return;  // grid is rounded up to the block size
   cudev::Cell<T, LatSet, TypePack> cell(idx, blocklat);
   CELLDYNAMICS::apply(cell);
 }
 
-// old version of unaligned memory
-template <typename T, typename LatSet, typename TypePack, typename CELLDYNAMICS, typename ArrayType>
-__global__ void CuDevApplyCellDynamicsKernel(cudev::BlockLattice<T, LatSet, TypePack>* blocklat, ArrayType* flagarr, std::size_t N) {
-  std::size_t idx = blockIdx.x * blockDim.x + threadIdx.x;
-  if (idx < N) {
-    cudev::Cell<T, LatSet, TypePack> cell(idx, blocklat);
-    CELLDYNAMICS::Execute(flagarr->operator[](idx), cell);
-  }
-}
-
-template <typename T, typename LatSet, typename TypePack, typename CELLDYNAMICS>
-__global__ void CuDevApplyCellDynamicsKernel(cudev::BlockLattice<T, LatSet, TypePack>* blocklat, std::size_t N) {
-  std::size_t idx = blockIdx.x * blockDim.x + threadIdx.x;
-  if (idx < N) {
-    cudev::Cell<T, LatSet, TypePack> cell(idx, blocklat);
-    CELLDYNAMICS::apply(cell);
-  }
-}
-
+// (the old bounds-checked kernel variants were removed: the active kernels
+// above now take the cell count and early-return themselves)
 // Register-resident variant of CuDevApplyCellDynamicsKernel; see cudev::RegCell
 // for why it exists.  CELLDYNAMICS must be a task selector built around
 // cudev::RegCell<T, LatSet, TypePack>; derive it from the selector you already
@@ -265,8 +250,9 @@ __global__ void CuDevApplyCellDynamicsKernel(cudev::BlockLattice<T, LatSet, Type
 template <typename T, typename LatSet, typename TypePack, typename CELLDYNAMICS,
           typename ArrayType>
 __global__ void CuDevApplyCellDynamicsRegKernel(
-    cudev::BlockLattice<T, LatSet, TypePack>* blocklat, ArrayType* flagarr) {
+    cudev::BlockLattice<T, LatSet, TypePack>* blocklat, ArrayType* flagarr, std::size_t n) {
   std::size_t idx = blockIdx.x * blockDim.x + threadIdx.x;
+  if (idx >= n) return;  // grid is rounded up to the block size
   cudev::RegCell<T, LatSet, TypePack> cell(idx, blocklat);
   CELLDYNAMICS::Execute(flagarr->operator[](idx), cell);
   cell.flush();
@@ -274,8 +260,9 @@ __global__ void CuDevApplyCellDynamicsRegKernel(
 
 template <typename T, typename LatSet, typename TypePack, typename CELLDYNAMICS>
 __global__ void CuDevApplyCellDynamicsRegKernel(
-    cudev::BlockLattice<T, LatSet, TypePack>* blocklat) {
+    cudev::BlockLattice<T, LatSet, TypePack>* blocklat, std::size_t n) {
   std::size_t idx = blockIdx.x * blockDim.x + threadIdx.x;
+  if (idx >= n) return;  // grid is rounded up to the block size
   cudev::RegCell<T, LatSet, TypePack> cell(idx, blocklat);
   CELLDYNAMICS::apply(cell);
   cell.flush();
