@@ -116,14 +116,22 @@ FP32(默认)。长期步数(>1 万步)的精度表现待后续评估。**
 - FP32 开关关校验和不变性;共享 field_checksum.h 输出与旧实现逐位一致
 - FP16 运行时:1000/3000 步无 NaN,质量守恒 1.4e-4,REG:96 LOCAL:0
 
-### 待 GPU 空闲后验证
-1. FP16 + baseline 路径(`--base FP16=1`):PopRef 代理编译过、**从未运行**
-2. FP16 长步数精度衰减曲线(≥10k 步,sum/sumsq vs FP32)
-3. StreamMapArray 求解器流化未生效的根因(其 raw rotate 另有 map_count 周期缺陷)
-4. cavity2d_cu 运行时验证(新默认 cyclic 下从未运行)
-5. VTK/WriteBinary 输出路径从未验证(当前被注释)
+### 待 GPU 空闲后验证(2026-09-27 更新:1/2/4/5/7 已完成)
+1. ~~FP16 + baseline 路径~~ -> **已验证为缺陷**:PopRef 代理路径全场 NaN,
+   FP16 现强制 reg 路径(见上方已知限制)
+2. ~~FP16 长步数精度衰减曲线~~ -> **已完成**:10k 步无 NaN,质量守恒 1.2e-3,
+   sumsq -17%/maxabs -23%(轨迹分叉,预期特征);本轮 MLUPS FP32 1998 / FP16 3421
+3. StreamMapArray 求解器流化未生效的根因(其 raw rotate 另有 map_count 周期缺陷)—— 待查
+4. ~~cavity2d_cu 运行时验证~~ -> **已完成**(2026-09-27):根因与 cavity3d_cu 相同
+   (sm_89 gencode + -rdc),Makefile 修复 + cudaGetLastError 检查后,
+   1000 步 Res 0.1 -> 0.027,VTK 输出正常
+5. ~~VTK/WriteBinary 输出路径~~ -> **已完成**:cavity2d_cu T0/T500/T1000 全部写出
 6. MPI 多块运行时(refblock 仅编译验证;halo 通信 × FP16 的交互未知)
-7. FP16 物理量级验证(速度剖面对比 CPU,不止 checksum)
+7. ~~FP16 物理量级验证~~ -> **已完成**(2026-09-27,升级为全场对比):
+   两求解器在主循环后激活 RhoU 写回并 dump 全场速度
+   (profile_gpu.txt / profile_cpu.txt,各 1,061,208 cell x 3 分量)。
+   FP32 GPU vs CPU: max |du| = 1e-6(文本精度地板),RMS 9.4e-8,
+   max |u_x| = 0.2(盖板速度)两侧一致 —— 逐 cell 空间级物理验证通过
 
 ### 工具
 - `src/utils/field_checksum.h`:pop 场指纹(GPU/CPU 同序,回归与对拍共用)

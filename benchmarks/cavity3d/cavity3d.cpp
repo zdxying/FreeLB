@@ -37,6 +37,7 @@
 #include "utils/field_checksum.h"
 
 #include <iomanip>
+#include <fstream>
 
 
 // using T = FLOAT;
@@ -186,7 +187,7 @@ int main() {
   using NSTask = TaskSelector<std::uint8_t, CELL, BulkTask, BBTask, BBMVTask>;
 
   // task: update rho and u
-  using RhoUtask = tmp::Key_TypePair<AABBFlag, moment::rhoU<CELL>>;
+  using RhoUtask = tmp::Key_TypePair<AABBFlag, moment::rhoU<CELL, true>>;
   using RhoUTask = TaskSelector<std::uint8_t, CELL, RhoUtask>;
 
   // writers
@@ -232,6 +233,19 @@ int main() {
       "[cavity3d]",
       frelb_diag::PopChecksumHost(NSLattice.getBlockLat(0).getField<POP<T, LatSet::q>>(),
                                   NSLattice.getBlockLat(0).getN(), LatSet::q));
+
+  // full-field velocity dump for CPU/GPU profile comparison
+  NSLattice.ApplyCellDynamics<RhoUTask>(FlagFM);
+  {
+    auto& uarr =
+        NSLattice.getBlockLat(0).getField<VELOCITY<T, LatSet::d>>().getField(0);
+    const std::size_t n = NSLattice.getBlockLat(0).getN();
+    std::ofstream pf("profile_cpu.txt");
+    for (std::size_t i = 0; i < n; ++i) {
+      const Vector<T, 3> u = uarr.getdataPtr(i)[0];
+      pf << u[0] << " " << u[1] << " " << u[2] << "\n";
+    }
+  }
 
   Printer::Print_BigBanner(std::string("Calculation Complete!"));
   MainLoopTimer.Print_MainLoopPerformance(Geo.getTotalCellNum());

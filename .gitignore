@@ -68,3 +68,7 @@ temp/
 # cse tool build artifacts
 tools/cse/csegen
 tools/cse/out/
+
+# velocity-field comparison dumps (solver run outputs)
+benchmarks/cavity3d/profile_cpu.txt
+benchmarks/cavity3d_cu/profile_gpu.txt

@@ -39,6 +39,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <iomanip>
+#include <fstream>
 
 
 // using T = FLOAT;
@@ -234,7 +235,7 @@ int main(int argc, char** argv) {
   using NSRegTask = tmp::RebindSelector<RegCELL, TaskCollection, CELL, std::uint8_t>;
 
   // task: update rho and u
-  using RhoUTask = tmp::Key_TypePair<AABBFlag, moment::rhoU<CELL>>;
+  using RhoUTask = tmp::Key_TypePair<AABBFlag, moment::rhoU<CELL, true>>;
   using TaskCollectionRhoU = tmp::TupleWrapper<RhoUTask>;
   using TaskSelectorRhoU = tmp::TaskSelector<TaskCollectionRhoU, std::uint8_t, CELL>;
 
@@ -328,11 +329,21 @@ int main(int argc, char** argv) {
   Printer::Print("Total PhysTime", BaseConv.getPhysTime(MainLoopTimer()));
   Printer::Endl();
 
-  // NSLattice.CuDevApplyCellDynamics<TaskSelectorRhoU>(FlagFM);
-  // cudaDeviceSynchronize();
-  // NSLattice.getBlockLat(0).getField<RHO<T>>().copyToHost();
-  // NSLattice.getBlockLat(0).getField<VELOCITY<T, LatSet::d>>().copyToHost();
-  // NSWriter.WriteBinary(MainLoopTimer());
+  // macroscopic fields: compute rho/u from pops on device, pull velocity
+  // back, and dump the full u vector for CPU/GPU profile comparison
+  NSLattice.CuDevApplyCellDynamics<TaskSelectorRhoU>(FlagFM);
+  cudaDeviceSynchronize();
+  NSLattice.getBlockLat(0).getField<VELOCITY<T, LatSet::d>>().copyToHost();
+  {
+    auto& uarr =
+        NSLattice.getBlockLat(0).getField<VELOCITY<T, LatSet::d>>().getField(0);
+    const std::size_t n = NSLattice.getBlockLat(0).getN();
+    std::ofstream pf("profile_gpu.txt");
+    for (std::size_t i = 0; i < n; ++i) {
+      const Vector<T, 3> u = uarr.getdataPtr(i)[0];
+      pf << u[0] << " " << u[1] << " " << u[2] << "\n";
+    }
+  }
 
   return 0;
 }
