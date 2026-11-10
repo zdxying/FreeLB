@@ -11,7 +11,7 @@ you; `casegen` only rewrites them when you ask it to.
 
 The generator never edits `src/`, `make.mk` or `tests/run_tests.sh`. It is a
 pure Python 3 tool with no third-party dependencies. Design decisions and the
-rejected alternatives are in [`docs/CASEGEN_PLAN.md`](../../docs/CASEGEN_PLAN.md).
+rejected alternatives are in [`DESIGN.md`](DESIGN.md).
 
 ## Status
 

@@ -1,12 +1,11 @@
 # Case generator and operator DSL (tools/casegen): decision record
 
-Status: Phase 1–4 and the geometry patch binding (B4) are landed; this file records only the decisions, the rejected alternatives and the deferred scope, while usage and the field tables live in `tools/casegen/README.md` | Updated: 2026-11-09 | Target: answer "why is it this shape", not repeat the user manual
+Status: closed (2026-11-10); this is the design record for `tools/casegen`. Phase 1–4 and the geometry patch binding (B4) are landed; usage and field tables live in `README.md` | Updated: 2026-11-10 | Target: record why the generator has this shape
 
-> Exit condition: when `tools/casegen/README.md` and the code explain usage and implementation on
-> their own, this file is left with "why" only. Changing the implementation does not require editing
-> this file; changing one of the decisions below does. The admission rule for a new operator, field
-> or catalogue case (it must have a golden or one manual verification record) is written in the
-> README and is not repeated here.
+> Closed: `README.md` and the code explain usage and implementation on their own, so this file
+> records only the decisions and rejected alternatives behind them. It is updated only when one of
+> those decisions changes. The admission rule for a new operator, field or catalogue case (it must
+> have a golden or one manual verification record) is written in the README and is not repeated here.
 
 ## 1. Boundary and ownership
 

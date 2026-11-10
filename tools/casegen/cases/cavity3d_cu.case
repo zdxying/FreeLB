@@ -13,7 +13,7 @@
 # POP is not pinned: the distribution container is a CyclicArray, which stores
 # the populations rotated, and rotation changes the order of the host
 # accumulation.  The sum and sumsq are permutation-invariant, but the last
-# digits are not, which is below 1e-5 -- see docs/CASEGEN_PLAN.md.
+# digits are not, which is below 1e-5 -- see tools/casegen/DESIGN.md.
 
 [case]
 name = cavity3d_cu
