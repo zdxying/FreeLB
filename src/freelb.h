@@ -36,6 +36,7 @@
 #include "utils/timer.h"
 // geometry
 #include "geometry/geometry.h"
+#include "geometry/voxel_geometry.h"
 // boundary
 #include "boundary/boundary.h"
 
@@ -46,6 +47,8 @@
 #include "io/vtu_writer.h"
 // checkpoint / restart; implementation follows in freelb.hh
 #include "io/checkpoint.h"
+// voxel geometry construction from STL meshes and primitives
+#include "io/voxel_geometry_builder.h"
 
 #include "lbm/lattice_set.h"
 // block-field statistics (FieldStatistics; used by examples/dambreak*)

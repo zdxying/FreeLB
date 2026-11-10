@@ -23,6 +23,7 @@
 // freelb.hh
 // include haeder files for LBM
 #include "geometry/geometry.hh"
+#include "geometry/voxel_geometry.hh"
 #include "lbm/unit_converter.hh"
 #include "data_struct/field_struct.hh"
 #include "data_struct/block_lattice.hh"
@@ -31,6 +32,8 @@
 #include "offLattice/marchingCube.hh"
 // checkpoint / restart
 #include "io/checkpoint.hh"
+// voxel geometry construction from STL meshes and primitives
+#include "io/voxel_geometry_builder.hh"
 // cellular automata (solidification) implementations
 // (the legacy PopLattice-path CA::ZhuStefanescu3D lives in
 // ca/zhu_stefanescu3d_legacy.h(.hh), only used by examples/legacy/cazs3d)
