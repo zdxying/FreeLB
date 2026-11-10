@@ -1,6 +1,6 @@
 # Complex-geometry support: branch plan
 
-Status: B0–B1b, B3, B4, the B5 storage memo, the B7a checkpoint identity and the patch binding are landed (2026-11-07); B6a–c and B7b remain deferred | Updated: 2026-11-07 | Target: split complex-geometry support into independently mergeable feature branches
+Status: B0–B1b, B3, B4, B5 (memo recorded in §2), the B7a checkpoint identity and the patch binding are landed (2026-11-07); B6a–c and B7b remain deferred | Updated: 2026-11-09 | Target: split complex-geometry support into independently mergeable feature branches
 
 > Exit condition: a complex-geometry case runs from a repository geometry file with measured fill ratio,
 > entity-bound boundary conditions, link-accurate walls, and an agreed memory budget; every non-spike
@@ -66,12 +66,46 @@ The fixture is measured by `tests/feature/geo_stl`; owned fill is owned active /
   parts.  The fills are unchanged to the digit (h=0.5 0.2056 / 0.2062 / 0.2098 at 16/24/32 blocks;
   h=1.0 0.1189 / 0.1261), so the thin floor stays 0.210 and is recorded as a block-shape limit
   (B3) plus a storage-policy choice (B5), not an open task.
-- **B5**: the storage spike is recorded in `docs/STORAGE_COMPARE_PLAN.md` and reproducible from
-  `benchmarks/geo_storage`. On the fill-aware table the existing compact iteration is 0.98-1.06x
-  dense MLUPS; the active-slot model is 0.73-0.875x dense field bytes and excludes metadata, while
-  brick is 0.51-0.77x but pays 1.4-3.3x seam traffic. Dense remains the default; B6a is deferred,
-  with active-slot the first candidate if a case becomes memory-bound. The thin-duct floor stays
-  red at 0.210; that is a block-shape limit, not a field-layout one.
+- **B5 (storage comparison memo, recorded here)**: **dense AABB remains the default; B6a
+  (active-slot) is deferred.** Reproducible from `benchmarks/geo_storage` (one rank, serial:
+  `make -C benchmarks/geo_storage && ./benchmarks/geo_storage/geo_storage.exe`; Intel i7-11800H,
+  g++ 13.3.0, `-O3 -march=native`, 2 warm-up and 50 timed steps). `dense` and `compact` share the
+  B3 fill-aware table (`max_blocks = 24`); `compact` adds the existing `VoxelMap` loop pruning
+  after `InitVoxelMap` and keeps dense storage. `slot` and `brick` are first-order byte models,
+  not solvers.
+
+  | Fixture | Blocks | Owned fill | Field bytes | MLUPS dense / compact | Seam MB/step dense / compact |
+  | --- | --- | --- | --- | --- | --- |
+  | bulk | 24 | 0.511 | 6.82 MB | 17.85 / 18.83 | 0.90 / 0.90 |
+  | thick | 8 | 0.658 | 8.58 MB | 21.46 / 21.49 | 0.99 / 0.91 |
+  | thin | 8 | 0.678 | 8.58 MB | 22.19 / 21.75 | 0.99 / 0.96 |
+
+  | Fixture | Active-slot | Brick 4^3 | Brick4 seam | Brick 8^3 | Brick8 seam |
+  | --- | --- | --- | --- | --- | --- |
+  | bulk | 4.95 MB (0.73x) | 3.49 MB (0.51x) | 1.59x | 5.28 MB (0.77x) | 1.17x |
+  | thick | 7.27 MB (0.85x) | 5.65 MB (0.66x) | 2.94x | 6.03 MB (0.70x) | 1.41x |
+  | thin | 7.51 MB (0.875x) | 6.03 MB (0.70x) | 3.29x | 6.03 MB (0.70x) | 1.41x |
+
+  Field bytes are 6.8-8.6 MB. The compact iteration is 0.98-1.06x dense MLUPS, within run-to-run
+  noise: it prunes loops without changing storage, so it does not justify B6a on its own. The
+  active-slot model stores fields per active slot (`VoxNum`, halo included) plus the forward
+  `int32` AABB-to-slot map and the reverse `size_t`/owned arrays; on the deciding thin fixture it
+  is 0.875x, only marginally inside the 0.90x target, and it excludes the flag field, boundary
+  metadata and block objects, so the true ratio is worse. Brick 4^3 saves 30-49% but pays
+  1.4-3.3x seam traffic; brick 8^3 is cheaper to communicate but loses fill on the bulk shell
+  (0.66). Seam bytes/step is the first-layer `Comm`/`MPIComm` cell count times `q * sizeof(T)`;
+  the all-layer communicator and the packed plan are excluded. The benchmark `thin` fixture is
+  the two-plate `geo_thin`, not the helical duct: the duct's owned fill is 0.210 against the
+  0.25 floor, a block-shape limit (B3) that a storage rewrite does not move. No storage
+  alternative was measured for process RSS, so the budget's RSS row stays open.
+
+  Rejected: **active-slot as a drop-in** (a field-layout rewrite with no measured speed headroom
+  to pay for it; first candidate only once a case is memory-bound) and **brick-sparse as the
+  first storage step** (the measured seam traffic is 1.4-3.3x dense and the upstream halo is the
+  missing piece; the 4^3 brick only looks good on the storage column). Changing B3's thin gate to
+  make B5 look successful is also rejected: the gate stays red until a storage or decomposition
+  change moves it. Reopen B6a only when a production case is measured memory-bound or the thin
+  fixture must meet 0.25; start from `benchmarks/geo_storage` and this table.
 - **B7a**: checkpoint format v2 stores the geometry identity next to the fields: grid, origin and
   extent, voxel size, the per-cell entity array, every boundary patch and the record digest.
   `writeWithGeometry` writes it; `readWithGeometry` and `checkCompatibleWithGeometry` validate it,
@@ -101,12 +135,13 @@ The fixture is measured by `tests/feature/geo_stl`; owned fill is owned active /
   wall speed 0.002, values rise 0 -> 0.002 across the gap).  The x/y periodic face strip carries no
   wall task because the periodic copy refreshes it, so the printed profile is the centreline, not a
   plane average.
-- **Gates**: `make test` PASS 53 / FAIL 0 / SKIP 0 (CPU, MPI and CUDA); `make test-casegen` exits 0
-  with 14 golden cases (PASS 14 / FAIL 0 / SKIP 0) and the generator unit tests;
-  `tools/check_headers.sh` exits 0 (the one baseline `utils/cuda_device.h` entry is unchanged).
+- **Gates**: `make test` passes (CPU, MPI and CUDA); `make test-casegen` exits 0 with its golden
+  cases and the generator unit tests; `tools/check_headers.sh` exits 0 (the one baseline
+  `utils/cuda_device.h` entry is unchanged).
 
-Patches and entity/material values round-trip but do not drive tasks or boundary conditions yet.
-Existing `examples/` still build masks through the helper flag path; example migration is deferred.
+Patches and entity/material values round-trip; `flbbc::bindPatches` maps a patch kind to a task flag
+(`src/boundary/patch_binding.h`), and `examples/cavity3d` binds its Wall patch. Other examples still
+build masks through the helper flag path, and casegen does not emit `[patch.*]` yet.
 
 ## 3. Target architecture
 
@@ -158,7 +193,7 @@ Only a same-block-table restart is promised, but any rank assignment of that tab
 | `feat/active-comm` (B2b) | joint shared pair mask, per-plan generation stamp, `InitVoxelMap` invalidation, 2-rank compact smoke test | B2a | plan stamp aborts on mismatch; shared pairs require both endpoints active; compact MPI test passes | block MPI suite; `tests/block/compact_mpi`; `tests/block/plan_stamp`; landed |
 | `feat/geo-decompose` (B3) | fill-aware split (subtree lookahead), coverage assertion, layout record, owned-count budget | B0, B2a, B2b | bulk/thick footprint within budget; block cap respected; coverage holds; thin hard floor **not met**, merge pass measured no gain, gate waived | block tests; `block/decompose_coverage`; landed |
 | `feat/link-bc` (B4) | surface links, interpolated bounce-back, thin/corner, moving wall (constant and rigid rotation) | B1a | curved-wall accuracy; thin-wall mass conservation; seam fixture on one and two ranks; CUDA scope stated | `make test`; `feature/link_bc*`, `block/link_bc_seam`; landed |
-| `spike/storage-compare` (B5) | time-boxed comparison of the current block decomposition, dense, active-slot, and brick layouts; seam copy vs row-base redirect; thin and thick fixtures | B1a, B2b, B3 | memo with resident bytes, MLUPS, seam bytes/step, communication, and complexity; one policy chosen, including "dense remains the default, B6a deferred" | `docs/STORAGE_COMPARE_PLAN.md`; `benchmarks/geo_storage`; memo landed |
+| `spike/storage-compare` (B5) | time-boxed comparison of the current block decomposition, dense, active-slot, and brick layouts; seam copy vs row-base redirect; thin and thick fixtures | B1a, B2b, B3 | memo with resident bytes, MLUPS, seam bytes/step, communication, and complexity; one policy chosen, including "dense remains the default, B6a deferred" | the B5 memo above; `benchmarks/geo_storage`; memo landed |
 | `feat/active-storage-cpu` (B6a) | policy chosen by B5: fields by slots/bricks, stream, collision, cell access; no free surface | B5, B3 | memory target met; no mixed dense/sparse; CPU checksums | `make test-cpu`; CUDA compile where available |
 | `feat/active-storage-physics` (B6b) | free surface, CA, statistics, writers, checkpoint consumers | B6a | free-surface and CA fixtures pass; memory report | `make test-cpu`; checkpoint tests |
 | `feat/active-cuda` (B6c) | device mirror and kernels for the chosen storage | B6b | full test suite and FP16 run green; CPU/GPU checksum | CUDA gate |
@@ -190,8 +225,9 @@ that was the first input to B5.
    pair mask, voxel record/builder, the FLBGEO path through casegen, the fill-aware dense
    decomposition, and the surface-link boundary. B3 met bulk and thick; the thin-duct hard floor is
    not met and the merge pass measured no gain, so it is waived (block-shape limit, B5 chose dense).
-2. **B5 is complete**: `docs/STORAGE_COMPARE_PLAN.md` and `benchmarks/geo_storage`. Dense remains
-   the default and B6a is deferred. **B7a has landed**; patch binding is on `feat/patch-bc`.
+2. **B5 is complete**: the B5 memo above and `benchmarks/geo_storage`. Dense remains the default
+   and B6a is deferred; the table reproduced on 2026-11-07, so rerun the benchmark before
+   reopening B6a. **B7a and patch binding have landed** (`src/boundary/patch_binding.h`).
 3. **B6a, B6b, B6c** are deferred until a case is measured memory-bound or the thin fixture must
    meet its 0.25 floor; then active-slot is the first candidate. **B7b** follows B6a.
 4. B4's open refinements (moving-wall `q = 0.75`, the 925 no-cross fallbacks, host-only apply) are
@@ -243,7 +279,7 @@ hard limit is the fill floor. Uniform baseline (one rank, 32^3, h=1, overlap 1):
 8-block 0.406, so the bulk target is met; `geo_thick` stays at 0.658 because no cut lowers its
 footprint. The thin duct stays at 0.210/0.126, and RCB on the same flag field is worse
 (0.074-0.081); the dense AABB shape, not the cut order, is the limit. B3 therefore does not relax
-the thin gate. B5 compared the storage layouts and kept dense (`docs/STORAGE_COMPARE_PLAN.md`), so
+the thin gate. B5 compared the storage layouts and kept dense (the B5 memo above), so
 the thin limit is still the block shape, not the field layout. Peak RSS is the `geo_stl` process
 value (9.66 MB); it is not a B3 storage result and B5 did not measure an alternative.
 

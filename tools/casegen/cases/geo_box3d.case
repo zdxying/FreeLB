@@ -6,8 +6,9 @@
 # tools/geometry_build before linking the case.  The .flbgeo is a build
 # product, not a tracked fixture.
 #
-# Boundary patches stored in the geometry file are not wired into tasks yet:
-# task selection still comes from [tasks] and [region.<name>].
+# Boundary patches stored in the geometry file can drive task flags through
+# src/boundary/patch_binding.h; this generated case binds none, so task
+# selection still comes from [tasks] and [region.<name>].
 
 [case]
 name = geo_box3d

@@ -22,7 +22,7 @@ tell you: the process (§1, §5), what fails silently, what must pass.
   it only if asked.
 - Say what you could not verify. "Not tested" is fine; "should work" is not.
 - Code, comments and commit messages in English; answer the author in the
-  language of the question. Do not translate the existing Chinese docs.
+  language of the question. Documentation is written in English.
 - Done means: exercised by a real run (not just compiled), the §3 row run, new
   behaviour covered by a test or checksum, comments updated, stale docs reported.
 - If this file or a doc disagrees with the code, the code wins for local style;

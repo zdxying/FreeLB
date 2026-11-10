@@ -23,6 +23,14 @@
 //
 // file layout (one binary per rank):
 //   magic "FLBCKPT" | u32 version | i64 step | i32 rank | i32 nranks | u32 dim
+//   geometry identity:
+//     u8 present
+//     if present:
+//       u32 nx | u32 ny | u32 nz
+//       f64 origin[3] | f64 max[3] | f64 voxelSize | u64 digest
+//       u64 nentity { u16 entity[] }          // nx*ny*nz, row-major
+//       u32 npatches { u16 entity | u8 kind | u8 pad |
+//                      u64 ncells { u64 cell[] } }
 //   u64 nblocks { i32 blockid | u8 level | i32 overlap | u32 dim | u32 nmesh |
 //                 i32 mesh[nmesh] | u64 n }
 //   u64 nfields { u32 index | u32 array_dim | u32 tag | u32 elem_dim | u32 namelen |
@@ -34,7 +42,10 @@
 //
 // Restore assumption: replaying the setup with the same parameters gives a
 // block-for-block identical geometry, so only fields and the step count are
-// restored; a block-table mismatch is a hard error.
+// restored; a block-table mismatch is a hard error.  When a geometry identity
+// is present, the grid, origin, voxel size and digest are validated too; a
+// mismatch is a hard error, and read()/checkCompatible() refuse such a file
+// because they cannot validate it.
 
 #include "io/checkpoint.h"
 

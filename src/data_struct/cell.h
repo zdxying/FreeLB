@@ -522,10 +522,10 @@ class Cell : private PopCache<T, LatSet::q, POPPOLICY> {
 //
 // RegPop pulls the q values into registers for the duration of the cell
 // dynamics, so the two passes share one set of loads: 78 LDG / 19 STG, ~91% of
-// DRAM peak, 1.33x faster end to end.  The addresses are re-derived per
-// direction inside the unrolled load/flush loops rather than being pinned in a
-// q-sized pointer array, which keeps them from staying live across the
-// dynamics.
+// DRAM peak, 1.33x faster end to end.  It also pins the q element addresses in
+// a q-sized pointer array, resolved once by the constructor; re-deriving them
+// per direction was measured slower (1.75x on FP16/D3Q19), because the halved
+// payload makes the extra 64-bit address loads dominate.
 //
 // RegCell is only a spelling of Cell<..., RegPop>; it is an alias, not a
 // derived class.  That distinction is load-bearing: CSE emits its

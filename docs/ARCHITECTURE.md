@@ -1,6 +1,6 @@
 # FreeLB architecture and module map
 
-Status: current (factual; no implementation phase) | Updated: 2026-11-06 | Target: let a change find its place before any code is written
+Status: current (factual; no implementation phase) | Updated: 2026-11-09 | Target: let a change find its place before any code is written
 
 > This file records the present: where things are, which way dependencies point, how data is
 > organised. Judgement rules and gates are in `AGENTS.md`; the trade-offs, evidence and todos
@@ -129,6 +129,52 @@ build vouch for the others. The generation advances on block-set creation/rebuil
 `InitVoxelMap`; every exchange checks its own plan. Runtime free-surface reclassification is not a
 geometry rebuild and does not advance it.
 
+**One message per peer, receives first.** A plan merges every link to one peer rank into one
+message, so the message count is `O(peer rank)`, not `O(block x neighbour)`. `runPlan()` and the
+hidden step post every receive before packing and posting sends: the handshake overlaps the pack,
+and a receive that is already posted cannot depend on a send completing. Packing runs per group,
+and group buffers are disjoint, so groups are the unit of parallelism; above a group-count/size
+threshold pack and unpack run under OpenMP, with every MPI call kept outside the parallel region.
+Below the threshold receives are waited per group, so the first group can be unpacked before the
+last arrives. The hidden step schedules adjacent-cell collision, post-receive + pack/send, interior
+collision, wait for sends, same-rank halo copy, then wait/unpack for remote halos.
+
+**Tags: fixed slots, receiver-derived order.** Every exchange uses one of seven constant slots in
+`parallel/comm_plan.h`: `DirTag/FullTag/AllTag/AverTag/IntpTag/AllAverTag/AllIntpTag`. A
+`BlockFieldManager` draws a per-manager base from `allocateFieldTagBase()` above
+`FieldTagBase = 1 << 14`, and its normal/all messages use base +0/+1. Tags only have to be unique
+among messages in flight on one communicator between one pair of ranks, so a constant per exchange
+kind is enough. Order *inside* a coalesced message is a `flbcomm::LinkKey{Receiver, Sender, Kind,
+Index}` (`parallel/link_key.h`), a lexicographic total order that both sides derive from geometry
+alone. `checkTagBudget()` therefore only checks that `MPI_TAG_UB` covers the reserved field range.
+
+- Rejected: **block-id tags**. They couple tag width to block-id width, and two field managers
+  exchanging concurrently can collide; the same argument rejects `MPI_Comm_dup` per subsystem
+  (extra communicator lifetime for no matching benefit).
+- Rejected: **splitmix64 hash for `Order`**. Its only gain was dropping a width assumption that
+  the tag check already enforces, at the cost of a silent collision surface. A 64-bit packed key
+  would be smaller but ties the sort key to `FieldTagBase`'s width; four fields need no bit budget.
+
+The premise is that every rank constructs the same field-manager set in the same order. Violating
+it hangs or errors; it does not silently mismatch data.
+
+**MPI thread level and the hybrid build.** `MpiManager::init()` calls
+`MPI_Init_thread(..., MPI_THREAD_FUNNELED, &provided)` and aborts unless the returned level is at
+least `MPI_THREAD_FUNNELED` (`parallel/mpi_manager.hh`). Every MPI call is made by the thread that
+enters the step; OpenMP wraps only the pack/unpack bodies, which contain no MPI calls. `make hybrid`
+in `make.mk` is the first-class `mpic++ + -DMPI_ENABLED + -fopenmp` target; `make mpi` and
+`make omp` remain the single-mode builds.
+
+**Open maintenance items.** The sub-cycling level test is still written inline as
+`count % static_cast<int>(std::pow(2, deLevel))` at each call site
+(`data_struct/block_lattice.hh`), while plans are selected through `flbcomm::activeDepth()`.
+There is no single `isActive(level, count, role)`, so changing the filter means touching every
+site. Separately, `BasicCommSet`/`LatticeCommSet` still live in `parallel/communicator.h` beside
+the plan stack: they serve the periodic boundary (`boundary/periodic_boundary.h`), a local-only
+path with no MPI exchange. They should either fold into the plan structures or be marked
+explicitly legacy/local-only; `tools/check_headers.sh` and `block/refblock` are the gate either
+way.
+
 **Unit conversion** is in `lbm/unit_converter.h`: `BaseConverter` (mechanical quantities),
 `TempConverter` (thermal), `ConcConverter` (concentration), and the phase-diagram converters
 `ZSConverter`/`GandinConverter` built on both; every physical/lattice conversion uses one.
@@ -197,8 +243,8 @@ Three things are separate:
   a non-blocking exchange, so the MPI latency hides behind the interior collision;
   `BlockLatticeManager::ApplyCellDynamicsWithHiddenComm`) runs after `Stream()` in `cavity2d`;
   `couette2d` runs `ApplyCellDynamics`/`Stream`/`NormalFullCommunicate`. They are not
-  interchangeable, for the reason in `docs/PARTIAL_COMM_PLAN.md` §6; per-example call sites
-  are in `docs/INTP_COMM_OVERFLOW_BUG.md` §18.
+  interchangeable, for the reason in `docs/INTP_COMM_OVERFLOW_BUG.md` §18.9; per-example call
+  sites are in §18.
 
 ## 5. Build system
 

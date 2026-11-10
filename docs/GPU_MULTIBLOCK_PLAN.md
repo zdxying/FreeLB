@@ -1,70 +1,70 @@
-# GPU 多 block 支持评估计划
+# GPU multi-block support evaluation plan
 
-状态: partial: M0 partly landed | 日期: 2026-09-26(状态更新 2026-10-31) | 目标: 为 AMR(跨分辨率)与多 GPU 准备多 block 能力,不是给均匀网格提速。
-机器: RTX 3060 Laptop / sm_86 / 30 SM / 6 GB / CUDA 12.5(WSL2) | 退出条件: §7 的 Go/No-Go 门槛给出结论;若 No-Go,只保留 M0 剩余护栏与 §8.2 活跃索引压缩。
+Status: partial: M0 partially landed (M0-2 only) | Updated: 2026-11-09 | Target: prepare multi-block capability for AMR (cross-resolution) and multi-GPU, not to speed up a uniform grid.
+Machine: RTX 3060 Laptop / sm_86 / 30 SM / 6 GB / CUDA 12.5 (WSL2) | Exit condition: the Go/No-Go gate in §7 gives a verdict; if No-Go, keep only the remaining M0 guard and the §8.2 active-index compaction. **§7 currently has no recorded verdict.**
 
-## 0. 摘要
+## 0. Summary
 
-- **现状**:GPU 路径只跑 `BlockLats[0]`,`block_num > 1` 时静默只算 1/N 的格子 —— 这是正确性隐患,不是性能问题,应该先堵。
-- **必要性**:只有 **AMR(跨分辨率)** 和 **多 GPU** 这两件事真正必须依赖多 block。显存、稀疏几何这两条常见理由经核算**不成立**(见 §2),不要拿它们当立项依据。
-- **性能损耗**:主导项是 kernel 启动,不是带宽也不是波前量化。本卡 WSL 实测边际 ~6.6 µs/launch;每 block 每步 2 次 launch,8 block 时时间约 +47%(吞吐 −32%),16 block 时约 +103%(吞吐 −51%)。**CUDA Graph 可把 N≤32 的损耗压回 ≤15%**,这是决定"要不要做"的关键变量。
-- **建议**:先做 M0 剩余护栏(零风险);M1 推迟到 §8 的两个测量与活跃索引压缩之后,且仅在 §7 Go 条件成立时启动;AMR/跨分辨率另立一期。
+- **Current state**: the GPU path runs only `BlockLats[0]`; with `block_num > 1` it silently computes only 1/N of the cells — a correctness hazard, not a performance issue, and it should be closed first.
+- **Necessity**: only **AMR (cross-resolution)** and **multi-GPU** genuinely require multi-block. The two common justifications, VRAM and sparse geometry, **do not hold** once the arithmetic is done (see §2); do not use them as the basis for starting the work.
+- **Performance cost**: the dominant term is kernel launch, not bandwidth and not wavefront quantisation. Measured marginal cost on this card under WSL is ~6.6 µs/launch; 2 launches per block per step, so 8 blocks cost about +47% time (throughput −32%) and 16 blocks about +103% (throughput −51%). **CUDA Graph can pull the N≤32 cost back to ≤15%**, and that is the key variable deciding whether to do this at all.
+- **Recommendation**: do the remaining M0 guard first (zero risk); defer M1 until the two measurements in §8 and the active-index compaction are done, and start it only when the §7 Go condition holds; AMR/cross-resolution is a separate phase.
 
-## 1. 现状勘察(代码事实)
+## 1. Current state (code facts)
 
-| 位置 | 事实 |
+| Location | Fact |
 |---|---|
-| `src/data_struct/block_lattice.hh:1012`、`:1016`、`:1025`、`:1036` | 注释 `for now only one block is supported`;`CuDevStream` 与两个 `CuDevApplyCellDynamics` 重载均硬编码 `BlockLats[0]`,多 block 循环已写好但被注释 |
+| `src/data_struct/block_lattice.hh:991-1018` | Comment `for now only one block is supported`; `CuDevStream` and both `CuDevApplyCellDynamics` overloads hard-code `BlockLats[0]` (`:995`, `:1004`, `:1015`); the multi-block loop is already written but commented out |
 | `README.md` | `Cuda for multi-block structure is not supported for now` |
-| `benchmarks/cavity3d_cu/cavity3d.ini` | `block_num = 1`(GPU 基准只测单块) |
-| `src/data_struct/block_lattice.hh:387` | `CuDevStream` 每 block 一次 `<<<LatSet::q, 1>>>` launch(19 个 CTA × 1 线程),只做指针 rotate |
-| `src/data_struct/cuda_field.h`(`cudev::CyclicArray`) | 块内 streaming 是**指针旋转**,O(1) 与格子数无关;跨 block 与跨分辨率不适用 |
-| `src/data_struct/block_lattice.hh`(`NormalCommunicate`, `MPI*Communicate`) | 块间通信**全部走宿主内存**;无 device 端版本 |
-| `src/data_struct/block_lattice_base.h:129-130`、`block_lattice.h:94-97` | 每 block 一套 `dev_Delta_Index` + `dev_Fields` + `devOmega/dev_Omega/dev_fOmega`(3 次 1 元素 `cudaMalloc`)+ `dev_BlockLat` |
-| `src/data_struct/block_lattice.h:285`、`:299` | 两个 `CuDevApplyCellDynamicsKernel` 变体已有 `if (idx >= n) return`;`Reg` 变体已并入同一 kernel,POP 策略由 `cudev::Cell` 的 `POPPOLICY` 模板参数决定 |
-| `src/utils/field_checksum.h` | `PopChecksumDevice` 只接受单个 block;调用处仍是 `getBlockLat(0)` |
-| `src/data_struct/block_lattice.h:81` | Omega / _Omega / fOmega 已是**每 block 独立** —— 不同分辨率用不同 τ 的结构已经具备 |
-| `src/geometry/block_geometry3d.h:174` | `getMaxLevel()` 存在 → AMR 多分辨率 block 是一等公民(CPU 侧) |
+| `benchmarks/cavity3d_cu/cavity3d.ini` | `block_num = 1` (the GPU benchmark only measures a single block) |
+| `src/data_struct/block_lattice.hh:401-402` | `CuDevStream` does one `<<<LatSet::q, 1>>>` launch per block (19 CTAs × 1 thread), only to rotate pointers |
+| `src/data_struct/cuda_field.h` (`cudev::CyclicArray`) | In-block streaming is a **pointer rotation**, O(1) and independent of cell count; it does not apply across blocks or across resolutions |
+| `src/data_struct/block_lattice.hh` (`NormalCommunicate`, `MPI*Communicate`) | Inter-block communication **all goes through host memory**; there is no device-side version |
+| `src/data_struct/block_lattice_base.h:129-130`, `block_lattice.h:94-96` | One set of `dev_Delta_Index` + `dev_Fields` + `devOmega/dev_Omega/dev_fOmega` per block (3 single-element `cudaMalloc`, `block_lattice.h:115-120`) + `dev_BlockLat` |
+| `src/data_struct/block_lattice.h:292`, `:306` | Both `CuDevApplyCellDynamicsKernel` variants already have `if (idx >= n) return` (`:298`, `:312`); the `Reg` variant is folded into the same kernel, the POP policy chosen by the `POPPOLICY` template parameter of `cudev::Cell` |
+| `src/utils/field_checksum.h` | `PopChecksumDevice` accepts a single block only; the call site still uses `getBlockLat(0)` (`benchmarks/cavity3d_cu/cavity3d.cu`) |
+| `src/data_struct/block_lattice.h:81-85` | Omega / _Omega / fOmega are already **per block** — the structure for a different τ at a different resolution is already in place |
+| `src/geometry/block_geometry3d.h` (`getMaxLevel()`) | AMR multi-resolution blocks are first-class (on the CPU side) |
 
-**一个既有缺陷(与多 block 强相关,M0 修)**
+**An existing defect (closely tied to multi-block, fixed in M0)**
 
-**静默错误**:`block_num > 1` 时 GPU 只算 block 0,其余 block 的 POP 停在初值,程序照常打印 `Calculation Complete!` 和 MLUPS。这与 `benchmarks/cavity3d_cu/cavity3d.cu` 记录的 sm_89 事故是同一类问题(launch 失败不被检查)。M0-1 的报错护栏尚未落地。
+**Silent error**: with `block_num > 1` the GPU computes only block 0, the POP of every other block stays at its initial value, and the program still prints `Calculation Complete!` and MLUPS. This is the same class of problem as the sm_89 incident recorded in `benchmarks/cavity3d_cu/cavity3d.cu` (a failed launch is not checked). The M0-1 error guard has not landed yet (§4).
 
-## 2. 必要性分级
+## 2. Necessity classification
 
-### 2.1 成立 —— 没有多 block 就做不到
+### 2.1 Holds — cannot be done without multi-block
 
-| 需求 | 为什么必须多 block |
+| Need | Why multi-block is required |
 |---|---|
-| **AMR / 跨分辨率** | 不同加密层级 = 不同 Δx、不同 τ、不同 Δt。这些信息是 per-block 的(`getMaxLevel()`、per-block Omega)。单 block 只能有一种分辨率,**GPU 路径与 AMR 目前完全互斥**,而 AMR 是 FreeLB 的主打能力(README 首屏两张图)。 |
-| **多 GPU** | 一块卡一个进程/设备时,block 是天然的分配与负载均衡单位。 |
+| **AMR / cross-resolution** | Different refinement levels = different Δx, different τ, different Δt. This information is per-block (`getMaxLevel()`, per-block Omega). A single block can only have one resolution, so **the GPU path and AMR are currently mutually exclusive**, and AMR is FreeLB's headline capability (the first two images in the README). |
+| **Multi-GPU** | With one process/device per card, the block is the natural unit of distribution and load balancing. |
 
-### 2.2 不成立 —— 常见理由经核算站不住(诚实标注)
+### 2.2 Does not hold — common justifications that fail the arithmetic (stated honestly)
 
-| 常见理由 | 核算结果 |
+| Common justification | Result of the arithmetic |
 |---|---|
-| **"单 block 装不下,显存放不下"** | 不成立。每 cell 约 93 B(POP 19×4 + rho 4 + u 12 + flag 1);6 GB 显存可放约 6.5e7 cell ≈ **400³**。单 block 能吃满整卡显存,显存不是分块的理由。 |
-| **"复杂几何有大量 void,分块能省掉无效线程"** | **方向对,但不归多 block**。省掉 void 的正解是**活跃索引压缩**:CPU 侧已有 `GenericvectorManager` 索引表与 `ApplyCellDynamics(blockids)` 重载,但 `BulkTaskIds` 的任务表构建在 benchmark 中被注释,GPU 也未消费任务表(见 §8.2)。一个 block 也能做,launch 数仍是 1;这是与多 block **正交**的优化,应单独立项。 |
-| **"多 block 能提速均匀网格"** | 反作用。均匀密网格单卡下,多 block 只增加 launch、halo、overlap 三项纯支出(见 §3)。 |
+| **"A single block does not fit, VRAM is too small"** | Does not hold. Each cell is about 93 B (POP 19×4 + rho 4 + u 12 + flag 1); 6 GB of VRAM holds about 6.5e7 cells ≈ **400³**. A single block can fill the whole card's VRAM; VRAM is not a reason to split. |
+| **"Complex geometry has lots of void, splitting can skip the idle threads"** | **Right direction, but it does not belong to multi-block.** The right fix for eliding void is **active-index compaction**: the CPU side already has the `GenericvectorManager` index table and the `ApplyCellDynamics(blockids)` overload, but the `BulkTaskIds` task-table build is commented out in the benchmark and the GPU does not consume a task table either (see §8.2). One block can do it too and the launch count stays 1; it is an optimisation **orthogonal** to multi-block and should be its own item. |
+| **"Multi-block speeds up a uniform grid"** | The opposite. On a uniform dense grid on one card, multi-block adds only three pure costs: launch, halo and overlap (see §3). |
 
-### 2.3 结论
+### 2.3 Conclusion
 
-> **多 block 的目标场景是 AMR 与多 GPU,不是给均匀网格提速。**
-> 立项时如果拿"提速"当目标,会在 M1 阶段就发现自己做出来的东西比现在慢约 47%–103%(吞吐 −32%~−51%),然后进退两难。先把目标锚定在"能力"上。
+> **The target scenarios for multi-block are AMR and multi-GPU, not speeding up a uniform grid.**
+> If the work is justified by "speed-up", by M1 you will find what you built is about 47%–103% slower than today (throughput −32%–−51%), and be stuck. Anchor the goal on "capability" first.
 
-## 3. 性能损耗分析
+## 3. Performance cost analysis
 
-### 3.1 实测(本次新做)
+### 3.1 Measurements (new in this round)
 
-探针:`benchmarks/multiblock_probe/gpu_multiblock_probe.cu`(空 kernel 测纯 launch;DRAM-bound copy 测"固定总工作量拆成 N 次 launch"的真实代价;两者都做 CUDA Graph 对照)
+Probe: `benchmarks/multiblock_probe/gpu_multiblock_probe.cu` (an empty kernel measures pure launch; a DRAM-bound copy measures the real cost of splitting a fixed total workload into N launches; both are also run against CUDA Graph)
 
 ```
-nvcc -O3 -arch=native benchmarks/multiblock_probe/gpu_multiblock_probe.cu -o /tmp/probe2 && /tmp/probe2   # 仓库根目录;WSL2 下用 wsl.exe 包一层
+nvcc -O3 -arch=native benchmarks/multiblock_probe/gpu_multiblock_probe.cu -o /tmp/probe2 && /tmp/probe2   # repository root; wrap with wsl.exe under WSL2
 ```
 
-**[A] 空 kernel,µs/step(500 reps + 20 warmup)**
+**[A] Empty kernel, µs/step (500 reps + 20 warmup)**
 
-| N launches | 逐次 launch | CUDA Graph | ns/launch | Graph 加速 |
+| N launches | Per-launch | CUDA Graph | ns/launch | Graph speed-up |
 |---|---|---|---|---|
 | 1 | 7.68 | 7.73 | 7676 | 0.99x |
 | 2 | 14.74 | 7.18 | 7370 | 2.05x |
@@ -75,11 +75,11 @@ nvcc -O3 -arch=native benchmarks/multiblock_probe/gpu_multiblock_probe.cu -o /tm
 | 64 | 487.54 | 60.11 | 7618 | 8.11x |
 | 128 | 848.23 | 108.13 | 6627 | 7.84x |
 
-边际成本:**逐次 6.6 µs/launch;Graph 0.79 µs/launch(差 8.4x)**。
+Marginal cost: **6.6 µs/launch launched one by one; 0.79 µs/launch with Graph (8.4x difference)**.
 
-> ⚠️ 7.6 µs/launch 这个绝对值偏高,WSL2 的 GPU 直通会放大 launch 延迟;原生 Linux 预期 2–3 µs。**绝对值请以原生 Linux 复测为准,但"边际线性 + Graph 能压 8x"这个结构性结论不依赖绝对值。**
+> ⚠️ The absolute 7.6 µs/launch is high; WSL2's GPU passthrough inflates launch latency, native Linux is expected at 2–3 µs. **Take the absolute value from a native-Linux re-run, but the structural conclusion "marginal cost is linear + Graph compresses 8x" does not depend on the absolute value.**
 
-**[B] DRAM-bound 总工作量固定(4M float,32 MB/step,308 GB/s 满速)拆成 N 次 launch**
+**[B] DRAM-bound, fixed total workload (4M float, 32 MB/step, 308 GB/s at full speed) split into N launches**
 
 | N launches | µs/step | GB/s | vs N=1 | Graph µs | Graph GB/s |
 |---|---|---|---|---|---|
@@ -92,29 +92,29 @@ nvcc -O3 -arch=native benchmarks/multiblock_probe/gpu_multiblock_probe.cu -o /tm
 | 64 | 1334.98 | 25.1 | 12.26x | 175.78 | 190.9 |
 | 128 | 986.70 | 34.0 | 9.06x | 245.52 | 136.7 |
 
-读法:
+How to read it:
 
-- N ≤ 8 时损耗温和(1.2x 以内),**N ≥ 16 断崖式恶化**;恶化幅度**大于** [A] 的纯 launch 叠加(16 launch: [A] 预测 +115 µs,实测 +212 µs),说明除 CPU 侧入队外还有 GPU 侧 per-kernel 开销(kernel 收尾/前端),**机制待 nsys 确认**,不要拿 [A] 直接外推;
-- N ≥ 32 两次复跑离散度约 ±20%,该区间数字只作量级参考;
-- **Graph 把 N=16 从 2.95x 拉回 1.12x、N=32 从 5.29x 拉回 1.29x** —— 这是本项目里唯一能把多 block 从"亏"变成"平"的手段。
+- For N ≤ 8 the cost is mild (within 1.2x); **at N ≥ 16 it degrades sharply**; the degradation is **larger** than the pure launch sum of [A] (16 launches: [A] predicts +115 µs, measured +212 µs), which says that besides CPU-side enqueueing there is a GPU-side per-kernel cost (kernel teardown/front end); **the mechanism awaits nsys confirmation**, so do not extrapolate directly from [A];
+- At N ≥ 32 the spread between two re-runs is about ±20%; numbers in that range are order-of-magnitude only;
+- **Graph pulls N=16 from 2.95x back to 1.12x and N=32 from 5.29x back to 1.29x** — the only means in this project that turns multi-block from a loss into a wash.
 
-### 3.2 损耗项清单
+### 3.2 Cost items
 
-| 损耗项 | 量级 | 随什么变化 | 能否消除 |
+| Cost item | Magnitude | Varies with | Removable |
 |---|---|---|---|
-| **kernel launch** | 实测边际 6.6 µs/launch(WSL);每 block 每步 2 次 | ∝ block 数 | **CUDA Graph(→0.79 µs)**;再把 stream 的 N 次 launch 合并成 1 次(grid = N×q),2N → N+1 |
-| 波前量化(尾部) | `ceil(n/128)` CTA 向上取整到常驻 150 CTA 的整数倍;125k cell → 约 7% | 小块显著 | 靠 block 尺寸下限约束 |
-| 占用率不足 | 常驻容量 = 30 SM × 5 CTA(96 regs × 128 thr = 12288 regs/CTA,65536/12288 = 5)= **150 CTA = 19200 cell**;block 小于此值时 SM 吃不饱 | 小块 | 同上 |
-| **overlap 冗余** | `(B+2)³/B³ − 1`:50³ → 12.5%,25³ → 26%,16³ → 42% | 块越小越差 | 块尺寸下限;overlap 已是参数 |
-| **halo 交换** | 流量 O(N²ᐟ³) vs 计算 O(N),量级上小;**但若走 D2H→CPU comm→H2D,每步 ~9 MB + 两次同步 ≈ ms 级,直接毁掉全部收益** | 面体比 | **必须写 device 端 halo kernel**,宿主 `normalCommunicate` 不能直接用 |
-| RegPop 寄存器驻留 | 96 regs / LOCAL:0(D3Q19 FP32,已实测);运行时按 blockIdx 动态分派会打断驻留 | 实现相关 | 每 block 一个模板实例化的 kernel,block 索引作为**编译期**实参,不做运行时分派 |
-| 显存/对象开销 | 每 block 约 5–6 次 `cudaMalloc` + H2D | ∝ block 数 | 一次性分配大块 + 指针偏移,初始化期成本,可接受 |
+| **kernel launch** | measured marginal 6.6 µs/launch (WSL); 2 per block per step | ∝ block count | **CUDA Graph (→0.79 µs)**; then merge the N stream launches into 1 (grid = N×q), 2N → N+1 |
+| Wavefront quantisation (tail) | `ceil(n/128)` CTAs rounded up to a multiple of the 150 resident CTAs; 125k cells → about 7% | significant for small blocks | a lower bound on block size |
+| Insufficient occupancy | resident capacity = 30 SM × 5 CTA (96 regs × 128 thr = 12288 regs/CTA, 65536/12288 = 5) = **150 CTA = 19200 cells**; below that the SMs are underfed | small blocks | same as above |
+| **overlap redundancy** | `(B+2)³/B³ − 1`: 50³ → 12.5%, 25³ → 26%, 16³ → 42% | worse the smaller the block | block-size lower bound; overlap is already a parameter |
+| **halo exchange** | traffic O(N²ᐟ³) vs compute O(N), small in magnitude; **but going through D2H→CPU comm→H2D costs ~9 MB/step + two synchronisations ≈ ms, which destroys the entire gain** | surface-to-volume ratio | **a device-side halo kernel is mandatory**; the host `normalCommunicate` cannot be used directly |
+| RegPop register residency | 96 regs / LOCAL:0 (D3Q19 FP32, measured); runtime dispatch by blockIdx breaks residency | implementation-dependent | one kernel per block template instantiation, with the block index as a **compile-time** argument, no runtime dispatch |
+| VRAM/object overhead | about 5–6 `cudaMalloc` + H2D per block | ∝ block count | one large allocation plus pointer offsets; an initialisation-time cost, acceptable |
 
-### 3.3 换算到真实 solver(100³,FP32 2211 MLUPS ⇒ 452 µs/步)
+### 3.3 Scaled to the real solver (100³, FP32 2211 MLUPS ⇒ 452 µs/step)
 
-以 [B] 的**实测附加开销**(`t(N) − t(1)`,开销与工作量无关)线性叠加;每 block 每步 2 次 launch,故 b 个 block 对应 N=2b:
+Adding the **measured additional cost** of [B] (`t(N) − t(1)`, independent of workload) linearly; 2 launches per block per step, so b blocks correspond to N=2b:
 
-| block 数 | launch 数 | 附加 µs | 预计 µs/步 | 时间相对现状 | Graph 后 |
+| Blocks | Launches | Added µs | Projected µs/step | Time vs current | With Graph |
 |---|---|---|---|---|---|
 | 1 | 2 | +3 | 455 | 1.01x | 1.00x |
 | 2 | 4 | +13 | 465 | 1.03x | 1.01x |
@@ -123,155 +123,141 @@ nvcc -O3 -arch=native benchmarks/multiblock_probe/gpu_multiblock_probe.cu -o /tm
 | 16 | 32 | +467 | 919 | **2.03x** | **1.07x** |
 | 32 | 64 | +1226 | 1678 | 3.71x | 1.15x |
 
-两列均相对现状 452 µs;N ≥ 32 的 [B] 数据离散度约 ±20%,最后一行只作量级参考。
+Both columns are relative to the current 452 µs; the [B] data at N ≥ 32 has about ±20% spread, so the last row is order-of-magnitude only.
 
-**推论**:
+**Implications**:
 
-- 裸实现的多 block 在 **block 数 ≥ 8** 时就不划算;**Graph 化后 block 数 ≤ 32 仍可控制在 15% 以内**。
-- 网格放大后这个结论会反转:400³ 时每步 ~29 ms,64 次 launch 的 0.4 ms 只占 1.4%。**所以损耗的本质是"每 block 的格子数",不是"block 数"** —— 判据应该是 `cells_per_block ≥ 5e4 ~ 1e5`,而不是限制 block 数。
+- A naive multi-block implementation stops paying off at **8 blocks or more**; **with Graph, the cost stays within 15% up to 32 blocks**.
+- The conclusion flips once the grid is enlarged: at 400³ a step is ~29 ms, and 64 launches at 0.4 ms is only 1.4%. **So the essence of the cost is "cells per block", not "block count"** — the criterion should be `cells_per_block ≥ 5e4 ~ 1e5`, not a cap on the block count.
 
-### 3.4 由此得到的设计约束
+### 3.4 Resulting design constraint
 
-> **每 block 建议下限 ≈ 5×10⁴ cell(约 37³)**。
-> 下限由三条同时给出:占用率地板 19200 cell、overlap 冗余在 50³ 以下开始超过 12%、launch 开销占比要求单块工作量 ≥ 数百 µs。
+> **Recommended lower bound per block ≈ 5×10⁴ cells (about 37³).**
+> The lower bound comes from three things at once: the occupancy floor of 19200 cells, overlap redundancy starting to exceed 12% below 50³, and the launch-cost share requiring a few hundred µs of work per block.
 
-## 4. 实施计划
+## 4. Implementation plan
 
-### M0 安全护栏(部分落地)
+### M0 Safety guard (partially landed)
 
-| 项 | 内容 | 文件 | 状态 |
+| Item | Content | File | Status |
 |---|---|---|---|
-| M0-1 | `BlockLatticeManager::CuDev*` 在 `BlockLats.size() > 1` 时**直接报错退出**,不再静默只算 block 0 | `block_lattice.hh` | 未做 |
-| M0-2 | 两个 cell-dynamics kernel 加 `if (idx >= n)` 边界检查 | `block_lattice.h:285`、`:299` | **已落地** |
-| M0-3 | checksum 覆盖所有 block(`getBlockLat(0)` → 遍历) | `benchmarks/cavity3d_cu/cavity3d.cu`, `field_checksum.h` | 未做 |
+| M0-1 | `BlockLatticeManager::CuDev*` **errors out** when `BlockLats.size() > 1`, no longer silently computing block 0 only | `block_lattice.hh:991-1018` | **Not done (open correctness item)** |
+| M0-2 | both cell-dynamics kernels get an `if (idx >= n)` bounds check | `block_lattice.h:292`, `:306` | **Landed** |
+| M0-3 | checksum covers all blocks (`getBlockLat(0)` → loop over all) | `benchmarks/cavity3d_cu/cavity3d.cu`, `field_checksum.h` | **Not done (open correctness item)** |
 
-回退:M0-1/M0-3 只是加护栏与遍历,无行为变更(单 block 路径 checksum 应保持逐位一致)。
+Rollback: M0-1/M0-3 only add a guard and a loop; no behaviour change (the single-block path checksum must stay bit-identical).
 
-### M1 单卡同分辨率多 block(推迟)
+### M1 Single-card same-resolution multi-block (deferred)
 
-**§8 优先**:在 §8.7 的两个测量与 §8.2 的活跃索引压缩完成、且 §7 的 Go 条件成立之前,不启动 M1;若 §8.7 判定"只做 §8.2 即止",M1 不做。
+**§8 takes priority**: do not start M1 until the two measurements in §8.7 and the active-index compaction in §8.2 are complete and the Go condition in §7 holds; if §8.7 decides "stop after §8.2", M1 is not done.
 
-| 步骤 | 内容 | 文件 | 预计量 |
+| Step | Content | File | Estimated size |
 |---|---|---|---|
-| S1 | 恢复被注释的多 block 循环(`CuDevStream` / `CuDevApplyCellDynamics` 三个入口) | `block_lattice.hh` | ~15 行 |
-| S2 | stream launch 合并:一个 kernel,grid = Nblock × q,替代每 block 一次 `<<<q,1>>>` | `block_lattice.h` / `.hh` | ~20 行 |
-| S3 | device 端 halo kernel:把 `CommDirection` / send-recv 索引表 H2D,写 gather/scatter kernel;**先只做同分辨率(直接拷贝,不插值)** | 新增 `cuda_comm.h` | ~150 行 |
-| S4 | 每 block 一次大块显存分配,替换 5–6 次小 `cudaMalloc` | `block_lattice.h` | ~30 行 |
-| S5 | benchmark:`block_num` 参数化 + MLUPS 扫描 | `cavity3d_cu` | ~30 行 |
+| S1 | restore the commented-out multi-block loop (`CuDevStream` / `CuDevApplyCellDynamics`, three entry points) | `block_lattice.hh` | ~15 lines |
+| S2 | merge the stream launches: one kernel, grid = Nblock × q, replacing one `<<<q,1>>>` per block | `block_lattice.h` / `.hh` | ~20 lines |
+| S3 | device-side halo kernel: H2D the `CommDirection` / send-recv index tables, write gather/scatter kernels; **same resolution only at first (plain copy, no interpolation)** | new `cuda_comm.h` | ~150 lines |
+| S4 | one large VRAM allocation per block, replacing 5–6 small `cudaMalloc` | `block_lattice.h` | ~30 lines |
+| S5 | benchmark: parameterise `block_num` + MLUPS sweep | `cavity3d_cu` | ~30 lines |
 
-**验证**:见 §5。回退:`block_num = 1` 时与现状逐位一致。
+**Verification**: see §5. Rollback: bit-identical to the current state when `block_num = 1`.
 
-### M2 损耗消解(约 1–2 天,依赖 M1 实测结果)
+### M2 Cost removal (about 1–2 days, depends on the M1 measurements)
 
-- S6:CUDA Graph 化,每步一次 `cudaGraphLaunch`(block 数不变时可复用;block 数变化需重建);
-- S7:nsys 定位 [B] 中断崖式恶化的真实来源(CPU 入队 vs GPU 前端),据此决定要不要继续做 S8;
-- S8(可选):把 collision 与 stream 合并进同一 kernel,launch 数 N+1 → 1。
+- S6: CUDA Graph, one `cudaGraphLaunch` per step (reusable while the block count is unchanged; a change in block count needs a rebuild);
+- S7: nsys to locate the real source of the sharp degradation in [B] (CPU enqueue vs GPU front end), and decide from that whether S8 is worth doing;
+- S8 (optional): merge collision and stream into the same kernel, launch count N+1 → 1.
 
-**门槛**:M2 做到 "block 数 ≤ 32 时损耗 ≤ 15%" 即停手,不要追求更多。
+**Gate**: M2 stops at "≤15% cost with ≤32 blocks"; do not chase more.
 
-### M3 跨分辨率 / AMR(二期,单独立项,本计划不做实施)
+### M3 Cross-resolution / AMR (phase 2, separate item, not implemented in this plan)
 
-三件难事,建议先只做可行性判断:
+Three hard problems; do only a feasibility assessment first:
 
-1. **界面插值**:不同 Δx 之间 halo 需要时空插值(`popIntp` 目前只有宿主版);
-2. **局部时间步**:细层一个 Δt 走 2 步、粗层走 1 步 —— 与现有"每步全场两个 kernel"的主循环结构冲突,主循环要重写;
-3. **旋转 streaming 失效**:`CyclicArray::rotate` 依赖块内均匀平移,粗细界面处必须退化成真正的 gather/scatter。
+1. **Interface interpolation**: halo between different Δx needs space-time interpolation (`popIntp` is host-only today);
+2. **Local time stepping**: the fine level takes 2 steps per coarse Δt while the coarse level takes 1 — this conflicts with the existing main-loop structure of "two kernels over the whole field per step", and the main loop has to be rewritten;
+3. **Rotation streaming breaks**: `CyclicArray::rotate` relies on a uniform in-block shift, and at a coarse/fine interface it must degrade to a real gather/scatter.
 
-### M4 多 GPU(远期)
+### M4 Multi-GPU (long term)
 
-一个 rank 一张卡,block 到设备的映射 + 现有 MPI 通信复用。依赖 M3 的结论。
+One rank per card, block-to-device mapping plus reuse of the existing MPI communication. Depends on the M3 conclusion.
 
-## 5. 验证方案
+## 5. Verification plan
 
-**正确性(三级,与 FP16_PLAN 同一套判据)**
+**Correctness (three levels, the same criteria as FP16_PLAN)**
 
-1. **回归**:`block_num = 1` 时,GPU 输出 checksum 与 M0 之前**逐位一致**;
-2. **跨实现**:GPU 多 block vs CPU 多 block(同 `block_num`),1000 步、100³、float——目标 sum 相对差 ~1e-7 量级(单 block GPU vs CPU 已知 2.3e-7);
-3. **物理不变性(最强判据)**:把同一个算例分别按 1 / 2 / 4 / 8 block 跑,收敛后比较速度剖面与总质量 —— **分块不应改变物理结果**,任何随 block 数漂移的量都说明 halo 有问题。
+1. **Regression**: with `block_num = 1`, the GPU output checksum is **bit-identical** to before M0;
+2. **Cross-implementation**: GPU multi-block vs CPU multi-block (same `block_num`), 1000 steps, 100³, float — target relative difference in the sum ~1e-7 (single-block GPU vs CPU is known to be 2.3e-7);
+3. **Physical invariant (strongest criterion)**: run the same case with 1 / 2 / 4 / 8 blocks and compare the velocity profile and total mass after convergence — **splitting must not change the physical result**; any quantity that drifts with the block count means the halo is wrong.
 
-**性能**:4. `block_num ∈ {1,2,4,8,16,32,64}` × 网格 `{100³, 200³}` 的 MLUPS 曲线,给出"损耗 vs 每 block 格子数"曲线而非 vs block 数;5. nsys 抓 launch gap、SM 占用率、halo kernel 占比;6. Graph 前后对照(§3.1 [B] 已有对照方法)。
+**Performance**: 4. MLUPS curves for `block_num ∈ {1,2,4,8,16,32,64}` × grid `{100³, 200³}`, plotted as "cost vs cells per block" rather than vs block count; 5. nsys capture of launch gaps, SM occupancy and halo-kernel share; 6. before/after Graph comparison (the comparison method already exists in §3.1 [B]).
 
-**稳定性**:8 block 长跑 3000 步不 NaN、质量守恒;对照 FP16 的长跑失效边界记录方式。
+**Stability**: 8 blocks, a 3000-step long run with no NaN and mass conserved; follow the way the FP16 long-run failure boundary is recorded.
 
-## 6. 风险与回退
+## 6. Risks and rollback
 
-| 风险 | 说明 | 处置 |
+| Risk | Description | Handling |
 |---|---|---|
-| **静默错误**(最高) | `block_num>1` 只算一块,程序照常打印完成 —— 已发生过一次同类事故 | M0-1 无条件先做 |
-| 通信走宿主 | 一旦偷懒用 D2H/H2D 做 halo,每步 ms 级,收益全无且不易察觉 | S3 是硬门槛,不做完不许进性能评测 |
-| CUDA Graph 与动态性冲突 | block 数/网格变化需重建 graph;AMR 动态加密会频繁触发 | M2 限定"静态块结构"场景;动态加密留给 M3 评估 |
-| **过度工程** | 若 M1 实测 block 数 ≥ 8 就亏且 Graph 也救不回来,应**止步于 M0 + 活跃索引压缩**,把多 block 只保留给 AMR 这一"必须有"的场景,不作为默认路径 | §7 门槛 |
+| **Silent error** (highest) | `block_num>1` computes one block only while the program prints completion as usual — an incident of this class has already happened once | M0-1 unconditionally first |
+| Communication through the host | Once halo is done through D2H/H2D as a shortcut, it costs ms per step, the gain is gone and it is hard to notice | S3 is a hard gate; no performance evaluation until it is finished |
+| CUDA Graph vs dynamism | A change in block count/grid needs a graph rebuild; AMR dynamic refinement triggers it often | M2 is limited to "static block structure"; dynamic refinement is left to M3 |
+| **Over-engineering** | If M1 measures a loss at ≥8 blocks that Graph cannot rescue, **stop at M0 + active-index compaction**, keep multi-block only for AMR, the "must have" scenario, and never as the default path | §7 gate |
 
-## 7. 决策门槛(Go / No-Go)
+## 7. Decision gate (Go / No-Go)
 
-**Go** —— 满足任一:需要 **AMR on GPU**(FreeLB 的核心能力,目前 GPU 路径完全不支持);需要 **多 GPU**;复杂几何算例中 void 比例高到值得做几何贴合的块分解(**注意:先用活跃索引压缩试,那条路 launch 数不变**)。
+**Current state: no recorded verdict.** None of the conditions below has been met or rejected by any measurement or review; M1 does not start before the two measurements in §8.7 exist.
 
-**No-Go**:只为"给均匀网格提速" —— 不做。FP16 已经拿到实测 1.86x(2211 → 4113 MLUPS),比多 block 靠谱一个量级,先做那个。
+**Go** — any one of: **AMR on GPU** is needed (FreeLB's core capability, currently not supported by the GPU path at all); **multi-GPU** is needed; in a complex-geometry case the void fraction is high enough to justify a geometry-fitted block decomposition (**note: try active-index compaction first, that path keeps the launch count unchanged**).
 
-**M2 通过线**:block 数 ≤ 32、每 block ≥ 5×10⁴ cell 时,多 block 相对单 block 损耗 ≤ 15%。达不到就把多 block 定位为"AMR 专用路径",在文档里写明它对均匀网格是负收益。
+**No-Go**: only "to speed up a uniform grid" — do not do it. FP16 has already measured 1.86x (2211 → 4113 MLUPS), an order of magnitude more reliable than multi-block; do that first.
 
-## 8. 复杂几何下的 void 代价与显存取舍(决定 M1 是否启动)
+**M2 pass line**: with ≤32 blocks and ≥5×10⁴ cells per block, the multi-block cost relative to a single block is ≤15%. If that is not met, position multi-block as an "AMR-only path" and state in the doc that it is a net loss on a uniform grid.
 
-针对"单卡、短期内不上多 GPU、但复杂几何包围盒远大于实体"的具体纠结。结论是
-**先做 §8.2 的活跃索引压缩,多 block(M1)推迟 —— 有一笔账还没算,而且它不是显存账。**
+## 8. The void cost and the VRAM trade-off under complex geometry (decides whether M1 starts)
 
-### 8.1 void 单元当前是全额付费的,付的是带宽
+This addresses the specific dilemma of "one card, no multi-GPU in the near term, but the bounding box of a complex geometry is far larger than the solid". The conclusion is
+**do the active-index compaction of §8.2 first, and defer multi-block (M1) — one account has not been settled yet, and it is not a VRAM account.**
 
-默认路径(`--reg`,即 `cudev::Cell<..., cudev::RegPop>`)在 `src/data_struct/cell.h` 的 RegPop 构造里无条件把 q 个分布函数搬进寄存器(`PopCache::load`),`flag` 分派发生在这之后;`cell.flush()` 同样无条件写回。所以 void cell 也产生 19 次 load + 19 次 store = 152 B/cell 流量。对照 `--base`(`DirectPop`):`operator[]` 只返回全局内存引用,惰性求值,void cell 不触发访存。
+### 8.1 Void cells are currently paid for in full, and the currency is bandwidth
 
-**推论**:
+The default path (`--reg`, i.e. `cudev::Cell<..., cudev::RegPop>`) unconditionally moves the q distribution functions into registers in the RegPop constructor in `src/data_struct/cell.h` (`PopCache::load`), and the `flag` dispatch happens after that; `cell.flush()` likewise writes back unconditionally. So a void cell also generates 19 loads + 19 stores = 152 B/cell of traffic. Compare `--base` (`DirectPop`): `operator[]` returns a global-memory reference only, evaluated lazily, and a void cell triggers no access.
 
-- `--base` 的 void 单元不产生流量,`--reg`(默认)产生完整的 152 B/cell 流量;100³ cavity 是 100% 填满的,所以这笔开销在现有基准里**完全不可见**;
-- 按有用格点算,**有效 MLUPS = 实测 MLUPS × φ**(φ = 实体占包围盒的体积比)。φ = 0.3 时,2211 MLUPS 实际只有约 663 有效 MLUPS —— 已是 3x 量级的隐形损失,比多 block 的吞吐损失(8 block −32%)大一个数量级。
+**Implication**: void cells under `--base` generate no traffic; under `--reg` (the default) they generate the full 152 B/cell; the 100³ cavity is 100% filled, so this cost is **completely invisible** in the existing benchmark. Counting useful cells, **effective MLUPS = measured MLUPS × φ** (φ = volume ratio of solid to bounding box): at φ = 0.3, 2211 MLUPS is really only about 663 effective MLUPS — an invisible loss of the 3x order, an order of magnitude larger than the multi-block throughput loss (−32% at 8 blocks).
 
-### 8.2 正确的顺序:先拿纯收益的那一步
+### 8.2 The right order: take the step with a pure gain first
 
-**活跃索引压缩 + 延迟搬运**(约 1 天,与多 block 正交)
+**Active-index compaction + deferred fetch** (about 1 day, orthogonal to multi-block)
 
-- kernel 不再从 `0..N−1` 起线程,而是从活跃 cell 索引表起线程。CPU 侧已有 `GenericvectorManager` 与 `ApplyCellDynamics(blockids)` 重载,但 `BulkTaskIds` 的任务表构建在 benchmark 里被注释,GPU 路径也尚未消费任务表 —— 这一层接口已有、任务表未启用;
-- **旋转 streaming 让这件事异常干净**:pull 模式下每个线程只访问自己那条 cell 的 19 个 slot(`data_d[i]`),不 gather 邻居。所以压缩索引**不需要邻居表、不需要改 `CyclicArray`、不需要 halo**;
-- 收益:每步流量 ∝ N_active;代价:仍是 1 次 launch,访存局部性取决于活跃格点在最快轴上的连续游程长度;**不省显存**。这一步在"做多 block"和"不做多 block"两种结局下都赢,不可能亏。
+- the kernel no longer starts threads from `0..N−1` but from the active-cell index table. The CPU side already has `GenericvectorManager` and the `ApplyCellDynamics(blockids)` overload, but the `BulkTaskIds` task-table build is commented out in the benchmark, and the GPU path does not consume a task table yet — the interface layer exists, the task table is not enabled;
+- **rotation streaming makes this unusually clean**: in pull mode each thread accesses only the 19 slots of its own cell (`data_d[i]`), it does not gather neighbours. So a compacted index **needs no neighbour table, no change to `CyclicArray`, no halo**;
+- gain: traffic per step ∝ N_active; cost: still 1 launch, and memory locality depends on the contiguous run length of active cells along the fastest axis; **it does not save VRAM**. This step wins in both outcomes, "do multi-block" and "do not", so it cannot lose.
 
-### 8.3 显存这笔账 —— 以及明确的门槛
+### 8.3 The VRAM account — and an explicit threshold
 
-每 cell 约 93 B(与 §2.2 同一核算),6 GB ⇒ 约 6.5e7 cell ≈ 400³。判据:`N_bbox × 93 B ≤ 0.7 × 可用显存` 时只做 §8.2,不要碰多 block(维持 §7 的 No-Go);否则显存成为真瓶颈,才谈 tiled 分配。
+Each cell is about 93 B (same arithmetic as §2.2), 6 GB ⇒ about 6.5e7 cells ≈ 400³. Criterion: when `N_bbox × 93 B ≤ 0.7 × available VRAM`, do only §8.2 and do not touch multi-block (keeping the §7 No-Go); only when VRAM is a real bottleneck is tiled allocation even discussed. The reason is plain: **wasting VRAM you already own costs nothing.** Tiling is only worth it when "it does not fit" or "the resolution must be lowered" — and the accuracy lost by lowering the resolution is far larger than the 20–40% of halo.
 
-理由很直白:**浪费你已经拥有的显存没有成本。** 只有当"算不了"或"必须降分辨率"时,tile 才值得 —— 降分辨率损失的精度远大于 halo 的 20–40%。
+### 8.4 If VRAM really is the wall: the tile size tension is real
 
-### 8.4 若显存真卡住:tile 的尺寸张力是真的
+Tile edge m, solid volume V, surface area A (in cells): VRAM needed ≈ V·(1 + 6/m) + A·m, per-step time penalty ≈ 6/m (halo redundant computation) + launch cost, VRAM optimum m* = √(6V/A) (a sphere R=100 → m ≈ 14; a thin plate 8 cells thick → m ≈ 5).
 
-tile 边长 m、实体体积 V、表面积 A(格点数):需分配显存 ≈ V·(1 + 6/m) + A·m,每步时间 penalty ≈ 6/m(halo 冗余计算)+ launch 开销,VRAM 最优解 m* = √(6V/A)(球 R=100 → m ≈ 14;厚 8 格的薄板 → m ≈ 5)。
+**The VRAM optimum lands on small tiles (halo penalty 40%–100%), while the time penalty demands large tiles.** This tension is real and cannot be removed. But the launch term in the tension is not essential: do not write "one launch per block", write **one kernel walking the tile table** (grid-stride over tiles), with the launch count constant at O(1)/step; then the 6.6 µs/launch measured in §3.1 is no longer a function of the tile count. The remaining 6/m cannot be dodged, so the rule for choosing m becomes: **take the largest m the VRAM budget allows**, not the VRAM-optimal m*.
 
-**VRAM 最优点落在小 tile(halo penalty 40%–100%),而时间 penalty 要求大 tile。** 这是真实且无法消除的张力。但张力里的 launch 项不是本质的:不要写成"每 block 一次 launch",而写成**一个 kernel 遍历 tile 表**(grid-stride over tiles),launch 数恒为 O(1)/步,§3.1 实测的 6.6 µs/launch 就不再是 tile 数的函数。剩下的 6/m 躲不掉,所以 m 的选取准则变为:**在显存预算允许范围内取最大的 m**,而非 VRAM 最优的 m*。
+### 8.5 The third way was rejected by measurement: sparse commit of virtual memory
 
-### 8.5 第三条路已被实测否掉:虚存稀疏提交
+The idea: keep the dense index unchanged (constant offsets, rotate streaming, coalesced access all unchanged) and commit physical pages only for non-empty VA ranges — in theory saving VRAM at zero performance cost. It was evaluated with a temporary probe using `cuMemAddressReserve` + `cuMemCreate` + `cuMemMap` + `cuMemSetAccess` (not committed; deleted with that experiment).
 
-设想:保持稠密索引不变(所有常偏移、rotate streaming、合并访存一概不变),只给非空 VA 区间提交物理页 —— 理论上是零性能代价的省显存。仓库里曾有一个 VMM 探针(随该实验退役删除),使用 `cuMemAddressReserve` + `cuMemCreate` + `cuMemMap` + `cuMemSetAccess`。
+Measured (this card): granularity 2 MB; FP32 POP gives 524288 **contiguous** cells per chunk (cube edge 80.6, 3.27 xy planes at nx=400), doubled for FP16. In linear (i,j,k) order, as long as the geometry spreads along the slowest axis, not a single chunk can be saved; finer granularity requires Morton order, which breaks constant offsets → rotation streaming fails → fall back to gather streaming. **The path does not hold without changing the streaming mechanism.** Side effect: the old VMM path rounded each of the 19 directions up to 2 MB, which is the direct reason it used more VRAM on small cases and one of the reasons `CyclicArray` is the default.
 
-**实测否定**(本卡,评估时临时探针,未入库):
+### 8.6 The cheapest VRAM lever is already in hand
 
-```
-device=NVIDIA GeForce RTX 3060 Laptop GPU  VMM supported=1
-granularity MIN=REC=2097152 (2.00 MB)
-FP32 POP: 524288 cells/chunk → 立方边长 80.6;nx=400 时 3.27 个 xy 平面
-FP16 POP: 1048576 cells/chunk
-```
+FP16 storage has landed (see `docs/FP16_PLAN.md`, 4113 MLUPS): 93 B → about 55 B per cell, **scaling the computable size directly by 1.69x**, with no tile/halo/launch complexity. Use this lever to the full before touching multi-block.
 
-单个 chunk 覆盖单个方向数组上 524288 个**连续** cell。在线性 (i,j,k) 序下,只要几何沿最慢轴铺开,一个 chunk 都省不掉。要拿到细粒度必须改成 Morton 序,而那会破坏常偏移 → 旋转 streaming 失效 → 退回 gather streaming。**在不改 streaming 机制的前提下这条路不成立。**
+### 8.7 The two measurements that decide this (both quick)
 
-副作用知识:旧的 VMM 路径会把 19 个方向各自向上取整到 2 MB,这是它在小算例上多占一大块显存的直接原因 —— 也是默认使用 `CyclicArray` 的理由之一。
+1. **Decide whether 8.1 holds**: with the existing code unchanged, set the flag of a subset of cells in cavity3d to void (keeping N constant) and see whether MLUPS changes. **If MLUPS barely moves → it is confirmed that void cells consume bandwidth in full**, and §8.2 is then the single biggest gain available today.
+2. **Get φ and A/V for a real geometry**: for an actual complex geometry, count `getTotalCellNum()` vs the active count by flag. φ > 0.5 and it fits within 400³ ⇒ stop after §8.2, never do multi-block.
 
-### 8.6 最便宜的显存杠杆已经在手
+Until these two numbers exist, every performance discussion about multi-block is an estimate.
 
-FP16 存储已落地(见 `docs/FP16_PLAN.md`,4113 MLUPS):每 cell 93 B → 约 55 B,**可算规模直接放大 1.69 倍**,且不引入任何 tile/halo/launch 复杂度。在动多 block 之前,先把这个杠杆用满。
+## Appendix: probe
 
-### 8.7 决定这件事的两个测量(都很快)
-
-1. **判定 8.1 是否成立**:现有代码不动,cavity3d 里把一部分 cell 的 flag 设为 void(保持 N 不变),看 MLUPS 是否变化。**若 MLUPS 基本不动 → 证实 void 单元在全额消耗带宽**,那么 §8.2 就是当下收益最大的一件事。
-2. **拿到真实几何的 φ 与 A/V**:对实际复杂几何统计 `getTotalCellNum()` vs 按 flag 计数的 active 数。φ > 0.5 且 400³ 以内装得下 ⇒ §8.2 做完即止,多 block 永远不做。
-
-在这两个数字出来之前,关于多 block 的所有性能讨论都只是估值。
-
-## 附:探针
-
-`benchmarks/multiblock_probe/gpu_multiblock_probe.cu` —— 空 kernel launch 开销、固定工作量拆分代价、CUDA Graph 对照,三者合一。§3.1 全部数据由它产出,可直接复跑。
+`benchmarks/multiblock_probe/gpu_multiblock_probe.cu` — empty-kernel launch cost, the cost of splitting a fixed workload, and the CUDA Graph comparison, all in one. Every number in §3.1 comes from it and can be reproduced directly.
