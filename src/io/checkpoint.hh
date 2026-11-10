@@ -215,7 +215,7 @@ void readLogical(std::istream& is, ArrayType& arr, std::size_t n) {
 }
 
 // does the container provide normalize() (reset the rotation to the unrotated
-// view)?  CyclicArray / StreamMapArray do
+// view)?  CyclicArray does
 template <typename A, typename = void>
 struct HasNormalize : std::false_type {};
 template <typename A>

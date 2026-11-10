@@ -243,7 +243,8 @@ int main() {
                                     Vector<T, 3>{T(0), T(0), T(1)}, Omega};
 
   flbbc::InterpolatedBBManager<decltype(NSLattice), decltype(flagFM)> ibb(
-    NSLattice, flagFM, record, VoidFlag, PeriodicFlag, nullptr, &motions);
+    NSLattice, flagFM, record, VoidFlag, PeriodicFlag, nullptr, &motions,
+    std::uint8_t{4});
   CHECK(ibb.getLinkCount() > 0);
 
   std::size_t movingLinks = 0;

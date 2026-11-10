@@ -145,6 +145,37 @@ void getCommPopDir(NbrDirection direction, std::vector<unsigned int>& commdirect
   commdirection.erase(std::unique(commdirection.begin(), commdirection.end()), commdirection.end());
 }
 
+// find pop directions crossing every axis flagged in `direction`, taking the
+// sign of each flag: a face mask has one axis, for which this equals
+// getCommPopDir; an edge or corner mask needs this intersection, not the union
+// getCommPopDir accumulates (a union would overwrite the axis-aligned
+// directions of the same cell with the diagonal partner's values).
+template <typename LatSet>
+void getPeriodicPopDir(NbrDirection direction, std::vector<unsigned int>& commdirection) {
+  commdirection.clear();
+  if (util::isFlag(direction, NbrDirection::NONE)) {
+    std::cerr << "[getPeriodicPopDir] Error: no neighbor direction" << std::endl;
+    exit(1);
+  }
+  for (unsigned int i = 0; i < LatSet::q; ++i) {
+    bool crossed = true;
+    bool masked = false;
+    for (unsigned int a = 0; a < LatSet::d; ++a) {
+      const std::uint8_t neg = std::uint8_t(1) << (2 * a);
+      const std::uint8_t pos = std::uint8_t(2) << (2 * a);
+      const int c = latset::c<LatSet>(i)[a];
+      if (util::isFlag(static_cast<std::uint8_t>(direction), neg)) {
+        masked = true;
+        crossed = crossed && c > 0;
+      } else if (util::isFlag(static_cast<std::uint8_t>(direction), pos)) {
+        masked = true;
+        crossed = crossed && c < 0;
+      }
+    }
+    if (masked && crossed) commdirection.push_back(i);
+  }
+}
+
 // refer to int BasicBlock<T, D>::whichCorner()
 template <unsigned int D>
 NbrDirection getCornerNbrDirection(int corner) {
@@ -405,6 +436,10 @@ struct LatticeComm {
   const BasicComm<T, LatSet::d>& Comm;
   // for streaming fields like populations
   std::vector<unsigned int> StreamDirections;
+  // index of the paired LatticeComm in the target block's LatticeCommSet::Sends.
+  // The block id alone does not identify the partner: one block pair can carry
+  // two periodic pairs (x and y) and therefore several sends to the same id.
+  int SendCommIndex = -1;
 
   LatticeComm(BlockLattice<T, LatSet, TypePack>& blat,
                BasicComm<T, LatSet::d>& blockcomm)
@@ -416,7 +451,9 @@ struct LatticeCommSet {
   std::vector<LatticeComm<LatSet, TypePack>> Sends;
   std::vector<LatticeComm<LatSet, TypePack>> Recvs;
 
-  // find the LatticeComm with the given BlockId
+  // find the LatticeComm with the given BlockId.  Returns the first match, so
+  // it cannot identify a partner when one block pair carries several comms;
+  // use LatticeComm::SendCommIndex for that.
   const LatticeComm<LatSet, TypePack>& getSendComm(int BlockId) const {
     for (const auto& comm : Sends) {
       if (comm.Comm.TargetBlockId == BlockId) return comm;

@@ -91,16 +91,24 @@ class BlockLattice : public BlockLatticeBase<T, LatSet, TypePack> {
   GenericArray<Vector<T, LatSet::d>> UOld;
 
 #ifdef __CUDACC__
-  T* devOmega;
-  T* dev_Omega;
-  T* dev_fOmega;
-  cudev_BlockLattice* dev_BlockLat;
+  T* devOmega = nullptr;
+  T* dev_Omega = nullptr;
+  T* dev_fOmega = nullptr;
+  cudev_BlockLattice* dev_BlockLat = nullptr;
 #endif
 
  public:
   template <typename... FIELDPTRS>
   BlockLattice(Block<T, LatSet::d>& block, AbstractConverter<T>& conv,
                std::tuple<FIELDPTRS...> fieldptrs);
+  ~BlockLattice() {
+#ifdef __CUDACC__
+    if (devOmega) cuda_free(devOmega);
+    if (dev_Omega) cuda_free(dev_Omega);
+    if (dev_fOmega) cuda_free(dev_fOmega);
+    if (dev_BlockLat) cuda_free(dev_BlockLat);
+#endif
+  }
 
 #ifdef __CUDACC__
   void InitDeviceData() {

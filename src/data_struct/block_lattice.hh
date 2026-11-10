@@ -684,6 +684,7 @@ BlockLatticeManager<T, LatSet, TypePack>::BlockLatticeManager(
   // }
 
   // init block lattices
+  BlockLats.reserve(this->BlockGeo.getBlocks().size());
   for (std::size_t i = 0; i < this->BlockGeo.getBlocks().size(); ++i) {
     BlockLats.emplace_back(this->BlockGeo.getBlock(i), Conv,
                            ExtractFieldPtrs<T, LatSet, TypePack>::getFieldPtrTuple(
@@ -716,6 +717,7 @@ BlockLatticeManager<T, LatSet, TypePack>::BlockLatticeManager(
   // }
 
   // init block lattices
+  BlockLats.reserve(this->BlockGeo.getBlocks().size());
   for (std::size_t i = 0; i < this->BlockGeo.getBlocks().size(); ++i) {
     BlockLats.emplace_back(this->BlockGeo.getBlock(i), Conv,
                            ExtractFieldPtrs<T, LatSet, TypePack>::getFieldPtrTuple(
@@ -746,6 +748,7 @@ void BlockLatticeManager<T, LatSet, TypePack>::Init() {
   _averPlans.clear();
   _intpPlans.clear();
 #endif
+  BlockLats.reserve(this->BlockGeo.getBlocks().size());
   for (std::size_t i = 0; i < this->BlockGeo.getBlocks().size(); ++i) {
     BlockLats.emplace_back(this->BlockGeo.getBlock(i), Conv,
                            ExtractFieldPtrs<T, LatSet, TypePack>::getFieldPtrTuple(
@@ -788,6 +791,7 @@ void BlockLatticeManager<T, LatSet, TypePack>::Init(
   _averPlans.clear();
   _intpPlans.clear();
 #endif
+  BlockLats.reserve(this->BlockGeo.getBlocks().size());
   for (std::size_t i = 0; i < this->BlockGeo.getBlocks().size(); ++i) {
     BlockLats.emplace_back(this->BlockGeo.getBlock(i), Conv,
                            ExtractFieldPtrs<T, LatSet, TypePack>::getFieldPtrTuple(

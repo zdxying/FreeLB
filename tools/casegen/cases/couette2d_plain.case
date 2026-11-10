@@ -104,6 +104,6 @@ flag_writer = 0
 
 [checksum]
 enable = 1
-expect_pop = 287.5573693
-expect_rho = 1148.306514
+expect_pop = 289.5460876
+expect_rho = 1155.844456
 tol = 1e-6

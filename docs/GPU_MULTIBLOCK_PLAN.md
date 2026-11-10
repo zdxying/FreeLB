@@ -246,7 +246,7 @@ tile 边长 m、实体体积 V、表面积 A(格点数):需分配显存 ≈ V·(
 
 ### 8.5 第三条路已被实测否掉:虚存稀疏提交
 
-设想:保持稠密索引不变(所有常偏移、rotate streaming、合并访存一概不变),只给非空 VA 区间提交物理页 —— 理论上是零性能代价的省显存。仓库里已有现成 VMM 代码:`StreamMapArray::setDevMap()`(`src/data_struct/field.h`)的 `cuMemAddressReserve` + `cuMemCreate` + `cuMemMap` + `cuMemSetAccess`。
+设想:保持稠密索引不变(所有常偏移、rotate streaming、合并访存一概不变),只给非空 VA 区间提交物理页 —— 理论上是零性能代价的省显存。仓库里曾有一个 VMM 探针(随该实验退役删除),使用 `cuMemAddressReserve` + `cuMemCreate` + `cuMemMap` + `cuMemSetAccess`。
 
 **实测否定**(本卡,评估时临时探针,未入库):
 
@@ -259,7 +259,7 @@ FP16 POP: 1048576 cells/chunk
 
 单个 chunk 覆盖单个方向数组上 524288 个**连续** cell。在线性 (i,j,k) 序下,只要几何沿最慢轴铺开,一个 chunk 都省不掉。要拿到细粒度必须改成 Morton 序,而那会破坏常偏移 → 旋转 streaming 失效 → 退回 gather streaming。**在不改 streaming 机制的前提下这条路不成立。**
 
-副作用知识:`getPageAlignedCount` 会把 19 个方向各自向上取整到 2 MB,这是 `StreamMapArray` 在小算例上会多占一大块显存的原因 —— 也是当初默认切到 `CyclicArray` 的一个合理理由。
+副作用知识:旧的 VMM 路径会把 19 个方向各自向上取整到 2 MB,这是它在小算例上多占一大块显存的直接原因 —— 也是默认使用 `CyclicArray` 的理由之一。
 
 ### 8.6 最便宜的显存杠杆已经在手
 

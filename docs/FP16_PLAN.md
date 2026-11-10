@@ -116,7 +116,7 @@ D3Q19 / `CyclicArray` / RTX 3060 Laptop (sm_86) / 100³;A1–A5 为 FP32、1000 
 
 | 项目 | 结果 |
 | --- | --- |
-| 构建 | 全目标构建通过;FP16 × {cyclic, streammap} 编译矩阵通过 |
+| 构建 | 全目标构建通过;FP16 × cyclic 编译矩阵通过 |
 | 默认关闭 | FP32 校验和 `1061231.05 / 4749162.144 / 33.7224`,与 FP32 基线逐位一致 |
 | A1 DirectPop BGK | 1712 指令 / 216 FLOP / 0 FP64 / REG:44,与基线完全相同 |
 | A1 DirectPop RhoU | 680 / 76 / 0 / REG:28,与基线完全相同 |

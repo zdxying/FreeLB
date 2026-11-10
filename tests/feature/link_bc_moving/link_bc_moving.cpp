@@ -22,6 +22,8 @@
 // B4 moving-wall baseline: Couette flow in the same periodic channel as
 // link_bc_accuracy.  The bottom wall (entity 2) is static, the top wall
 // (entity 3) moves along x with Uw; the analytic profile is linear in z.
+// The 6000-step comparison is a short-horizon baseline: the moving-wall
+// scheme still drifts at very long times, so this is not a converged value.
 
 #include <algorithm>
 #include <array>
@@ -125,11 +127,26 @@ int main() {
     NS_Peri("NS_Peri", NSLattice, flagFM, PeriodicFlag, VoidFlag);
   NS_Peri.Setup(left, NbrDirection::XN, right, NbrDirection::XP);
   NS_Peri.Setup(bottom, NbrDirection::YN, top, NbrDirection::YP);
+  // The x and y faces share the corner column, whose diagonal populations
+  // come from the diagonal partner; a face pair alone cannot supply them.
+  const AABB<T, 3> cornerLL(Vector<T, 3>{T(0), T(0), ZDomain0},
+                            Vector<T, 3>{T(1), T(1), ZDomain1});
+  const AABB<T, 3> cornerLR(Vector<T, 3>{T(Nx - 1), T(0), ZDomain0},
+                            Vector<T, 3>{T(Nx), T(1), ZDomain1});
+  const AABB<T, 3> cornerUL(Vector<T, 3>{T(0), T(Ny - 1), ZDomain0},
+                            Vector<T, 3>{T(1), T(Ny), ZDomain1});
+  const AABB<T, 3> cornerUR(Vector<T, 3>{T(Nx - 1), T(Ny - 1), ZDomain0},
+                            Vector<T, 3>{T(Nx), T(Ny), ZDomain1});
+  NS_Peri.Setup(cornerLL, NbrDirection::XN | NbrDirection::YN, cornerUR,
+                NbrDirection::XP | NbrDirection::YP);
+  NS_Peri.Setup(cornerLR, NbrDirection::XP | NbrDirection::YN, cornerUL,
+                NbrDirection::XN | NbrDirection::YP);
 
   std::unordered_map<std::uint16_t, Vector<T, 3>> wallVelocities;
   wallVelocities.emplace(std::uint16_t{3}, Vector<T, 3>{Uw, T(0), T(0)});
   flbbc::InterpolatedBBManager<decltype(NSLattice), decltype(flagFM)> ibb(
-    NSLattice, flagFM, record, VoidFlag, PeriodicFlag, &wallVelocities);
+    NSLattice, flagFM, record, VoidFlag, PeriodicFlag, &wallVelocities, nullptr,
+    std::uint8_t{3});
   CHECK(ibb.getLinkCount() > 0);
 
   const auto& block = geo.getBlock(0);

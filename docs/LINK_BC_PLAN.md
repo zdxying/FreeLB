@@ -2,7 +2,7 @@
 
 Status: merged into `dev` from `feat/link-bc` (2026-11-07): surface links + static IBB + one-rank
 and 2-rank seams + fractional-wall, moving-wall and curved-wall (Taylor-Couette) accuracy; full
-entity/BC binding, host-only CUDA and moving-wall refinement still open | Updated: 2026-11-07 |
+entity/BC binding, host-only CUDA and moving-wall refinement still open | Updated: 2026-11-08 |
 Target: replace staircase reflection with a surface-link boundary
 
 > Exit condition: the B4 accuracy/seam/CUDA-scope baseline is recorded (done at the merge), and the
@@ -21,8 +21,10 @@ Target: replace staircase reflection with a surface-link boundary
   `q` is clamped to `1/2` when the node behind is outside the block or void, or when the band
   normal does not define a crossing. `Fallback` and `Thin` stay on the link for diagnostics.
   A boundary cell with no band sample (a domain-edge wall) gets a half-way link instead of being
-  skipped. A cell on a periodic face is skipped by the link table; the periodic manager refreshes
-  it, so the face is not treated as a wall.
+  skipped. A cell on a periodic face keeps the links whose direction stays inside the domain and
+  drops the ones that leave it along a periodic axis (`periodicAxes`); the periodic copy owns the
+  latter. Skipping the whole cell used to drop the wall links on the face strip, because both ends
+  of a periodic pair were skipped and the copy cannot supply a link that was never built.
 - The manager is host-only and runs after streaming: it reads the pre-stream populations
   (`getPrevious`) and writes the opposite population of the wall-adjacent cell, so the next
   collision or communication sees the wall value. The CUDA path keeps the existing staircase
@@ -63,35 +65,77 @@ rather than `getTotalOwnedCellNum`, whose non-root result is only fixed by the u
 
 Fractional-wall accuracy (`tests/feature/link_bc_accuracy`): a 16 x 16 x 8 channel periodic in
 x/y, with STL walls at q=0.25 (bottom) and q=0.75 (top) and a constant body force along x.
-The centreline u_x(z) compared with the normalised parabola has L2 = 0.0118 (threshold 0.06);
+The centreline u_x(z) compared with the normalised parabola has L2 = 0.0115 (threshold 0.06);
 the test also checks the two wall fractions and entities. This is an IBB wall-position baseline,
 not a curved-surface analytic.
 
 Moving-wall Couette (`tests/feature/link_bc_moving`): bottom entity 2 is static, top entity 3
 moves along x with Uw = 0.01.  The measured u_x(z) against the linear Couette profile has
-L2 = 0.0948 (threshold 0.10); the top q=0.75 one-sided branch is the weak part of the moving term.
+L2 = 0.0600 at 6000 steps (threshold 0.10, slope ratio 0.933); the run converges rather than
+decaying: 48000 steps 0.0518, 150000 steps 0.0336 with slope 0.999, 300000 steps 0.0365.  The
+long-run mass is bounded (3240 -> 3099 at 150k, -4.4%; a slow copy leak remains, see §3).
 
 Curved-wall accuracy (`tests/feature/link_bc_curved`): Taylor-Couette between two concentric
 cylinders, inner r = 5 rotating as a rigid body (entity 2), outer r = 10 at rest (entity 3),
 periodic along z so the analytic profile has no end effects.  The two meshes are written as ASCII
 STL at run time; the caps sit outside the domain.  Against `v_theta(r) = A r + B/r` at the
-mid-plane: L2 = 0.0745 relative to the wall speed (threshold 0.10), split as 0.0967 on the moving
-inner half and 0.0560 on the static outer half.  6000 and 12000 steps agree to 1e-4, so the
-profile is converged.  This is the B4 curved-wall baseline and it also exercises
-position-dependent wall velocity on a curved surface.
+mid-plane: L2 = 0.0605 at 12000 steps (threshold 0.10), split as 0.0839 on the moving
+inner half and 0.0386 on the static outer half; 6000 and 12000 steps agree to 0.5%.  This is the
+B4 curved-wall baseline and it also exercises position-dependent wall velocity on a curved surface.
 
-Gates: `make test` PASS 45 / FAIL 0 / SKIP 0 on `dev` after the merge (includes `feature/link_bc`,
+Periodic-face wall links: the link table keeps a periodic cell's wall links whose direction stays
+inside the domain (`periodicAxes`) and drops only the ones that leave it along a periodic axis.
+Previously both ends of a periodic pair were skipped, so the wall had no link on the whole face
+strip and the copy could not supply one that was never built.  The link counts rise (accuracy and
+moving 1960 -> 2432, curved 2144 -> 2976).  With the periodic copy fixed below, the plane,
+moving and curved L2 are 0.0106 / 0.0092 (0.017 at 150k) / 0.0276, against 0.0118 / 0.0948 /
+0.0746 before either change.
+
+IBB mass correction: the interpolated reflection changes the boundary cell's mass.  On a complete
+flat wall the symmetric links cancel; a strip truncated by a periodic face leaks, and the moving
+wall term adds to it.  Apply now removes the per-cell change with the zero-momentum mode
+(`f_k -= dM w_k`, `sum w = 1`, `sum w c = 0`), so momentum is untouched.  The moving run then
+converges instead of decaying (before the correction: 96000/300000 steps 0.19/0.33).  With the
+periodic copy fixed below, its mass creeps up 1.7% by 150k; the change is carried by the
+wall-normal directions of the moving top wall, not by the exchange.
+
+Periodic exchange: `Stream()` pulls `f_i(x) <- f_i(x - c_i)`, so a copy must write the cell one
+voxel outside the face, in the block halo; writing the face cell itself landed the image one cell
+inside the domain.  `Setup` pairs each recv through the send index it records
+(`LatticeComm::SendCommIndex`) instead of through the block id, which returned the first send when
+one block held an x and a y pair.  A corner column belongs to both pairs, so its diagonal
+populations come from a corner pair with a combined mask; `getPeriodicPopDir` takes the
+intersection over the masked axes, because `getCommPopDir`'s union would overwrite the
+axis-aligned directions with the diagonal partner's values.  `feature/periodic_copy` asserts the
+halo image and the mass/momentum conservation of a fully periodic 2D box, and a revert to the
+face-cell write fails 103 of its 104 checks.  The stream stage's per-direction mass balance is
+exact (1e-13) with the copy in place; without the corner pairs it is off by 5e-4 per step, which
+the moving wall's opposite drift used to mask.
+
+Gates: `make test` PASS 53 / FAIL 0 / SKIP 0 on the branch (includes `feature/link_bc`,
 `feature/link_bc_accuracy`, `feature/link_bc_moving`, `feature/link_bc_curved`,
-`block/link_bc_seam` and the CUDA targets on the RTX 3060); `tools/check_headers.sh` exits 0 (the
-one baseline `utils/cuda_device.h` entry remains).
+`feature/periodic_copy`, `block/link_bc_seam` and the CUDA targets on the RTX 3060);
+`tools/check_headers.sh` exits 0 (the one baseline `utils/cuda_device.h` entry remains);
+`make test-casegen` PASS 14 / FAIL 0.
 
 ## 3. Open items
 
-- **Moving-wall accuracy.** The flat Couette L2 is 9.5% and the curved inner half is 9.7%.  A
-  least-squares fit over the moving test's profile gives a uniform slope deficit of 0.921 (the
-  profile stays linear; the error is not a near-wall kink), and the three coefficient variants tried
-  earlier were worse, so no scheme change is made.  Revisit with a finer wall-normal resolution or a
-  second-order wall-velocity closure.
+- **Moving-wall accuracy.** The flat Couette L2 is 0.9% at the 6000-step baseline and 1.7% at 150k
+  steps (slope 0.994); the curved 6k L2 is 2.8% (inner 4.2%, outer 1.2%).  The startup transient is
+  gone; what remains is the moving-wall mass term below.
+- **Moving-wall mass at the periodic strips.** With the exchange fixed, the drift at 150k is +0.05%
+  in the static body-force channel and +1.7% in the moving Couette case.  The copy's own balance is
+  exact (per-direction mass change of the stream stage: 1e-13; `feature/periodic_copy`), and the
+  moving run's change is carried by the wall-normal directions at the top wall, so the remaining
+  source is the moving-wall term where a periodic face truncates the link set, not the exchange.
+  The per-cell IBB correction removes the per-cell sum but leaves the stream-side wall exchange.
+- **Periodic exchange usage.** A caller whose domain is periodic along two axes must add the four
+  corner pairs next to the two face pairs (`Setup` with a combined mask such as `XN|YN`), or the
+  corner halos keep whatever they held.  The link_bc tests and `feature/periodic_copy` do so;
+  `examples/couette3d` is periodic in x/y and still uses the face pairs only, so its corners stay
+  stale until it is ported.  The manager now rejects the two wiring mistakes at setup: a face box
+  that is not the block's boundary layer (the copy would overwrite a real neighbour cell) and a
+  recv/send pair whose cell lists differ (the copy pairs them by position).
 - **Fallback rate.** 925/7160 duct links still fall back to the half-way position because the band
   normal does not cross the link.  A further 671 links with `q > 1` are now clamped to `q = 1`: the
   void neighbour proves the wall is before the link end, so the clamp is geometric rather than a

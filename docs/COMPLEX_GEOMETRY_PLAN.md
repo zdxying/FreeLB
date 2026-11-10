@@ -60,6 +60,12 @@ The fixture is measured by `tests/feature/geo_stl`; owned fill is owned active /
 - **B3 fixtures**: `geo_bulk` (32^3 domain, 24^3 solid) has raw fluid 0.578 and a one-block
   owned fill 0.482; `geo_thick` has two 4-cell plates with entities 2/3; `geo_thin` has two
   1-cell plates with entities 2/3. All three go through `writeVoxelFlags` and `InitVoxelMap`.
+- **Thin-gate merge pass (time-boxed)**: after the split, a greedy pass was tried that merges a
+  flush pair only when the union's dense footprint shrinks.  On the helical duct it never fires:
+  each split block is already trimmed to its active extent, so a union spans the void between the
+  parts.  The fills are unchanged to the digit (h=0.5 0.2056 / 0.2062 / 0.2098 at 16/24/32 blocks;
+  h=1.0 0.1189 / 0.1261), so the thin floor stays 0.210 and is recorded as a block-shape limit
+  (B3) plus a storage-policy choice (B5), not an open task.
 - **B5**: the storage spike is recorded in `docs/STORAGE_COMPARE_PLAN.md` and reproducible from
   `benchmarks/geo_storage`. On the fill-aware table the existing compact iteration is 0.98-1.06x
   dense MLUPS; the active-slot model is 0.73-0.875x dense field bytes and excludes metadata, while
@@ -95,7 +101,7 @@ The fixture is measured by `tests/feature/geo_stl`; owned fill is owned active /
   wall speed 0.002, values rise 0 -> 0.002 across the gap).  The x/y periodic face strip carries no
   wall task because the periodic copy refreshes it, so the printed profile is the centreline, not a
   plane average.
-- **Gates**: `make test` PASS 52 / FAIL 0 / SKIP 0 (CPU, MPI and CUDA); `make test-casegen` exits 0
+- **Gates**: `make test` PASS 53 / FAIL 0 / SKIP 0 (CPU, MPI and CUDA); `make test-casegen` exits 0
   with 14 golden cases (PASS 14 / FAIL 0 / SKIP 0) and the generator unit tests;
   `tools/check_headers.sh` exits 0 (the one baseline `utils/cuda_device.h` entry is unchanged).
 
@@ -150,7 +156,7 @@ Only a same-block-table restart is promised, but any rank assignment of that tab
 | `feat/voxel-io` (B1b) | FLBGEO read/write, casegen spec, `tools/geometry_build`, golden case; example migration landed in `examples/cavity3d` | B1a | file round-trip; one case driven from the file | `make test-casegen`; `make test-cpu`; landed |
 | `feat/active-index` (B2a) | owned/active counts, inverse map, owned metrics, derived-state invalidation | B0 | owned/active metrics and pointer-table invalidation covered by tests | `make test-cpu`; `feature/brick_seam`; landed |
 | `feat/active-comm` (B2b) | joint shared pair mask, per-plan generation stamp, `InitVoxelMap` invalidation, 2-rank compact smoke test | B2a | plan stamp aborts on mismatch; shared pairs require both endpoints active; compact MPI test passes | block MPI suite; `tests/block/compact_mpi`; `tests/block/plan_stamp`; landed |
-| `feat/geo-decompose` (B3) | fill-aware split (subtree lookahead), coverage assertion, layout record, owned-count budget | B0, B2a, B2b | bulk/thick footprint within budget; block cap respected; coverage holds; thin hard floor **not met**, handed to B5 | block tests; `block/decompose_coverage`; landed |
+| `feat/geo-decompose` (B3) | fill-aware split (subtree lookahead), coverage assertion, layout record, owned-count budget | B0, B2a, B2b | bulk/thick footprint within budget; block cap respected; coverage holds; thin hard floor **not met**, merge pass measured no gain, gate waived | block tests; `block/decompose_coverage`; landed |
 | `feat/link-bc` (B4) | surface links, interpolated bounce-back, thin/corner, moving wall (constant and rigid rotation) | B1a | curved-wall accuracy; thin-wall mass conservation; seam fixture on one and two ranks; CUDA scope stated | `make test`; `feature/link_bc*`, `block/link_bc_seam`; landed |
 | `spike/storage-compare` (B5) | time-boxed comparison of the current block decomposition, dense, active-slot, and brick layouts; seam copy vs row-base redirect; thin and thick fixtures | B1a, B2b, B3 | memo with resident bytes, MLUPS, seam bytes/step, communication, and complexity; one policy chosen, including "dense remains the default, B6a deferred" | `docs/STORAGE_COMPARE_PLAN.md`; `benchmarks/geo_storage`; memo landed |
 | `feat/active-storage-cpu` (B6a) | policy chosen by B5: fields by slots/bricks, stream, collision, cell access; no free surface | B5, B3 | memory target met; no mixed dense/sparse; CPU checksums | `make test-cpu`; CUDA compile where available |
@@ -164,11 +170,13 @@ is a spike: its memo and benchmark are on `dev`, no storage code is merged. B7 d
 cross-decomposition restart; that is a separate cell-coordinate remap. Every MPI gate also needs
 one explicit `mpirun` run in the runner's form; CUDA is not a gate before B6c.
 
-B4 landed with three recorded gaps: the moving-wall term is 9.5% L2 in the flat Couette fixture and
-9.7% on the curved inner half (the `q = 0.75` one-sided link, a uniform slope deficit of 0.921);
-925 of 7160 duct links fall back to the half-way position (a further 671 with `q > 1` are clamped to
-the link end, down from 1596); and the apply path is host only. Patch binding closed the fourth gap: a
-patch kind now paints the task flag, and `[patch.*]` carries the patch through the `.geo` recipe. Curved-wall accuracy is 7.5% L2 against Taylor-Couette, and the two-rank seam
+B4 landed with three recorded gaps: the moving-wall term is 6.0% L2 in the flat Couette fixture at
+its 6000-step baseline, converging to 3.4% at 150k steps after the per-cell IBB mass correction
+(before it the run decayed), and 8.4% on the curved inner half; 925 of 7160 duct links fall back to
+the half-way position (a further 671 with `q > 1` are clamped to the link end, down from 1596); and
+the apply path is host only. Patch binding
+closed the fourth gap: a patch kind now paints the task flag, and `[patch.*]` carries the patch
+through the `.geo` recipe. Curved-wall accuracy is 6.05% L2 (was 7.5%) and the two-rank seam
 reproduces the single-block link count and mass.
 
 B1a was merged from `feat/voxel-entity`. The StlReader repair, the mask adapter, B1b,
@@ -181,13 +189,13 @@ that was the first input to B5.
 1. **B0, B2a, B2b, B1a, B1b, B3, B4** have landed: fixture, owned index, per-plan stamping, shared
    pair mask, voxel record/builder, the FLBGEO path through casegen, the fill-aware dense
    decomposition, and the surface-link boundary. B3 met bulk and thick; the thin-duct hard floor is
-   not met.
+   not met and the merge pass measured no gain, so it is waived (block-shape limit, B5 chose dense).
 2. **B5 is complete**: `docs/STORAGE_COMPARE_PLAN.md` and `benchmarks/geo_storage`. Dense remains
    the default and B6a is deferred. **B7a has landed**; patch binding is on `feat/patch-bc`.
 3. **B6a, B6b, B6c** are deferred until a case is measured memory-bound or the thin fixture must
    meet its 0.25 floor; then active-slot is the first candidate. **B7b** follows B6a.
-4. B4's open refinements (moving-wall `q = 0.75`, patch-to-BC binding, duct fallback) are follow-ups
-   on `dev`, not new branches.
+4. B4's open refinements (moving-wall `q = 0.75`, the 925 no-cross fallbacks, host-only apply) are
+   follow-ups on `dev`, not new branches.
 
 ## 6. Rejected alternatives
 
@@ -222,7 +230,7 @@ at this size.
 
 | Budget | Current (h=0.5 / h=1.0 unless stated) | B3 target | Hard limit | B3 measured |
 | --- | --- | --- | --- | --- |
-| Owned fill, thin duct | 0.206 / 0.103 | 0.28–0.32 / 0.16–0.20 | ≥ 0.25 / ≥ 0.14 | 0.210 (32 blocks) / 0.126 (24) — **not met** |
+| Owned fill, thin duct | 0.206 / 0.103 | 0.28–0.32 / 0.16–0.20 | ≥ 0.25 / ≥ 0.14 | 0.210 (32 blocks) / 0.126 (24) — **not met**; merge pass measured no gain, waived |
 | Owned fill, bulk fixture | 0.482 (one block); 0.365–0.406 (8–16 blocks) | 0.45–0.60 | ≥ 0.40 | 0.453 (16) / 0.511 (24) — met |
 | Allocated cells | 51510 / 12540 | 0.64–0.73× / 0.52–0.65× | ≤ 0.82× / ≤ 0.74× | 50459 (0.98×) / 10261 (0.82×) — thin not met |
 | Peak RSS | 9.66 MB (`geo_stl`, process-wide) | ≤ 0.90× | ≤ 1.00× | B5 recorded field bytes 6.8-8.6 MB; RSS was not measured for a storage alternative, so the row stays open |

@@ -154,43 +154,45 @@ template <typename FieldType, typename FloatType, unsigned int Dim>
 BlockFieldManager<FieldType, FloatType, Dim>::BlockFieldManager(
   BlockGeometry<FloatType, Dim>& blockgeometry)
     : _BlockGeo(blockgeometry), _tagBase(flbcomm::allocateFieldTagBase()) {
+  _Fields.reserve(_BlockGeo.getBlocks().size());
   for (Block<FloatType, Dim>& block : _BlockGeo.getBlocks()) {
     _Fields.emplace_back(block);
   }
   InitDeviceData();
+  _fieldsGeneration = _BlockGeo.getGeometryGeneration();
 }
 
 template <typename FieldType, typename FloatType, unsigned int Dim>
 BlockFieldManager<FieldType, FloatType, Dim>::BlockFieldManager(
   BlockGeometry<FloatType, Dim>& blockgeometry, datatype initvalue)
     : _BlockGeo(blockgeometry), _tagBase(flbcomm::allocateFieldTagBase()) {
+  _Fields.reserve(_BlockGeo.getBlocks().size());
   for (Block<FloatType, Dim>& block : _BlockGeo.getBlocks()) {
     _Fields.emplace_back(block, initvalue);
   }
   InitDeviceData();
+  _fieldsGeneration = _BlockGeo.getGeometryGeneration();
 }
 
 template <typename FieldType, typename FloatType, unsigned int Dim>
 BlockFieldManager<FieldType, FloatType, Dim>::BlockFieldManager(
   const BlockFieldManager& blockFManager)
-    : _Fields(blockFManager._Fields), _BlockGeo(blockFManager._BlockGeo),
-      _tagBase(blockFManager._tagBase) {
-#ifdef __CUDACC__
-  std::size_t FieldNum = _Fields.size();
-  dev_Fields = cuda_malloc<cudev_BlockFieldType*>(FieldNum);
-  device_to_device(dev_Fields, blockFManager.dev_Fields, FieldNum);
-  constructInDevice();
-#endif
+    : _Fields(blockFManager._Fields),
+      _fieldsGeneration(blockFManager._fieldsGeneration),
+      _BlockGeo(blockFManager._BlockGeo), _tagBase(blockFManager._tagBase) {
+  InitDeviceData();
 }
 
 template <typename FieldType, typename FloatType, unsigned int Dim>
 BlockFieldManager<FieldType, FloatType, Dim>::BlockFieldManager(
   BlockFieldManager&& blockFManager) noexcept
-    : _Fields(std::move(blockFManager._Fields)), _BlockGeo(blockFManager._BlockGeo),
-      _tagBase(blockFManager._tagBase) {
+    : _Fields(std::move(blockFManager._Fields)),
+      _fieldsGeneration(blockFManager._fieldsGeneration),
+      _BlockGeo(blockFManager._BlockGeo), _tagBase(blockFManager._tagBase) {
 #ifdef __CUDACC__
-  dev_Fields = blockFManager.dev_Fields;
-  constructInDevice();
+  // The source keeps its own table/mirror; its destructor frees them.  The
+  // moved-to manager builds a fresh table from the block fields it now owns.
+  InitDeviceData();
 #endif
 }
 
@@ -263,10 +265,16 @@ void BlockFieldManager<FieldType, FloatType, Dim>::Init() {
 #ifdef MPI_ENABLED
   resetCommPlans();
 #endif
+  if (canReuseFields()) {
+    resetFields(datatype{});
+    return;
+  }
   _Fields.clear();
+  _Fields.reserve(_BlockGeo.getBlocks().size());
   for (Block<FloatType, Dim>& block : _BlockGeo.getBlocks()) {
     _Fields.emplace_back(block);
   }
+  _fieldsGeneration = _BlockGeo.getGeometryGeneration();
 }
 
 template <typename FieldType, typename FloatType, unsigned int Dim>
@@ -274,10 +282,16 @@ void BlockFieldManager<FieldType, FloatType, Dim>::Init(datatype initvalue) {
 #ifdef MPI_ENABLED
   resetCommPlans();
 #endif
+  if (canReuseFields()) {
+    resetFields(initvalue);
+    return;
+  }
   _Fields.clear();
+  _Fields.reserve(_BlockGeo.getBlocks().size());
   for (Block<FloatType, Dim>& block : _BlockGeo.getBlocks()) {
     _Fields.emplace_back(block, initvalue);
   }
+  _fieldsGeneration = _BlockGeo.getGeometryGeneration();
 }
 
 template <typename FieldType, typename FloatType, unsigned int Dim>
@@ -285,22 +299,33 @@ void BlockFieldManager<FieldType, FloatType, Dim>::NonFieldInit(datatype initval
 #ifdef MPI_ENABLED
   resetCommPlans();
 #endif
+  if (canReuseFields()) {
+    resetFields(initvalue);
+    return;
+  }
   _Fields.clear();
+  _Fields.reserve(_BlockGeo.getBlocks().size());
   for (Block<FloatType, Dim>& block : _BlockGeo.getBlocks()) {
     _Fields.emplace_back(block, initvalue);
   }
+  _fieldsGeneration = _BlockGeo.getGeometryGeneration();
 }
 
 template <typename FieldType, typename FloatType, unsigned int Dim>
 void BlockFieldManager<FieldType, FloatType, Dim>::Init(
   BlockGeometryHelper<FloatType, Dim>& GeoHelper) {
+  // The old set must stay alive until the transfer finishes, so peak storage
+  // is old + new; this is inherent to an arbitrary block remap.  reserve()
+  // removes the extra vector-growth copies on top of it.
   std::vector<BlockField<FieldType, FloatType, Dim>> NewFields;
+  NewFields.reserve(_BlockGeo.getBlocks().size());
   for (Block<FloatType, Dim>& block : _BlockGeo.getBlocks()) {
     NewFields.emplace_back(block);
   }
   // data transfer
   FieldDataTransfer(GeoHelper, NewFields);
   _Fields.swap(NewFields);
+  _fieldsGeneration = _BlockGeo.getGeometryGeneration();
 #ifdef MPI_ENABLED
   resetCommPlans();
 #endif
@@ -309,13 +334,16 @@ void BlockFieldManager<FieldType, FloatType, Dim>::Init(
 template <typename FieldType, typename FloatType, unsigned int Dim>
 void BlockFieldManager<FieldType, FloatType, Dim>::Init(
   BlockGeometryHelper<FloatType, Dim>& GeoHelper, datatype initvalue) {
+  // See the note in the overload above: old and new coexist during transfer.
   std::vector<BlockField<FieldType, FloatType, Dim>> NewFields;
+  NewFields.reserve(_BlockGeo.getBlocks().size());
   for (Block<FloatType, Dim>& block : _BlockGeo.getBlocks()) {
     NewFields.emplace_back(block, initvalue);
   }
   // data transfer
   FieldDataTransfer(GeoHelper, NewFields);
   _Fields.swap(NewFields);
+  _fieldsGeneration = _BlockGeo.getGeometryGeneration();
 #ifdef MPI_ENABLED
   resetCommPlans();
 #endif
@@ -328,6 +356,7 @@ void BlockFieldManager<FieldType, FloatType, Dim>::InitCopy(
   const BlockFieldManager<FlagFieldType, FloatType, Dim>& FlagFManager, std::uint8_t flag,
   const Func& func) {
   std::vector<BlockField<FieldType, FloatType, Dim>> NewFields;
+  NewFields.reserve(_BlockGeo.getBlocks().size());
   for (Block<FloatType, Dim>& block : _BlockGeo.getBlocks()) {
     NewFields.emplace_back(block, initvalue);
   }
@@ -343,6 +372,7 @@ void BlockFieldManager<FieldType, FloatType, Dim>::InitCopy(
   // data transfer
   FieldDataCopyTransfer(GeoHelper, NewFields);
   _Fields.swap(NewFields);
+  _fieldsGeneration = _BlockGeo.getGeometryGeneration();
 #ifdef MPI_ENABLED
   resetCommPlans();
 #endif

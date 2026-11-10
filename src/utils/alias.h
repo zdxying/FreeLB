@@ -23,26 +23,15 @@
 #pragma once
 
 // ---------------------------------------------------------------------------
-// Distribution-function container selection.
+// Distribution-function container.
 //
-// The GPU block-lattice path resolves POP by *type* in GenericFieldBase, so the
-// alias inside namespace cudev and the alias at global scope must name the same
-// container.  Changing only one makes the lookup fail with "the type T in
-// std::get<T> must occur exactly once in the tuple".  The host and cudev
-// containers share their names, so a single selection macro drives both.
-//
-//   -DFREELB_POP_CYCLIC     -> CyclicArray
-//   default (CUDA)          -> CyclicArray
-//
-// Inside namespace cudev the name resolves to the device mirror, at global
-// scope to the host class, so one selection drives both -- and both must be
-// switched together, because POP is looked up by type.
+// POP is always CyclicArray.  The former VMM double-mapping experiment was
+// retired: a branch-free 1x mapping cannot be correct for arbitrary logical
+// counts (the alias boundary is the device allocation granularity).  The
+// FREELB_POP_ARRAY name is kept because POP is looked up by type in
+// GenericFieldBase and the host/cudev aliases must agree.
 // ---------------------------------------------------------------------------
-#if defined(FREELB_POP_STREAMMAP)
-#  define FREELB_POP_ARRAY StreamMapArray
-#else
-#  define FREELB_POP_ARRAY CyclicArray
-#endif
+#define FREELB_POP_ARRAY CyclicArray
 
 // POP storage element type: with FREELB_POP_FP16 (CUDA builds only) the
 // distributions are stored as __half while every computation stays float --
@@ -163,9 +152,6 @@ class GenericArray;
 template <typename T>
 class CyclicArray;
 
-template <typename T>
-class StreamMapArray;
-
 namespace cudev {
 #ifdef __CUDACC__
 template <typename T, typename Base>
@@ -182,9 +168,6 @@ class GenericArray;
 
 template <typename T>
 class CyclicArray;
-
-template <typename T>
-class StreamMapArray;
 
 #endif
 }  // namespace cudev
@@ -209,7 +192,6 @@ template <typename T, unsigned int D>
 using VectorFieldSoA = GenericFieldBase<GenericArray<T>, D>;
 
 template <typename T, unsigned int q>
-// using PopulationField = GenericFieldBase<StreamMapArray<T>, q>;
 using PopulationField = GenericFieldBase<CyclicArray<T>, q>;
 
 
@@ -341,18 +323,8 @@ using SCALARCONSTFORCE = Data<T, SCALARCONSTFORCEBase>;
 template <typename T>
 using StrainRateMag = GenericField<GenericArray<T>, StrainRateMagBase>;
 
-#ifdef __CUDACC__
 template <typename T, unsigned int q>
 using POP = GenericField<FREELB_POP_ARRAY<PopStorage<T>>, POPBase<q>>;
-// using POP = GenericField<CyclicArray<T>, POPBase<q>>;
-
-#else
-// CPU default POP container
-template <typename T, unsigned int q>
-using POP = GenericField<CyclicArray<T>, POPBase<q>>;
-// using POP = GenericField<StreamMapArray<T>, POPBase<q>>;
-
-#endif
 
 template <typename T>
 using RHOINIT = Data<T, RHOINITBase>;

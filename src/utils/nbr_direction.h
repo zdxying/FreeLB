@@ -45,3 +45,9 @@ enum NbrDirection : std::uint8_t {
   // z-positive
   ZP = 32
 };
+
+// an edge or corner neighbor carries one flag per crossed axis
+constexpr NbrDirection operator|(NbrDirection a, NbrDirection b) {
+  return static_cast<NbrDirection>(static_cast<std::uint8_t>(a) |
+                                   static_cast<std::uint8_t>(b));
+}

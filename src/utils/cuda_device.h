@@ -20,7 +20,6 @@
 
 #pragma once
 
-#include <cuda.h>
 #include <cuda_runtime_api.h>
 
 #include <cstdint>
@@ -118,33 +117,3 @@ __global__ void copyKernel(T* dst, T* src, std::size_t size) {
     dst[idx] = src[idx];
   }
 }
-
-#ifdef __CUDACC__
-
-namespace cudev{
-
-std::size_t getDevicePageSize() {
-  std::size_t granularity = 0;
-  CUmemAllocationProp prop = {};
-  prop.type = CU_MEM_ALLOCATION_TYPE_PINNED;
-  prop.location.type = CU_MEM_LOCATION_TYPE_DEVICE;
-  prop.location.id = get_cuda_device();
-  cuMemGetAllocationGranularity(&granularity, &prop, CU_MEM_ALLOC_GRANULARITY_MINIMUM);
-  return granularity;
-}
-
-template <typename T>
-std::size_t getPageAlignedCount(std::size_t count) {
-  // page_size on RTX 3060: 2097152 = 128 *128 * 128
-  const std::size_t page_size = getDevicePageSize();
-  const std::size_t size = ((count * sizeof(T) - 1) / page_size + 1) * page_size;
-  const std::size_t volume = size / sizeof(T);
-  if (size % page_size != 0) {
-    std::cerr << "Error: getPageAlignedCount" << std::endl;
-    exit(1);
-  }
-  return volume;
-};
-}
-
-#endif

@@ -390,7 +390,7 @@ The golden directories pin these values (relative 1e-6 unless noted):
 | `tests/feature/casegen_force` | 586.5301684 | 1155.983056 |
 | `tests/feature/casegen_mrt` | 586.534128 | 1155.984267 |
 | `tests/feature/casegen_les` | 586.531249 | 1155.988022 |
-| `tests/feature/casegen_plain` | 287.5573693 | 1148.306514 |
+| `tests/feature/casegen_plain` | 289.5460876 | 1155.844456 |
 | `tests/feature/casegen_mpi` (inner cells, MPI, 1e-12) | 445.51566903028549 | 1023.9878563745673 |
 | `tests/feature/casegen_dsl_math` (2D `.op`, 200 steps) | 586.5034095 | 1155.987548 |
 | `tests/feature/casegen_cu` (float, 1e-5, RHO only) | — | 1155.992025 |

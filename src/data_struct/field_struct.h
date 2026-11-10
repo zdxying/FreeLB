@@ -130,6 +130,22 @@ class BlockFieldManager {
 
   // block fields
   std::vector<BlockField<FieldType, FloatType, Dim>> _Fields;
+  // geometry generation the current _Fields was built against.  Reuse is only
+  // valid while the block objects are the same live ones; a rebuild advances
+  // the generation and forces a fresh set.
+  std::uint64_t _fieldsGeneration = 0;
+  bool canReuseFields() const {
+    if (_fieldsGeneration != _BlockGeo.getGeometryGeneration()) return false;
+    const auto& blocks = _BlockGeo.getBlocks();
+    if (_Fields.size() != blocks.size()) return false;
+    for (std::size_t i = 0; i < blocks.size(); ++i) {
+      if (&_Fields[i].getBlock() != &blocks[i]) return false;
+    }
+    return true;
+  }
+  void resetFields(typename FieldType::value_type value) {
+    for (auto& field : _Fields) field.Reset(value);
+  }
   // blockstructure
   // obj of _BlockGeo should not be destroyed
   BlockGeometry<FloatType, Dim>& _BlockGeo;
@@ -204,8 +220,8 @@ class BlockFieldManager {
   using cudev_BlockFieldManagerType =
     cudev::BlockFieldManager<cudev_FieldType, FloatType, Dim>;
 
-  cudev_BlockFieldType** dev_Fields;
-  cudev_BlockFieldManagerType* dev_BlockFieldManager;
+  cudev_BlockFieldType** dev_Fields = nullptr;
+  cudev_BlockFieldManagerType* dev_BlockFieldManager = nullptr;
 #endif
 
  public:
@@ -223,7 +239,14 @@ class BlockFieldManager {
   // move constructor
   BlockFieldManager(BlockFieldManager&& blockFManager) noexcept;
 
-  ~BlockFieldManager() = default;
+  ~BlockFieldManager() {
+#ifdef __CUDACC__
+    // BlockField objects own their own dev_BlockField handles; this manager
+    // owns the pointer table and the mirror object built from it.
+    if (dev_BlockFieldManager) cuda_free(dev_BlockFieldManager);
+    if (dev_Fields) cuda_free(dev_Fields);
+#endif
+  }
 
   BlockGeometry<FloatType, Dim>& getGeo() { return _BlockGeo; }
   const BlockGeometry<FloatType, Dim>& getGeo() const { return _BlockGeo; }
@@ -255,6 +278,14 @@ class BlockFieldManager {
   cudev_BlockFieldType** get_devptr() { return dev_Fields; }
   cudev_BlockFieldManagerType* get_devObj() { return dev_BlockFieldManager; }
   void constructInDevice();
+  // rebuild the block-field pointer table and the mirror object from _Fields
+  void refreshDeviceObject() {
+    if (dev_Fields) cuda_free(dev_Fields);
+    if (dev_BlockFieldManager) cuda_free(dev_BlockFieldManager);
+    dev_Fields = nullptr;
+    dev_BlockFieldManager = nullptr;
+    InitDeviceData();
+  }
 #endif
 
 
@@ -392,12 +423,13 @@ class BlockFieldManager {
     if (this != &blockFManager) {
       _Fields = blockFManager._Fields;
       _BlockGeo = blockFManager._BlockGeo;
+      _fieldsGeneration = blockFManager._fieldsGeneration;
     }
 #ifdef MPI_ENABLED
     resetCommPlans();
 #endif
 #ifdef __CUDACC__
-    device_to_device(dev_Fields, blockFManager.dev_Fields, _Fields.size());
+    refreshDeviceObject();
 #endif
     return *this;
   }
@@ -406,12 +438,13 @@ class BlockFieldManager {
     if (this != &blockFManager) {
       _Fields = std::move(blockFManager._Fields);
       _BlockGeo = blockFManager._BlockGeo;
+      _fieldsGeneration = blockFManager._fieldsGeneration;
     }
 #ifdef MPI_ENABLED
     resetCommPlans();
 #endif
 #ifdef __CUDACC__
-    dev_Fields = blockFManager.dev_Fields;
+    refreshDeviceObject();
 #endif
     return *this;
   }

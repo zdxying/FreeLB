@@ -19,8 +19,7 @@
 // copyToHost) -- the part that silently rots when a container layout changes.
 //
 //   Section A  cudev::CyclicArray  (rotate / getPrevious / set / copyToHost)
-//   Section B  GenericArray / Genericvector / Data / GenericField /
-//              StreamMapArray
+//   Section B  GenericArray / Genericvector / Data / GenericField
 //
 // Section A is the higher-value one: for each (count, offset) inside the
 // container's contract it rotates ON the device through the mirror object and
@@ -118,8 +117,42 @@ void checkView(const std::vector<T>& got, const std::vector<T>& host,
   }
 }
 
+// the cudev object caches count by value; read it on the device
+__global__ void mirrorSizeKernel(const cudev::CyclicArray<T>* arr, std::size_t* out) {
+  *out = arr->size();
+}
+
 void run() {
   std::printf("\n--- cudev::CyclicArray ---\n");
+
+  // Resize must rebuild the device mirror, not only the host buffer.
+  {
+    const std::size_t n0 = 32;
+    const std::size_t n1 = 128;
+    CyclicArray<T> arr(n0, T{3});
+    std::size_t* dev_n = nullptr;
+    CUDA_CHECK(cudaMalloc(&dev_n, sizeof(std::size_t)));
+
+    mirrorSizeKernel<<<1, 1>>>(arr.get_devObj(), dev_n);
+    CUDA_CHECK(cudaGetLastError());
+    CUDA_CHECK(cudaDeviceSynchronize());
+    std::size_t before = 0;
+    CUDA_CHECK(cudaMemcpy(&before, dev_n, sizeof(before), cudaMemcpyDeviceToHost));
+
+    arr.Resize(n1);
+    mirrorSizeKernel<<<1, 1>>>(arr.get_devObj(), dev_n);
+    CUDA_CHECK(cudaGetLastError());
+    CUDA_CHECK(cudaDeviceSynchronize());
+    std::size_t after = 0;
+    CUDA_CHECK(cudaMemcpy(&after, dev_n, sizeof(after), cudaMemcpyDeviceToHost));
+
+    std::printf("[resize] host=%zu mirror before=%zu after=%zu\n", arr.size(),
+                before, after);
+    CHECK_EQ(before, n0);
+    CHECK_EQ(arr.size(), n1);
+    CHECK_EQ(after, n1);
+    CUDA_CHECK(cudaFree(dev_n));
+  }
 
   // counts deliberately include non-power-of-two values; offsets are filtered
   // to CyclicArray's contract (|offset| < count)
@@ -300,29 +333,67 @@ void addGenericField(GenericField<ArrayType, Base>& a, U value) {
   addGenericField_kernel<<<bn, bs>>>(a.get_devObj(), value);
 }
 
-// ------------------------------------------------------------- StreamMapArray
-template <typename U>
-__any__ void addStreamMapArrayImp(cudev::StreamMapArray<U>& a, std::size_t id) {
-  a[id] = U(id) + U(1);
-}
-template <typename U>
-__global__ void addStreamMapArray_kernel(cudev::StreamMapArray<U>* a) {
-  const std::size_t idx = blockIdx.x * blockDim.x + threadIdx.x;
-  if (idx < a->size()) addStreamMapArrayImp(*a, idx);
-}
-template <typename U>
-void addStreamMapArray(StreamMapArray<U>& a) {
-  const unsigned int bs = THREADS_PER_BLOCK;
-  const unsigned int bn = static_cast<unsigned int>((a.size() + bs - 1) / bs);
-  addStreamMapArray_kernel<<<bn, bs>>>(a.get_devObj());
+// A GenericField keeps a device table of cudev array mirrors.  Each object must
+// point at its own mirrors; copying the source table sends writes to the source.
+template <typename Field>
+cudev::GenericArray<T>* firstMirror(Field& field) {
+  cudev::GenericArray<T>* entry = nullptr;
+  CUDA_CHECK(cudaMemcpy(&entry, field.get_devptr(), sizeof(entry),
+                        cudaMemcpyDeviceToHost));
+  return entry;
 }
 
-void set(StreamMapArray<T>& arr) {
-  for (std::size_t i = 0; i < arr.size(); ++i) arr[i] = T(i);
+void testFieldMirrorOwnership() {
+  std::printf("\n--- GenericField mirror ownership ---\n");
+  RHO<T> src(64, T{1});
+  CHECK(firstMirror(src) == src.getField(0).get_devObj());
+
+  // Pre-initialise the targets: a default-constructed target also exposes a
+  // separate null dev_count in GenericArray's copy assignment.
+  RHO<T> copy(64, T{0});
+  copy = src;
+  std::printf("[copy] own=%d source=%d field_mirror_shared=%d\n",
+              firstMirror(copy) == copy.getField(0).get_devObj(),
+              firstMirror(copy) == src.getField(0).get_devObj(),
+              copy.get_devObj() == src.get_devObj());
+  CHECK(firstMirror(copy) == copy.getField(0).get_devObj());
+  CHECK(copy.get_devObj() != src.get_devObj());
+
+  addGenericField(copy, T{10});
+  copy.copyToHost();
+  src.copyToHost();
+  CHECK_NEAR(copy.get(0), T{11}, 0.0);
+  CHECK_NEAR(src.get(0), T{1}, 0.0);
+
+  RHO<T> moved(64, T{0});
+  moved = std::move(src);
+  std::printf("[move] own=%d source=%d field_mirror_shared=%d\n",
+              firstMirror(moved) == moved.getField(0).get_devObj(),
+              firstMirror(moved) == src.getField(0).get_devObj(),
+              moved.get_devObj() == src.get_devObj());
+  CHECK(firstMirror(moved) == moved.getField(0).get_devObj());
+  CHECK(moved.get_devObj() != src.get_devObj());
+}
+
+// Construct and destroy a manager: its destructor owns dev_Fields and the
+// mirror object.  compute-sanitizer --leak-check reports the table/mirror if
+// either is dropped.
+void testManagerLifetime() {
+  std::printf("\n--- BlockFieldManager lifetime ---\n");
+  AABB<T, 2> domain(Vector<T, 2>{T(0), T(0)}, Vector<T, 2>{T(32), T(32)});
+  {
+    BlockGeometry2D<T> geo(32, 32, 4, domain, T(1), 1);
+    BlockFieldManager<FLAG, T, 2> fm(geo, std::uint8_t(1));
+    fm.copyToDevice();
+  }
+  CHECK(true);
 }
 
 void run() {
   std::printf("\n--- cudev generic containers ---\n");
+
+  testFieldMirrorOwnership();
+  testManagerLifetime();
 
   const std::size_t N = 10;
 
@@ -360,21 +431,6 @@ void run() {
       CHECK_NEAR(vf.get(i)[1], T{3}, 0.0);
       CHECK_NEAR(vf.get(i)[2], T{4}, 0.0);
     }
-  }
-
-  // StreamMapArray: device write, then a device rotate with Offset = -1
-  {
-    StreamMapArray<T> sarr(N, T{});
-    sarr.setOffset(-1);
-    set(sarr);                 // host: data[i] = i
-    sarr.copyToDevice();
-    addStreamMapArray(sarr);   // device: data[i] = i + 1
-    sarr.copyToHost();
-    for (std::size_t i = 0; i < N; ++i) CHECK_NEAR(sarr[i], T(i) + T(1), 0.0);
-
-    cudev::Stream_kernel<<<1, 1>>>(sarr.get_devObj());  // rotate by -Offset
-    sarr.copyToHost();
-    for (std::size_t i = 0; i < N; ++i) CHECK_NEAR(sarr[i], T(i) + T(2), 0.0);
   }
 }
 

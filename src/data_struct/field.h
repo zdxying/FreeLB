@@ -153,6 +153,7 @@ class Data {
     copyToDevice();
 #endif
   }
+  void Reset(T value = T{}) { Init(value); }
   template <unsigned int i = 0>
   void SetField(T value) {
     _data = value;
@@ -357,15 +358,14 @@ class GenericArray {
 #endif
   }
   GenericArray(std::size_t size) : count(size), data(new T[size]{}) {
-    std::fill(data, data + size, T{});
     InitDeviceData();
   }
-  GenericArray(std::size_t size, T InitValue) : count(size), data(new T[size]{}) {
+  GenericArray(std::size_t size, T InitValue) : count(size), data(new T[size]) {
     std::fill(data, data + size, InitValue);
     InitDeviceData();
   }
   // Copy constructor
-  GenericArray(const GenericArray& arr) : count(arr.count), data(new T[arr.count]{}) {
+  GenericArray(const GenericArray& arr) : count(arr.count), data(new T[arr.count]) {
     std::copy(arr.data, arr.data + count, data);
 #ifdef __CUDACC__
     dev_data = cuda_malloc<T>(count);
@@ -391,20 +391,29 @@ class GenericArray {
   // Copy assignment operator
   GenericArray& operator=(const GenericArray& arr) {
     if (&arr == this) return *this;
-    if (count != arr.count) {
+    const bool reallocated = (count != arr.count);
+    if (reallocated) {
       delete[] data;
-      data = new T[arr.count]{};
+      data = new T[arr.count];
+      count = arr.count;
+#ifdef __CUDACC__
+      if (dev_data) cuda_free(dev_data);
+      if (dev_count) cuda_free(dev_count);
+      if (dev_GenericArray) cuda_free(dev_GenericArray);
+      dev_data = (count > 0) ? cuda_malloc<T>(count) : nullptr;
+      dev_count = cuda_malloc<std::size_t>(1);
+      dev_GenericArray = nullptr;
+#endif
     }
     std::copy(arr.data, arr.data + arr.count, data);
 #ifdef __CUDACC__
-    if (count != arr.count) {
-      cuda_free(dev_data);
-      dev_data = cuda_malloc<T>(arr.count);
+    if (count > 0) {
+      device_to_device(dev_data, arr.dev_data, count);
+      std::size_t n = count;
+      host_to_device(dev_count, &n, 1);
     }
-    device_to_device(dev_data, arr.dev_data, arr.count);
-    device_to_device(dev_count, arr.dev_count, 1);
+    if (reallocated || dev_GenericArray == nullptr) constructInDevice();
 #endif
-    count = arr.count;
     return *this;
   }
   // Move assignment operator
@@ -418,10 +427,15 @@ class GenericArray {
     arr.count = 0;
     arr.data = nullptr;
 #ifdef __CUDACC__
+    if (dev_data) cuda_free(dev_data);
+    if (dev_count) cuda_free(dev_count);
+    if (dev_GenericArray) cuda_free(dev_GenericArray);
     dev_data = arr.dev_data;
     dev_count = arr.dev_count;
+    dev_GenericArray = arr.dev_GenericArray;
     arr.dev_data = nullptr;
     arr.dev_count = nullptr;
+    arr.dev_GenericArray = nullptr;
 #endif
     return *this;
   }
@@ -477,6 +491,9 @@ class GenericArray {
     copyToDevice();
 #endif
   }
+
+  // Re-initialise in place; this is Init() for arrays without rotation state.
+  void Reset(T InitValue) { Init(InitValue); }
 
   void Resize(std::size_t size) {
     if (size == count) return;
@@ -548,7 +565,6 @@ class CyclicArray {
   }
   CyclicArray(std::size_t size)
       : count(size), data(new T[size]{}), shift(0), remainder(size), Offset(0) {
-    std::fill(data, data + size, T{});
     refresh();
 #ifdef __CUDACC__
     nullDeviceData();
@@ -556,7 +572,7 @@ class CyclicArray {
 #endif
   }
   CyclicArray(std::size_t size, T InitValue)
-      : count(size), data(new T[size]{}), shift(0), remainder(size), Offset(0) {
+      : count(size), data(new T[size]), shift(0), remainder(size), Offset(0) {
     std::fill(data, data + size, InitValue);
     refresh();
 #ifdef __CUDACC__
@@ -566,7 +582,7 @@ class CyclicArray {
   }
   // Copy constructor
   CyclicArray(const CyclicArray& arr)
-      : count(arr.count), data(new T[arr.count]{}), shift(arr.shift),
+      : count(arr.count), data(new T[arr.count]), shift(arr.shift),
         remainder(arr.remainder), Offset(arr.Offset) {
     std::copy(arr.data, arr.data + count, data);
     refresh();
@@ -608,7 +624,7 @@ class CyclicArray {
 #endif
     delete[] data;
     count = arr.count;
-    data = new T[arr.count]{};
+    data = new T[arr.count];
     std::copy(arr.data, arr.data + count, data);
     shift = arr.shift;
     remainder = arr.remainder;
@@ -652,6 +668,18 @@ class CyclicArray {
     std::fill(data, data + count, InitValue); 
     Offset = offset;
   }
+  // Re-initialise in place and drop the rotation state, so the result matches
+  // a freshly constructed array (Init() alone intentionally keeps shift).
+  void Reset(T InitValue) {
+    std::fill(data, data + count, InitValue);
+    shift = 0;
+    Offset = 0;
+    refresh();
+#ifdef __CUDACC__
+    copyToDevice();
+    refreshDeviceObject();
+#endif
+  }
   void setOffset(int offset) {
     Offset = offset;
 #ifdef __CUDACC__
@@ -679,6 +707,11 @@ class CyclicArray {
     remainder = size;
     Offset = 0;
     refresh();
+#ifdef __CUDACC__
+    freeDeviceData();
+    nullDeviceData();
+    InitDeviceData();
+#endif
   }
 
   ~CyclicArray() {
@@ -713,16 +746,27 @@ class CyclicArray {
   }
 
   // get data before the last shift(rotate), used in bcs
-  T& getPrevious(std::size_t i) const {
+  T& getPrevious(std::size_t i) {
     std::ptrdiff_t prevIndex = i + Offset;
     if (prevIndex < 0) {
       prevIndex += count;
     } else if (prevIndex >= static_cast<std::ptrdiff_t>(count)) {
       prevIndex -= count;
     }
-    return (static_cast<std::size_t>(prevIndex) > remainder
-              ? start[1]
-              : start[0])[static_cast<std::size_t>(prevIndex)];
+    return (static_cast<std::size_t>(prevIndex) > remainder ? start[1]
+                                                           : start[0])
+      [static_cast<std::size_t>(prevIndex)];
+  }
+  const T& getPrevious(std::size_t i) const {
+    std::ptrdiff_t prevIndex = i + Offset;
+    if (prevIndex < 0) {
+      prevIndex += count;
+    } else if (prevIndex >= static_cast<std::ptrdiff_t>(count)) {
+      prevIndex -= count;
+    }
+    return (static_cast<std::size_t>(prevIndex) > remainder ? start[1]
+                                                           : start[0])
+      [static_cast<std::size_t>(prevIndex)];
   }
 
   void refresh() {
@@ -856,378 +900,6 @@ class CyclicArray {
 
 
 
-// avoid explicit memory copying by memory mapping
-
-#include <sys/mman.h>
-#include <unistd.h>
-#include <fcntl.h>
-
-template <typename T>
-std::size_t getPageAlignedCount(std::size_t count) {
-  const std::size_t page_size = sysconf(_SC_PAGESIZE);
-  const std::size_t size = ((count * sizeof(T) - 1) / page_size + 1) * page_size;
-  const std::size_t PageAlignedCount = size / sizeof(T);
-  if (PageAlignedCount < count) {
-    std::cerr << "PageAlignedSize is smaller than count" << std::endl;
-    exit(1);
-  }
-  return PageAlignedCount;
-}
-
-template <typename T>
-class StreamMapArray {
- private:
-  // number of elements
-  std::size_t count;
-  // base pointer to the data
-  T* data;
-  T* start;
-  // shift
-  std::ptrdiff_t shift;
-  // facilitate the access of data before the last shift(rotate)
-  std::ptrdiff_t Offset;
-
-  // memory mapping
-  std::uint8_t* map;
-  std::size_t map_count;
-  // size of the memory mapping
-  std::size_t map_size;
-
-#ifdef __CUDACC__
-  std::size_t* dev_count;
-  // device pointer to the data
-  // T* dev_data;
-  T* dev_start;
-  std::ptrdiff_t* dev_shift;
-  std::ptrdiff_t* dev_Offset;
-  cudev::StreamMapArray<T>* dev_StreamMapArray;
-
-  CUmemGenericAllocationHandle handle;
-  CUmemAllocationProp prop{};
-  CUmemAccessDesc access{};
-  CUdeviceptr ptr;
-
-  void setDevMap(){
-    const int device = get_cuda_device();
-
-    prop.type = CU_MEM_ALLOCATION_TYPE_PINNED;
-    prop.location.type = CU_MEM_LOCATION_TYPE_DEVICE;
-    prop.location.id = device;
-    cuMemAddressReserve(&ptr, 2 * map_size, 0, 0, 0);
-
-    // per-population handle until cuMemMap accepts non-zero offset
-    cuMemCreate(&handle,     map_size, &prop, 0);
-    cuMemMap(ptr,            map_size, 0, handle, 0);
-    cuMemMap(ptr + map_size, map_size, 0, handle, 0);
-
-    access.location.type = CU_MEM_LOCATION_TYPE_DEVICE;
-    access.location.id = device;
-    access.flags = CU_MEM_ACCESS_FLAGS_PROT_READWRITE;
-    cuMemSetAccess(ptr, 2 * map_size, &access, 1);
-
-    // dev_data = reinterpret_cast<T*>(ptr);
-  }
-
-#endif
-
-  void setMap() {
-#ifdef __CUDACC__
-    map_count = cudev::getPageAlignedCount<T>(count);
-#else
-    map_count = getPageAlignedCount<T>(count);
-#endif
-    map_size = map_count * sizeof(T);
-
-    std::string shm_path = "/flbtmp_XXXXXX";
-    const int shm_name = mkstemp(const_cast<char*>(shm_path.data()));
-    if (shm_name != -1) {
-      std::cerr << "mkstemp failed" << std::endl;
-    }
-    const int shm_file = shm_open(shm_path.c_str(), O_CREAT | O_RDWR | O_EXCL | O_CLOEXEC, S_IRUSR | S_IWUSR);
-    shm_unlink(shm_path.c_str());
-    if (ftruncate(shm_file, map_size) == -1) {
-      std::cerr << "ftruncate failed" << std::endl;
-      exit(1);
-    }
-    map = static_cast<std::uint8_t*>(mmap(NULL, 2 * map_size, PROT_NONE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0));
-    mmap(map , map_size, PROT_READ | PROT_WRITE, MAP_SHARED | MAP_FIXED, shm_file, 0);
-    mmap(map + map_size, map_size, PROT_READ | PROT_WRITE, MAP_SHARED | MAP_FIXED, shm_file, 0);
-    data = reinterpret_cast<T*>(map);
-    start = data + shift;
-
-    #ifdef __CUDACC__
-    setDevMap();
-    #endif
-  }
-  
-
- public:
-  using value_type = T;
-  using array_type = StreamMapArray<T>;
-#ifdef __CUDACC__
-  using cudev_array_type = cudev::StreamMapArray<T>;
-#endif
-
-    StreamMapArray() : count(0), data(nullptr), start(nullptr), shift(0), Offset(0), map(nullptr), map_count(0), map_size(0) {
-#ifdef __CUDACC__
-    dev_count = nullptr;
-    dev_start = nullptr;
-    dev_shift = nullptr;
-    dev_Offset = nullptr;
-#endif
-  }
-  StreamMapArray(std::size_t size)
-      : count(size), shift(0), Offset(0) {
-    setMap();
-    InitDeviceData();
-  }
-  StreamMapArray(std::size_t size, T InitValue)
-      : count(size), shift(0), Offset(0) {
-    setMap();
-    std::fill(data, data + map_count, InitValue);
-    InitDeviceData();
-  }
-  // Copy constructor
-  StreamMapArray(const StreamMapArray& arr)
-      : count(arr.count), shift(arr.shift), Offset(arr.Offset) {
-    setMap();
-    std::copy(arr.data, arr.data + map_count, data);
-#ifdef __CUDACC__
-    dev_count = cuda_malloc<std::size_t>(1);
-    dev_start = cuda_malloc<T>(1);
-    dev_shift = cuda_malloc<std::ptrdiff_t>(1);
-    dev_Offset = cuda_malloc<std::ptrdiff_t>(1);
-    device_to_device(dev_count, arr.dev_count, 1);
-    device_to_device(dev_start, arr.dev_start, 1);
-    device_to_device(dev_shift, arr.dev_shift, 1);
-    device_to_device(dev_Offset, arr.dev_Offset, 1);
-    constructInDevice();
-#endif
-  }
-  // Move constructor
-  StreamMapArray(StreamMapArray&& arr) noexcept
-      : count(arr.count), data(arr.data), start(arr.start), shift(arr.shift), 
-        Offset(arr.Offset), map(arr.map), map_count(arr.map_count), map_size(arr.map_size) {
-    arr.count = 0;
-    arr.data = nullptr;
-    arr.shift = 0;
-    arr.start = nullptr;
-    arr.Offset = 0;
-    arr.map = nullptr;
-    arr.map_count = 0;
-    arr.map_size = 0;
-#ifdef __CUDACC__
-    dev_count = arr.dev_count;
-    dev_start = arr.dev_start;
-    dev_shift = arr.dev_shift;
-    dev_Offset = arr.dev_Offset;
-    arr.dev_count = nullptr;
-    arr.dev_start = nullptr;
-    arr.dev_shift = nullptr;
-    arr.dev_Offset = nullptr;
-    constructInDevice();
-#endif
-  }
-  // Copy assignment operator
-  StreamMapArray& operator=(const StreamMapArray& arr) {
-    if (&arr == this) return *this;
-    if (count != arr.count) {
-      munmap(map, 2 * map_size);
-    }
-    count = arr.count;
-    shift = arr.shift;
-    Offset = arr.Offset;
-    setMap();
-    std::copy(arr.data, arr.data + arr.map_count, data);
-#ifdef __CUDACC__
-    device_to_device(dev_count, arr.dev_count, 1);
-    device_to_device(dev_start, arr.dev_start, 1);
-    device_to_device(dev_shift, arr.dev_shift, 1);
-    device_to_device(dev_Offset, arr.dev_Offset, 1);
-#endif
-
-    return *this;
-  }
-  // Move assignment operator
-  StreamMapArray& operator=(StreamMapArray&& arr) noexcept {
-    if (&arr == this) return *this;
-    munmap(map, 2 * map_size);
-    count = arr.count;
-    data = arr.data;
-    shift = arr.shift;
-    start = arr.start;
-    Offset = arr.Offset;
-    map = arr.map;
-    map_count = arr.map_count;
-    map_size = arr.map_size;
-    // Reset 'arr'
-    arr.count = 0;
-    arr.data = nullptr;
-    arr.shift = 0;
-    arr.start = nullptr;
-    arr.Offset = 0;
-    arr.map = nullptr;
-    arr.map_count = 0;
-    arr.map_size = 0;
-#ifdef __CUDACC__
-    dev_count = arr.dev_count;
-    dev_start = arr.dev_start;
-    dev_shift = arr.dev_shift;
-    dev_Offset = arr.dev_Offset;
-    arr.dev_count = nullptr;
-    arr.dev_start = nullptr;
-    arr.dev_shift = nullptr;
-    arr.dev_Offset = nullptr;
-#endif
-    return *this;
-  }
-
-  ~StreamMapArray() {
-    munmap(map, 2 * map_size);
-#ifdef __CUDACC__
-    if (dev_count) cuda_free(dev_count);
-    if (dev_start) cuda_free(dev_start);
-    if (dev_shift) cuda_free(dev_shift);
-    if (dev_Offset) cuda_free(dev_Offset);
-    if (dev_StreamMapArray) cuda_free(dev_StreamMapArray);
-#endif
-  }
-
-  void InitDeviceData() {
-#ifdef __CUDACC__
-    dev_count = cuda_malloc<std::size_t>(1);
-    dev_start = cuda_malloc<T>(1);
-    dev_shift = cuda_malloc<std::ptrdiff_t>(1);
-    dev_Offset = cuda_malloc<std::ptrdiff_t>(1);
-    copyToDevice();
-    constructInDevice();
-#endif
-  }
-
-#ifdef __CUDACC__
-
-  void copyToDevice() {
-    host_to_device(dev_count, &map_count, 1);
-    host_to_device(dev_shift, &shift, 1);
-    host_to_device(dev_Offset, &Offset, 1);
-    host_to_device(reinterpret_cast<T*>(ptr) , data, 2 * map_count);
-  }
-  // do not copy start pointer
-  void copyToHost() {
-    device_to_host(&map_count, dev_count, 1);
-    device_to_host(&shift, dev_shift, 1);
-    device_to_host(&Offset, dev_Offset, 1);
-    device_to_host(data, reinterpret_cast<T*>(ptr), 2 * map_count);
-    set_start();
-  }
-  T* get_devptr() { return reinterpret_cast<T*>(ptr); }
-  std::size_t get_devcount() const {
-    std::size_t temp;
-    device_to_host(&temp, dev_count, 1);
-    return temp;
-  }
-  cudev::StreamMapArray<T>* get_devObj() { return dev_StreamMapArray; }
-  void constructInDevice() {
-    dev_StreamMapArray = cuda_malloc<cudev::StreamMapArray<T>>(1);
-    // temp host object
-    cudev::StreamMapArray<T> temp(dev_count, reinterpret_cast<T*>(ptr), dev_shift, dev_start, dev_Offset);
-    // copy to device
-    host_to_device(dev_StreamMapArray, &temp, 1);
-  }
-
-#endif
-
-  void Init(T InitValue, int offset = 0) {
-    std::fill(data, data + map_count, InitValue);
-    Offset = offset;
-#ifdef __CUDACC__
-    copyToDevice();
-#endif
-  }
-
-  void setOffset(int offset) {
-    Offset = offset;
-#ifdef __CUDACC__
-    copyToDevice();
-#endif
-  }
-
-  // see the note in CyclicArray::normalize()
-  void normalize() {
-    shift = 0;
-    set_start();
-  }
-
-  void Resize(std::size_t newcount) {
-    if (newcount == count) return;
-    munmap(map, 2 * map_size);
-    map_count = getPageAlignedCount<T>(newcount);
-    map_size = map_count * sizeof(T);
-    setMap();
-    count = newcount;
-    shift = 0;
-    Offset = 0;
-    set_start();
-#ifdef __CUDACC__
-    if (dev_count) cuda_free(dev_count);
-    if (dev_start) cuda_free(dev_start);
-    if (dev_shift) cuda_free(dev_shift);
-    if (dev_Offset) cuda_free(dev_Offset);
-    if (dev_StreamMapArray) cuda_free(dev_StreamMapArray);
-    InitDeviceData();
-#endif
-  }
-
-
-  const T& operator[](std::size_t i) const { return start[i]; }
-  T& operator[](std::size_t i) { return start[i]; }
-
-  inline void set(std::size_t i, T value) { start[i] = value; }
-  std::size_t size() const { return count; }
-  std::size_t mapsize() const { return map_count; }
-  // return the pointer of ith element
-  T* getdataPtr(std::size_t i = 0) { return start + i; }
-  const T* getdataPtr(std::size_t i = 0) const { return start + i; }
-
-  // get data before the last shift(rotate), used in bcs
-  T& getPrevious(std::size_t i) {
-    std::ptrdiff_t prevIndex = i + Offset;
-    if (prevIndex < 0) {
-      prevIndex += map_count;
-    } else if (prevIndex >= static_cast<std::ptrdiff_t>(map_count)) {
-      prevIndex -= map_count;
-    }
-    return start[static_cast<std::size_t>(prevIndex)];
-  }
-
-  // calc start pointer
-  void set_start() { start = data + shift; }
-  void rotate() {
-    const std::ptrdiff_t n = map_count;
-    shift -= Offset;
-    if (shift >= n) {
-      shift -= n;
-    } else if (shift < 0) {
-      shift += n;
-    }
-    set_start();
-  }
-  // compatible with code using cyclic array
-  void rotate(std::ptrdiff_t offset) {
-    const std::ptrdiff_t n = map_count;
-    Offset = offset;
-    shift -= offset;
-    if (shift >= n) {
-      shift -= n;
-    } else if (shift < 0) {
-      shift += n;
-    }
-    set_start();
-  }
-
-};
-
-
 template <typename ArrayType, unsigned int D>
 class GenericFieldBase {
  public:
@@ -1246,17 +918,12 @@ class GenericFieldBase {
   // field data
   std::array<ArrayType, D> _data;
 #ifdef __CUDACC__
-  cudev_GenericArrayFieldType* dev_GenericArrayField;
-  cudev_ArrayType** dev_data;
+  cudev_GenericArrayFieldType* dev_GenericArrayField = nullptr;
+  cudev_ArrayType** dev_data = nullptr;
 #endif
 
  public:
-  GenericFieldBase() : _data{} {
-#ifdef __CUDACC__
-    dev_data = nullptr;
-    dev_GenericArrayField = nullptr;
-#endif
-  }
+  GenericFieldBase() : _data{} {}
   GenericFieldBase(std::size_t size)
       : _data(make_array<ArrayType, D>([&]() { return ArrayType(size); })) {
     InitDeviceData();
@@ -1266,48 +933,33 @@ class GenericFieldBase {
     InitDeviceData();
   }
   // Copy constructor
-  GenericFieldBase(const GenericFieldBase& genF) : _data{} {
-    for (unsigned int i = 0; i < D; ++i) _data[i] = genF._data[i];
-#ifdef __CUDACC__
-    dev_data = cuda_malloc<cudev_ArrayType*>(D);
-    device_to_device(dev_data, genF.dev_data, D);
-    constructInDevice();
-#endif
+  GenericFieldBase(const GenericFieldBase& genF) : _data(genF._data) {
+    InitDeviceData();
   }
   // Move constructor
-  GenericFieldBase(GenericFieldBase&& genF) noexcept {
-    // manually moving each element of the array
-    for (unsigned int i = 0; i < D; ++i) {
-      _data[i] = std::move(genF._data[i]);
-    }
-    // Reset moved-from _data
-    genF._data = {};
-#ifdef __CUDACC__
-    dev_data = genF.dev_data;
-    genF.dev_data = nullptr;
-    constructInDevice();
-#endif
+  GenericFieldBase(GenericFieldBase&& genF) noexcept
+      : _data(std::move(genF._data)) {
+    InitDeviceData();
   }
   // Copy assignment operator
   GenericFieldBase& operator=(const GenericFieldBase& genF) {
     if (&genF == this) return *this;
-    for (unsigned int i = 0; i < D; ++i) _data[i] = genF._data[i];
+    _data = genF._data;
 #ifdef __CUDACC__
-    device_to_device(dev_data, genF.dev_data, D);
+    ensureDeviceDataTable();
+    uploadDataTable();
+    refreshDeviceObject();
 #endif
     return *this;
   }
   // Move assignment operator
   GenericFieldBase& operator=(GenericFieldBase&& genF) noexcept {
     if (&genF == this) return *this;
-    for (unsigned int i = 0; i < D; ++i) {
-      _data[i] = std::move(genF._data[i]);
-    }
-    // Reset moved-from _data
-    genF._data = {};
+    _data = std::move(genF._data);
 #ifdef __CUDACC__
-    dev_data = genF.dev_data;
-    genF.dev_data = nullptr;
+    ensureDeviceDataTable();
+    uploadDataTable();
+    refreshDeviceObject();
 #endif
     return *this;
   }
@@ -1321,15 +973,23 @@ class GenericFieldBase {
 
   void InitDeviceData() {
 #ifdef __CUDACC__
-    dev_data = cuda_malloc<cudev_ArrayType*>(D);
-    cudev_ArrayType* host_Data[D];
-    for (unsigned int i = 0; i < D; ++i) host_Data[i] = _data[i].get_devObj();
-    host_to_device(dev_data, host_Data, D);
+    ensureDeviceDataTable();
+    uploadDataTable();
     constructInDevice();
 #endif
   }
 
 #ifdef __CUDACC__
+  // The device field reads _data[i] mirrors through this table; it must be
+  // rebuilt from THIS object's arrays, never copied from the source object.
+  void ensureDeviceDataTable() {
+    if (dev_data == nullptr) dev_data = cuda_malloc<cudev_ArrayType*>(D);
+  }
+  void uploadDataTable() {
+    cudev_ArrayType* host_Data[D];
+    for (unsigned int i = 0; i < D; ++i) host_Data[i] = _data[i].get_devObj();
+    host_to_device(dev_data, host_Data, D);
+  }
   void copyToDevice() {
     for (unsigned int i = 0; i < D; ++i) _data[i].copyToDevice();
   }
@@ -1344,6 +1004,13 @@ class GenericFieldBase {
     cudev_GenericArrayFieldType temp(dev_data);
     // copy to device
     host_to_device(dev_GenericArrayField, &temp, 1);
+  }
+  void refreshDeviceObject() {
+    if (dev_GenericArrayField) {
+      cuda_free(dev_GenericArrayField);
+      dev_GenericArrayField = nullptr;
+    }
+    constructInDevice();
   }
 #endif
 
@@ -1382,6 +1049,10 @@ class GenericFieldBase {
   void Init(value_type value = value_type{}) {
     for (unsigned int i = 0; i < D; ++i) _data[i].Init(value);
   }
+  // re-initialise in place, including each array's rotation state
+  void Reset(value_type value = value_type{}) {
+    for (unsigned int i = 0; i < D; ++i) _data[i].Reset(value);
+  }
 
   static constexpr unsigned int Size() { return D; }
 };
@@ -1398,20 +1069,36 @@ class GenericField : public GenericFieldBase<ArrayType, Base::array_dim> {
   using cudev_ArrayType = typename ArrayType::cudev_array_type;
   using cudev_FieldType = cudev::GenericField<cudev_ArrayType, Base>;
 
-  cudev_FieldType* dev_GenericField;
+  cudev_FieldType* dev_GenericField = nullptr;
 #endif
 
-  GenericField() {
-#ifdef __CUDACC__
-    dev_GenericField = nullptr;
-#endif
-  }
+  GenericField() = default;
   GenericField(std::size_t size) : GenericFieldBase<ArrayType, array_dim>(size) {
     constructInDevice();
   }
   GenericField(std::size_t size, value_type initialValue)
       : GenericFieldBase<ArrayType, array_dim>(size, initialValue) {
     constructInDevice();
+  }
+  GenericField(const GenericField& genF)
+      : GenericFieldBase<ArrayType, array_dim>(genF) {
+    constructInDevice();
+  }
+  GenericField(GenericField&& genF) noexcept
+      : GenericFieldBase<ArrayType, array_dim>(std::move(genF)) {
+    constructInDevice();
+  }
+  GenericField& operator=(const GenericField& genF) {
+    if (&genF == this) return *this;
+    GenericFieldBase<ArrayType, array_dim>::operator=(genF);
+    refreshDeviceObject();
+    return *this;
+  }
+  GenericField& operator=(GenericField&& genF) noexcept {
+    if (&genF == this) return *this;
+    GenericFieldBase<ArrayType, array_dim>::operator=(std::move(genF));
+    refreshDeviceObject();
+    return *this;
   }
 
   ~GenericField() {
@@ -1428,6 +1115,15 @@ class GenericField : public GenericFieldBase<ArrayType, Base::array_dim> {
     cudev_FieldType temp(this->get_devptr());
     // copy to device
     host_to_device(dev_GenericField, &temp, 1);
+#endif
+  }
+  void refreshDeviceObject() {
+#ifdef __CUDACC__
+    if (dev_GenericField) {
+      cuda_free(dev_GenericField);
+      dev_GenericField = nullptr;
+    }
+    constructInDevice();
 #endif
   }
 #ifdef __CUDACC__

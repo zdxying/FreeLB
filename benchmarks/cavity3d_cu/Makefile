@@ -28,24 +28,10 @@ FLAGS += -DFLOAT_TYPE=float
 FLAGS += -D_UNROLLFOR
 FLAGS += --expt-relaxed-constexpr
 
-# ---------------------------------------------------------------------------
-# Distribution-function container for the POP field.  Same solver either way;
-# useful for comparing cache behaviour of the different cudev arrays.
-#   make POP=cyclic      (default) CyclicArray
-#   make POP=streammap             StreamMapArray
-# ---------------------------------------------------------------------------
 # FP16 POP storage (FP32 compute): traffic halves, ~2x MLUPS
 FP16 ?= 0
 ifeq ($(FP16),1)
 FLAGS += -DFREELB_POP_FP16
-endif
-
-POP ?= cyclic
-ifeq ($(POP),streammap)
-FLAGS += -DFREELB_POP_STREAMMAP
-endif
-ifeq ($(POP),cyclic)
-FLAGS += -DFREELB_POP_CYCLIC
 endif
 
 OUTPUT += vtkoutput

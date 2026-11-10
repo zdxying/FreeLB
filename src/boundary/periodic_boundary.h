@@ -174,6 +174,80 @@ class FixedPeriodicBoundaryManager {
     }
   }
 
+ private:
+  // A periodic copy runs before Stream(), and Stream() pulls: the population
+  // that must land on a face cell is read from the neighbour on the far side
+  // of the face.  Writing the face cell itself therefore lands the copy one
+  // cell inside the domain, so the recv cells are moved one voxel across every
+  // periodic axis into the block's own halo, which is where the pull reads.
+  // The boxes are periodic domain faces, so that halo cell is padding.
+  static void MoveToHalo(const Block<T, D>& cellsFrom, NbrDirection dir,
+                         std::vector<std::size_t>& cells) {
+    const Vector<int, D>& proj = cellsFrom.getProjection();
+    const int overlap = cellsFrom.getOverlap();
+    const Vector<int, D>& mesh = cellsFrom.getBaseBlock().getMesh();
+    std::ptrdiff_t offset = 0;
+    int step[D] = {};
+    for (unsigned int a = 0; a < D; ++a) {
+      const std::uint8_t neg = std::uint8_t(1) << (2 * a);
+      const std::uint8_t pos = std::uint8_t(2) << (2 * a);
+      if (util::isFlag(static_cast<std::uint8_t>(dir), neg)) {
+        step[a] = -1;
+      } else if (util::isFlag(static_cast<std::uint8_t>(dir), pos)) {
+        step[a] = 1;
+      }
+      offset += static_cast<std::ptrdiff_t>(step[a]) * proj[a];
+    }
+    if (offset == 0) return;
+    // The halo written below is the block's own padding.  A box that is not the
+    // block's boundary layer would make the copy overwrite a real neighbour
+    // cell, and a block without an overlap has no padding at all; both are
+    // caller errors, so fail here instead of corrupting the domain.
+    if (overlap < 1) {
+      std::cerr << "[FixedPeriodicBoundaryManager]: a periodic face needs a "
+                   "block overlap"
+                << std::endl;
+      std::exit(-1);
+    }
+    for (std::size_t& id : cells) {
+      const Vector<int, D> loc = cellsFrom.getLoc(id);
+      for (unsigned int a = 0; a < D; ++a) {
+        if (step[a] == 0) continue;
+        const int boundary = step[a] < 0 ? overlap : overlap + mesh[a] - 1;
+        if (loc[a] != boundary) {
+          std::cerr << "[FixedPeriodicBoundaryManager]: periodic face box is not "
+                       "the block boundary (axis "
+                    << a << ", local " << loc[a] << ", expected " << boundary
+                    << ")" << std::endl;
+          std::exit(-1);
+        }
+      }
+      id += offset;
+    }
+  }
+
+  std::size_t AddRecv(BasicCommSet<T, D>& base, LatticeCommSet<LatSet, TypePack>& latc,
+                      BLOCKLATTICE& lat, Block<T, D>& target, Block<T, D>& cellsFrom,
+                      const AABB<T, D>& box, NbrDirection dir) {
+    base.Recvs.emplace_back(&target);
+    cellsFrom.getCellIdx(box, base.Recvs.back().Cells);
+    MoveToHalo(cellsFrom, dir, base.Recvs.back().Cells);
+    latc.Recvs.emplace_back(lat, base.Recvs.back());
+    getPeriodicPopDir<LatSet>(dir, latc.Recvs.back().StreamDirections);
+    return latc.Recvs.size() - 1;
+  }
+
+  std::size_t AddSend(BasicCommSet<T, D>& base, LatticeCommSet<LatSet, TypePack>& latc,
+                      BLOCKLATTICE& lat, Block<T, D>& target, Block<T, D>& cellsFrom,
+                      const AABB<T, D>& box, NbrDirection dir) {
+    base.Sends.emplace_back(&target);
+    cellsFrom.getCellIdx(box, base.Sends.back().Cells);
+    latc.Sends.emplace_back(lat, base.Sends.back());
+    getPeriodicPopDir<LatSet>(dir, latc.Sends.back().StreamDirections);
+    return latc.Sends.size() - 1;
+  }
+
+ public:
   void Setup(const AABB<T, D>& box0, NbrDirection dir0, 
   const AABB<T, D>& box1, NbrDirection dir1) {
     // set periodic boundary condition for cells within box0 and box1
@@ -192,30 +266,20 @@ class FixedPeriodicBoundaryManager {
         bool box1in = isOverlapped(baseblock, box1);
 
         if (box0in && box1in) {
+          // 2 boxes are in the same block.  Each recv is paired with the send
+          // holding its opposite face; a block with two periodic pairs has
+          // several sends to the same block id, so the id cannot identify it.
+          const std::size_t r0 =
+            AddRecv(BaseCommSet, LatCommSet, lat, block, block, box0, dir0);
+          const std::size_t s0 =
+            AddSend(BaseCommSet, LatCommSet, lat, block, block, box1, dir0);
+          LatCommSet.Recvs[r0].SendCommIndex = static_cast<int>(s0);
 
-          // BasicCommSet stores BasicComm in a std::deque, so the
-          // LatticeComm references taken below survive later appends.
-
-          // 2 boxes are in the same block
-          BaseCommSet.Recvs.emplace_back(&block);
-          block.getCellIdx(box0, BaseCommSet.Recvs.back().Cells);
-          LatCommSet.Recvs.emplace_back(lat, BaseCommSet.Recvs.back());
-          getCommPopDir<LatSet>(dir0, LatCommSet.Recvs.back().StreamDirections);
-
-          BaseCommSet.Sends.emplace_back(&block);
-          block.getCellIdx(box1, BaseCommSet.Sends.back().Cells);
-          LatCommSet.Sends.emplace_back(lat, BaseCommSet.Sends.back());
-          getCommPopDir<LatSet>(dir0, LatCommSet.Sends.back().StreamDirections);
-
-          BaseCommSet.Recvs.emplace_back(&block);
-          block.getCellIdx(box1, BaseCommSet.Recvs.back().Cells);
-          LatCommSet.Recvs.emplace_back(lat, BaseCommSet.Recvs.back());
-          getCommPopDir<LatSet>(dir1, LatCommSet.Recvs.back().StreamDirections);
-
-          BaseCommSet.Sends.emplace_back(&block);
-          block.getCellIdx(box0, BaseCommSet.Sends.back().Cells);
-          LatCommSet.Sends.emplace_back(lat, BaseCommSet.Sends.back());
-          getCommPopDir<LatSet>(dir1, LatCommSet.Sends.back().StreamDirections);
+          const std::size_t r1 =
+            AddRecv(BaseCommSet, LatCommSet, lat, block, block, box1, dir1);
+          const std::size_t s1 =
+            AddSend(BaseCommSet, LatCommSet, lat, block, block, box0, dir1);
+          LatCommSet.Recvs[r1].SendCommIndex = static_cast<int>(s1);
 
         } else if (box0in) {
           // box0 is in the block
@@ -229,25 +293,18 @@ class FixedPeriodicBoundaryManager {
               auto &block1 = bdBlock1.getLat().getBlock();
               auto &baseblock1 = block1.getBaseBlock();
               if (isOverlapped(baseblock1, box1)) {
-                BaseCommSet1.Sends.emplace_back(&block);
-                block1.getCellIdx(box1, BaseCommSet1.Sends.back().Cells);
-                LatCommSet1.Sends.emplace_back(lat, BaseCommSet1.Sends.back());
-                getCommPopDir<LatSet>(dir0, LatCommSet1.Sends.back().StreamDirections);
+                const std::size_t s1 =
+                  AddSend(BaseCommSet1, LatCommSet1, lat, block, block1, box1, dir0);
+                const std::size_t r1 =
+                  AddRecv(BaseCommSet1, LatCommSet1, lat, block, block1, box1, dir1);
 
-                BaseCommSet1.Recvs.emplace_back(&block);
-                block1.getCellIdx(box1, BaseCommSet1.Recvs.back().Cells);
-                LatCommSet1.Recvs.emplace_back(lat, BaseCommSet1.Recvs.back());
-                getCommPopDir<LatSet>(dir1, LatCommSet1.Recvs.back().StreamDirections);
+                const std::size_t s2 =
+                  AddSend(BaseCommSet, LatCommSet, lat1, block1, block, box0, dir1);
+                const std::size_t r2 =
+                  AddRecv(BaseCommSet, LatCommSet, lat1, block1, block, box0, dir0);
 
-                BaseCommSet.Sends.emplace_back(&block1);
-                block.getCellIdx(box0, BaseCommSet.Sends.back().Cells);
-                LatCommSet.Sends.emplace_back(lat1, BaseCommSet.Sends.back());
-                getCommPopDir<LatSet>(dir1, LatCommSet.Sends.back().StreamDirections);
-
-                BaseCommSet.Recvs.emplace_back(&block1);
-                block.getCellIdx(box0, BaseCommSet.Recvs.back().Cells);
-                LatCommSet.Recvs.emplace_back(lat1, BaseCommSet.Recvs.back());
-                getCommPopDir<LatSet>(dir0, LatCommSet.Recvs.back().StreamDirections);
+                LatCommSet1.Recvs[r1].SendCommIndex = static_cast<int>(s2);
+                LatCommSet.Recvs[r2].SendCommIndex = static_cast<int>(s1);
 
                 i = j;
                 break;
@@ -266,25 +323,18 @@ class FixedPeriodicBoundaryManager {
               auto &block0 = bdBlock0.getLat().getBlock();
               auto &baseblock0 = block0.getBaseBlock();
               if (isOverlapped(baseblock0, box1)) {
-                BaseCommSet0.Sends.emplace_back(&block);
-                block0.getCellIdx(box0, BaseCommSet0.Sends.back().Cells);
-                LatCommSet0.Sends.emplace_back(lat, BaseCommSet0.Sends.back());
-                getCommPopDir<LatSet>(dir1, LatCommSet0.Sends.back().StreamDirections);
+                const std::size_t s0 =
+                  AddSend(BaseCommSet0, LatCommSet0, lat, block, block0, box0, dir1);
+                const std::size_t r0 =
+                  AddRecv(BaseCommSet0, LatCommSet0, lat, block, block0, box0, dir0);
 
-                BaseCommSet0.Recvs.emplace_back(&block);
-                block0.getCellIdx(box0, BaseCommSet0.Recvs.back().Cells);
-                LatCommSet0.Recvs.emplace_back(lat, BaseCommSet0.Recvs.back());
-                getCommPopDir<LatSet>(dir0, LatCommSet0.Recvs.back().StreamDirections);
+                const std::size_t s1 =
+                  AddSend(BaseCommSet, LatCommSet, lat0, block0, block, box1, dir0);
+                const std::size_t r1 =
+                  AddRecv(BaseCommSet, LatCommSet, lat0, block0, block, box1, dir1);
 
-                BaseCommSet.Sends.emplace_back(&block0);
-                block.getCellIdx(box1, BaseCommSet.Sends.back().Cells);
-                LatCommSet.Sends.emplace_back(lat0, BaseCommSet.Sends.back());
-                getCommPopDir<LatSet>(dir0, LatCommSet.Sends.back().StreamDirections);
-
-                BaseCommSet.Recvs.emplace_back(&block0);
-                block.getCellIdx(box1, BaseCommSet.Recvs.back().Cells);
-                LatCommSet.Recvs.emplace_back(lat0, BaseCommSet.Recvs.back());
-                getCommPopDir<LatSet>(dir1, LatCommSet.Recvs.back().StreamDirections);
+                LatCommSet0.Recvs[r0].SendCommIndex = static_cast<int>(s1);
+                LatCommSet.Recvs[r1].SendCommIndex = static_cast<int>(s0);
 
                 i = j;
                 break;
@@ -307,7 +357,22 @@ class FixedPeriodicBoundaryManager {
         auto &sendbdBlock = BdBlocks[recvcomm.Comm.TargetBlockId];
         BLOCKLATTICE& sendblocklat = sendbdBlock.getLat();
         LatticeCommSet<LatSet, TypePack>& sendlatcomm = sendbdBlock.getLatticeComm();
-        const LatticeComm<LatSet, TypePack>& sendcomm = sendlatcomm.getSendComm(recvblocklat.getBlock().getBlockId());
+        if (recvcomm.SendCommIndex < 0) {
+          std::cerr << "[FixedPeriodicBoundaryManager]: recv without a paired send"
+                    << std::endl;
+          std::exit(-1);
+        }
+        const LatticeComm<LatSet, TypePack>& sendcomm =
+          sendlatcomm.Sends[static_cast<std::size_t>(recvcomm.SendCommIndex)];
+        // The copy pairs the lists by position, so a mismatch is a broken
+        // pairing; without this check it reads past the shorter list.
+        if (recvcomm.Comm.Cells.size() != sendcomm.Comm.Cells.size()) {
+          std::cerr << "[FixedPeriodicBoundaryManager]: recv/send cell lists "
+                       "differ ("
+                    << recvcomm.Comm.Cells.size() << " vs "
+                    << sendcomm.Comm.Cells.size() << ")" << std::endl;
+          std::exit(-1);
+        }
         for (std::size_t id = 0; id < recvcomm.Comm.Cells.size(); ++id) {
           CELL recvcell(recvcomm.Comm.Cells[id], recvblocklat);
           CELL sendcell(sendcomm.Comm.Cells[id], sendblocklat);

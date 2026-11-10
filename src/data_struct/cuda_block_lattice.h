@@ -118,7 +118,7 @@ class BlockLatticeBase {
   // array in registers, which measured a much smaller register footprint
   // (56 vs 96 for D3Q19) at the cost of some extra L1 address traffic.  Kept
   // because it is the natural way to reach the q element addresses and works for
-  // any POP container that provides getdataPtr(): StreamMapArray and CyclicArray.
+  // any POP container that provides getdataPtr() (CyclicArray).
   __device__ void getPopArray(std::size_t id, PopStorage<T>** ptr_arr) {
     this->template getField<POP<T, LatSet::q>>().getArray(id, ptr_arr);
   }

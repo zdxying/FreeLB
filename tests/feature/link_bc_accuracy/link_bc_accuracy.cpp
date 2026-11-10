@@ -104,8 +104,9 @@ int main() {
   flbgeo::writeVoxelFlags(record, flagFM, BulkFlag, VoidFlag);
 
   // Periodic x/y faces.  The face layer is painted with both the fluid and the
-  // periodic bit; the link table skips those cells and the periodic manager
-  // refreshes them.
+  // periodic bit; the link table keeps a face cell's wall links that stay
+  // inside the domain and leaves the ones that cross the periodic axis to the
+  // periodic copy.
   const AABB<T, 3> left(Vector<T, 3>{T(0), T(0), ZDomain0},
                         Vector<T, 3>{T(1), T(Ny), ZDomain1});
   const AABB<T, 3> right(Vector<T, 3>{T(Nx - 1), T(0), ZDomain0},
@@ -137,9 +138,24 @@ int main() {
     NS_Peri("NS_Peri", NSLattice, flagFM, PeriodicFlag, VoidFlag);
   NS_Peri.Setup(left, NbrDirection::XN, right, NbrDirection::XP);
   NS_Peri.Setup(bottom, NbrDirection::YN, top, NbrDirection::YP);
+  // The x and y faces share the corner column, whose diagonal populations
+  // come from the diagonal partner; a face pair alone cannot supply them.
+  const AABB<T, 3> cornerLL(Vector<T, 3>{T(0), T(0), ZDomain0},
+                            Vector<T, 3>{T(1), T(1), ZDomain1});
+  const AABB<T, 3> cornerLR(Vector<T, 3>{T(Nx - 1), T(0), ZDomain0},
+                            Vector<T, 3>{T(Nx), T(1), ZDomain1});
+  const AABB<T, 3> cornerUL(Vector<T, 3>{T(0), T(Ny - 1), ZDomain0},
+                            Vector<T, 3>{T(1), T(Ny), ZDomain1});
+  const AABB<T, 3> cornerUR(Vector<T, 3>{T(Nx - 1), T(Ny - 1), ZDomain0},
+                            Vector<T, 3>{T(Nx), T(Ny), ZDomain1});
+  NS_Peri.Setup(cornerLL, NbrDirection::XN | NbrDirection::YN, cornerUR,
+                NbrDirection::XP | NbrDirection::YP);
+  NS_Peri.Setup(cornerLR, NbrDirection::XP | NbrDirection::YN, cornerUL,
+                NbrDirection::XN | NbrDirection::YP);
 
   flbbc::InterpolatedBBManager<decltype(NSLattice), decltype(flagFM)> ibb(
-    NSLattice, flagFM, record, VoidFlag, PeriodicFlag);
+    NSLattice, flagFM, record, VoidFlag, PeriodicFlag, nullptr, nullptr,
+    std::uint8_t{3});
   CHECK(ibb.getLinkCount() > 0);
 
   const auto& block = geo.getBlock(0);
