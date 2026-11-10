@@ -41,6 +41,7 @@ namespace {
 
 struct FillResult {
   std::size_t active{};
+  std::size_t owned{};
   std::size_t allocated{};
   double fill{};
 };
@@ -49,7 +50,8 @@ struct FillResult {
 // block cells, tags those that touch the solid surface, merges them into
 // blocks, and trims fully void layers.  The resulting FLAG field is then
 // copied into a BlockGeometry3D field so the P0 metrics can be exercised.
-FillResult measure(const char* path, T voxelSize) {
+FillResult measure(const char* path, T voxelSize, int maxBlocks = 0,
+                   bool print = true, int rcbBlocks = 0) {
   constexpr std::uint8_t VoidFlag = std::uint8_t(1);
   constexpr std::uint8_t InsideFlag = std::uint8_t(2);
 
@@ -57,8 +59,13 @@ FillResult measure(const char* path, T voxelSize) {
   BlockGeometryHelper3D<T> helper(reader, 8, 1, 1, true);
   helper.getFlagField().Init(reader, 1, InsideFlag, VoidFlag);
   helper.TagBlockCells(VoidFlag);
-  helper.CreateBlocks(true, false);
-  helper.RemoveUnusedCells(VoidFlag, false);
+  if (rcbBlocks > 0) {
+    helper.RCBOptimization(rcbBlocks);
+  } else {
+    helper.CreateBlocks(true, false);
+    helper.RemoveUnusedCells(VoidFlag, false);
+    if (maxBlocks > 0) helper.FillAwareDecomposition(maxBlocks, T(0), false);
+  }
   helper.LoadBalancing(1);
 
   BlockGeometry3D<T> geo(helper);
@@ -68,12 +75,13 @@ FillResult measure(const char* path, T voxelSize) {
   });
 
   geo.InitVoxelMap(FlagFM);
-  geo.PrintFillRatio(FlagFM, VoidFlag);
+  if (print) geo.PrintFillRatio(FlagFM, VoidFlag);
 
   FillResult result;
   result.active = geo.getTotalActiveCellNum(FlagFM, VoidFlag);
+  result.owned = geo.getTotalOwnedCellNum(FlagFM, VoidFlag);
   result.allocated = geo.getTotalCellNum();
-  result.fill = geo.getFillRatio(FlagFM, VoidFlag);
+  result.fill = geo.getOwnedFillRatio(FlagFM, VoidFlag);
   return result;
 }
 
@@ -121,6 +129,48 @@ int main() {
   CHECK(fine.fill > 0.01);
   CHECK(fine.fill < 0.40);
   CHECK(std::abs(fine.fill - coarse.fill) < 0.20);
+
+  // B3 diagnostics: the helical duct is thin and curved, so this is the hard
+  // end of the fill budget.  The split pass only adds blocks; it cannot merge
+  // the existing 11/22-block table, so the cap decides how far it can go.
+  for (int maxBlocks : {16, 24, 32}) {
+    const FillResult r = measure(path, T(0.5), maxBlocks, false);
+    std::cout << "[feature/geo_stl] h=0.5 max_blocks=" << maxBlocks
+              << " active=" << r.active << " owned=" << r.owned
+              << " allocated=" << r.allocated << " owned_fill=" << r.fill
+              << std::endl;
+    CHECK_EQ(r.owned, fine.owned);
+    CHECK(r.fill >= fine.fill - 1e-12);
+  }
+  for (int maxBlocks : {16, 24}) {
+    const FillResult r = measure(path, T(1), maxBlocks, false);
+    std::cout << "[feature/geo_stl] h=1.0 max_blocks=" << maxBlocks
+              << " active=" << r.active << " owned=" << r.owned
+              << " allocated=" << r.allocated << " owned_fill=" << r.fill
+              << std::endl;
+    CHECK_EQ(r.owned, coarse.owned);
+    CHECK(r.fill >= coarse.fill - 1e-12);
+  }
+
+  // Alternative table shape at the same budget: RCB on the same flag field.
+  // This tells us whether the remaining gap is the split topology or the
+  // dense AABB storage itself.
+  for (int n : {16, 32}) {
+    const FillResult r = measure(path, T(0.5), 0, false, n);
+    std::cout << "[feature/geo_stl] h=0.5 rcb=" << n
+              << " active=" << r.active << " owned=" << r.owned
+              << " allocated=" << r.allocated << " owned_fill=" << r.fill
+              << std::endl;
+    CHECK_EQ(r.owned, fine.owned);
+  }
+  for (int n : {8, 16}) {
+    const FillResult r = measure(path, T(1), 0, false, n);
+    std::cout << "[feature/geo_stl] h=1.0 rcb=" << n
+              << " active=" << r.active << " owned=" << r.owned
+              << " allocated=" << r.allocated << " owned_fill=" << r.fill
+              << std::endl;
+    CHECK_EQ(r.owned, coarse.owned);
+  }
 
   flbmem::printMemoryUsage("feature/geo_stl");
 #if defined(__linux__)

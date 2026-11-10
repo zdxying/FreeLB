@@ -11,6 +11,9 @@
 #   --no-cuda   skip targets that need nvcc / a GPU
 #   --no-mpi    skip targets that need mpic++ (block/refblock, smoke mpi build)
 #
+# A target that must run as a real MPI job sets `MPI_RANKS = N` in its
+# Makefile; run_tests.sh then launches it with `mpirun -np N`.
+#
 # Exit status: 0 if no target failed, 1 otherwise.
 #
 set -u
@@ -81,8 +84,13 @@ run_one() {
   fi
 
   local rc=0
-  if [ "$dir" = "block/refblock" ] || [ "$dir" = "block/compact_mpi" ] \
-     || [ "$dir" = "block/link_bc_seam" ]; then
+  # A target that needs a real MPI job declares the rank count in its
+  # Makefile; the older spawn-based tests keep their special cases below.
+  local ranks
+  ranks="$(sed -n 's/^MPI_RANKS[[:space:]]*=[[:space:]]*//p' "$dir/Makefile" | head -1 | tr -d '[:space:]')"
+  if [ -n "$ranks" ]; then
+    ( cd "$dir" && timeout 300 $MPIRUN -np "$ranks" ./"$target" ) >"$RUN_LOG" 2>&1 || rc=$?
+  elif [ "$dir" = "block/refblock" ] || [ "$dir" = "block/compact_mpi" ]; then
     ( cd "$dir" && timeout 300 $MPIRUN -np 2 ./"$target" ) >"$RUN_LOG" 2>&1 || rc=$?
   elif [ "$dir" = "feature/hidden_comm" ] || [ "$dir" = "block/amr_comm" ]; then
     # These spawn a two-rank child with MPI_Comm_spawn, which needs a real MPI

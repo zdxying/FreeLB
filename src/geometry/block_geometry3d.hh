@@ -21,6 +21,8 @@
 // block_geometry3d.hh
 
 #include <iomanip>
+#include <algorithm>
+#include <limits>
 
 #include "geometry/block_geometry3d.h"
 // on-demand same-level link enumeration (no global Block3D/Communicator copy)
@@ -31,6 +33,44 @@
 #include "geometry/intp_stencil.h"
 // shared fine->coarse averaging enumeration (local + MPI paths)
 #include "geometry/aver_stencil.h"
+// domain-sized geometry record used as a decomposition input
+#include "geometry/voxel_geometry.h"
+
+template <typename T>
+void GeometryFlagField<T>::Init(const flbgeo::VoxelGeometry<T>& geo,
+                                std::uint8_t domainflag, std::uint8_t voidflag) {
+  _Nx = geo.getNx();
+  _Ny = geo.getNy();
+  _Nz = geo.getNz();
+  _NxNy = _Nx * _Ny;
+  // A domain-sized record has no STL bounding-box padding: the record's own
+  // first cell is the first index, so RemoveUnusedCells may trim to the active
+  // bounding box.
+  _Ext = 0;
+  _Shift = _NxNy + _Nx + 1;
+  _VoxelSize = geo.getVoxelSize();
+  // operator[] rounds (pos - _MinVoxel) / _VoxelSize, so index (0,0,0) must be
+  // the centre of the record's first cell; otherwise every lookup is off by
+  // one cell and the split statistics silently sample the wrong cells.
+  _MinVoxel = geo.getDomain().getMin() +
+              Vector<T, 3>{T(0.5) * _VoxelSize, T(0.5) * _VoxelSize,
+                           T(0.5) * _VoxelSize};
+  _VoidFlag = voidflag;
+  if (_FlagField) delete[] _FlagField;
+  const std::size_t size = static_cast<std::size_t>(_Nx + 2) *
+                           static_cast<std::size_t>(_Ny + 2) *
+                           static_cast<std::size_t>(_Nz + 2);
+  _FlagField = new std::uint8_t[size];
+  std::fill(_FlagField, _FlagField + size, voidflag);
+  for (int z = 0; z < _Nz; ++z) {
+    for (int y = 0; y < _Ny; ++y) {
+      for (int x = 0; x < _Nx; ++x) {
+        const std::size_t id = geo.getIndex(Vector<int, 3>{x, y, z});
+        set(x, y, z, geo.isDomain(id) ? domainflag : voidflag);
+      }
+    }
+  }
+}
 
 template <typename T>
 Block3D<T>::Block3D(const BasicBlock<T, 3> &baseblock, int olap)
@@ -455,10 +495,8 @@ std::size_t BlockGeometry3D<T>::getTotalActiveCellNum(const FieldType& FieldM,
     }
   }
 #ifdef MPI_ENABLED
-  std::size_t result{};
-  mpi().barrier();
-  mpi().reduce(sum, result, MPI_SUM);
-  return result;
+  mpi().reduceAndBcast(sum, MPI_SUM);
+  return sum;
 #else
   return sum;
 #endif
@@ -486,10 +524,8 @@ std::size_t BlockGeometry3D<T>::getTotalOwnedCellNum(const FieldType& FieldM,
     }
   }
 #ifdef MPI_ENABLED
-  std::size_t result{};
-  mpi().barrier();
-  mpi().reduce(sum, result, MPI_SUM);
-  return result;
+  mpi().reduceAndBcast(sum, MPI_SUM);
+  return sum;
 #else
   return sum;
 #endif
@@ -563,10 +599,8 @@ std::size_t BlockGeometry3D<T>::getTotalCellNum() const {
   std::size_t sum{};
   for (const Block3D<T> &block : _Blocks) sum += block.getN();
 #ifdef MPI_ENABLED
-  std::size_t Result{};
-  mpi().barrier();
-	mpi().reduce(sum, Result, MPI_SUM);
-  return Result;
+  mpi().reduceAndBcast(sum, MPI_SUM);
+  return sum;
 #else
   return sum;
 #endif
@@ -577,10 +611,8 @@ std::size_t BlockGeometry3D<T>::getBaseCellNum() const {
   std::size_t sum{};
   for (const Block3D<T> &block : _Blocks) sum += block.getBaseBlock().getN();
 #ifdef MPI_ENABLED
-  std::size_t Result{};
-  mpi().barrier();
-	mpi().reduce(sum, Result, MPI_SUM);
-  return Result;
+  mpi().reduceAndBcast(sum, MPI_SUM);
+  return sum;
 #else
   return sum;
 #endif
@@ -2113,19 +2145,23 @@ void BlockGeometryHelper3D<T>::IterateAndOptimize(int ProcNum, int MinBlockCellL
 }
 
 template <typename T>
+std::size_t CountActiveCells(const BasicBlock<T, 3>& block,
+                             const GeometryFlagField<T>& flagF,
+                             std::uint8_t voidflag) {
+  std::size_t count{};
+  for (std::size_t id = 0; id < block.getN(); ++id) {
+    const Vector<int, 3> loc = block.getLoc(id);
+    if (flagF[block.getVoxel(loc)] != voidflag) ++count;
+  }
+  return count;
+}
+
+template <typename T>
 T ComputeBlockNStdDev(const std::vector<BasicBlock<T, 3>> &Blocks, const GeometryFlagField<T>& flagF) {
   std::vector<std::size_t> Nvecs;
   T mean{};
   for (const BasicBlock<T, 3> &block : Blocks) {
-    std::size_t N{};
-    for (int z = 0; z < block.getNz(); ++z) {
-      for (int y = 0; y < block.getNy(); ++y) {
-        for (int x = 0; x < block.getNx(); ++x) {
-          const Vector<T, 3> vox = block.getVoxel(Vector<int, 3>{x, y, z});
-          if (flagF[vox] != flagF._VoidFlag) ++N;
-        }
-      }
-    }
+    const std::size_t N = CountActiveCells(block, flagF, flagF._VoidFlag);
     Nvecs.push_back(N);
     mean += static_cast<T>(N);
   }
@@ -2658,6 +2694,432 @@ void BlockGeometryHelper3D<T>::LoadOptimization(int maxiter, T tolstddev, bool o
             << "  Total CellNum:     " << OldTotalCellNum << " -> " << TotalCellNum << "\n"
             << "  StdDev:            " << OldStdDev << " -> " << min_stddev << "\n"
             << "  OverlappedCellNum: " << OldOverlappedCellNum << " -> " << overlappedCellNum << std::endl;
+}
+
+
+// --- fill-aware decomposition helpers -------------------------------------
+
+struct DecompActiveBox {
+  Vector<int, 3> Lo{std::numeric_limits<int>::max(),
+                    std::numeric_limits<int>::max(),
+                    std::numeric_limits<int>::max()};
+  Vector<int, 3> Hi{-1, -1, -1};
+  std::size_t Count{0};
+
+  bool empty() const { return Count == 0; }
+
+  void add(const Vector<int, 3>& loc) {
+    for (int a = 0; a < 3; ++a) {
+      Lo[a] = std::min(Lo[a], loc[a]);
+      Hi[a] = std::max(Hi[a], loc[a]);
+    }
+    ++Count;
+  }
+
+  void merge(const DecompActiveBox& other) {
+    if (other.empty()) return;
+    for (int a = 0; a < 3; ++a) {
+      Lo[a] = std::min(Lo[a], other.Lo[a]);
+      Hi[a] = std::max(Hi[a], other.Hi[a]);
+    }
+    Count += other.Count;
+  }
+};
+
+struct DecompSplitChoice {
+  bool Valid{false};
+  int Axis{-1};
+  int Cut{-1};
+  std::size_t Score{std::numeric_limits<std::size_t>::max()};
+  // Tie-break when the trimmed footprint is equal: prefer isolating a larger
+  // fully active half, then a more balanced cut.
+  std::size_t FullVolume{0};
+  std::size_t MaxHalfVolume{std::numeric_limits<std::size_t>::max()};
+};
+
+// Dense cells a half would allocate after trimming to its active bounding box:
+// `ext` void layers stay on each side like RemoveUnusedCells(), and each block
+// carries `overlap` halo layers on every face.
+inline std::size_t DecompTrimmedCells(const DecompActiveBox& box, int axis,
+                                      int cut, bool lowSide, int ext, int overlap,
+                                      const Vector<int, 3>& mesh) {
+  std::size_t cells = 1;
+  for (int a = 0; a < 3; ++a) {
+    int lo = std::max(0, box.Lo[a] - ext);
+    int hi = std::min(mesh[a] - 1, box.Hi[a] + ext);
+    if (a == axis) {
+      if (lowSide) hi = std::min(hi, cut - 1);
+      else lo = std::max(lo, cut);
+    }
+    cells *= static_cast<std::size_t>(hi - lo + 1 + 2 * overlap);
+  }
+  return cells;
+}
+
+// Best cut along any axis: the one whose two trimmed halves allocate the
+// fewest cells.  A cut through a solid or void slab removes that slab from
+// both bounding boxes, which is the footprint gain a uniform split cannot see.
+template <typename T>
+DecompSplitChoice FindDecompSplit(const BasicBlock<T, 3>& block,
+                                  const GeometryFlagField<T>& flagF,
+                                  std::uint8_t voidflag, int ext, int overlap) {
+  DecompSplitChoice best;
+  std::vector<Vector<int, 3>> active;
+  active.reserve(block.getN());
+  for (std::size_t id = 0; id < block.getN(); ++id) {
+    const Vector<int, 3> loc = block.getLoc(id);
+    if (flagF[block.getVoxel(loc)] != voidflag) active.push_back(loc);
+  }
+  if (active.size() < 2) return best;
+
+  const Vector<int, 3> mesh = block.getMesh();
+  for (int axis = 0; axis < 3; ++axis) {
+    const int m = mesh[axis];
+    if (m < 2) continue;
+    std::vector<DecompActiveBox> bucket(static_cast<std::size_t>(m));
+    for (const Vector<int, 3>& loc : active) {
+      bucket[static_cast<std::size_t>(loc[axis])].add(loc);
+    }
+    std::vector<DecompActiveBox> pre(static_cast<std::size_t>(m) + 1);
+    std::vector<DecompActiveBox> suf(static_cast<std::size_t>(m) + 1);
+    for (int c = 1; c <= m; ++c) {
+      pre[c] = pre[c - 1];
+      pre[c].merge(bucket[static_cast<std::size_t>(c - 1)]);
+    }
+    for (int c = m - 1; c >= 0; --c) {
+      suf[c] = suf[c + 1];
+      suf[c].merge(bucket[static_cast<std::size_t>(c)]);
+    }
+    for (int c = 1; c < m; ++c) {
+      if (pre[c].empty() || suf[c].empty()) continue;
+      const std::size_t score =
+        DecompTrimmedCells(pre[c], axis, c, true, ext, overlap, mesh) +
+        DecompTrimmedCells(suf[c], axis, c, false, ext, overlap, mesh);
+      const int b = (axis + 1) % 3;
+      const int d = (axis + 2) % 3;
+      const std::size_t lowVolume =
+        static_cast<std::size_t>(c) * static_cast<std::size_t>(mesh[b]) *
+        static_cast<std::size_t>(mesh[d]);
+      const std::size_t highVolume =
+        static_cast<std::size_t>(m - c) * static_cast<std::size_t>(mesh[b]) *
+        static_cast<std::size_t>(mesh[d]);
+      const std::size_t fullVolume = std::max(
+        pre[c].Count == lowVolume ? lowVolume : std::size_t{0},
+        suf[c].Count == highVolume ? highVolume : std::size_t{0});
+      const std::size_t maxHalfVolume = std::max(lowVolume, highVolume);
+
+      bool better = false;
+      if (score < best.Score) {
+        better = true;
+      } else if (score == best.Score) {
+        if (fullVolume != best.FullVolume) {
+          better = fullVolume > best.FullVolume;
+        } else if (maxHalfVolume != best.MaxHalfVolume) {
+          better = maxHalfVolume < best.MaxHalfVolume;
+        }
+      }
+      if (better) {
+        best.Valid = true;
+        best.Axis = axis;
+        best.Cut = c;
+        best.Score = score;
+        best.FullVolume = fullVolume;
+        best.MaxHalfVolume = maxHalfVolume;
+      }
+    }
+  }
+  return best;
+}
+
+template <typename T>
+std::size_t ShrinkBlockToActive(BasicBlock<T, 3>& block,
+                                const GeometryFlagField<T>& flagF,
+                                std::uint8_t voidflag, int ext) {
+  const Vector<int, 3> mesh = block.getMesh();
+  Vector<int, 3> lo{mesh[0], mesh[1], mesh[2]};
+  Vector<int, 3> hi{-1, -1, -1};
+  for (std::size_t id = 0; id < block.getN(); ++id) {
+    const Vector<int, 3> loc = block.getLoc(id);
+    if (flagF[block.getVoxel(loc)] == voidflag) continue;
+    for (int a = 0; a < 3; ++a) {
+      lo[a] = std::min(lo[a], loc[a]);
+      hi[a] = std::max(hi[a], loc[a]);
+    }
+  }
+  if (hi[0] < 0) return 0;
+  for (int a = 0; a < 3; ++a) {
+    lo[a] = std::max(0, lo[a] - ext);
+    hi[a] = std::min(mesh[a] - 1, hi[a] + ext);
+  }
+  for (int a = 0; a < 3; ++a) {
+    const NbrDirection neg =
+      a == 0 ? NbrDirection::XN : (a == 1 ? NbrDirection::YN : NbrDirection::ZN);
+    const NbrDirection pos =
+      a == 0 ? NbrDirection::XP : (a == 1 ? NbrDirection::YP : NbrDirection::ZP);
+    if (lo[a] > 0) block.resize(-lo[a], neg);
+    const int removePos = mesh[a] - 1 - hi[a];
+    if (removePos > 0) block.resize(-removePos, pos);
+  }
+  return block.getN();
+}
+
+// Dense footprint of a block: base box plus the overlap halo on every face.
+template <typename T>
+std::size_t DecompAllocated(const BasicBlock<T, 3>& block, int overlap) {
+  return static_cast<std::size_t>(block.getNx() + 2 * overlap) *
+         static_cast<std::size_t>(block.getNy() + 2 * overlap) *
+         static_cast<std::size_t>(block.getNz() + 2 * overlap);
+}
+
+template <typename T>
+bool SplitBlock(const BasicBlock<T, 3>& block, int axis, int cut,
+                const GeometryFlagField<T>& flagF, std::uint8_t voidflag,
+                int ext, BasicBlock<T, 3>& low, BasicBlock<T, 3>& high) {
+  const Vector<int, 3> mesh = block.getMesh();
+  if (axis < 0 || axis > 2 || cut <= 0 || cut >= mesh[axis]) return false;
+  const NbrDirection pos =
+    axis == 0 ? NbrDirection::XP : (axis == 1 ? NbrDirection::YP : NbrDirection::ZP);
+  const NbrDirection neg =
+    axis == 0 ? NbrDirection::XN : (axis == 1 ? NbrDirection::YN : NbrDirection::ZN);
+  low = block;
+  high = block;
+  low.resize(-(mesh[axis] - cut), pos);
+  high.resize(-cut, neg);
+  if (ShrinkBlockToActive(low, flagF, voidflag, ext) == 0) return false;
+  if (ShrinkBlockToActive(high, flagF, voidflag, ext) == 0) return false;
+  return true;
+}
+
+// Best dense footprint reachable by repeatedly taking the best cut of a
+// block.  The first cut of a slab run usually costs halo before the later
+// cuts remove the void, so the immediate score cannot decide acceptance.
+template <typename T>
+std::size_t DecompPotential(const BasicBlock<T, 3>& block,
+                            const GeometryFlagField<T>& flagF,
+                            std::uint8_t voidflag, int ext, int overlap,
+                            int depth) {
+  const std::size_t current = DecompAllocated(block, overlap);
+  if (depth <= 0) return current;
+  const std::size_t active = CountActiveCells(block, flagF, voidflag);
+  if (active < 2 || active == block.getN()) return current;
+  const DecompSplitChoice choice =
+    FindDecompSplit(block, flagF, voidflag, ext, overlap);
+  if (!choice.Valid) return current;
+  BasicBlock<T, 3> low;
+  BasicBlock<T, 3> high;
+  if (!SplitBlock(block, choice.Axis, choice.Cut, flagF, voidflag, ext, low,
+                  high)) {
+    return current;
+  }
+  const std::size_t potential =
+    DecompPotential(low, flagF, voidflag, ext, overlap, depth - 1) +
+    DecompPotential(high, flagF, voidflag, ext, overlap, depth - 1);
+  return std::min(current, potential);
+}
+
+template <typename T>
+void BlockGeometryHelper3D<T>::FillAwareDecomposition(int MaxBlocks,
+                                                      T TargetOwnedFill,
+                                                      bool verbose) {
+  std::vector<BasicBlock<T, 3>>& blocks = getAllBasicBlocks();
+  if (blocks.empty()) {
+    blocks.push_back(_BaseBlock);
+    blocks.front().setBlockId(0);
+  }
+  const std::uint8_t voidflag = _FlagField._VoidFlag;
+  RemoveUnusedCells(voidflag, false);
+  auto dropEmpty = [&]() {
+    blocks.erase(std::remove_if(blocks.begin(), blocks.end(),
+                                [&](const BasicBlock<T, 3>& block) {
+                                  return CountActiveCells(block, _FlagField,
+                                                          voidflag) == 0;
+                                }),
+                 blocks.end());
+  };
+  dropEmpty();
+  if (blocks.empty()) {
+    std::cerr << "[FillAwareDecomposition]: no active cells to decompose"
+              << std::endl;
+    exit(1);
+  }
+
+  std::size_t totalActive = 0;
+  for (const BasicBlock<T, 3>& block : blocks) {
+    totalActive += CountActiveCells(block, _FlagField, voidflag);
+  }
+
+  // The first cut of a slab run usually costs halo before the later cuts
+  // remove the void, so a block is accepted only when its whole split subtree
+  // reduces the dense footprint.  A fully active block has nothing to gain.
+  constexpr int SplitLookahead = 4;
+  while (MaxBlocks <= 0 || static_cast<int>(blocks.size()) < MaxBlocks) {
+    std::size_t allocated = 0;
+    for (const BasicBlock<T, 3>& block : blocks) {
+      allocated += DecompAllocated(block, _Overlap);
+    }
+    if (TargetOwnedFill > T(0) &&
+        static_cast<T>(totalActive) / static_cast<T>(allocated) >=
+          TargetOwnedFill) {
+      break;
+    }
+
+    int bestBlock = -1;
+    DecompSplitChoice best;
+    double bestFill = 2.;
+    std::size_t bestGain = 0;
+    for (std::size_t ib = 0; ib < blocks.size(); ++ib) {
+      const std::size_t active =
+        CountActiveCells(blocks[ib], _FlagField, voidflag);
+      if (active < 2 || active == blocks[ib].getN()) continue;
+      const std::size_t current = DecompAllocated(blocks[ib], _Overlap);
+      const std::size_t potential =
+        DecompPotential(blocks[ib], _FlagField, voidflag, _Ext, _Overlap,
+                        SplitLookahead);
+      if (potential >= current) continue;
+      const DecompSplitChoice choice =
+        FindDecompSplit(blocks[ib], _FlagField, voidflag, _Ext, _Overlap);
+      if (!choice.Valid) continue;
+      const double fill = static_cast<double>(active) / static_cast<double>(current);
+      const std::size_t gain = current - potential;
+      if (bestBlock < 0 || fill < bestFill ||
+          (fill == bestFill && gain > bestGain)) {
+        bestBlock = static_cast<int>(ib);
+        best = choice;
+        bestFill = fill;
+        bestGain = gain;
+      }
+    }
+    if (bestBlock < 0) break;
+
+    BasicBlock<T, 3> low;
+    BasicBlock<T, 3> high;
+    if (!SplitBlock(blocks[static_cast<std::size_t>(bestBlock)], best.Axis,
+                    best.Cut, _FlagField, voidflag, _Ext, low, high)) {
+      break;
+    }
+    blocks.erase(blocks.begin() + bestBlock);
+    blocks.push_back(low);
+    blocks.push_back(high);
+    dropEmpty();
+  }
+
+  // The split order depends on the search; sort by global index before
+  // assigning ids so the table is reproducible from the geometry alone.
+  std::sort(blocks.begin(), blocks.end(),
+            [](const BasicBlock<T, 3>& a, const BasicBlock<T, 3>& b) {
+              const Vector<int, 3>& ai = a.getIdxBlock().getMin();
+              const Vector<int, 3>& bi = b.getIdxBlock().getMin();
+              for (int d = 0; d < 3; ++d) {
+                if (ai[d] != bi[d]) return ai[d] < bi[d];
+              }
+              for (int d = 0; d < 3; ++d) {
+                if (a.getMesh()[d] != b.getMesh()[d]) {
+                  return a.getMesh()[d] < b.getMesh()[d];
+                }
+              }
+              return false;
+            });
+  for (std::size_t i = 0; i < blocks.size(); ++i) {
+    blocks[i].setBlockId(static_cast<int>(i));
+  }
+  InvalidateBlockIndexPtrs();
+  ValidateActiveCoverage(voidflag, false);
+
+  if (verbose) {
+    std::size_t allocated = 0;
+    for (const BasicBlock<T, 3>& block : blocks) {
+      allocated += DecompAllocated(block, _Overlap);
+    }
+    const double fill =
+      allocated ? static_cast<double>(totalActive) / static_cast<double>(allocated) : 0.;
+    MPI_RANK(0)
+    std::cout << "[FillAwareDecomposition]:\n"
+              << "  Blocks:       " << blocks.size() << "\n"
+              << "  Owned active: " << totalActive << "\n"
+              << "  Allocated:    " << allocated << "\n"
+              << "  Owned fill:   " << fill << std::endl;
+  }
+}
+
+template <typename T>
+std::vector<BlockLayoutEntry> BlockGeometryHelper3D<T>::GetBlockLayout() const {
+  const std::vector<BasicBlock<T, 3>>& blocks = getAllBasicBlocks();
+  std::vector<BlockLayoutEntry> layout;
+  layout.reserve(blocks.size());
+  for (const BasicBlock<T, 3>& block : blocks) {
+    BlockLayoutEntry entry;
+    entry.BlockId = block.getBlockId();
+    entry.IndexMin = block.getIdxBlock().getMin();
+    entry.Mesh = block.getMesh();
+    entry.Overlap = _Overlap;
+    entry.Level = block.getLevel();
+    layout.push_back(entry);
+  }
+  std::sort(layout.begin(), layout.end(),
+            [](const BlockLayoutEntry& a, const BlockLayoutEntry& b) {
+              if (a.BlockId != b.BlockId) return a.BlockId < b.BlockId;
+              for (int d = 0; d < 3; ++d) {
+                if (a.IndexMin[d] != b.IndexMin[d]) {
+                  return a.IndexMin[d] < b.IndexMin[d];
+                }
+              }
+              for (int d = 0; d < 3; ++d) {
+                if (a.Mesh[d] != b.Mesh[d]) return a.Mesh[d] < b.Mesh[d];
+              }
+              return false;
+            });
+  return layout;
+}
+
+template <typename T>
+void BlockGeometryHelper3D<T>::ValidateActiveCoverage(std::uint8_t voidflag,
+                                                      bool verbose) const {
+  const std::vector<BasicBlock<T, 3>>& blocks = getAllBasicBlocks();
+  const Vector<int, 3> baseMin = _BaseBlock.getIdxBlock().getMin();
+  const Vector<int, 3> baseMesh = _BaseBlock.getMesh();
+  std::vector<std::uint8_t> count(_BaseBlock.getN(), std::uint8_t{0});
+
+  std::size_t assigned = 0;
+  for (const BasicBlock<T, 3>& block : blocks) {
+    const Vector<int, 3> blockMin = block.getIdxBlock().getMin();
+    for (std::size_t id = 0; id < block.getN(); ++id) {
+      const Vector<int, 3> loc = block.getLoc(id);
+      if (_FlagField[block.getVoxel(loc)] == voidflag) continue;
+      const Vector<int, 3> g = blockMin - baseMin + loc;
+      if (g[0] < 0 || g[0] >= baseMesh[0] || g[1] < 0 ||
+          g[1] >= baseMesh[1] || g[2] < 0 || g[2] >= baseMesh[2]) {
+        std::cerr << "[ValidateActiveCoverage]: block " << block.getBlockId()
+                  << " owns an active cell outside the base block at ("
+                  << g[0] << ", " << g[1] << ", " << g[2] << ")" << std::endl;
+        exit(1);
+      }
+      ++count[_BaseBlock.getIndex(g)];
+      ++assigned;
+    }
+  }
+
+  std::size_t activeTotal = 0;
+  for (std::size_t id = 0; id < _BaseBlock.getN(); ++id) {
+    const Vector<int, 3> loc = _BaseBlock.getLoc(id);
+    if (_FlagField[_BaseBlock.getVoxel(loc)] == voidflag) continue;
+    ++activeTotal;
+    if (count[id] != 1) {
+      std::cerr << "[ValidateActiveCoverage]: active cell (" << loc[0] << ", "
+                << loc[1] << ", " << loc[2] << ") is owned " << int(count[id])
+                << " times" << std::endl;
+      exit(1);
+    }
+  }
+  if (assigned != activeTotal) {
+    std::cerr << "[ValidateActiveCoverage]: assigned " << assigned
+              << " active cells, base has " << activeTotal << std::endl;
+    exit(1);
+  }
+  if (verbose) {
+    MPI_RANK(0)
+    std::cout << "[ValidateActiveCoverage]: " << blocks.size() << " blocks own "
+              << activeTotal << " active cells exactly once" << std::endl;
+  }
 }
 
 

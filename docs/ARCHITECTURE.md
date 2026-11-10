@@ -104,6 +104,14 @@ VoxelGeometry --writeVoxelFlags--> BlockFieldManager --InitVoxelMap--> active ma
 The record has no block or rank notion; `writeVoxelFlags` maps it onto blocks and halos, and
 `InitVoxelMap` derives the owned/active counts. Nothing writes the record back.
 
+For the decomposition the record can also fill a `GeometryFlagField` directly
+(`GeometryFlagField::Init(VoxelGeometry)`), which is the input
+`BlockGeometryHelper3D::FillAwareDecomposition` counts; `writeVoxelFlags` remains the field-layer
+path. The split is a helper method, not a storage policy: it accepts a cut only when the whole
+split subtree lowers the dense footprint (base box plus overlap halo), so the block table is
+derived from the geometry and is the same for every rank count. `GetBlockLayout()` records it in
+memory and `ValidateActiveCoverage()` enforces one owner per active cell.
+
 **POP storage and policy**: `POP<T,q>` wraps `FREELB_POP_ARRAY<PopStorage<T>>`, where
 `PopStorage` is `__half` under FP16. The policies are `DirectPop` (recompute the address from
 the offset) and `RegPop` (resolve the q addresses once in the constructor). The policy is a
@@ -141,7 +149,7 @@ Paths are relative to `src/`.
 | Cell, fields, POP policy | `data_struct/cell.h`, `data_struct/field.h`, `data_struct/pop_policy.h` |
 | block manager, field manager, comm plan | `data_struct/block_lattice.h`, `data_struct/field_struct.h`, `parallel/comm_plan.h` |
 | field aliases (`RHO`/`VELOCITY`/`FLAG`/`POP`...) | `utils/alias.h` |
-| blocks, AABB, shapes, decomposition, active mask (`InitVoxelMap`) | `geometry/block_geometry2d.h`, `geometry/block_geometry3d.h`, `geometry/basic_shape2d.h`, `geometry/basic_shape3d.h` |
+| blocks, AABB, shapes, decomposition (`RCB`, `FillAwareDecomposition`), active mask (`InitVoxelMap`) | `geometry/block_geometry2d.h`, `geometry/block_geometry3d.h`, `geometry/basic_shape2d.h`, `geometry/basic_shape3d.h` |
 | voxel geometry record (role/entity/material, patches, band) -> flag mask | `geometry/voxel_geometry.h`, `geometry/voxel_geometry.hh` |
 | STL/primitive -> `VoxelGeometry` | `io/voxel_geometry_builder.h`, `io/voxel_geometry_builder.hh` |
 | `.flbgeo` geometry file and its build recipe | `io/geometry_file.h`, `io/geometry_file.hh` |

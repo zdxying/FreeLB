@@ -1,12 +1,13 @@
 # Link boundary conditions (B4): stage 2
 
-Status: surface links + static IBB + one-rank and 2-rank seams + fractional-wall, moving-wall and
-curved-wall (Taylor-Couette) accuracy on `feat/link-bc` (2026-11-07); full entity/BC binding and
-CUDA scope still open | Updated: 2026-11-07 | Target: replace staircase reflection with a
-surface-link boundary
+Status: merged into `dev` from `feat/link-bc` (2026-11-07): surface links + static IBB + one-rank
+and 2-rank seams + fractional-wall, moving-wall and curved-wall (Taylor-Couette) accuracy; full
+entity/BC binding, host-only CUDA and moving-wall refinement still open | Updated: 2026-11-07 |
+Target: replace staircase reflection with a surface-link boundary
 
-> Exit condition: a curved-wall accuracy baseline, thin-wall mass conservation, a 2-rank seam
-> fixture, and the CUDA scope are all recorded. Delete this plan when B4 merges.
+> Exit condition: the B4 accuracy/seam/CUDA-scope baseline is recorded (done at the merge), and the
+> open items in §3 are closed or reassigned. The measured values live in the tests; delete this
+> plan once §3 is empty.
 
 ## 1. Decision
 
@@ -56,8 +57,8 @@ Two-rank seam (`tests/block/link_bc_seam`, `mpirun -np 2`, 2 x 2 x 2 blocks, fou
 rank): 8 blocks, 7160 links and 1294 fluid cells in total, mass 1294 -> 1294 over 20 steps, and
 both ranks own links (checked with an `MPI_MIN`). The link table is built from block halos whose
 flags `writeVoxelFlags` fills from global positions, so the MPI halo needs no flag communication;
-`InitVoxelMap` runs before the lattice is built. Global counts are reduced by the test itself, not
-by `getTotalOwnedCellNum`, which is not collective on this branch.
+`InitVoxelMap` runs before the lattice is built. Global counts are reduced by the test itself
+rather than `getTotalOwnedCellNum`, whose non-root result is only fixed by the unmerged B3 branch.
 
 Fractional-wall accuracy (`tests/feature/link_bc_accuracy`): a 16 x 16 x 8 channel periodic in
 x/y, with STL walls at q=0.25 (bottom) and q=0.75 (top) and a constant body force along x.
@@ -78,10 +79,10 @@ inner half and 0.0561 on the static outer half.  6000 and 12000 steps agree to 1
 profile is converged.  This is the B4 curved-wall baseline and it also exercises
 position-dependent wall velocity on a curved surface.
 
-Gates: `make test-cpu` PASS 41 / FAIL 0 / SKIP 4 (includes `feature/link_bc`,
-`feature/link_bc_accuracy`, `feature/link_bc_moving`, `feature/link_bc_curved` and
-`block/link_bc_seam`); `tools/check_headers.sh` exits 0 (the one baseline `utils/cuda_device.h`
-entry remains).
+Gates: `make test` PASS 45 / FAIL 0 / SKIP 0 on `dev` after the merge (includes `feature/link_bc`,
+`feature/link_bc_accuracy`, `feature/link_bc_moving`, `feature/link_bc_curved`,
+`block/link_bc_seam` and the CUDA targets on the RTX 3060); `tools/check_headers.sh` exits 0 (the
+one baseline `utils/cuda_device.h` entry remains).
 
 ## 3. Open items
 

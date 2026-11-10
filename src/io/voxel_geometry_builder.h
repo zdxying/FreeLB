@@ -85,6 +85,13 @@ class VoxelGeometryBuilder {
 
   static bool isInside(StlReader<T>& reader, const Vector<T, 3>& pos);
 
+  // Keep the nearest surface sample for one cell.  STL, box, and sphere
+  // sources all feed this, so a later source cannot replace a closer one.
+  void recordSurfaceSample(std::size_t id, T distance,
+                           const Vector<T, 3>& normal, std::uint16_t entity);
+  void addBoxBand(const AABB<T, 3>& box, std::uint16_t entity);
+  void addSphereBand(const Vector<T, 3>& center, T radius, std::uint16_t entity);
+
   // Inclusive cell-index range covering box, clamped to the grid.  Callers still
   // test cell centers because the range is deliberately a little generous.
   void cellRange(const AABB<T, 3>& box, Vector<int, 3>& lo,

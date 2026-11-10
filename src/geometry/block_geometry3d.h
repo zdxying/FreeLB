@@ -32,6 +32,11 @@
 
 #include "data_struct/voxel_map.h"
 
+namespace flbgeo {
+template <typename T>
+class VoxelGeometry;
+}
+
 template <typename T>
 class Block3D : public BasicBlock<T, 3> {
  private:
@@ -307,6 +312,13 @@ class GeometryFlagField {
     readOctree(reader.getTree(), stlflag);
   }
 
+  // Fill from a domain-sized voxel record.  The record already resolves
+  // occupancy per cell, so this maps the record's cell centres onto the
+  // helper's index grid instead of sampling the STL again.
+  void Init(const flbgeo::VoxelGeometry<T>& geo,
+            std::uint8_t domainflag = std::uint8_t{2},
+            std::uint8_t voidflag = std::uint8_t{1});
+
   std::uint8_t get(int x, int y, int z) const {
     // boundary check
     if (x < 0 || x >= _Nx || y < 0 || y >= _Ny || z < 0 || z >= _Nz) return _VoidFlag;
@@ -427,6 +439,28 @@ class GeometryFlagField {
   }
 };
 
+// Reproducible description of one block in a decomposition.  The block table
+// is the part that must agree across rank counts; field data is not included.
+struct BlockLayoutEntry {
+  int BlockId{};
+  Vector<int, 3> IndexMin{};
+  Vector<int, 3> Mesh{};
+  int Overlap{};
+  std::uint8_t Level{};
+};
+
+inline bool operator==(const BlockLayoutEntry& a, const BlockLayoutEntry& b) {
+  return a.BlockId == b.BlockId && a.Overlap == b.Overlap &&
+         a.Level == b.Level &&
+         a.IndexMin[0] == b.IndexMin[0] && a.IndexMin[1] == b.IndexMin[1] &&
+         a.IndexMin[2] == b.IndexMin[2] && a.Mesh[0] == b.Mesh[0] &&
+         a.Mesh[1] == b.Mesh[1] && a.Mesh[2] == b.Mesh[2];
+}
+
+inline bool operator!=(const BlockLayoutEntry& a, const BlockLayoutEntry& b) {
+  return !(a == b);
+}
+
 
 template <typename T>
 class BlockGeometryHelper3D : public BasicBlock<T, 3> {
@@ -535,6 +569,10 @@ class BlockGeometryHelper3D : public BasicBlock<T, 3> {
 
   // get all new basic blocks
   std::vector<BasicBlock<T, 3>>& getAllBasicBlocks() {
+    if (_Exchanged) return _BasicBlocks1;
+    else return _BasicBlocks0;
+  }
+  const std::vector<BasicBlock<T, 3>>& getAllBasicBlocks() const {
     if (_Exchanged) return _BasicBlocks1;
     else return _BasicBlocks0;
   }
@@ -660,7 +698,23 @@ class BlockGeometryHelper3D : public BasicBlock<T, 3> {
 	// LoadOptimization() will NOT create or delete blocks, it changes the position and size of blocks
 	// to get the best load result
   void LoadOptimization(int maxiter = 1000, T tolstddev = T(0.05), bool outputinfo = true);
-  
+
+  // Fill-aware split: repeatedly cut the block whose trim reduces the dense
+  // footprint most, until MaxBlocks or no split helps.  The block table is
+  // derived from the geometry only, so it is the same for every rank count;
+  // call LoadBalancing() afterwards like the other decomposition steps.
+  void FillAwareDecomposition(int MaxBlocks, T TargetOwnedFill = T(0),
+                              bool verbose = false);
+
+  // Stable description of the current basic blocks, sorted by block id.
+  std::vector<BlockLayoutEntry> GetBlockLayout() const;
+
+  // Check that every active cell of the base block is in exactly one block.
+  // Void gaps between blocks are allowed: with a domain-sized record they are
+  // the point of the split, and no communication crosses them.
+  void ValidateActiveCoverage(std::uint8_t voidflag = std::uint8_t{1},
+                              bool verbose = true) const;
+
   // init GeoHelper using a (different) blockcelllen, 
 	// this function is valid only if GeoHelper is constructed from stlreader
   void Init(int blockcelllen);

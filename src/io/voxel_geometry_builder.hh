@@ -114,11 +114,7 @@ void VoxelGeometryBuilder<T>::addStl(StlReader<T>& reader, std::uint16_t entity,
     if (std::abs(distance) > _bandWidth) continue;
     const Vector<T, 3> normal = reader.evalSurfaceNormal(pos);
 
-    auto it = _geometry._band.find(id);
-    if (it == _geometry._band.end() ||
-        std::abs(distance) < std::abs(it->second.Distance)) {
-      _geometry._band[id] = SurfaceSample<T>{distance, normal, entity};
-    }
+    recordSurfaceSample(id, distance, normal, entity);
   }
 }
 
@@ -137,6 +133,10 @@ void VoxelGeometryBuilder<T>::addBox(const AABB<T, 3>& box, std::uint16_t entity
       }
     }
   }
+  // A Domain primitive describes an occupancy region, not a wall; its outer
+  // boundary is the domain edge, not a surface.  Only Solid primitives need
+  // band samples.  An STL keeps the source-surface behavior above.
+  if (role == VoxelRole::Solid) addBoxBand(box, entity);
 }
 
 template <typename T>
@@ -162,6 +162,86 @@ void VoxelGeometryBuilder<T>::addSphere(const Vector<T, 3>& center, T radius,
         if (offset.getnorm2() <= radius2) {
           writeVoxel(id, role, entity, material);
         }
+      }
+    }
+  }
+  if (role == VoxelRole::Solid) addSphereBand(center, radius, entity);
+}
+
+template <typename T>
+void VoxelGeometryBuilder<T>::recordSurfaceSample(std::size_t id, T distance,
+                                                  const Vector<T, 3>& normal,
+                                                  std::uint16_t entity) {
+  if (std::abs(distance) > _bandWidth) return;
+  auto it = _geometry._band.find(id);
+  if (it == _geometry._band.end() ||
+      std::abs(distance) < std::abs(it->second.Distance)) {
+    _geometry._band[id] = SurfaceSample<T>{distance, normal, entity};
+  }
+}
+
+template <typename T>
+void VoxelGeometryBuilder<T>::addBoxBand(const AABB<T, 3>& box,
+                                         std::uint16_t entity) {
+  const Vector<T, 3> half = (box.getMax() - box.getMin()) * T(0.5);
+  const Vector<T, 3> center = box.getMin() + half;
+  const AABB<T, 3> reach = box.getExtended(Vector<T, 3>(_bandWidth));
+  Vector<int, 3> lo, hi;
+  cellRange(reach, lo, hi);
+  const T eps = std::numeric_limits<T>::epsilon();
+  for (int k = lo[2]; k <= hi[2]; ++k) {
+    for (int j = lo[1]; j <= hi[1]; ++j) {
+      for (int i = lo[0]; i <= hi[0]; ++i) {
+        const std::size_t id = _geometry.getIndex(Vector<int, 3>{i, j, k});
+        const Vector<T, 3> d = _geometry.getPosition(id) - center;
+        Vector<T, 3> q;
+        Vector<T, 3> outside;
+        for (int a = 0; a < 3; ++a) {
+          q[a] = std::abs(d[a]) - half[a];
+          outside[a] = std::max(q[a], T(0));
+        }
+        const T outLen = outside.getnorm();
+        const T sd =
+          outLen + std::min(std::max(q[0], std::max(q[1], q[2])), T(0));
+        if (std::abs(sd) > _bandWidth) continue;
+        Vector<T, 3> normal;
+        if (outLen > eps) {
+          for (int a = 0; a < 3; ++a) {
+            normal[a] = (d[a] >= T(0) ? T(1) : T(-1)) * outside[a];
+          }
+          normal /= outLen;
+        } else {
+          int axis = 0;
+          if (q[1] > q[axis]) axis = 1;
+          if (q[2] > q[axis]) axis = 2;
+          normal = Vector<T, 3>(T(0));
+          normal[axis] = d[axis] >= T(0) ? T(1) : T(-1);
+        }
+        recordSurfaceSample(id, sd, normal, entity);
+      }
+    }
+  }
+}
+
+template <typename T>
+void VoxelGeometryBuilder<T>::addSphereBand(const Vector<T, 3>& center, T radius,
+                                            std::uint16_t entity) {
+  const T reach = radius + _bandWidth;
+  const AABB<T, 3> sphereBox(center - Vector<T, 3>(reach),
+                             center + Vector<T, 3>(reach));
+  Vector<int, 3> lo, hi;
+  cellRange(sphereBox, lo, hi);
+  const T eps = std::numeric_limits<T>::epsilon();
+  for (int k = lo[2]; k <= hi[2]; ++k) {
+    for (int j = lo[1]; j <= hi[1]; ++j) {
+      for (int i = lo[0]; i <= hi[0]; ++i) {
+        const std::size_t id = _geometry.getIndex(Vector<int, 3>{i, j, k});
+        const Vector<T, 3> offset = _geometry.getPosition(id) - center;
+        const T r = offset.getnorm();
+        if (r <= eps) continue;
+        const T sd = r - radius;
+        if (std::abs(sd) > _bandWidth) continue;
+        recordSurfaceSample(id, sd, offset / r, entity);
       }
     }
   }
