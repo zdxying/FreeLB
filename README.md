@@ -34,10 +34,9 @@ module map, data model and dependency direction are in `docs/ARCHITECTURE.md`.
 
 ### Umbrella headers: `freelb.h` / `freelb.hh`
 
-`freelb.h` (declarations) and `freelb.hh` (implementations) wrap all active modules (core LBM, free surface, STL, BlockLattice CA, checkpoint, writers, field checksum); a simulation `.cpp` normally needs only these two includes (see `examples/cavity3d`).
+`freelb.h` (declarations) and `freelb.hh` (implementations) wrap all active modules (core LBM, free surface, STL, voxel geometry with its builder and geometry-file IO, BlockLattice CA, checkpoint, writers, field checksum); a simulation `.cpp` normally needs only these two includes (see `examples/cavity3d`).
 The legacy PopLattice path is not wrapped and is frozen; `examples/legacy/*` include its headers (`data_struct/lattice.h(hh)`, `lbm/buoyancy.h`, `lbm/legacy_collision.h`, `ca/zhu_stefanescu*_legacy.h(hh)`) directly.
-Every header compiles on its own except the two baseline entries in `tools/check_headers.sh` (`utils/cuda_device.h` needs `nvcc`; `parallel/mpi_manager.h` misses `<cstdint>` under `-DMPI_ENABLED`).
-File-by-file module map: `docs/ARCHITECTURE.md` §3.
+Every header compiles on its own except the single baseline entry in `tools/check_headers.sh` (`utils/cuda_device.h` needs `nvcc`); the host and MPI sweeps each report 95 headers with only that failure, and the script exits 0. File-by-file module map: `docs/ARCHITECTURE.md` §3.
 
 
 OpenMP and MPI is enabled through the code. Cuda for multi-block structure is not supported for now
@@ -132,6 +131,36 @@ A checkpoint stores every field of every lattice/flag manager and the step count
 Resuming with a different number of ranks works when the block set does not depend on the rank count: blocks are matched by global `blockid`. `AdaptiveOptimization(mpi().getSize())` re-splits the domain per process count and is refused on a rank-count change; use `GeoHelper.CreateBlocks(bx, by[, bz])` + `LoadBalancing(np)` instead.
 
 Checkpoints are written atomically under `RestartDir`: `latest` marks the newest complete step, and old `step_<s>` directories are not deleted automatically. A resumed run reproduces an uninterrupted one step-for-step, bit-exact (`tests/feature/checkpoint`, `tests/cuda/checkpoint`, the latter also with `make FP16=1`). A checkpoint with a different geometry, block set or POP storage precision is rejected with an error, not silently mismatched.
+
+## Complex geometry / voxel geometry
+
+3-D cases can take their domain/solid mask from a voxel record instead of flag boxes painted per region. `flbgeo::VoxelGeometry` (`src/geometry/voxel_geometry.h`) is an immutable, domain-sized record of role (Outside/Domain/Solid), entity, material, boundary patches and a narrow surface band; it has no IO dependency. `flbgeo::VoxelGeometryBuilder` (`src/io/voxel_geometry_builder.h`) rasterises STL meshes and box/sphere primitives into it. `flbgeo::writeVoxelFlags(geo, fields, domainFlag, voidFlag)` (`src/geometry/voxel_geometry.hh`) copies the mask into a block flag field; it overwrites the whole field, so call it after any `[region]` paint.
+
+### `.geo` recipe and `tools/geometry_build`
+
+A `.geo` file is the tracked source: one `[geometry]` block (`grid`, `domain`, `cell_len`, optional `band_width`) followed by ordered `[source.<name>]` blocks (`shape = box|sphere|stl`, `entity`, `material`, `role`, plus shape-specific keys). Source order is part of the semantics: a later solid can overwrite an earlier domain cell. Compile the recipe into the binary mask with:
+
+```bash
+make -C tools/geometry_build
+tools/geometry_build/geometry_build.exe tests/feature/casegen_geo_box3d/geo_box3d.geo -o geo_box3d.flbgeo
+```
+
+`tests/feature/casegen_geo_box3d/geo_box3d.geo` is a minimal example.
+
+### `.flbgeo` v1
+
+`FLBGEO` is a build product, not a tracked fixture (`*.flbgeo` is in `.gitignore`). The file stores the format magic and version, a scalar-type tag, native-endian role/entity/material arrays, boundary patches, surface-band samples, the construction recipe, and an FNV-1a digest. A mismatched magic, version, scalar tag or digest is a hard error instead of a silently different mask. Because the format is native-endian and tagged by `float`/`double`, a file is not portable across endianness or storage precision; rebuild it from the `.geo`. The round-trip is covered by `tests/io/geometry_file`.
+
+### casegen
+
+`tools/casegen` exposes the same path for generated cases (3-D only). `[geometry]` takes `file`, `domain_flag`, `void_flag`, and optional `band_width` and `origin`. With one or more `[geometry.source.<name>]` sections, casegen writes `<case>.geo` into the output directory, and the generated Makefile rebuilds `<file>` with `tools/geometry_build` before linking. Without source sections, `file` is a prebuilt `.flbgeo` that must already exist in the run directory. A complete spec is `tools/casegen/cases/geo_box3d.case`; its golden is `tests/feature/casegen_geo_box3d` (16³, 100 steps). Field tables are in `tools/casegen/README.md` under `[geometry]`.
+
+### Limits
+
+- Boundary patches and entity/material ids are persisted and readable, but are not wired into tasks or boundary conditions yet (B4); generated cases still select tasks from `[tasks]` and `[region.<name>]`.
+- No `.vti` export and no minimum wall-thickness validation.
+- casegen never parses STL/CSG itself: an STL source is recorded in the `.geo` recipe as a path. A prebuilt geometry file and a geometry source spec are supported; direct STL/CSG import is still unsupported.
+- The 2-D path is unchanged (AABB flag boxes); the CUDA device mirror and the `examples/` migration are not done.
 
 ## MPI communication
 

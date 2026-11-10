@@ -83,14 +83,7 @@ class VoxelGeometryBuilder {
   void writeVoxel(std::size_t id, VoxelRole role, std::uint16_t entity,
                   std::uint16_t material);
 
-  // StlReader::signedDistance()/evalSurfaceNormal() no longer instantiate
-  // against the current Vector API, so these reproduce their contract locally:
-  // negative inside the solid, outward normal from solid to fluid.
   static bool isInside(StlReader<T>& reader, const Vector<T, 3>& pos);
-  static T signedDistanceAt(StlReader<T>& reader, const Vector<T, 3>& pos,
-                            bool inside);
-  Vector<T, 3> surfaceNormalAt(StlReader<T>& reader, const Vector<T, 3>& pos,
-                               T distance, bool inside) const;
 
   // Inclusive cell-index range covering box, clamped to the grid.  Callers still
   // test cell centers because the range is deliberately a little generous.

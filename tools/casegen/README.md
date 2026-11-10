@@ -25,10 +25,14 @@ Supported today:
 * writers `rho`, `velocity`, `flag`, checkpoint/restart, checksum assertions;
 * custom `.op` collision operators, shared by the host and CUDA paths;
 * MPI output (`mpi = 1`) with `decompose = auto` and inner-cell checksums;
-* CUDA output (`cuda = 1`) for `hidden`, single-block cases.
+* CUDA output (`cuda = 1`) for `hidden`, single-block cases;
+* an optional 3D voxel-geometry file (`[geometry]`, `.flbgeo`) that supplies
+  the domain/void mask, either prebuilt or rebuilt from a `[geometry.source.*]`
+  recipe.
 
-Not supported: `open`/`anti_pressure`, CA solidification, free surface, AMR,
-STL/CSG geometry.
+Not supported: `open`/`anti_pressure`, CA solidification, free surface, AMR.
+casegen does not parse STL/CSG itself: an STL source is copied into a `.geo`
+recipe that `tools/geometry_build` turns into the `.flbgeo` mask.
 
 ## Invocation
 
@@ -184,6 +188,81 @@ uses `BlockGeometryHelper2D/3D` with a rank-independent `CreateBlocks` plus
 Optional `force = fx, fy[, fz]` fills the `FORCE` field; `smagorinsky = value`
 fills `SMAGORINSKY`. The field list must contain the corresponding field.
 
+### `[geometry]` (optional, 3D only)
+
+A voxel-geometry file supplies the domain/void mask. There are two modes:
+
+* **prebuilt**: only `[geometry]`. `file` is used verbatim in the generated
+  code and must already exist in the run directory.
+* **recipe**: one or more `[geometry.source.<name>]` sections. casegen writes
+  `<case>.geo` into the output directory, and the generated Makefile rebuilds
+  `<file>` from it with `tools/geometry_build` before linking:
+
+```make
+OUTPUT += geo_box3d.flbgeo
+geo_box3d.flbgeo: geo_box3d.geo
+	$(MAKE) -C $(ROOT)/tools/geometry_build
+	$(ROOT)/tools/geometry_build/geometry_build.exe geo_box3d.geo -o $@
+$(TARGET): geo_box3d.flbgeo
+```
+
+The `.flbgeo` is a build product, not a tracked fixture: `make clean` removes
+it through `OUTPUT`, and `--check` compares the tracked `.geo` text.
+
+```ini
+[geometry]
+file = geo_box3d.flbgeo
+domain_flag = bulk
+void_flag = void
+band_width = 1.5          # optional
+origin = 0, 0, 0          # optional
+
+[geometry.source.domain]
+shape = box
+entity = 1
+material = 1
+role = domain
+box = 0, 0, 0, 16, 16, 16
+```
+
+| Key | Required | Value |
+| --- | --- | --- |
+| `file` | yes | `.flbgeo` path, used verbatim in the generated code |
+| `domain_flag` | yes | flag assigned to domain cells; must be defined in `[flags]` |
+| `void_flag` | no | flag assigned to solid/outside cells; defaults to `void` |
+| `band_width` | no | narrow-band width for the geometry builder; defaults to `1.5` |
+| `origin` | no | physical lower corner `x, y, z`; defaults to `0, 0, 0` |
+
+`[geometry.source.<name>]` sections execute in file order:
+
+| Key | Applies to | Value |
+| --- | --- | --- |
+| `shape` | all | `box`, `sphere`, `stl` |
+| `entity` | all | non-negative integer entity id |
+| `material` | all | non-negative integer material id |
+| `role` | all | `domain` or `solid` |
+| `box` | `box` | `x0, y0, z0, x1, y1, z1`, `lo < hi` per axis |
+| `center` | `sphere` | `x, y, z` |
+| `radius` | `sphere` | `> 0` |
+| `path` | `stl` | STL path, relative to the spec file or absolute |
+| `closed` | `stl` | `1` (default) or `0` |
+
+A key that belongs to another shape is rejected, as are missing and unknown
+keys. The `.geo` `[geometry]` block is derived from `[grid] n`,
+`[grid] cell_len` and `[geometry] origin`: `domain` spans
+`origin .. origin + n*cell_len`. Source coordinates are written verbatim in
+that frame. STL paths are rebased from the spec directory to the output
+directory with `os.path.relpath`, so the `.geo` is independent of the current
+working directory.
+
+In both modes the generated code reads the record with
+`flbgeo::readGeometryFile<T>` and applies it with `flbgeo::writeVoxelFlags`.
+That call overwrites the whole flag field, so it runs after the
+`[region.<name>]` actions and replaces their paints on the same cells. The
+flag-count self-check then sees the file's mask. The path is resolved against
+the generated binary's working directory; casegen neither copies the file nor
+emits a `.vti` export.
+
 ### Geometry: `[region.<name>]`
 
 Only `shape = aabb`. `box` is an **AABB endpoint** list in cell units
@@ -338,7 +417,9 @@ change that is not mirrored in the committed output fails the build.
 
 ## Limits
 
-* No CA solidification, free surface, AMR, STL/CSG geometry.
+* No CA solidification, free surface, AMR, or STL/CSG import. `[geometry]`
+  accepts a prebuilt `.flbgeo` or emits a `.geo` recipe for
+  `tools/geometry_build`; casegen itself never parses STL.
 * No `open`/`anti_pressure`; `periodic` is serial, single-block, one axis.
 * `plain` is single-rank: the generated `main` rejects `mpi().getSize() > 1`
   until plain+MPI has a test.
@@ -347,7 +428,9 @@ change that is not mirrored in the committed output fails the build.
 * `mpi = 1` requires `decompose = auto`; it selects `mpic++` and cannot be
   combined with `cuda`. Its checksum uses inner cells and a cross-rank reduction,
   so `expect_pop_mpi`/`expect_rho_mpi` are the values to pin.
-* AABB geometry only; `boundary` boxes must cover the full domain.
+* `[region]` geometry is AABB only; a 3D `[geometry]` file or
+  `[geometry.source.*]` recipe can supply the domain/void mask instead.
+  `boundary` boxes must cover the full domain.
 * Initial density is 1; initial velocity is uniform per case (plus
   `set_velocity` wall values).
 * Vector components and array indices are checked against the case's `dim`/`q`

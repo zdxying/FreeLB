@@ -104,6 +104,52 @@ expect_rho = 1155.971535
 tol = 1e-6
 """
 
+BASE3D = """\
+[case]
+name = geo_box3d
+dim = 3
+float = double
+latset = D3Q19
+
+[fields]
+list = RHO, VELOCITY, POP
+
+[flags]
+void = 1
+bulk = 2
+
+[grid]
+n = 4, 4, 4
+cell_len = 1
+block_cell_len = 4
+thread_num = 1
+decompose = single
+
+[physics]
+converter = simplified
+char_u = 0.1
+rt = 0.56
+rho_init = 1
+init_u = 0, 0, 0
+
+[tasks]
+bulk = bgk
+
+[schedule]
+type = hidden
+steps = 10
+output_step = 10
+tol = 0
+"""
+
+GEOMETRY = """
+
+[geometry]
+file = geo_box3d.flbgeo
+domain_flag = bulk
+void_flag = void
+"""
+
 
 class CaseFileTest(unittest.TestCase):
     def setUp(self) -> None:
@@ -203,6 +249,265 @@ init_u = 0, 0""",
         spec = self.parse_text(text)
         self.assertEqual(spec.output["writers"], [])
         self.assertFalse(spec.checksum["enable"])
+
+
+class GeometrySectionTest(CaseFileTest):
+    def test_geometry_is_absent_by_default(self) -> None:
+        self.assertIsNone(self.parse_text(BASE3D).geometry)
+
+    def test_parses_a_3d_geometry_file(self) -> None:
+        spec = self.parse_text(BASE3D + GEOMETRY)
+        self.assertIsNotNone(spec.geometry)
+        self.assertEqual(spec.geometry.file, "geo_box3d.flbgeo")
+        self.assertEqual(spec.geometry.domain_flag, "bulk")
+        self.assertEqual(spec.geometry.void_flag, "void")
+
+    def test_void_flag_defaults_to_void(self) -> None:
+        spec = self.parse_text(BASE3D + GEOMETRY.replace("void_flag = void\n", ""))
+        self.assertEqual(spec.geometry.void_flag, "void")
+
+    def test_geometry_is_3d_only(self) -> None:
+        self.assert_error(BASE + GEOMETRY, "only supported for dim = 3")
+
+    def test_missing_file(self) -> None:
+        self.assert_error(
+            BASE3D + "\n[geometry]\ndomain_flag = bulk\n",
+            "missing required key 'file'",
+        )
+
+    def test_missing_domain_flag(self) -> None:
+        self.assert_error(
+            BASE3D + "\n[geometry]\nfile = geo_box3d.flbgeo\n",
+            "missing required key 'domain_flag'",
+        )
+
+    def test_unknown_domain_flag(self) -> None:
+        self.assert_error(
+            BASE3D + GEOMETRY.replace("domain_flag = bulk", "domain_flag = ghost"),
+            "undefined flag 'ghost'",
+        )
+
+    def test_unknown_void_flag(self) -> None:
+        self.assert_error(
+            BASE3D + GEOMETRY.replace("void_flag = void", "void_flag = ghost"),
+            "undefined flag 'ghost'",
+        )
+
+    def test_unknown_key(self) -> None:
+        self.assert_error(
+            BASE3D + GEOMETRY.replace("void_flag = void", "void_flag = void\nbogus = 1"),
+            "unknown key 'bogus'",
+        )
+
+    def test_duplicate_key(self) -> None:
+        self.assert_error(
+            BASE3D
+            + GEOMETRY.replace(
+                "file = geo_box3d.flbgeo",
+                "file = a.flbgeo\nfile = b.flbgeo",
+            ),
+            "duplicate key 'file'",
+        )
+
+
+class GeometrySourceSectionTest(CaseFileTest):
+    def source(self, name: str = "body", body: str = "") -> str:
+        if not body:
+            body = (
+                "shape = box\n"
+                "entity = 1\n"
+                "material = 2\n"
+                "role = domain\n"
+                "box = 0, 0, 0, 4, 4, 4\n"
+            )
+        return "\n[geometry.source.%s]\n%s" % (name, body)
+
+    def test_box_source_defaults(self) -> None:
+        spec = self.parse_text(BASE3D + GEOMETRY + self.source())
+        self.assertEqual(len(spec.geometry.sources), 1)
+        source = spec.geometry.sources[0]
+        self.assertEqual(source.name, "body")
+        self.assertEqual(source.shape, "box")
+        self.assertEqual(source.entity, 1)
+        self.assertEqual(source.material, 2)
+        self.assertEqual(source.role, "domain")
+        self.assertEqual(source.box, (0.0, 0.0, 0.0, 4.0, 4.0, 4.0))
+        self.assertEqual(spec.geometry.band_width, 1.5)
+        self.assertEqual(spec.geometry.origin, (0.0, 0.0, 0.0))
+
+    def test_band_width_and_origin_are_optional(self) -> None:
+        geometry = GEOMETRY.replace(
+            "void_flag = void",
+            "void_flag = void\nband_width = 2.5\norigin = 1, 2, 3",
+        )
+        spec = self.parse_text(BASE3D + geometry + self.source())
+        self.assertEqual(spec.geometry.band_width, 2.5)
+        self.assertEqual(spec.geometry.origin, (1.0, 2.0, 3.0))
+
+    def test_sources_follow_file_order(self) -> None:
+        text = BASE3D + GEOMETRY + self.source("outer")
+        text += self.source(
+            "inner",
+            "shape = sphere\n"
+            "entity = 2\n"
+            "material = 3\n"
+            "role = solid\n"
+            "center = 2, 2, 2\n"
+            "radius = 1.5\n",
+        )
+        spec = self.parse_text(text)
+        self.assertEqual([item.name for item in spec.geometry.sources], ["outer", "inner"])
+        sphere = spec.geometry.sources[1]
+        self.assertEqual(sphere.shape, "sphere")
+        self.assertEqual(sphere.center, (2.0, 2.0, 2.0))
+        self.assertEqual(sphere.radius, 1.5)
+        self.assertEqual(sphere.role, "solid")
+
+    def test_stl_source_and_closed_default(self) -> None:
+        body = (
+            "shape = stl\n"
+            "entity = 3\n"
+            "material = 4\n"
+            "role = solid\n"
+            "path = parts/blade.stl\n"
+        )
+        spec = self.parse_text(BASE3D + GEOMETRY + self.source("blade", body))
+        source = spec.geometry.sources[0]
+        self.assertEqual(source.path, "parts/blade.stl")
+        self.assertTrue(source.closed)
+
+        closed = body + "closed = 0\n"
+        spec = self.parse_text(BASE3D + GEOMETRY + self.source("blade", closed))
+        self.assertFalse(spec.geometry.sources[0].closed)
+
+    def test_missing_shape(self) -> None:
+        body = "entity = 1\nmaterial = 2\nrole = domain\nbox = 0, 0, 0, 4, 4, 4\n"
+        self.assert_error(
+            BASE3D + GEOMETRY + self.source(body=body),
+            "missing required key 'shape'",
+        )
+
+    def test_missing_entity(self) -> None:
+        body = "shape = box\nmaterial = 2\nrole = domain\nbox = 0, 0, 0, 4, 4, 4\n"
+        self.assert_error(
+            BASE3D + GEOMETRY + self.source(body=body),
+            "missing required key 'entity'",
+        )
+
+    def test_missing_box_for_box_source(self) -> None:
+        body = "shape = box\nentity = 1\nmaterial = 2\nrole = domain\n"
+        self.assert_error(
+            BASE3D + GEOMETRY + self.source(body=body),
+            "missing required key 'box'",
+        )
+
+    def test_missing_radius_for_sphere(self) -> None:
+        body = (
+            "shape = sphere\n"
+            "entity = 1\n"
+            "material = 2\n"
+            "role = solid\n"
+            "center = 1, 1, 1\n"
+        )
+        self.assert_error(
+            BASE3D + GEOMETRY + self.source(body=body),
+            "missing required key 'radius'",
+        )
+
+    def test_missing_path_for_stl(self) -> None:
+        body = "shape = stl\nentity = 1\nmaterial = 2\nrole = solid\n"
+        self.assert_error(
+            BASE3D + GEOMETRY + self.source(body=body),
+            "missing required key 'path'",
+        )
+
+    def test_unknown_shape(self) -> None:
+        body = "shape = cylinder\nentity = 1\nmaterial = 2\nrole = solid\n"
+        self.assert_error(
+            BASE3D + GEOMETRY + self.source(body=body),
+            "unsupported source shape 'cylinder'",
+        )
+
+    def test_unknown_key(self) -> None:
+        body = (
+            "shape = box\n"
+            "entity = 1\n"
+            "material = 2\n"
+            "role = domain\n"
+            "box = 0, 0, 0, 4, 4, 4\n"
+            "bogus = 1\n"
+        )
+        self.assert_error(
+            BASE3D + GEOMETRY + self.source(body=body),
+            "unknown key 'bogus'",
+        )
+
+    def test_key_belongs_to_another_shape(self) -> None:
+        body = (
+            "shape = stl\n"
+            "entity = 1\n"
+            "material = 2\n"
+            "role = solid\n"
+            "path = x.stl\n"
+            "radius = 1\n"
+        )
+        self.assert_error(
+            BASE3D + GEOMETRY + self.source(body=body),
+            "unknown key 'radius'",
+        )
+
+    def test_invalid_role(self) -> None:
+        body = (
+            "shape = box\n"
+            "entity = 1\n"
+            "material = 2\n"
+            "role = fluid\n"
+            "box = 0, 0, 0, 4, 4, 4\n"
+        )
+        self.assert_error(
+            BASE3D + GEOMETRY + self.source(body=body),
+            "invalid role 'fluid'",
+        )
+
+    def test_box_with_reversed_axis(self) -> None:
+        body = (
+            "shape = box\n"
+            "entity = 1\n"
+            "material = 2\n"
+            "role = domain\n"
+            "box = 4, 0, 0, 0, 4, 4\n"
+        )
+        self.assert_error(
+            BASE3D + GEOMETRY + self.source(body=body),
+            "must satisfy lo < hi",
+        )
+
+    def test_source_needs_the_geometry_section(self) -> None:
+        self.assert_error(
+            BASE3D + self.source(),
+            "needs a [geometry] section with 'file'",
+        )
+
+    def test_source_section_needs_a_name(self) -> None:
+        self.assert_error(
+            BASE3D + GEOMETRY + "\n[geometry.source]\nshape = box\n",
+            "a geometry source section needs a name",
+        )
+
+    def test_geometry_sources_are_3d_only(self) -> None:
+        geometry = (
+            "[geometry]\n"
+            "file = geo.flbgeo\n"
+            "domain_flag = bulk\n"
+        )
+        text = BASE.replace("[tasks]", geometry + "\n" + self.source() + "\n[tasks]")
+        self.assert_error(text, "only supported for dim = 3")
+
+    def test_duplicate_source_name(self) -> None:
+        self.assert_error(
+            BASE3D + GEOMETRY + self.source() + self.source(),
+            "duplicate section [geometry.source.body]",
+        )
 
 
 class InvalidSpecTest(CaseFileTest):

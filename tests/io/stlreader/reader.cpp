@@ -20,6 +20,10 @@
 
 // reader.cpp test
 
+#include <algorithm>
+#include <cmath>
+#include <limits>
+
 #include "freelb.h"
 #include "freelb.hh"
 
@@ -35,6 +39,50 @@ int main() {
 
   // StlReader<T> reader("./stl/radiator.stl", 0.5);
   StlReader<T> reader("./stl/cylinder100_20_20finer.stl", 2., 2.);
+
+  // Surface queries: signedDistance must match the nearest triangle and take
+  // its sign from the octree; evalSurfaceNormal must be unit length and point
+  // from the solid into the fluid.
+  {
+    const std::vector<Triangle<T>>& triangles = reader.getMesh().getTriangles();
+    CHECK(!triangles.empty());
+
+    auto insideAt = [&](const Vector<T, 3>& p) {
+      Octree<T>* node = reader.getTree()->find(p);
+      return node != nullptr && node->isLeaf() && node->getInside();
+    };
+    auto nearestDistance = [&](const Vector<T, 3>& p) {
+      T best = std::numeric_limits<T>::max();
+      for (const Triangle<T>& tri : triangles) {
+        const Vector<T, 3> q = tri.closestPtPointTriangle(p);
+        best = std::min(best, (q - p).getnorm());
+      }
+      return best;
+    };
+
+    const Vector<T, 3> mid = (reader.getMin() + reader.getMax()) * T(0.5);
+    const Vector<T, 3> outside =
+      reader.getMin() - Vector<T, 3>(reader.getVoxelSize() * T(2));
+    const T sdMid = reader.signedDistance(mid);
+    const T sdOutside = reader.signedDistance(outside);
+
+    CHECK_EQ(sdMid < T(0), insideAt(mid));
+    CHECK(std::abs(std::abs(sdMid) - nearestDistance(mid)) < T(1e-9));
+    CHECK(sdOutside > T(0));
+    CHECK(!insideAt(outside));
+    CHECK(std::abs(sdOutside - nearestDistance(outside)) < T(1e-9));
+
+    Triangle<T>& tri = reader.getMesh().getTri(0);
+    const Vector<T, 3> center = tri.getCenter();
+    const Vector<T, 3> probe =
+      center + tri.getNormal() * (reader.getVoxelSize() * T(0.5));
+    const Vector<T, 3> outward =
+      insideAt(probe) ? center - probe : probe - center;
+    const Vector<T, 3> normal = reader.evalSurfaceNormal(probe);
+    CHECK(std::abs(normal.getnorm() - T(1)) < T(1e-6));
+    CHECK(normal * outward > T(0.9) * outward.getnorm());
+  }
+
   // reader.getTree()->write("octree");
   // geometry.Setup<LatSet>();
 

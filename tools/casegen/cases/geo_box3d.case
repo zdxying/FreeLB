@@ -1,0 +1,65 @@
+# geo_box3d: [geometry] acceptance spec for tools/casegen.
+#
+# The domain/void mask comes from the voxel geometry file named by `file`.
+# The [geometry.source.domain] recipe below is emitted as geo_box3d.geo, and
+# the generated Makefile rebuilds geo_box3d.flbgeo from it with
+# tools/geometry_build before linking the case.  The .flbgeo is a build
+# product, not a tracked fixture.
+#
+# Boundary patches stored in the geometry file are not wired into tasks yet:
+# task selection still comes from [tasks] and [region.<name>].
+
+[case]
+name = geo_box3d
+dim = 3
+float = double
+latset = D3Q19
+
+[fields]
+list = RHO, VELOCITY, POP
+
+[flags]
+void = 1
+bulk = 2
+
+[grid]
+n = 16, 16, 16
+cell_len = 1
+block_cell_len = 10
+thread_num = 1
+decompose = single
+
+[physics]
+converter = simplified
+char_u = 0.1
+rt = 0.56
+rho_init = 1
+init_u = 0, 0, 0
+
+[geometry]
+file = geo_box3d.flbgeo
+domain_flag = bulk
+void_flag = void
+
+[geometry.source.domain]
+shape = box
+entity = 1
+material = 1
+role = domain
+box = 0, 0, 0, 16, 16, 16
+
+[tasks]
+bulk = bgk
+
+[schedule]
+type = hidden
+steps = 100
+output_step = 100
+tol = 0
+checkpoint_step = 0
+restart = 0
+restart_dir = ./ckpt
+
+[output]
+writers = rho, velocity
+flag_writer = 0

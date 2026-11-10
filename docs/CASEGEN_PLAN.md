@@ -1,6 +1,6 @@
 # 算例生成器与算子 DSL（tools/casegen）的决策记录
 
-状态：已落地（Phase 1–3）；本文件只记录决策、被否决方案与延迟范围，用法与字段表见 `tools/casegen/README.md`｜日期：2026-11-03｜目标：回答“为什么是现在这个形状”，不重复用户手册
+状态：Phase 1–4 已落地（Phase 4 为 geometry file support）；本文件只记录决策、被否决方案与延迟范围，用法与字段表见 `tools/casegen/README.md`｜日期：2026-11-06｜目标：回答“为什么是现在这个形状”，不重复用户手册
 
 > 退出条件：`tools/casegen/README.md` 与代码能独立解释用法和实现时，本文件只剩“为什么”。
 > 改实现不需要改本文件；改变下面某个决策才需要。
@@ -39,7 +39,17 @@
   `maxabs` 差约 `4.9e-4`，但 RHO sumsq 只差 `1.5e-7`，所以跨后端只钉 RHO。
 - **周期边界的 `BasicComm&` 必须稳定。** `LatticeComm` 持有 `BasicComm&`；
   `BasicCommSet` 用 `std::deque` 存储，`emplace_back` 不会使已有元素引用失效，
-  这是本阶段唯一的 `src/` 改动；`reserve(16)` 那类容量补丁不再需要。
+  这是 casegen 侧唯一的 `src/` 改动；`reserve(16)` 那类容量补丁不再需要。
+- **Geometry 是编译产物，不是 case 目录里的 opaque binary。** `.case` 的
+  `[geometry.source.*]` 是唯一源描述；casegen 把它渲染成可 review 的 `.geo` 文本，
+  `tools/geometry_build` 编译成 `.flbgeo`，生成的 Makefile 在链接前重建。`--check` 比较
+  `.geo`，`*.flbgeo` 被 `.gitignore` 忽略；prebuilt `file` 模式保留，用于外部工具生成
+  或暂不纳入 recipe 的 mask。
+- **Source 顺序是格式语义。** `.geo` 的 `[source.<name>]` 按文件顺序应用，后写的 solid
+  可以覆盖先写的 domain；解析器因此不能排序，也不能换成不保序的 `.ini` reader。
+- **Geometry 的 patch/entity 尚未接 task/BC（B4）。** `.flbgeo` 持久化
+  role/entity/material、boundary patch 与 surface band，但生成的 case 仍从 `[tasks]` 和
+  `[region.<name>]` 选任务；patch 目前只是数据，不参与边界条件。
 
 ## 3. 被否决的方案
 
@@ -48,6 +58,10 @@
 - **配置即源、每次重新生成**：用户手改即分叉；见 §2。
 - **复用 `csegen` 作为算子后端**：basename 硬编码，submodule 契约；见 §2。
 - **固定 driver + 生成头**：cavity2d/3d 的 diff 只有约 40 行，为它引入 hook 体系不划算。
+- **提交 `.flbgeo` fixture 作为真源**：二进制、native-endian、scalar-tagged，review 不可读，
+  格式或标量类型升级要重建所有 fixture。改为提交 `.geo` 文本，由工具重建。
+- **casegen 直接写 `.flbgeo`**：会把 rasterise、band、patch 的语义复制到 Python 侧，与 C++
+  builder 形成两份实现。`.geo` + `tools/geometry_build` 保持单一实现。
 
 ## 4. 延迟与未实现
 
@@ -56,16 +70,18 @@
 - `plain` + MPI：生成代码在 `mpi().getSize() > 1` 时明确报错，直到有 plain 的 `mpirun`
   校验和测试。`periodic` 的多层/多轴：未验证。
 - FP16：未验证。按 `AGENTS.md` §3 的 CUDA/FP16 行手工跑过后再声明。
+- **Geometry 消费端**：patch/entity 接 task/BC（B4）与最小壁厚校验未做；2D 路径保持
+  原样。`.vti`、CUDA device mirror、`examples/` 迁移仍未做。
 
 ## 5. 验收基线
 
-- `python3 -m unittest discover -s tools/casegen/tests`：151 项。
-- 12 个 golden 目录：
-  `tests/feature/casegen{,_op,_dsl,_dsl_math,_3d,_3d_cu,_cu,_force,_mrt,_les,_mpi,_plain}`，
+- `python3 -m unittest discover -s tools/casegen/tests`：185 项。
+- 13 个 golden 目录：
+  `tests/feature/casegen{,_op,_dsl,_dsl_math,_3d,_3d_cu,_cu,_force,_mrt,_les,_mpi,_plain,_geo_box3d}`，
   每个 `make` 前跑 `--check --selftest`。
 - `make test-casegen`：自动发现全部 golden；CUDA 按 nvcc/GPU 跳过，MPI 目录跑
-  `mpirun -np 2`。本机 `PASS 13 / FAIL 0 / SKIP 0`。
-- `make test-cpu`：PASS 27 / FAIL 0 / SKIP 4；`tests/regression/cavity2d` 仍为
+  `mpirun -np 2`。本机 `PASS 14 / FAIL 0 / SKIP 0`（`check.sh` 把单测汇总也计为一项）。
+- `make test-cpu`：PASS 36 / FAIL 0 / SKIP 4；`tests/regression/cavity2d` 仍为
   `7728.702031`。
 - 固定值表在 `tools/casegen/README.md` 的 “Exact checksums”；实现细节以代码为准。
 
@@ -74,6 +90,8 @@
 - 改实现（加一个算子、改一段发射）：只改代码、README 与测试，不改本文件。
 - 改决策（例如真的引入运行期解释器、把 DSL 合进 `.case`）：改本文件，并写明新的证据。
 - 新目录算子必须有 golden 或一次手工验证记录，否则不进 `--list`。
+- 改 `.geo` 字段或 `.flbgeo` 的版本/标量标签属于格式变更：先定兼容策略与 fixture 重建
+  路径，再改代码。
 
 ## 7. 后续方向
 
@@ -86,7 +104,10 @@
 | 3D CUDA 等价基线、plain+MPI 取舍 | 中：补两个验证洞 | 1–2 天 | 已落地 |
 | 生成 Makefile 的 `-O3 -march=native` 选项 | 低中：避免生成算例比手写慢 | 0.5 天 | 已落地 |
 | `open` / `anti_pressure` | 中高：最大的缺失边界族 | 1–2 周 | 有真实开边界用例再做 |
-| 区域初值 `set_value` | 中：AABB 之外最实用的缺口 | 3–5 天 | 先于形状几何 |
+| geometry patch/entity → task/BC（B4） | 高：让 patch 真正参与边界 | 依赖 link-BC 与 B4 基线 | 先于 `.vti` |
+| `.vti` 导出 | 中：可视化/调试 geometry mask | 1–2 天 | 有消费者再做 |
+| 稀疏几何的填充式分解（B3） | 高：避免整域块浪费 | 预算见 `COMPLEX_GEOMETRY_PLAN` §7 | 先于 B5 |
+| 区域初值 `set_value` | 中：AABB 之外最实用的缺口 | 3–5 天 | 按需求 |
 | 目录扩展（力变体 / 非牛顿 / 热） | 中：每个 1–2 天 + 一个 golden | 需求驱动 | 按用例加 |
 | CA / 自由面 / AMR / 运行期解释器 | — | 数月 | 不做 |
 
@@ -105,11 +126,16 @@
   `f[9]`/2D `u[2]` 生成期报错；`cuda = 1` + `SMAGORINSKY` 生成期拒绝。
 - **构建**：普通生成的 CPU Makefile 用 `-O3 -march=native`；golden 用 `-O2` 保持基线
   可复现。
+- **Geometry file（Phase 4）**：`[geometry]` 支持 `file`、`domain_flag`、`void_flag`、
+  `band_width`、`origin`；`[geometry.source.*]` 支持 box/sphere/stl，按文件顺序应用。
+  casegen 生成 `.geo`，生成的 Makefile 调 `tools/geometry_build` 重建 `.flbgeo`。golden
+  `casegen_geo_box3d` 为 16³、100 步；prebuilt `file` 模式保留。
 
 ### 暂缓
 
 - `open`/`anti_pressure`：需要进/出口区域、压力边界和另一套主循环；没有真实用例时
   只增加组合矩阵。
-- 形状几何（Circle/Cylinder/STL）：仓库 examples 里 0 引用；先做 `set_value` 更实用。
+- STL/CSG 直接导入：casegen 仍只生成 `.geo`，由 `tools/geometry_build` 栅格化；直接
+  导入需要几何内核/布尔运算，暂不做。
 - 目录扩展：每个条目都要一个 golden，没有对应算例时维护成本大于收益。
 - CA / 自由面 / AMR：另一套骨架，不是 casegen 的增量。

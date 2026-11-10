@@ -917,8 +917,8 @@ bool StlReader<T>::operator()(bool output[], const T input[]) {
   if (c[0] - coords < input[0] && input[0] < c[0] + coords &&
       c[1] - coords < input[1] && input[1] < c[1] + coords &&
       c[2] - coords < input[2] && input[2] < c[2] + coords) {
-    std::vector<T> tmp(input, input + 3);
-    output[0] = _tree->find(tmp)->getInside();
+    Vector<T, 3> tmp(input);
+    if (Octree<T>* node = _tree->find(tmp)) output[0] = node->getInside();
   }
   return true;
 }
@@ -1078,7 +1078,7 @@ Vector<T, 3> StlReader<T>::evalSurfaceNormal(const Vector<T, 3> &origin) {
   }
 
   if (!util::nearZero(normal.getnorm())) {
-    normal = normal.normalize();
+    normal.normalize();
   } else {
     return normal;
   }
@@ -1109,7 +1109,7 @@ inline T StlReader<T>::signedDistance(const Vector<T, 3> &input) {
   T distance = std::numeric_limits<T>::max();
   for (const Triangle<T> &triangle : _mesh.getTriangles()) {
     Vector<T, 3> const pointOnTriangle = triangle.closestPtPointTriangle(input);
-    T currDistance = (pointOnTriangle - input).norm();
+    T currDistance = (pointOnTriangle - input).getnorm();
     distance = std::min(distance, currDistance);
   }
 

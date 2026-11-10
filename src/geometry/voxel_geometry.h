@@ -21,12 +21,14 @@
 // voxel_geometry.h
 // Immutable, domain-sized voxel record: role, entity, material, boundary patches,
 // and a narrow surface band.  It does not own a reader and has no IO dependency;
-// VoxelGeometryBuilder is the only writer.
+// VoxelGeometryBuilder is the only writer.  writeVoxelFlags converts the record
+// into the active mask of a block field manager.
 
 #pragma once
 
 #include <cstddef>
 #include <cstdint>
+#include <string>
 #include <unordered_map>
 #include <vector>
 
@@ -53,6 +55,33 @@ struct BoundaryPatch {
   std::vector<std::size_t> Cells;
 };
 
+// Identifies the primitive that produced one entry of a build recipe.  The
+// value is stable because the geometry file persists it.
+enum class GeometrySourceKind : std::uint8_t { Stl = 0, Box = 1, Sphere = 2 };
+
+// One construction step, kept so a case can be rebuilt from its geometry file
+// instead of re-reading the original mesh.  Only the fields selected by Kind
+// carry meaning; the rest keep their default values.
+template <typename T>
+struct GeometrySource {
+  GeometrySourceKind Kind{GeometrySourceKind::Box};
+  std::string Path;
+  AABB<T, 3> Box;
+  Vector<T, 3> Center;
+  T Radius{};
+  std::uint16_t Entity{kNoEntity};
+  std::uint16_t Material{0};
+  VoxelRole Role{VoxelRole::Domain};
+  bool RequireClosed{false};
+};
+
+// The inputs of VoxelGeometryBuilder, in call order.
+template <typename T>
+struct GeometryRecipe {
+  std::vector<GeometrySource<T>> Sources;
+  T BandWidth{};
+};
+
 // Signed distance is negative inside the solid and positive in the fluid.
 // The normal points from the solid towards the fluid.
 template <typename T>
@@ -64,6 +93,10 @@ struct SurfaceSample {
 
 template <typename T>
 class VoxelGeometryBuilder;
+
+// Defined in io/geometry_file.h; only the reader needs the private arrays.
+template <typename T>
+struct GeometryFile;
 
 template <typename T>
 class VoxelGeometry {
@@ -119,6 +152,7 @@ class VoxelGeometry {
 
  private:
   friend class VoxelGeometryBuilder<T>;
+  friend struct GeometryFile<T>;
 
   int _nx;
   int _ny;
@@ -133,5 +167,13 @@ class VoxelGeometry {
   std::unordered_map<std::size_t, SurfaceSample<T>> _band;
   std::vector<std::size_t> _bandIds;
 };
+
+// Fills a 3D block field manager from the record: Domain cells get domainFlag,
+// Solid and Outside get voidFlag.  Positions outside the record's domain are
+// void.  FieldM is a template parameter so geometry does not include the field
+// layer.
+template <typename T, typename FieldM>
+void writeVoxelFlags(const VoxelGeometry<T>& geo, FieldM& fields,
+                     std::uint8_t domainFlag, std::uint8_t voidFlag);
 
 }  // namespace flbgeo

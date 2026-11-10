@@ -5,6 +5,8 @@ TARGET = cavity2d_dsl_math.exe
 
 ROOT := ../../..
 
+.DEFAULT_GOAL := all
+
 FLAGS += -O2
 FLAGS += -DFLOAT_TYPE=double
 

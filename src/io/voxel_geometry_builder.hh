@@ -110,10 +110,9 @@ void VoxelGeometryBuilder<T>::addStl(StlReader<T>& reader, std::uint16_t entity,
   for (std::size_t id = 0; id < candidate.size(); ++id) {
     if (!candidate[id]) continue;
     const Vector<T, 3> pos = _geometry.getPosition(id);
-    const bool inside = isInside(reader, pos);
-    const T distance = signedDistanceAt(reader, pos, inside);
+    const T distance = reader.signedDistance(pos);
     if (std::abs(distance) > _bandWidth) continue;
-    const Vector<T, 3> normal = surfaceNormalAt(reader, pos, distance, inside);
+    const Vector<T, 3> normal = reader.evalSurfaceNormal(pos);
 
     auto it = _geometry._band.find(id);
     if (it == _geometry._band.end() ||
@@ -254,74 +253,6 @@ bool VoxelGeometryBuilder<T>::isInside(StlReader<T>& reader,
                                        const Vector<T, 3>& pos) {
   Octree<T>* node = reader.getTree()->find(pos);
   return node != nullptr && node->isLeaf() && node->getInside();
-}
-
-template <typename T>
-T VoxelGeometryBuilder<T>::signedDistanceAt(StlReader<T>& reader,
-                                            const Vector<T, 3>& pos, bool inside) {
-  T distance = std::numeric_limits<T>::max();
-  for (const Triangle<T>& triangle : reader.getMesh().getTriangles()) {
-    const Vector<T, 3> point = triangle.closestPtPointTriangle(pos);
-    distance = std::min(distance, (point - pos).getnorm());
-  }
-  return inside ? -distance : distance;
-}
-
-template <typename T>
-Vector<T, 3> VoxelGeometryBuilder<T>::surfaceNormalAt(StlReader<T>& reader,
-                                                      const Vector<T, 3>& pos,
-                                                      T distance,
-                                                      bool inside) const {
-  const std::vector<Triangle<T>>& triangles = reader.getMesh().getTriangles();
-  T best2 = std::numeric_limits<T>::max();
-  Vector<T, 3> closest;
-  const Triangle<T>* nearest = nullptr;
-  for (const Triangle<T>& triangle : triangles) {
-    const Vector<T, 3> point = triangle.closestPtPointTriangle(pos);
-    const T d2 = (point - pos).getnorm2();
-    if (d2 < best2) {
-      best2 = d2;
-      closest = point;
-      nearest = &triangle;
-    }
-  }
-
-  constexpr T eps = std::numeric_limits<T>::epsilon();
-  Vector<T, 3> normal = closest - pos;
-  const T length = normal.getnorm();
-  if (!(length > eps)) {
-    // A point exactly on the surface has no direction to the closest point;
-    // average the triangles that contain it, as findNormalOnSurface() does.
-    Vector<T, 3> sum;
-    std::size_t count = 0;
-    for (const Triangle<T>& triangle : triangles) {
-      if (triangle.IsInside(pos)) {
-        sum = sum + triangle.getNormal();
-        ++count;
-      }
-    }
-    const T sumNorm = sum.getnorm();
-    if (count != 0 && sumNorm > eps) {
-      sum /= sumNorm;
-      return sum;
-    }
-    if (nearest != nullptr) return nearest->getNormal();
-    return Vector<T, 3>{};
-  }
-
-  normal /= length;
-  // Near the surface the octree's leaf-scale classification can disagree with
-  // the nearest-triangle side, so probe both sides at the reader's sampling
-  // scale before choosing the sign.
-  const T h = reader.getVoxelSize();
-  if (std::abs(distance) < h) {
-    const bool inner = isInside(reader, closest - normal * h);
-    const bool outer = isInside(reader, closest + normal * h);
-    if (!(inner && !outer)) normal = normal * T(-1);
-  } else if (!inside) {
-    normal = normal * T(-1);
-  }
-  return normal;
 }
 
 template <typename T>

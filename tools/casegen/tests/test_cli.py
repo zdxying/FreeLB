@@ -80,6 +80,58 @@ tol = 0
 
 OPERATOR_SECTION = "[operators]\nbgk = ops/bgk.op\n\n"
 
+BASE3D = """\
+[case]
+name = geo_box3d
+dim = 3
+float = double
+latset = D3Q19
+
+[fields]
+list = RHO, VELOCITY, POP
+
+[flags]
+void = 1
+bulk = 2
+
+[grid]
+n = 4, 4, 4
+cell_len = 1
+block_cell_len = 4
+thread_num = 1
+decompose = single
+
+[physics]
+converter = simplified
+char_u = 0.1
+rt = 0.56
+rho_init = 1
+init_u = 0, 0, 0
+
+[tasks]
+bulk = bgk
+
+[schedule]
+type = hidden
+steps = 10
+output_step = 10
+tol = 0
+
+[geometry]
+file = geo_box3d.flbgeo
+domain_flag = bulk
+void_flag = void
+"""
+
+SOURCE3D = """
+[geometry.source.domain]
+shape = box
+entity = 1
+material = 1
+role = domain
+box = 0, 0, 0, 4, 4, 4
+"""
+
 
 class CliTest(unittest.TestCase):
     def setUp(self) -> None:
@@ -274,6 +326,134 @@ class CliTest(unittest.TestCase):
         lines = (self.out / "Makefile").read_text(encoding="utf-8").splitlines()
         self.assertIn("FLAGS += -O2", lines)
         self.assertNotIn("FLAGS += -O3 -march=native", lines)
+
+    # -- [geometry] --------------------------------------------------------
+
+    def test_geometry_file_is_read_before_the_flag_check(self) -> None:
+        self.spec.write_text(BASE3D, encoding="utf-8")
+        code, out, err = self.generate()
+        self.assertEqual((code, err), (0, ""))
+
+        cpp = (self.out / "geo_box3d.cpp").read_text(encoding="utf-8")
+        self.assertIn(
+            'auto geometry_file = '
+            'flbgeo::readGeometryFile<T>("geo_box3d.flbgeo");',
+            cpp,
+        )
+        self.assertIn(
+            "flbgeo::writeVoxelFlags("
+            "geometry_file.Geometry, FlagFM, BulkFlag, VoidFlag);",
+            cpp,
+        )
+        # The mask owns the whole flag field, so it must run after the field
+        # manager exists and before the flag-count self-check reads it.
+        self.assertLess(
+            cpp.index("BlockFieldManager<FLAG"), cpp.index("writeVoxelFlags")
+        )
+        self.assertLess(
+            cpp.index("writeVoxelFlags"),
+            cpp.index("spec-vs-geometry self-check"),
+        )
+
+    def test_without_geometry_no_read_call_is_emitted(self) -> None:
+        code, out, err = self.generate()
+        self.assertEqual((code, err), (0, ""))
+        cpp = (self.out / "demo.cpp").read_text(encoding="utf-8")
+        self.assertNotIn("readGeometryFile", cpp)
+        self.assertNotIn("writeVoxelFlags", cpp)
+
+    def test_geometry_source_emits_the_recipe_and_build_rules(self) -> None:
+        self.spec.write_text(BASE3D + SOURCE3D, encoding="utf-8")
+        code, out, err = self.generate("--selftest")
+        self.assertEqual((code, err), (0, ""))
+        self.assertTrue((self.out / "geo_box3d.geo").is_file())
+
+        geo = (self.out / "geo_box3d.geo").read_text(encoding="utf-8")
+        lines = geo.splitlines()
+        self.assertIn("[geometry]", lines)
+        self.assertIn("grid = 4, 4, 4", lines)
+        self.assertIn("domain = 0.0, 0.0, 0.0, 4.0, 4.0, 4.0", lines)
+        self.assertIn("cell_len = 1.0", lines)
+        self.assertIn("band_width = 1.5", lines)
+        self.assertIn("[source.domain]", lines)
+        self.assertIn("shape = box", lines)
+        self.assertIn("entity = 1", lines)
+        self.assertIn("material = 1", lines)
+        self.assertIn("role = domain", lines)
+        self.assertIn("box = 0.0, 0.0, 0.0, 4.0, 4.0, 4.0", lines)
+
+        makefile = (self.out / "Makefile").read_text(encoding="utf-8").splitlines()
+        self.assertIn("OUTPUT += geo_box3d.flbgeo", makefile)
+        rule = makefile.index("geo_box3d.flbgeo: geo_box3d.geo")
+        self.assertEqual(makefile[rule + 1], "\t$(MAKE) -C $(ROOT)/tools/geometry_build")
+        self.assertEqual(
+            makefile[rule + 2],
+            "\t$(ROOT)/tools/geometry_build/geometry_build.exe "
+            "geo_box3d.geo -o $@",
+        )
+        self.assertIn("all: geo_box3d.flbgeo", makefile)
+        self.assertIn(".DEFAULT_GOAL := all", makefile)
+        self.assertLess(rule, makefile.index("include $(ROOT)/make.mk"))
+
+        # The generated C++ still reads the built .flbgeo by the spec name.
+        cpp = (self.out / "geo_box3d.cpp").read_text(encoding="utf-8")
+        self.assertIn(
+            'flbgeo::readGeometryFile<T>("geo_box3d.flbgeo")', cpp
+        )
+
+        code, out, err = self.generate("--check", "--selftest")
+        self.assertEqual((code, err), (0, ""))
+
+    def test_without_sources_no_recipe_or_rules(self) -> None:
+        self.spec.write_text(BASE3D, encoding="utf-8")
+        code, out, err = self.generate()
+        self.assertEqual((code, err), (0, ""))
+        self.assertFalse((self.out / "geo_box3d.geo").exists())
+        makefile = (self.out / "Makefile").read_text(encoding="utf-8")
+        self.assertNotIn("geometry_build", makefile)
+        self.assertNotIn("OUTPUT += geo_box3d.flbgeo", makefile)
+
+    def test_stl_path_is_rebased_to_the_output_directory(self) -> None:
+        stl = (
+            "\n[geometry.source.blade]\n"
+            "shape = stl\n"
+            "entity = 3\n"
+            "material = 4\n"
+            "role = solid\n"
+            "path = stl/blade.stl\n"
+            "closed = 0\n"
+        )
+        self.spec.write_text(BASE3D + stl, encoding="utf-8")
+        code, out, err = self.generate()
+        self.assertEqual((code, err), (0, ""))
+        geo = (self.out / "geo_box3d.geo").read_text(encoding="utf-8")
+        self.assertIn("[source.blade]", geo)
+        self.assertIn("path = ../stl/blade.stl", geo)
+        self.assertIn("closed = 0", geo)
+
+    def test_sphere_source_and_origin_are_rendered(self) -> None:
+        text = BASE3D.replace(
+            "void_flag = void",
+            "void_flag = void\nband_width = 2.0\norigin = 1, 2, 3",
+        )
+        text += (
+            "\n[geometry.source.blob]\n"
+            "shape = sphere\n"
+            "entity = 5\n"
+            "material = 6\n"
+            "role = solid\n"
+            "center = 2, 3, 4\n"
+            "radius = 0.5\n"
+        )
+        self.spec.write_text(text, encoding="utf-8")
+        code, out, err = self.generate()
+        self.assertEqual((code, err), (0, ""))
+        geo = (self.out / "geo_box3d.geo").read_text(encoding="utf-8")
+        self.assertIn("domain = 1.0, 2.0, 3.0, 5.0, 6.0, 7.0", geo)
+        self.assertIn("band_width = 2.0", geo)
+        self.assertIn("[source.blob]", geo)
+        self.assertIn("center = 2.0, 3.0, 4.0", geo)
+        self.assertIn("radius = 0.5", geo)
 
     # -- MPI ---------------------------------------------------------------
 

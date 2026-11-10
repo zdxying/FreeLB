@@ -126,6 +126,35 @@ class Task:
 
 
 @dataclass
+class GeometrySource:
+    """One primitive in a ``[geometry.source.<name>]`` recipe."""
+
+    name: str
+    shape: str                       # box | sphere | stl
+    entity: int
+    material: int
+    role: str                        # domain | solid
+    box: Optional[Tuple[float, ...]] = None
+    center: Optional[Tuple[float, ...]] = None
+    radius: Optional[float] = None
+    path: Optional[str] = None       # STL path as written in the spec
+    closed: bool = True
+    line: int = 0
+
+
+@dataclass
+class GeometrySpec:
+    """Optional voxel-geometry file that supplies the domain/void mask."""
+
+    file: str                        # path as written, relative to the run dir
+    domain_flag: str
+    void_flag: str = "void"
+    band_width: float = 1.5
+    origin: Tuple[float, float, float] = (0.0, 0.0, 0.0)
+    sources: List[GeometrySource] = field(default_factory=list)
+
+
+@dataclass
 class CaseSpec:
     name: str
     dim: int
@@ -150,6 +179,7 @@ class CaseSpec:
     operators: Dict[str, str] = field(default_factory=dict)
     operator_specs: Dict[str, Any] = field(default_factory=dict)
     selftest: bool = False
+    geometry: Optional[GeometrySpec] = None
 
     # ---- convenience -----------------------------------------------------
 

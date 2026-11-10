@@ -5,6 +5,8 @@ TARGET = cavity2d_mpi.exe
 
 ROOT := ../../..
 
+.DEFAULT_GOAL := all
+
 CXXC := mpic++
 
 FLAGS += -DMPI_ENABLED

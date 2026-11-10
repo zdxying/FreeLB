@@ -81,7 +81,8 @@ run_one() {
   fi
 
   local rc=0
-  if [ "$dir" = "block/refblock" ] || [ "$dir" = "block/compact_mpi" ]; then
+  if [ "$dir" = "block/refblock" ] || [ "$dir" = "block/compact_mpi" ] \
+     || [ "$dir" = "block/link_bc_seam" ]; then
     ( cd "$dir" && timeout 300 $MPIRUN -np 2 ./"$target" ) >"$RUN_LOG" 2>&1 || rc=$?
   elif [ "$dir" = "feature/hidden_comm" ] || [ "$dir" = "block/amr_comm" ]; then
     # These spawn a two-rank child with MPI_Comm_spawn, which needs a real MPI

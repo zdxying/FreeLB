@@ -1,6 +1,6 @@
 # FreeLB architecture and module map
 
-Status: current (factual; no implementation phase) | Updated: 2026-10-31 | Target: let a change find its place before any code is written
+Status: current (factual; no implementation phase) | Updated: 2026-11-06 | Target: let a change find its place before any code is written
 
 > This file records the present: where things are, which way dependencies point, how data is
 > organised. Judgement rules and gates are in `AGENTS.md`; the trade-offs, evidence and todos
@@ -44,13 +44,21 @@ dependency**; when you meet an existing one, check whether it is part of the
 
 The tooling guarantees exactly one thing: **every header is self-contained** (compiles on its
 own). `tools/check_headers.sh` sweeps with g++ and `mpic++ -DMPI_ENABLED`; its exit semantics
-are "do not add a failure". Why the two baseline headers (`utils/cuda_device.h`,
-`parallel/mpi_manager.h`) fail is stated at the top of that script. Fix one and delete its
-baseline line; never add a line to silence a failure.
+are "do not add a failure". Why the single baseline header (`utils/cuda_device.h`) fails is
+stated at the top of that script. Fix it and delete its baseline line; never add a line to
+silence a failure.
 
 **Header organisation**: `.h` declares, `.hh` implements; `src/freelb.h` + `src/freelb.hh`
 are the umbrella (active modules only, not the PopLattice path — see README "Umbrella
 headers"). Includes are always spelled from `src/` (`#include "lbm/moment.h"`).
+
+**Geometry record and its readers.** `geometry/voxel_geometry.h` is a domain-sized record
+(role, entity, material, patches, band) depending only on `data_struct/Vector.h` and
+`geometry/basic_geometry.h`: no IO, no block notion. Rasterising it
+(`io/voxel_geometry_builder.h`) and persisting it (`io/geometry_file.h`) belong to IO.
+`writeVoxelFlags` sits beside the record but takes the field manager as a template parameter, so
+geometry reaches the field layer by instantiation, not by an include. `tools/geometry_build` is a
+tool, not a `src/` module.
 
 ## 2. Data model
 
@@ -86,6 +94,16 @@ just a wrong number.
 The basic-block pointer table is the same kind of derived state: `LoadBalancing` builds it at the
 call site, so every block replacement must be followed by it before `BlockGeometry3D` is constructed.
 
+**Voxel geometry** is an input to the flag field, sized by the domain rather than by the block
+decomposition:
+
+```
+VoxelGeometry --writeVoxelFlags--> BlockFieldManager --InitVoxelMap--> active map
+```
+
+The record has no block or rank notion; `writeVoxelFlags` maps it onto blocks and halos, and
+`InitVoxelMap` derives the owned/active counts. Nothing writes the record back.
+
 **POP storage and policy**: `POP<T,q>` wraps `FREELB_POP_ARRAY<PopStorage<T>>`, where
 `PopStorage` is `__half` under FP16. The policies are `DirectPop` (recompute the address from
 the offset) and `RegPop` (resolve the q addresses once in the constructor). The policy is a
@@ -96,6 +114,12 @@ template parameter, never a runtime branch.
 live in `BlockLatticeManager`; `BlockFieldManager` keeps a second stack for scalar/vector fields
 with its own tag range. `flbcomm::CommPlan` owns its `Buffer` so the send buffer outlives
 `MPI_Waitall`; do not build a second buffer with a shorter lifetime.
+
+**Plan stamps**: the generation a plan was built against lives on `flbcomm::CommPlan`, not on the
+manager. One manager owns plans for several depths and modes, and a manager-wide value let one
+build vouch for the others. The generation advances on block-set creation/rebuild and on
+`InitVoxelMap`; every exchange checks its own plan. Runtime free-surface reclassification is not a
+geometry rebuild and does not advance it.
 
 **Unit conversion** is in `lbm/unit_converter.h`: `BaseConverter` (mechanical quantities),
 `TempConverter` (thermal), `ConcConverter` (concentration), and the phase-diagram converters
@@ -117,7 +141,10 @@ Paths are relative to `src/`.
 | Cell, fields, POP policy | `data_struct/cell.h`, `data_struct/field.h`, `data_struct/pop_policy.h` |
 | block manager, field manager, comm plan | `data_struct/block_lattice.h`, `data_struct/field_struct.h`, `parallel/comm_plan.h` |
 | field aliases (`RHO`/`VELOCITY`/`FLAG`/`POP`...) | `utils/alias.h` |
-| blocks, AABB, shapes, decomposition | `geometry/block_geometry2d.h`, `geometry/block_geometry3d.h`, `geometry/basic_shape2d.h`, `geometry/basic_shape3d.h` |
+| blocks, AABB, shapes, decomposition, active mask (`InitVoxelMap`) | `geometry/block_geometry2d.h`, `geometry/block_geometry3d.h`, `geometry/basic_shape2d.h`, `geometry/basic_shape3d.h` |
+| voxel geometry record (role/entity/material, patches, band) -> flag mask | `geometry/voxel_geometry.h`, `geometry/voxel_geometry.hh` |
+| STL/primitive -> `VoxelGeometry` | `io/voxel_geometry_builder.h`, `io/voxel_geometry_builder.hh` |
+| `.flbgeo` geometry file and its build recipe | `io/geometry_file.h`, `io/geometry_file.hh` |
 | MPI runtime, `mpi()` | `parallel/mpi_manager.h`, `parallel/communicator.h` |
 | `.ini`, writer family, checkpoint | `io/ini_reader.h`, `io/vtkWriter.h`, `io/vtm_writer.h`, `io/vtu_writer.h`, `io/plot_writer.h`, `io/checkpoint.h` |
 | CA solidification | `ca/zhu_stefanescu2d.h`, `ca/cazs.h` |
@@ -134,6 +161,12 @@ Outside `src/`:
 | `generated/lbm/` | csegen output, never edited by hand |
 | `third_party/cse/` | the CSE code generator (optional) |
 | `tools/cse/` | csegen design and bridge, see `tools/cse/DESIGN.md` |
+| `tools/geometry_build/` | `.geo` recipe -> `.flbgeo`; its own `Makefile`, no library target |
+| `tools/casegen/` | `.case` -> case scaffold, incl. `[geometry]`/`[geometry.source.*]`; see `tools/casegen/README.md` |
+
+The geometry path is pinned by `tests/io/geometry_file`, `feature/voxel_entity`,
+`feature/voxel_mask`, `feature/casegen_geo_box3d`, and `block/compact_mpi`; the Python
+generator has no C++ target and is run by `make test-casegen`.
 
 ## 4. Assembly shape
 
@@ -196,6 +229,11 @@ and the same pattern in `cuda_field.h`/`cuda_field_struct.h`); it holds pointers
 
 `check_cuda_status()` covers memcpy/malloc, **not kernel launches**; the launch/status rule
 is `AGENTS.md` §2 (CUDA).
+
+**Not mirrored**: `flbgeo::VoxelGeometry`, `VoxelGeometryBuilder` and `GeometryFile` are
+host-only. They have no `cudev::` twin and no device copy, so a CUDA case builds its flag field on
+the host and must not assume the record reaches a kernel. The device side arrives with the storage
+decision (`feat/active-cuda`, B6c, in `docs/COMPLEX_GEOMETRY_PLAN.md`).
 
 FP16 changes only the POP element type. The scope, the `RegPop` requirement and the
 `DirectPop`/CSE limit are in `docs/FP16_PLAN.md`; `tests/run_tests.sh` never builds FP16, so

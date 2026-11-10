@@ -34,6 +34,8 @@ from .model import (
     WRITERS,
     CaseSpec,
     CasegenError,
+    GeometrySource,
+    GeometrySpec,
     Region,
     SourceSpan,
     Task,
@@ -52,6 +54,7 @@ _FIXED_SECTIONS = (
     "flags",
     "grid",
     "physics",
+    "geometry",
     "operators",
     "tasks",
     "schedule",
@@ -70,7 +73,9 @@ _REQUIRED_SECTIONS = (
 
 _NAME_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 _HEADER_RE = re.compile(
-    r"^\[([A-Za-z_][A-Za-z0-9_]*)(?:\.([A-Za-z_][A-Za-z0-9_]*))?\]$"
+    r"^\[([A-Za-z_][A-Za-z0-9_]*)"
+    r"(?:\.([A-Za-z_][A-Za-z0-9_]*))?"
+    r"(?:\.([A-Za-z_][A-Za-z0-9_]*))?\]$"
 )
 _INT_RE = re.compile(r"^[+-]?[0-9]+$")
 _FLOAT_RE = re.compile(
@@ -269,28 +274,45 @@ def _scan(path: str, text: str) -> Dict[str, _Section]:
             if match is None:
                 raise CasegenError(
                     f"malformed section header {line!r} "
-                    "(expected [section] or [region.<name>])",
+                    "(expected [section], [region.<name>] or "
+                    "[geometry.source.<name>])",
                     SourceSpan(path, lineno),
                 )
-            base, sub = match.group(1), match.group(2)
+            base, sub, sub2 = match.group(1), match.group(2), match.group(3)
             if base == "region":
                 if sub is None:
                     raise CasegenError(
                         "a region section needs a name: [region.<name>]",
                         SourceSpan(path, lineno),
                     )
-                name, kind = f"region.{sub}", "region"
-            else:
-                if sub is not None:
+                if sub2 is not None:
                     raise CasegenError(
-                        f"[{base}.{sub}] is not a valid section",
+                        f"[region.{sub}.{sub2}] is not a valid section; "
+                        "a region name is a single identifier",
+                        SourceSpan(path, lineno),
+                    )
+                name, kind = f"region.{sub}", "region"
+            elif base == "geometry" and sub == "source":
+                if sub2 is None:
+                    raise CasegenError(
+                        "a geometry source section needs a name: "
+                        "[geometry.source.<name>]",
+                        SourceSpan(path, lineno),
+                    )
+                name, kind = f"geometry.source.{sub2}", "geometry_source"
+                sub = sub2
+            else:
+                if sub is not None or sub2 is not None:
+                    raise CasegenError(
+                        f"[{base}{'.' + sub if sub else ''}"
+                        f"{'.' + sub2 if sub2 else ''}] is not a valid section",
                         SourceSpan(path, lineno),
                     )
                 if base not in _FIXED_SECTIONS:
                     known = ", ".join(f"[{item}]" for item in _FIXED_SECTIONS)
                     raise CasegenError(
                         f"unknown section [{base}] (known sections: {known}, "
-                        "[region.<name>])",
+                        "[region.<name>], [geometry.source.<name>])",
                         SourceSpan(path, lineno),
                     )
                 name, kind = base, base
@@ -424,6 +446,129 @@ def _build_flags(path: str, sections: Dict[str, _Section]) -> Dict[str, int]:
     if "void" not in flags:
         view.error("[flags] must define 'void'", None)
     return flags
+
+
+def _build_geometry_source(path: str, section: _Section) -> GeometrySource:
+    view = _View(path, section)
+    shape = view.get_str("shape").lower()
+    if shape not in ("box", "sphere", "stl"):
+        view.error(
+            f"unsupported source shape {shape!r} (use box, sphere or stl)", "shape"
+        )
+    allowed = ["shape", "entity", "material", "role"]
+    if shape == "box":
+        allowed.append("box")
+    elif shape == "sphere":
+        allowed.extend(("center", "radius"))
+    else:
+        allowed.extend(("path", "closed"))
+    view.reject_unknown(allowed, f"shape '{shape}' does not use it")
+
+    entity = view.get_int("entity", minimum=0)
+    material = view.get_int("material", minimum=0)
+    role = view.get_str("role").lower()
+    if role not in ("domain", "solid"):
+        view.error(f"invalid role {role!r} (use domain or solid)", "role")
+    assert entity is not None and material is not None
+
+    source = GeometrySource(
+        name=section.sub or "",
+        shape=shape,
+        entity=entity,
+        material=material,
+        role=role,
+        line=section.line,
+    )
+    if shape == "box":
+        if not view.has("box"):
+            view.error("missing required key 'box'", "box")
+        box = view.get_float_list("box")
+        if len(box) != 6:
+            view.error(f"'box' needs 6 values (lo, hi per axis), got {len(box)}", "box")
+        for axis in range(3):
+            if not box[axis] < box[axis + 3]:
+                view.error(
+                    f"'box' axis {axis} must satisfy lo < hi, got "
+                    f"{box[axis]} .. {box[axis + 3]}",
+                    "box",
+                )
+        source.box = tuple(box)
+    elif shape == "sphere":
+        if not view.has("center"):
+            view.error("missing required key 'center'", "center")
+        center = view.get_float_list("center")
+        if len(center) != 3:
+            view.error(f"'center' needs 3 values, got {len(center)}", "center")
+        source.center = tuple(center)
+        source.radius = view.get_float("radius", positive=True)
+    else:
+        source.path = view.get_str("path")
+        assert source.path is not None
+        source.closed = bool(view.get_bool("closed", required=False, default=True))
+    return source
+
+
+def _build_geometry_sources(
+    path: str, sections: Dict[str, _Section]
+) -> List[GeometrySource]:
+    return [
+        _build_geometry_source(path, section)
+        for section in sections.values()
+        if section.kind == "geometry_source"
+    ]
+
+
+def _build_geometry(
+    path: str, sections: Dict[str, _Section], dim: int, flags: Dict[str, int]
+) -> Optional[GeometrySpec]:
+    source_sections = [
+        section for section in sections.values() if section.kind == "geometry_source"
+    ]
+    if "geometry" not in sections:
+        if source_sections:
+            first = source_sections[0]
+            raise CasegenError(
+                f"[geometry.source.{first.sub}] needs a [geometry] section "
+                "with 'file'",
+                SourceSpan(path, first.line),
+            )
+        return None
+    view = _View(path, sections["geometry"])
+    view.reject_unknown(("file", "domain_flag", "void_flag", "band_width", "origin"))
+    if dim != 3:
+        view.error(
+            f"[geometry] is only supported for dim = 3, got dim = {dim}", None
+        )
+    file = view.get_str("file")
+    assert file is not None
+    domain_flag = view.get_str("domain_flag")
+    assert domain_flag is not None
+    void_flag = view.get_str("void_flag", required=False, default="void")
+    assert void_flag is not None
+    for key, name in (("domain_flag", domain_flag), ("void_flag", void_flag)):
+        if name not in flags:
+            known = ", ".join(flags)
+            view.error(
+                f"[geometry] '{key}' names undefined flag {name!r} "
+                f"(defined: {known})",
+                key,
+            )
+    band_width = view.get_float(
+        "band_width", required=False, default=1.5, positive=True
+    )
+    origin = view.get_float_list(
+        "origin", required=False, default=[0.0, 0.0, 0.0]
+    )
+    if len(origin) != 3:
+        view.error(f"'origin' needs 3 values, got {len(origin)}", "origin")
+    return GeometrySpec(
+        file=file,
+        domain_flag=domain_flag,
+        void_flag=void_flag,
+        band_width=float(band_width),
+        origin=tuple(float(value) for value in origin),
+        sources=_build_geometry_sources(path, sections),
+    )
 
 
 def _build_grid(path: str, sections: Dict[str, _Section], dim: int) -> Dict[str, Any]:
@@ -723,6 +868,7 @@ def _build_spec(path: str, sections: Dict[str, _Section]) -> CaseSpec:
     case_values = _build_case(path, sections, dim)
     fields = _build_fields(path, sections)
     flags = _build_flags(path, sections)
+    geometry = _build_geometry(path, sections, dim, flags)
     grid = _build_grid(path, sections, dim)
     physics = _build_physics(path, sections, dim)
     regions = _build_regions(path, sections, dim)
@@ -754,6 +900,7 @@ def _build_spec(path: str, sections: Dict[str, _Section]) -> CaseSpec:
         path=path,
         operators=operators,
         selftest=case_values["selftest"],
+        geometry=geometry,
     )
     # [case] mpi is a case-file switch, not part of the frozen block model;
     # CaseSpec is a plain dataclass, so it travels on the instance.
@@ -900,6 +1047,19 @@ def validate_case(spec: CaseSpec, sections: Optional[Dict[str, _Section]] = None
         raise CasegenError(
             "the [flags] section must define 'void'", _span_for(path, sections, "flags")
         )
+    if spec.geometry is not None:
+        if dim != 3:
+            raise CasegenError(
+                f"[geometry] is only supported for dim = 3, got dim = {dim}",
+                _span_for(path, sections, "geometry"),
+            )
+        for key in ("domain_flag", "void_flag"):
+            name = getattr(spec.geometry, key)
+            if name not in spec.flags:
+                raise CasegenError(
+                    f"[geometry] '{key}' names undefined flag '{name}'",
+                    _span_for(path, sections, "geometry", key),
+                )
 
     # 2-3. catalogue, field closure, task-key overlap ---------------------
     catalogue: Dict[str, Tuple[str, Dict[str, Any]]] = {}

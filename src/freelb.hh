@@ -32,6 +32,8 @@
 #include "offLattice/marchingCube.hh"
 // checkpoint / restart
 #include "io/checkpoint.hh"
+// binary voxel geometry persistence
+#include "io/geometry_file.hh"
 // voxel geometry construction from STL meshes and primitives
 #include "io/voxel_geometry_builder.hh"
 // cellular automata (solidification) implementations

@@ -118,4 +118,15 @@ std::size_t VoxelGeometry<T>::countEntity(std::uint16_t entity) const {
     std::count(_entity.begin(), _entity.end(), entity));
 }
 
+template <typename T, typename FieldM>
+void writeVoxelFlags(const VoxelGeometry<T>& geo, FieldM& fields,
+                     std::uint8_t domainFlag, std::uint8_t voidFlag) {
+  fields.forEach([&](auto& blockField, std::size_t id) {
+    const Vector<T, 3> pos = blockField.getBlock().getLoc_t(id);
+    const std::size_t gid = geo.findCellId(pos);
+    blockField.SetField(
+      id, gid != kInvalidCell && geo.isDomain(gid) ? domainFlag : voidFlag);
+  });
+}
+
 }  // namespace flbgeo

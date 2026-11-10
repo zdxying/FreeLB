@@ -62,6 +62,8 @@ temp/
 # *.STL
 *.FCBak
 # *.stl
+# voxel geometry masks are rebuilt from the casegen .geo recipe
+*.flbgeo
 # cse-generated unrolled-for specializations (shadow copies)
 /generated/
 
@@ -81,3 +83,9 @@ ckpt/
 # cross-decomposition checkpoint test output
 **/ckpt_decomp/
 **/child_spawn.log
+
+
+# tools/geometry_build is a source tool; the *build/ rule above hides it
+!tools/geometry_build/
+!tools/geometry_build/Makefile
+!tools/geometry_build/*.cpp

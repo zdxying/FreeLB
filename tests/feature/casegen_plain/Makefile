@@ -5,6 +5,8 @@ TARGET = couette2d_plain.exe
 
 ROOT := ../../..
 
+.DEFAULT_GOAL := all
+
 FLAGS += -O2
 FLAGS += -DFLOAT_TYPE=double
 

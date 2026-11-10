@@ -5,6 +5,8 @@ TARGET = cavity2d_cu.exe
 
 ROOT := ../../..
 
+.DEFAULT_GOAL := all
+
 CXXC := nvcc
 
 FLAGS += -arch=native
