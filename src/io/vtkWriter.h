@@ -25,11 +25,12 @@
 #include <any>
 
 #include "data_struct/Vector.h"
-#include "data_struct/lattice.h"
+#include "lbm/unit_converter.h"
+#include "geometry/geometry.h"
 #include "io/basic_writer.h"
 
+// BasicTree (leaf blocks written as geometry points)
 #include "data_struct/quadtree.h"
-#include "data_struct/octree.h"
 
 // vtk format:
 // dataType is one of the types: bit, unsigned_char, char, unsigned_short,

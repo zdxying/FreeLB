@@ -28,6 +28,32 @@ The author also used files modified from [palabos](https://palabos.unige.ch/) pr
 
 This code is written in C++ for clarity and efficiency, methods of LB and CA are stored in classes in ./src folder, specificlly, the declaration of the methods are in .h files and the implementations are in .hh files. To implement the simulation, one should prepare an .ini file storing simulation parameters and write his/her own .cpp/.cu file which calls the methods of this code, also, defines the initial and boundary conditions. There are some examples in ./examples folder, which can be used as a reference.
 
+### Umbrella headers: `freelb.h` / `freelb.hh`
+
+`freelb.h` (declarations) and `freelb.hh` (implementations) wrap all **active**
+FreeLB modules: a simulation `.cpp` normally needs only these two includes (see
+`examples/cavity3d`).  Covered: the core single-phase LBM path, free surface
+(`lbm/freeSurface.h`), STL geometry to field (`offLattice/marchingCube.h(.hh)`),
+the BlockLattice-based CA solidification (`ca/zhu_stefanescu*.h(.hh)`, used by
+`examples/cazsblock2d` / `examples/cazsAref2d`), `io/plot_writer.h` and
+`utils/field_checksum.h`.
+
+The **legacy PopLattice path** is not usable through the umbrella:
+`data_struct/lattice.hh` (the PopLattice/RhoLattice method definitions),
+`lbm/buoyancy.h` and `lbm/cell_dynamics.h` (a dead header with zero consumers)
+are not wrapped, so legacy simulations include them directly
+(`examples/legacy/*`).  What still reaches the umbrella is declaration-only:
+`data_struct/lattice.h` and the PopLattice-based `CA::ZhuStefanescu2D/3D` class
+definitions arrive transitively through `ca/zhu_stefanescu*.h`, which the active
+BlockLattice CA path needs, and the unused `legacy::` schemes come with
+`lbm/collision.h`.  All of it is pending removal together with
+`examples/legacy/`.
+
+Every header is self-contained (compiles on its own).  Two dead headers with
+zero references, `data_struct/tree.h` and `utils/exception.h`, were removed
+rather than wrapped.
+
+
 OpenMP and MPI is enabled through the code. Cuda for multi-block structure is not supported for now
 
 If you have any suggestions, please contact the author by email: ymmanyuan@outlook.com
@@ -43,12 +69,66 @@ Optional(If parallel computing is needed, install):
 
 
 ## Build
-To build the code, make sure you installed the above dependencies, then you just need to run the following command in the root directory of the code:
+To build the code, make sure you installed the above dependencies.
+
+If you cloned without submodules, fetch them first (needed for the full build;
+Quick Start works without them):
+```bash
+git submodule update --init third_party/cse
+```
+
+### Quick Start (no xcore/csegen required)
 ```bash
 cd ./examples/cavity2d
 make
 ```
-The executable file will be generated in the same directory with .exe extension(please note that .exe extension is used to make the executable file recognized by .gitignore, the author did NOT test the code on Windows, but WSL is OK!)
+The executable file will be generated in the same directory with .exe extension (please note that .exe extension is used to make the executable file recognized by .gitignore, the author did NOT test the code on Windows, but WSL is OK!)
+
+### Full Build (with xcore memory pool + CSE code generation)
+For optimal performance, build the xcore library and CSE tools first from the root directory:
+```bash
+make              # builds xcore library + csegen tool
+cd ./examples/cavity2d
+make
+```
+- **xcore** (`src/xcore/`): High-performance pool allocator. If not built, the build system automatically falls back to `std::allocator` (with a warning).
+- **csegen** (`tools/cse/`): CSE code generator for `-D_UNROLLFOR` examples. Without `-D_UNROLLFOR`, the plain loop-based schemes compile and no `.ur.h` is touched. With `-D_UNROLLFOR`, the cse-generated specializations in `generated/lbm/` are used; if csegen is missing, the build compiles the plain schemes too (with a warning) -- the hand-written copies in `src/ur_fallback/lbm/` are a comparison reference only and never compiled.
+
+You can also build xcore and csegen separately:
+```bash
+make lib          # build xcore library only
+make tools        # build csegen tool only
+```
+
+### Available Make Targets
+| Target | Description |
+|--------|-------------|
+| `make` | Build xcore + csegen (from root) |
+| `make lib` | Build xcore library only |
+| `make tools` | Build csegen tool only |
+| `make libclean` | Clean xcore build artifacts |
+| `make tools-clean` | Clean csegen build artifacts |
+| `make test` | Build + run the `tests/` suite (CUDA targets auto-skipped if no `nvcc`) |
+| `make test-cpu` | Same, CPU + MPI only (no CUDA toolchain / GPU required) |
+
+
+## Test
+
+`tests/` holds small, self-contained targets grouped by area
+(`block/`, `cuda/`, `feature/`, `io/`, `regression/`).  Run them all with:
+
+```bash
+make test          # everything available (skips CUDA when nvcc is missing)
+make test-cpu      # CPU + MPI only
+tests/run_tests.sh --no-cuda --no-mpi   # finer control
+```
+
+`tests/run_tests.sh` builds and runs every `tests/<category>/<name>/` target and
+checks its exit status, so a test that only prints is not enough -- it must
+`return flbtest::summary(...)` (see `tests/test_util.h`) or otherwise exit
+non-zero on failure.  `tests/regression/cavity2d` pins the solver's
+distribution-function checksum against a baseline; changing the LBM scheme,
+equilibrium or boundary treatment will (intentionally) fail it.
 
 
 ## Benchmark

@@ -21,6 +21,8 @@
 #include "freelb.h"
 #include "freelb.hh"
 
+#include "../../test_util.h"
+
 
 using T = FLOAT;
 // using LatSet = D2Q9<T>;
@@ -72,6 +74,8 @@ int main() {
   BlockGeometry3D<T> Geo(GeoHelper);
   T dev = ComputeBlockNStdDev(Geo.getBasicBlocks());
   std::cout << "Standard deviation: " << dev << std::endl;
+  CHECK_EQ(Geo.getBlockNum(), 8);
+  CHECK_EQ(Geo.getTotalCellNum(), std::size_t(262144));
 
   BlockFieldManager<FlagField, T, LatSet::d> FlagFM(Geo, VoidFlag);
   FlagFM.forEach(cavity,
@@ -85,4 +89,6 @@ int main() {
   GeoWriter.addWriterSet(GeoFlagWriter);
 
   GeoWriter.WriteBinary();
+
+  return flbtest::summary("block/divideblock");
 }

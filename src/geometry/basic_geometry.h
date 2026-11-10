@@ -419,8 +419,14 @@ class BasicBlock : public AABB<T, D> {
 template <typename T>
 static void DivideBlock2D(BasicBlock<T, 2>& block, int blocknum,
                           std::vector<AABB<int, 2>>& blocksvec) {
-  DivideBlock2D<T>(block.getNx(), block.getNy(), blocknum, block.getIdxBlock(),
-                   blocksvec);
+  // IndexBlock is in coarse (base-level) index units, while getNx()/getNy()
+  // return the fine mesh (Mesh = index extent * 2^level).  The division is
+  // applied to the index AABB, so it must be driven by the index extent.
+  // Using the fine mesh over-divides refined blocks (level > 0) and yields
+  // child AABBs with min > max.
+  const AABB<int, 2>& IdxBlock = block.getIdxBlock();
+  const Vector<int, 2> idxmesh = IdxBlock.getExtension() + Vector<int, 2>{1};
+  DivideBlock2D<T>(idxmesh[0], idxmesh[1], blocknum, IdxBlock, blocksvec);
 }
 
 template <typename T>
@@ -434,8 +440,9 @@ static void DivideBlock2D(BasicBlock<T, 2>& block, int blocknum,
                           std::vector<BasicBlock<T, 2>>& basicblocksvec) {
   std::vector<AABB<int, 2>> blocksvec;
   const AABB<int, 2>& IdxBlock = block.getIdxBlock();
-  // divide block
-  DivideBlock2D<T>(block.getNx(), block.getNy(), blocknum, IdxBlock, blocksvec);
+  // divide block (index-space extent, not the fine mesh; see the AABB overload)
+  const Vector<int, 2> idxmesh = IdxBlock.getExtension() + Vector<int, 2>{1};
+  DivideBlock2D<T>(idxmesh[0], idxmesh[1], blocknum, IdxBlock, blocksvec);
   // construct basicblocks from aabb
   std::uint8_t level = block.getLevel();
   T voxsize = block.getVoxelSize();
@@ -598,8 +605,9 @@ static void DivideBlock3D(BasicBlock<T, 3>& block, int blocknum,
                           std::vector<BasicBlock<T, 3>>& basicblocksvec) {
   std::vector<AABB<int, 3>> blocksvec;
   const AABB<int, 3>& IdxBlock = block.getIdxBlock();
-  // divide block
-  DivideBlock3D<T>(block.getNx(), block.getNy(), block.getNz(), blocknum, IdxBlock,
+  // divide block (index-space extent, not the fine mesh; see DivideBlock2D)
+  const Vector<int, 3> idxmesh = IdxBlock.getExtension() + Vector<int, 3>{1};
+  DivideBlock3D<T>(idxmesh[0], idxmesh[1], idxmesh[2], blocknum, IdxBlock,
                    blocksvec);
   // construct basicblocks from aabb
   std::uint8_t level = block.getLevel();
@@ -907,6 +915,10 @@ static void DivideBlock3D(int NX, int NY, int NZ, int blocknum,
 // calculate the Standard Deviation of the number of points in each block
 template <typename T, unsigned int D>
 T ComputeBlockNStdDev(const std::vector<BasicBlock<T, D>> &Blocks) {
+  // an empty block set has no deviation; returning 0 avoids a 0/0 -> NaN that
+  // would otherwise be printed by PrintInfo for block sets built without
+  // _BasicBlocks (e.g. the BlockReader construction path)
+  if (Blocks.empty()) return T{};
   T mean{};
   for (const BasicBlock<T, D> &block : Blocks) {
     mean += block.getN();

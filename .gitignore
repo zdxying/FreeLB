@@ -39,6 +39,10 @@
 
 # ignore all directories with the name temp including their files
 temp/
+*build/
+*vtune*/
+*hpctoolkit*/
+*.hpcstruct
 
 
 # vtk
@@ -58,3 +62,14 @@ temp/
 # *.STL
 *.FCBak
 # *.stl
+# cse-generated unrolled-for specializations (shadow copies)
+/generated/
+
+# cse tool build artifacts
+tools/cse/csegen
+tools/cse/out/
+__pycache__/
+
+# velocity-field comparison dumps (solver run outputs)
+benchmarks/cavity3d/profile_cpu.txt
+benchmarks/cavity3d_cu/profile_gpu.txt

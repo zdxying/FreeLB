@@ -209,127 +209,6 @@ class GenericArray {
 };
 
 
-// a modified version of CyclicArray
-// rotate is handled at host side
-
-template <typename T>
-class StreamArray {
- private:
-  // number of elements
-  std::size_t* count;
-  // base pointer to the data
-  T* _data;
-  // shift
-  std::ptrdiff_t* _shift;
-  T* _start;
-  // facilitate the access of data before the last shift(rotate)
-  std::ptrdiff_t* Offset;
-
- public:
-  using value_type = T;
-
-  __device__ StreamArray()
-      : count(0), _data(nullptr), _shift(0), _start(nullptr), Offset(0) {}
-  __any__ StreamArray(std::size_t* size, T* data, std::ptrdiff_t* shift, T* start,
-                      std::ptrdiff_t* offset)
-      : count(size), _data(data), _shift(shift), _start(start), Offset(offset) {
-    _start = _data;
-  }
-  // Copy constructor
-  __device__ StreamArray(const StreamArray& arr)
-      : count(arr.count), _data(arr._data), _shift(arr._shift), _start(arr._start),
-        Offset(arr.Offset) {}
-  // Move constructor
-  __device__ StreamArray(StreamArray&& arr) noexcept
-      : count(arr.count), _data(arr._data), _shift(arr._shift), _start(arr._start),
-        Offset(arr.Offset) {}
-  // Copy assignment operator
-  __device__ StreamArray& operator=(const StreamArray& arr) {
-    if (&arr == this) return *this;
-    count = arr.count;
-    _data = arr._data;
-    _shift = arr._shift;
-    _start = arr._start;
-    Offset = arr.Offset;
-    return *this;
-  }
-  // Move assignment operator
-  __device__ StreamArray& operator=(StreamArray&& arr) noexcept {
-    if (&arr == this) return *this;
-    count = arr.count;
-    _data = arr._data;
-    _shift = arr._shift;
-    _start = arr._start;
-    Offset = arr.Offset;
-    return *this;
-  }
-
-  __device__ void setOffset(int offset) { *Offset = offset; }
-
-  __device__ const T& operator[](std::size_t i) const { return _start[i]; }
-  __device__ T& operator[](std::size_t i) { return _start[i]; }
-
-  __device__ inline void set(std::size_t i, T value) { _start[i] = value; }
-  __device__ std::size_t size() const { return *count; }
-  // return the pointer of ith element
-  __device__ T* getdataPtr(std::size_t i = 0) { return _start + i; }
-  __device__ const T* getdataPtr(std::size_t i = 0) const { return _start + i; }
-
-  // get data before the last shift(rotate), used in bcs
-  __device__ T& getPrevious(std::size_t i) {
-    std::ptrdiff_t prevIndex = i + *Offset;
-    if (prevIndex < 0) {
-      prevIndex += *count;
-    } else if (prevIndex >= static_cast<std::ptrdiff_t>(*count)) {
-      prevIndex -= *count;
-    }
-    return _start[static_cast<std::size_t>(prevIndex)];
-  }
-
-  // experimental
-  __device__ void rotate() {
-    const std::ptrdiff_t n = *count;
-    std::ptrdiff_t shift = *_shift;
-    shift -= *Offset;
-    if (shift >= n) {
-      shift -= n;
-      copyToFront(shift);
-    } else if (shift < 0) {
-      shift += n;
-      copyToBack(shift);
-    }
-    *_shift = shift;
-    _start = _data + shift;
-  }
-  __device__ void rotate(std::ptrdiff_t offset) {
-    const std::ptrdiff_t n = *count;
-    std::ptrdiff_t shift = *_shift;
-    shift -= offset;
-    if (shift >= n) {
-      shift -= n;
-      copyToFront(shift);
-    } else if (shift < 0) {
-      shift += n;
-      copyToBack(shift);
-    }
-    *_shift = shift;
-    _start = _data + shift;
-  }
-  __device__ void copyToBack(std::ptrdiff_t endoffset = 0) {
-    T* const base = _data;
-    endoffset = endoffset == 0 ? *count : endoffset;
-    dev_copy(base + *count, base, endoffset);
-  }
-  __device__ void copyToFront(std::ptrdiff_t startoffset = 0) {
-    T* const base = _data;
-    dev_copy(base + startoffset, base + *count + startoffset, *count - startoffset);
-  }
-};
-
-template <typename T>
-__global__ void Stream_kernel(cudev::StreamArray<T>* arr) {
-  arr->rotate();
-}
 
 template <typename T>
 class StreamMapArray {
@@ -424,6 +303,169 @@ template <typename T>
 __global__ void Stream_kernel(cudev::StreamMapArray<T>* arr) {
   arr->rotate();
 }
+
+// ---------------------------------------------------------------------------
+// Device mirror of the host CyclicArray (data_struct/field.h).  The host class
+// is untouched; this is the separate device-side class its cudev_array_type
+// alias always pointed at but which was never defined, so POP could not be
+// built on CyclicArray for the GPU.
+//
+// Same two-pointer layout and the same refresh()/rotate() arithmetic as the
+// host, so it is interchangeable with it.  Note that after refresh()
+// start[1] == start[0] - count always holds: the second start pointer is
+// redundant by that identity and is kept only so the hot path stays a simple
+// two-way select over static struct offsets.
+//
+// shift, remainder and Offset are shared through the device buffers the host
+// pushes with copyToDevice() -- the same pattern cudev::StreamMapArray uses --
+// so rotate() mutates the very state the host reads back with copyToHost(), in
+// either direction.  count is fixed at construction and start[] is derived:
+// they live in the object, start[] initialized to the unrotated view and
+// re-derived by refresh() on whichever side rotates last.
+// ---------------------------------------------------------------------------
+template <typename T>
+class CyclicArray {
+ private:
+  // number of elements (fixed at construction; the struct is uploaded as-is)
+  std::size_t count;
+  // base pointer to the data (not owned)
+  T* data;
+  // shared through device buffers: host copyToDevice() pushes them, device
+  // rotate() mutates them, host copyToHost() reads them back
+  std::ptrdiff_t* shift;
+  std::size_t* remainder;
+  // start[0] is the logical start; start[1] is start[0] - count, i.e. the
+  // window that has wrapped around.  Derived, not shared: initialized to the
+  // unrotated view and re-derived by refresh() on whichever side rotates.
+  T* start[2];
+  // facilitate the access of data before the last shift(rotate)
+  std::ptrdiff_t* Offset;
+
+ public:
+  using value_type = T;
+
+  __device__ CyclicArray()
+      : count(0), data(nullptr), shift(nullptr), remainder(nullptr),
+        start{}, Offset(nullptr) {}
+  // `sh` / `rem` / `offset` point into device buffers; they are only stored
+  // here (never dereferenced on the host while this object is assembled)
+  __any__ CyclicArray(std::size_t size, T* base, std::ptrdiff_t* sh,
+                      std::size_t* rem, std::ptrdiff_t* offset)
+      : count(size), data(base), shift(sh), remainder(rem), Offset(offset) {
+    // the object starts from the unrotated view; rotate() on the device
+    // re-derives start[] from *shift from there on
+    start[0] = base;
+    start[1] = base - static_cast<std::ptrdiff_t>(size);
+  }
+  __device__ CyclicArray(const CyclicArray& arr)
+      : count(arr.count), data(arr.data), shift(arr.shift),
+        remainder(arr.remainder), start(arr.start), Offset(arr.Offset) {}
+  __device__ CyclicArray(CyclicArray&& arr) noexcept
+      : count(arr.count), data(arr.data), shift(arr.shift),
+        remainder(arr.remainder), start(arr.start), Offset(arr.Offset) {}
+  __device__ CyclicArray& operator=(const CyclicArray& arr) {
+    if (&arr == this) return *this;
+    count = arr.count;
+    data = arr.data;
+    shift = arr.shift;
+    remainder = arr.remainder;
+    start[0] = arr.start[0];
+    start[1] = arr.start[1];
+    Offset = arr.Offset;
+    return *this;
+  }
+  __device__ CyclicArray& operator=(CyclicArray&& arr) noexcept {
+    if (&arr == this) return *this;
+    count = arr.count;
+    data = arr.data;
+    shift = arr.shift;
+    remainder = arr.remainder;
+    start[0] = arr.start[0];
+    start[1] = arr.start[1];
+    Offset = arr.Offset;
+    return *this;
+  }
+
+  __device__ void setOffset(int offset) { *Offset = offset; }
+
+  // the subtraction is applied to the POINTER, never to the index: i is
+  // std::size_t, so start[1] is pre-computed as start[0] - count exactly because
+  // start[0][i - count] would wrap around.  Same two branches as the host.
+  __device__ const T& operator[](std::size_t i) const {
+    return (i > *remainder ? start[1] : start[0])[i];
+  }
+  __device__ T& operator[](std::size_t i) {
+    return (i > *remainder ? start[1] : start[0])[i];
+  }
+
+  __device__ void set(std::size_t i, T value) {
+    (i > *remainder ? start[1] : start[0])[i] = value;
+  }
+  __device__ std::size_t size() const { return count; }
+  // the allocation is exactly this, as on the host
+  __device__ std::size_t capacity() const { return count; }
+  __device__ T* getdataPtr(std::size_t i = 0) {
+    return (i > *remainder ? start[1] : start[0]) + i;
+  }
+  __device__ const T* getdataPtr(std::size_t i = 0) const {
+    return (i > *remainder ? start[1] : start[0]) + i;
+  }
+
+  // get data before the last shift(rotate), used in bcs
+  __device__ T& getPrevious(std::size_t i) {
+    std::ptrdiff_t prevIndex = i + *Offset;
+    if (prevIndex < 0) {
+      prevIndex += count;
+    } else if (prevIndex >= static_cast<std::ptrdiff_t>(count)) {
+      prevIndex -= count;
+    }
+    return (static_cast<std::size_t>(prevIndex) > *remainder
+                ? start[1]
+                : start[0])[static_cast<std::size_t>(prevIndex)];
+  }
+
+  // the only place start[] and *remainder are written; the two branches by
+  // sign of *shift are CyclicArray::refresh()'s, verbatim
+  __device__ void refresh() {
+    const std::ptrdiff_t n = count;
+    T* const base = data;
+    if (*shift >= 0) {
+      *remainder = n - *shift - 1;
+      // base - remainder - 1 + n
+      start[0] = base + *shift;
+      // base - remainder - 1
+      start[1] = base - (n - *shift);
+    } else {
+      *remainder = -*shift - 1;
+      // base - remainder - 1 + n
+      start[0] = base + (n + *shift);
+      // base - remainder - 1
+      start[1] = base + *shift;
+    }
+  }
+
+  __device__ void rotate() {
+    const std::ptrdiff_t n = count;
+    *shift -= *Offset;
+    if (*shift >= n) {
+      *shift -= n;
+    } else if (*shift <= -n) {
+      *shift += n;
+    }
+    refresh();
+  }
+  __device__ void rotate(std::ptrdiff_t offset) {
+    *Offset = offset;
+    const std::ptrdiff_t n = count;
+    *shift -= offset;
+    if (*shift >= n) {
+      *shift -= n;
+    } else if (*shift <= -n) {
+      *shift += n;
+    }
+    refresh();
+  }
+};
 
 template <typename ArrayType, unsigned int D>
 class GenericFieldBase {

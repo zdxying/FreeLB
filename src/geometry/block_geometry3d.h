@@ -23,6 +23,8 @@
 #pragma once
 
 #include "geometry/basic_geometry.h"
+// GenericFieldBase / GenericArray flag fields are held by value below
+#include "data_struct/field.h"
 #include "io/stlreader.h"
 #include "io/block_reader.h"
 

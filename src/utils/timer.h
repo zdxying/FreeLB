@@ -48,14 +48,14 @@ struct Counter {
 };
 
 struct Timer : public Counter {
-  std::chrono::high_resolution_clock::time_point START;
-  std::chrono::high_resolution_clock::time_point END;
+  std::chrono::steady_clock::time_point START;
+  std::chrono::steady_clock::time_point END;
 
   Timer() { START_TIMER(); }
   ~Timer() = default;
 
-  void START_TIMER() { START = std::chrono::high_resolution_clock::now(); }
-  void END_TIMER() { END = std::chrono::high_resolution_clock::now(); }
+  void START_TIMER() { START = std::chrono::steady_clock::now(); }
+  void END_TIMER() { END = std::chrono::steady_clock::now(); }
   void reset() {
     START_TIMER();
     Counter::reset();

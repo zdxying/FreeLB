@@ -26,7 +26,19 @@
 #include "data_struct/cell.h"
 // Block and BlockGeometry
 #include "utils/alias.h"
+// BlockFieldManager: held by value in BlockFieldManagerCollection below
+// (cell.h no longer relays field_struct.h)
+#include "data_struct/field_struct.h"
 
+#include "utils/tmp.h"  // TypePack, isOneOf, isTypeInTuple
+
+// GetGenericRhoType / FindGenericRhoType (host + cudev); also needed by
+// data_struct/cuda_block_lattice.h, hence their own header.
+#include "data_struct/generic_rho.h"
+
+// CUDA block lattice: consumes the declarations above (and cudev::Cell from
+// pop_policy.h) and is included here rather than at the top so that nvcc sees
+// them; it is self-contained now that it includes generic_rho.h itself.
 #ifdef __CUDACC__
 #include "data_struct/cuda_block_lattice.h"
 #endif

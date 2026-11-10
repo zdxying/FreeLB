@@ -23,6 +23,8 @@
 #pragma once
 
 #include "io/vti_writer.h"
+// BlockFieldManager (writers take it by const reference)
+#include "data_struct/field_struct.h"
 
 // .pvd - .vtm - .vti
 // old vtmwriter without overlap handling, consider using vtmo

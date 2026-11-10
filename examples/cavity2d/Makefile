@@ -5,14 +5,14 @@ TARGET = cavity2d.exe
 ROOT := ../..
 
 # -------------optimization flags-------------
-FLAGS += -O3 -march=native -mtune=native
+FLAGS += -O3 -march=native
 FLAGS += -D_UNROLLFOR
 
 # -------------warning flags-------------
 FLAGS += -Wall -Wdisabled-optimization -Wno-unknown-pragmas -Wno-unused-local-typedefs
 
 # -------------debug flags-------------
-# FLAGS += -g
+FLAGS += -g
 # FLAGS += -DMPI_DEBUG
 # FLAGS += -pg
 

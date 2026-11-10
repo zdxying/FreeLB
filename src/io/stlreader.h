@@ -40,6 +40,9 @@
 #include <vector>
 
 #include "data_struct/Vector.h"
+// AABB (used below); also breaks the hidden dependency on the caller having
+// included geometry headers first
+#include "geometry/basic_geometry.h"
 #include "data_struct/octree.h"
 #include "utils/util.h"
 

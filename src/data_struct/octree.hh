@@ -36,6 +36,8 @@
 #include <iomanip>
 #include <sstream>
 
+#include <fstream>
+
 #include "data_struct/octree.h"
 #include "utils/directories.h"
 

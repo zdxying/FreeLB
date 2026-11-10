@@ -20,6 +20,8 @@
 
 // Zhu-Stefanescu (Z-S) model for dendrite growth, implementations
 
+#pragma once
+
 #include "ca/zhu_stefanescu3d.h"
 
 namespace CA {

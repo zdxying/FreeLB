@@ -23,6 +23,8 @@
 #pragma once
 
 #include "geometry/basic_geometry.h"
+// FlagField member (GenericFieldBase) is held by value below
+#include "data_struct/field.h"
 #include "data_struct/quadtree.h"
 
 

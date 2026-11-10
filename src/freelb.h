@@ -18,8 +18,19 @@
  * 
  */
 
+#pragma once
+
 //freelb.h
 //include haeder files for LBM
+//
+// NOTE: the legacy PopLattice path is not usable through this umbrella --
+// data_struct/lattice.hh (the PopLattice/RhoLattice method definitions),
+// lbm/buoyancy.h and lbm/cell_dynamics.h (zero consumers) are NOT wrapped;
+// include them directly if you need them (examples/legacy/*).  Declaration
+// only leftovers still reach the umbrella transitively: data_struct/lattice.h
+// and the PopLattice-based CA classes via ca/zhu_stefanescu*.h, and the
+// unused legacy:: schemes via lbm/collision.h.  All pending removal together
+// with examples/legacy.
 
 // timer
 #include "utils/timer.h"
@@ -35,6 +46,20 @@
 #include "io/vtu_writer.h"
 
 #include "lbm/lattice_set.h"
+// block-field statistics (FieldStatistics; used by examples/dambreak*)
+#include "data_struct/field_statistics.h"
 // lbm dynamics
 #include "lbm/lbm.h"
+
+// ----------------- extended models -----------------
+// (kept outside the core single-phase path but wrapped here, so examples only
+// need freelb.h + freelb.hh; see README "Umbrella headers")
+// free-surface model
+#include "lbm/freeSurface.h"
+// STL geometry to field conversion
+#include "offLattice/marchingCube.h"
+// step-wise 2D data writer
+#include "io/plot_writer.h"
+// field checksum (regression validation)
+#include "utils/field_checksum.h"
 

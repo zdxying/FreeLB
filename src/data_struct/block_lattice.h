@@ -28,6 +28,7 @@
 
 #include "data_struct/voxel_map.h"
 
+
 // block structure for refined lattice
 template <typename T, typename LatSet, typename TypePack>
 class BlockLattice : public BlockLatticeBase<T, LatSet, TypePack> {
@@ -50,6 +51,11 @@ class BlockLattice : public BlockLatticeBase<T, LatSet, TypePack> {
 #ifdef MPI_ENABLED
   std::vector<std::vector<unsigned int>> RecvDirection;
   std::vector<std::vector<unsigned int>> SendDirection;
+
+  std::vector<std::size_t> _firstSends;
+  std::vector<std::size_t> _lastSends;
+
+  void initHiddenCommunication();
 #endif
 
   // omega = 1 / tau
@@ -121,6 +127,12 @@ class BlockLattice : public BlockLatticeBase<T, LatSet, TypePack> {
   template <typename CELLDYNAMICS>
   void ApplyCellDynamics(const Genericvector<std::size_t>& Idx);
 
+#ifdef MPI_ENABLED
+  template <typename CELLDYNAMICS, typename ArrayType, typename buffer_type>
+  void ApplyCellDynamicsWithHiddenComm(const ArrayType& flagarr, std::vector<MPI_Request>& SendRequests,
+    std::vector<MPI_Request>& RecvRequests, std::vector<buffer_type>& SendBuffers);
+#endif
+
   template <typename DYNAMICS, typename elementType>
   void ApplyDynamics(const Genericvector<elementType>& Idx);
 
@@ -134,10 +146,16 @@ class BlockLattice : public BlockLatticeBase<T, LatSet, TypePack> {
 
   void CuDevStream();
 
-  template <typename CELLDYNAMICS, typename ArrayType>
+  // Cell dynamics on the GPU.  CELLTYPE is the cell the task selector was built
+  // around; its trailing POPPOLICY parameter selects the POP storage strategy
+  // (cudev::DirectPop streams from global memory, cudev::RegPop keeps the q
+  // populations in registers for the duration of the dynamics).  The block size
+  // is derived from the strategy: the register footprint wants a multiple of the
+  // warp size rather than THREADS_PER_BLOCK.  See docs/CELL_POLICY_PLAN.md.
+  template <typename CELLDYNAMICS, typename CELLTYPE, typename ArrayType>
   void CuDevApplyCellDynamics(ArrayType& flagarr);
 
-  template <typename CELLDYNAMICS>
+  template <typename CELLDYNAMICS, typename CELLTYPE>
   void CuDevApplyCellDynamics();
 
 #endif
@@ -153,11 +171,13 @@ class BlockLattice : public BlockLatticeBase<T, LatSet, TypePack> {
 
 #ifdef MPI_ENABLED
 
+  template <typename buffer_type>
   void mpiNormalSend(std::vector<MPI_Request>& SendRequests, 
-  std::vector<std::vector<T>>& SendBuffers, const std::vector<DistributedComm>& MPISends);
+  std::vector<buffer_type>& SendBuffers, const std::vector<DistributedComm>& MPISends);
 
+  template <typename buffer_type>
   void mpiNormalFullSend(std::vector<MPI_Request>& SendRequests, 
-  std::vector<std::vector<T>>& SendBuffers, const std::vector<DistributedComm>& MPISends);
+  std::vector<buffer_type>& SendBuffers, const std::vector<DistributedComm>& MPISends);
 
   void mpiAverSend(std::vector<MPI_Request>& SendRequests,
   std::vector<std::vector<T>>& SendBuffers, const std::vector<DistributedComm>& MPISends);
@@ -165,17 +185,21 @@ class BlockLattice : public BlockLatticeBase<T, LatSet, TypePack> {
   void mpiIntpSend(std::vector<MPI_Request>& SendRequests, 
   std::vector<std::vector<T>>& SendBuffers, const std::vector<DistributedComm>& MPISends);
 
+  template <typename buffer_type>
   void mpiNormalRecv(std::vector<MPI_Request>& RecvRequests, 
-  std::vector<std::vector<T>>& RecvBuffers, const std::vector<DistributedComm>& MPIRecvs);
+  std::vector<buffer_type>& RecvBuffers, const std::vector<DistributedComm>& MPIRecvs);
 
+  template <typename buffer_type>
   void mpiFullRecv(std::vector<MPI_Request>& RecvRequests, 
-  std::vector<std::vector<T>>& RecvBuffers, const std::vector<DistributedComm>& MPIRecvs);
+  std::vector<buffer_type>& RecvBuffers, const std::vector<DistributedComm>& MPIRecvs);
 
+  template <typename buffer_type>
   void mpiNormalSet(int& reqidx, std::vector<MPI_Request>& RecvRequests,
-  const std::vector<std::vector<T>>& RecvBuffers, const std::vector<DistributedComm>& MPIRecvs);
+  const std::vector<buffer_type>& RecvBuffers, const std::vector<DistributedComm>& MPIRecvs);
 
+  template <typename buffer_type>
   void mpiNormalFullSet(int& reqidx, std::vector<MPI_Request>& RecvRequests,
-  const std::vector<std::vector<T>>& RecvBuffers, const std::vector<DistributedComm>& MPIRecvs);
+  const std::vector<buffer_type>& RecvBuffers, const std::vector<DistributedComm>& MPIRecvs);
 
   void mpiAverIntpSet(int& reqidx, std::vector<MPI_Request>& RecvRequests,
   const std::vector<std::vector<T>>& RecvBuffers, const std::vector<DistributedComm>& MPIRecvs);
@@ -196,37 +220,41 @@ __global__ void CuDevStreamKernel(cudev::BlockLattice<T, LatSet, TypePack>* bloc
   blocklat->Stream(id);
 }
 
-template <typename T, typename LatSet, typename TypePack, typename CELLDYNAMICS, typename ArrayType>
-__global__ void CuDevApplyCellDynamicsKernel(cudev::BlockLattice<T, LatSet, TypePack>* blocklat, ArrayType* flagarr) {
+// (the old bounds-checked kernel variants were removed: the active kernels
+// above now take the cell count and early-return themselves)
+//
+// One kernel serves both POP storage strategies: CELLTYPE is the cell the task
+// selector was built around, and its trailing POPPOLICY parameter decides
+// whether the populations stream from global memory (DirectPop) or stay in
+// registers for the whole dynamics (RegPop).  Cell::flush() is a no-op under
+// DirectPop, which is what allows the unconditional call below.
+// See docs/CELL_POLICY_PLAN.md.
+template <typename T, typename LatSet, typename TypePack, typename CELLTYPE,
+          typename CELLDYNAMICS, typename ArrayType>
+__global__ void CuDevApplyCellDynamicsKernel(
+    cudev::BlockLattice<T, LatSet, TypePack>* blocklat, ArrayType* flagarr, std::size_t n) {
+  static_assert(std::is_same_v<typename CELLDYNAMICS::CellType, CELLTYPE>,
+                "the cell type must match the one the task selector was built around; "
+                "rebuild the task list with tmp::RebindSelector");
   std::size_t idx = blockIdx.x * blockDim.x + threadIdx.x;
-  cudev::Cell<T, LatSet, TypePack> cell(idx, blocklat);
+  if (idx >= n) return;  // grid is rounded up to the block size
+  CELLTYPE cell(idx, blocklat);
   CELLDYNAMICS::Execute(flagarr->operator[](idx), cell);
+  cell.flush();
 }
 
-template <typename T, typename LatSet, typename TypePack, typename CELLDYNAMICS>
-__global__ void CuDevApplyCellDynamicsKernel(cudev::BlockLattice<T, LatSet, TypePack>* blocklat) {
+template <typename T, typename LatSet, typename TypePack, typename CELLTYPE,
+          typename CELLDYNAMICS>
+__global__ void CuDevApplyCellDynamicsKernel(
+    cudev::BlockLattice<T, LatSet, TypePack>* blocklat, std::size_t n) {
+  static_assert(std::is_same_v<typename CELLDYNAMICS::CellType, CELLTYPE>,
+                "the cell type must match the one the task selector was built around; "
+                "rebuild the task list with tmp::RebindSelector");
   std::size_t idx = blockIdx.x * blockDim.x + threadIdx.x;
-  cudev::Cell<T, LatSet, TypePack> cell(idx, blocklat);
+  if (idx >= n) return;  // grid is rounded up to the block size
+  CELLTYPE cell(idx, blocklat);
   CELLDYNAMICS::apply(cell);
-}
-
-// old version of unaligned memory
-template <typename T, typename LatSet, typename TypePack, typename CELLDYNAMICS, typename ArrayType>
-__global__ void CuDevApplyCellDynamicsKernel(cudev::BlockLattice<T, LatSet, TypePack>* blocklat, ArrayType* flagarr, std::size_t N) {
-  std::size_t idx = blockIdx.x * blockDim.x + threadIdx.x;
-  if (idx < N) {
-    cudev::Cell<T, LatSet, TypePack> cell(idx, blocklat);
-    CELLDYNAMICS::Execute(flagarr->operator[](idx), cell);
-  }
-}
-
-template <typename T, typename LatSet, typename TypePack, typename CELLDYNAMICS>
-__global__ void CuDevApplyCellDynamicsKernel(cudev::BlockLattice<T, LatSet, TypePack>* blocklat, std::size_t N) {
-  std::size_t idx = blockIdx.x * blockDim.x + threadIdx.x;
-  if (idx < N) {
-    cudev::Cell<T, LatSet, TypePack> cell(idx, blocklat);
-    CELLDYNAMICS::apply(cell);
-  }
+  cell.flush();
 }
 
 #endif
@@ -249,6 +277,8 @@ class BlockLatticeManager : public BlockLatticeManagerBase<T, LatSet, TypePack> 
  private:
   std::vector<BlockLattice<T, LatSet, ALLFIELDS>> BlockLats;
   AbstractConverter<T>& Conv;
+
+  using buffer_type = ::buffer_type<T>;
 
  public:
   template <typename... FIELDPTRTYPES>
@@ -346,10 +376,13 @@ class BlockLatticeManager : public BlockLatticeManagerBase<T, LatSet, TypePack> 
 
   void CuDevStream();
 
-  template <typename CELLDYNAMICS, typename FieldType>
+  // Forwards to BlockLattice::CuDevApplyCellDynamics, threading CELLTYPE (the
+  // cell the task selector was built around) through so that the POP storage
+  // strategy reaches the kernel.  See docs/CELL_POLICY_PLAN.md.
+  template <typename CELLDYNAMICS, typename CELLTYPE, typename FieldType>
   void CuDevApplyCellDynamics(BlockFieldManager<FieldType, T, LatSet::d>& BFM);
 
-  template <typename CELLDYNAMICS>
+  template <typename CELLDYNAMICS, typename CELLTYPE>
   void CuDevApplyCellDynamics();
 
 #endif
@@ -390,6 +423,12 @@ class BlockLatticeManager : public BlockLatticeManagerBase<T, LatSet, TypePack> 
   void MPIInterpolateCommunicate(std::int64_t count);
 
 #endif
+
+
+  // ApplyCellDynamics with hidden communicate, no barrier
+  template <typename CELLDYNAMICS, typename FieldType>
+  void ApplyCellDynamicsWithHiddenComm(const BlockFieldManager<FieldType, T, LatSet::d>& BFM);
+
 
   void NormalCommunicate();
   void NormalCommunicate(std::int64_t count);

@@ -34,6 +34,13 @@
 #include "freelb.h"
 #include "freelb.hh"
 
+#include "utils/field_checksum.h"
+
+#include <cstdlib>
+#include <cstring>
+#include <iomanip>
+#include <fstream>
+
 
 // using T = FLOAT;
 using T = float;
@@ -108,7 +115,44 @@ void readParam() {
             << "----------------------------------------------" << std::endl;
 }
 
-int main() {
+// Which POP storage strategy the cell dynamics runs with.  Both solve the same
+// problem and, since the strategy is a template parameter of cudev::Cell, both
+// use the same CSE-generated arithmetic.  RegPop keeps the q populations in
+// registers between the moment pass and the collision pass instead of re-reading
+// them from global memory; DirectPop streams them.  --base selects DirectPop.
+//
+// Both strategies work with FP16 storage.  DirectPop used to go NaN within 100
+// steps because cudev::Cell::operator[] hands back a PopRef prvalue and
+// `cell[i] = cell[iopp]` (collision::BounceBack) bound it to PopRef's implicit
+// copy-assignment instead of the converting operator=, so the bounce-back stores
+// never reached memory; PopRef is now assign transparent.  This used to be
+// papered over by forcing RegPop under -DFREELB_POP_FP16, but that also threw
+// away the ability to select the strategy.
+static bool g_UseRegCell = true;
+
+static void parseArgs(int argc, char** argv) {
+  for (int i = 1; i < argc; ++i) {
+    if (std::strcmp(argv[i], "--base") == 0) {
+      g_UseRegCell = false;
+    } else if (std::strcmp(argv[i], "--reg") == 0) {
+      g_UseRegCell = true;
+    } else {
+      // the block size is no longer a knob: it is derived from the cell's POP
+      // storage strategy, because the register footprint differs per policy
+      std::cerr << "usage: cavity3d [--reg|--base]\n";
+      std::exit(2);
+    }
+  }
+}
+
+// Reduction over every distribution function of every cell.  All POP
+// containers address the same bytes with the same values, so their checksums
+// must agree bit for bit; a mismatch means one of them is misaddressing.
+// pop-field checksum lives in utils/field_checksum.h (shared with the CPU
+// solver), so the GPU/CPU comparison uses the exact same accumulation order.
+
+int main(int argc, char** argv) {
+  parseArgs(argc, argv);
   constexpr std::uint8_t VoidFlag = std::uint8_t(1);
   constexpr std::uint8_t AABBFlag = std::uint8_t(2);
   constexpr std::uint8_t BouncebackFlag = std::uint8_t(4);
@@ -190,10 +234,15 @@ int main() {
   // using TaskCollection = tmp::TupleWrapper<BulkTask, WallTask>;
   using TaskCollection = tmp::TupleWrapper<BulkTask, BBTask, BBMVTask>;
   // task executor
+  // The same task list drives both cell implementations: tmp::RebindSelector
+  // substitutes the cell type inside every task (moment, equilibrium, collision)
+  // so there is no second task collection to keep in sync.
   using NSTask = tmp::TaskSelector<TaskCollection, std::uint8_t, CELL>;
+  using RegCELL = cudev::RegCell<T, LatSet, cudevFIELDS>;
+  using NSRegTask = tmp::RebindSelector<RegCELL, TaskCollection, CELL, std::uint8_t>;
 
   // task: update rho and u
-  using RhoUTask = tmp::Key_TypePair<AABBFlag, moment::rhoU<CELL>>;
+  using RhoUTask = tmp::Key_TypePair<AABBFlag, moment::rhoU<CELL, true>>;
   using TaskCollectionRhoU = tmp::TupleWrapper<RhoUTask>;
   using TaskSelectorRhoU = tmp::TaskSelector<TaskCollectionRhoU, std::uint8_t, CELL>;
 
@@ -210,6 +259,11 @@ int main() {
   NSLattice.getField<RHO<T>>().copyToDevice();
   NSLattice.getField<VELOCITY<T, LatSet::d>>().copyToDevice();
 
+  // DEBUG probe: checksum of the freshly uploaded field, before any dynamics
+  frelb_diag::PrintChecksum(
+      "[cavity3d][post-upload]",
+      frelb_diag::PopChecksumDevice(NSLattice.getBlockLat(0)));
+
   // count and timer
   Timer MainLoopTimer;
   // Timer OutputTimer;
@@ -217,7 +271,11 @@ int main() {
 
   for(int i = 0; i < 10; ++i){
     // NSLattice.ApplyCellDynamics<NSTask>(FlagFM);
-    NSLattice.CuDevApplyCellDynamics<NSTask>(FlagFM);
+    if (g_UseRegCell) {
+      NSLattice.CuDevApplyCellDynamics<NSRegTask, RegCELL>(FlagFM);
+    } else {
+      NSLattice.CuDevApplyCellDynamics<NSTask, CELL>(FlagFM);
+    }
     // NSLattice.Stream();
     NSLattice.CuDevStream();
   }
@@ -226,7 +284,11 @@ int main() {
   while (MainLoopTimer() < MaxStep) {
 
     // NSLattice.ApplyCellDynamics<NSTask>(FlagFM);
-    NSLattice.CuDevApplyCellDynamics<NSTask>(FlagFM);
+    if (g_UseRegCell) {
+      NSLattice.CuDevApplyCellDynamics<NSRegTask, RegCELL>(FlagFM);
+    } else {
+      NSLattice.CuDevApplyCellDynamics<NSTask, CELL>(FlagFM);
+    }
     // NSLattice.Stream();
     NSLattice.CuDevStream();
     // BM.Apply(MainLoopTimer());
@@ -235,18 +297,53 @@ int main() {
     ++MainLoopTimer;
   }
   cudaDeviceSynchronize();
+  {
+    // an unchecked launch is what hid the sm_89 / -rdc failure, which reported
+    // "Calculation Complete!" and 0.001 s for 1000 steps
+    cudaError_t err = cudaGetLastError();
+    if (err != cudaSuccess) {
+      std::cerr << "[cavity3d] kernel launch failed: " << cudaGetErrorString(err)
+                << std::endl;
+      return 3;
+    }
+  }
   MainLoopTimer.END_TIMER();
+
+  // distribution-function checksum; identical across POP containers
+  const auto cs = frelb_diag::PopChecksumDevice(NSLattice.getBlockLat(0));
+  frelb_diag::PrintChecksum("[cavity3d]", cs);
+  std::cout << "[cavity3d] NaN count = " << frelb_diag::nan_count_
+            << ", first NaN at flat (cell*q+pop) = " << frelb_diag::first_nan_
+            << std::endl;
+
+  std::cout << "[cavity3d] cell dynamics: "
+            << (g_UseRegCell ? "register-resident (cudev::RegPop)"
+                             : "streaming (cudev::DirectPop)")
+            << ", blockSize="
+            << cudev::RegPop::block_size << " / "
+            << cudev::DirectPop::block_size
+            << std::endl;
 
   Printer::Print_BigBanner(std::string("Calculation Complete!"));
   MainLoopTimer.Print_MainLoopPerformance(Geo.getTotalCellNum());
   Printer::Print("Total PhysTime", BaseConv.getPhysTime(MainLoopTimer()));
   Printer::Endl();
 
-  // NSLattice.CuDevApplyCellDynamics<TaskSelectorRhoU>(FlagFM);
-  // cudaDeviceSynchronize();
-  // NSLattice.getBlockLat(0).getField<RHO<T>>().copyToHost();
-  // NSLattice.getBlockLat(0).getField<VELOCITY<T, LatSet::d>>().copyToHost();
-  // NSWriter.WriteBinary(MainLoopTimer());
+  // macroscopic fields: compute rho/u from pops on device, pull velocity
+  // back, and dump the full u vector for CPU/GPU profile comparison
+  NSLattice.CuDevApplyCellDynamics<TaskSelectorRhoU, CELL>(FlagFM);
+  cudaDeviceSynchronize();
+  NSLattice.getBlockLat(0).getField<VELOCITY<T, LatSet::d>>().copyToHost();
+  {
+    auto& uarr =
+        NSLattice.getBlockLat(0).getField<VELOCITY<T, LatSet::d>>().getField(0);
+    const std::size_t n = NSLattice.getBlockLat(0).getN();
+    std::ofstream pf("profile_gpu.txt");
+    for (std::size_t i = 0; i < n; ++i) {
+      const Vector<T, 3> u = uarr.getdataPtr(i)[0];
+      pf << u[0] << " " << u[1] << " " << u[2] << "\n";
+    }
+  }
 
   return 0;
 }

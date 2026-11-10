@@ -22,6 +22,8 @@
 #include "freelb.hh"
 #include "offLattice/marchingCube.hh"
 
+#include "../../test_util.h"
+
 using T = FLOAT;
 using LatSet = D3Q19<T>;
 
@@ -78,6 +80,8 @@ int main() {
                    Vector<T, 3>(T(int(Ni / 2) * Cell_Len), T(int(Nj / 2) * Cell_Len),
                                 T(int(Nk / 2) * Cell_Len)));
   BlockGeometry3D<T> Geo(Ni, Nj, Nk, Thread_Num, cavity, Cell_Len);
+  CHECK_EQ(Geo.getBlockNum(), 8);
+  CHECK_EQ(Geo.getTotalCellNum(), std::size_t(2744));
 
   BlockFieldManager<FLAG, T, 3> flag(Geo, VoidFlag);
   flag.forEach(cavity,
@@ -111,6 +115,7 @@ int main() {
   offlat::MarchingCubeSurface<T, RHO<T>> mc(scalar, T{0.5});
   offlat::TriangleSet<T> triangles;
   mc.generateIsoSurface(triangles);
+  CHECK_EQ(triangles.getTriangles().size(), std::size_t(764));
 
   triangles.writeBinarySTL("marchingCube");
 
@@ -120,5 +125,5 @@ int main() {
   vtuManager.addWriter(vtuScalarWriter, vtuVectorWriter);
   vtuManager.Write();
 
-  return 0;
+  return flbtest::summary("io/marchingcube");
 }

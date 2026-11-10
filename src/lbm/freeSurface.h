@@ -34,6 +34,10 @@
 // free surface model
 #pragma once
 
+#include "lbm/equilibrium.h"  // equilibrium::SecondOrder
+#include "lbm/force.h"
+// moment::rho / moment::rhoU / moment::forcerhoU
+#include "lbm/moment.h"
 #include "lbm/freeSurfaceUtils.h"
 
 

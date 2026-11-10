@@ -26,7 +26,10 @@
 
 #include "parallel/mpi_manager.h"
 #include "utils/alias.h"
+// getIntpWeight<T, Dim>() interpolation weights (also used by data_struct/field.h)
+#include "data_struct/interpolation.h"
 #include "lbm/lattice_set.h"
+#include "xcore/src/util/assert.h"
 
 #ifdef __CUDACC__
 #include "utils/cuda_device.h"
@@ -387,11 +390,13 @@ struct BasicCommSet {
     for (const auto& comm : Sends) {
       if (comm.TargetBlockId == BlockId) return comm;
     }
+    ERROR_MESSAGE("no SendComm with BlockId " + std::to_string(BlockId));
   }
   const BasicComm<T, D>& getRecvComm(int BlockId) const { 
     for (const auto& comm : Recvs) {
       if (comm.TargetBlockId == BlockId) return comm;
     }
+    ERROR_MESSAGE("no RecvComm with BlockId " + std::to_string(BlockId));
   }
 
 };
@@ -574,36 +579,6 @@ struct Communicator {
 #endif
 };
 
-template <typename T>
-static constexpr std::array<std::array<T, 4>, 4> getIntpWeight2D() {
-  return 
-  {{{T{0.0625}, T{0.1875}, T{0.1875}, T{0.5625}},
-    {T{0.1875}, T{0.0625}, T{0.5625}, T{0.1875}},
-    {T{0.1875}, T{0.5625}, T{0.0625}, T{0.1875}},
-    {T{0.5625}, T{0.1875}, T{0.1875}, T{0.0625}}}};
-}
-
-template <typename T>
-static constexpr std::array<std::array<T, 8>, 8> getIntpWeight3D() {
-  return 
-{{{T{0.015625}, T{0.046875}, T{0.046875}, T{0.140625}, T{0.046875}, T{0.140625}, T{0.140625}, T{0.421875}},
-  {T{0.046875}, T{0.015625}, T{0.140625}, T{0.046875}, T{0.140625}, T{0.046875}, T{0.421875}, T{0.140625}},
-  {T{0.046875}, T{0.140625}, T{0.015625}, T{0.046875}, T{0.140625}, T{0.421875}, T{0.046875}, T{0.140625}},
-  {T{0.140625}, T{0.046875}, T{0.046875}, T{0.015625}, T{0.421875}, T{0.140625}, T{0.140625}, T{0.046875}},
-  {T{0.046875}, T{0.140625}, T{0.140625}, T{0.421875}, T{0.015625}, T{0.046875}, T{0.046875}, T{0.140625}},
-  {T{0.140625}, T{0.046875}, T{0.421875}, T{0.140625}, T{0.046875}, T{0.015625}, T{0.140625}, T{0.046875}},
-  {T{0.140625}, T{0.421875}, T{0.046875}, T{0.140625}, T{0.046875}, T{0.140625}, T{0.015625}, T{0.046875}},
-  {T{0.421875}, T{0.140625}, T{0.140625}, T{0.046875}, T{0.140625}, T{0.046875}, T{0.046875}, T{0.015625}}}};
-}
-// get predefined interp weight
-template <typename T, unsigned int D>
-static constexpr auto getIntpWeight() {
-  if constexpr (D == 2) {
-    return getIntpWeight2D<T>();
-  } else {
-    return getIntpWeight3D<T>();
-  }
-}
 
 template <typename FloatType, unsigned int Dim, typename ArrayType>
 typename ArrayType::value_type getAverage(const ArrayType& Arr, std::size_t id,

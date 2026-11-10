@@ -23,6 +23,7 @@
 #pragma once
 
 #include "io/basic_writer.h"
+#include "utils/timer.h"  // Counter
 
 template <typename T>
 class FLBplot {

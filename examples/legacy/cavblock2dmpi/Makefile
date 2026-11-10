@@ -1,6 +1,6 @@
 
 TARGET = cavblock2dmpi.exe
-ROOT := ../..
+ROOT := ../../..
 
 FLAGS += -O3 -Wall -Wdisabled-optimization -Wno-unknown-pragmas -Wno-unused-local-typedefs -march=native
 # FLAGS += -O3 -fopenmp

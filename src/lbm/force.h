@@ -21,11 +21,17 @@
 // force.h
 #pragma once
 
-#include "lbm/moment.ur.h"
-#include "utils/util.h"
+#include <array>
+
+#include "data_struct/Vector.h"
+// latset::w / latset::c
+#include "lbm/lattice_set.h"
+// VELOCITY / FORCE field aliases
+#include "utils/alias.h"
 
 namespace force {
 
+// @cse
 template <typename T, typename LatSet>
 struct ForcePopImpl {
   __any__ static inline void compute(std::array<T, LatSet::q> &Fi, const Vector<T, LatSet::d> &u, const Vector<T, LatSet::d> &F) {
@@ -35,6 +41,7 @@ struct ForcePopImpl {
   }
 };
 
+// @cse
 template <typename T, typename LatSet, unsigned int d>
 struct ScalarForcePopImpl {
   __any__ static inline void compute(std::array<T, LatSet::q> &Fi, const Vector<T, LatSet::d> &u, const T F) {

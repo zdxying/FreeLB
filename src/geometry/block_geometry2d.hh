@@ -23,6 +23,8 @@
 #pragma once
 
 #include "geometry/block_geometry2d.h"
+// GenericArray / GenericFieldBase constructed by value in the methods below
+#include "data_struct/field.h"
 
 template <typename T>
 Block2D<T>::Block2D(const BasicBlock<T, 2> &baseblock, int olap)

@@ -20,6 +20,7 @@
 
 #pragma once
 
+#include "io/basic_writer.h"  // Printer
 #include "lbm/unit_converter.h"
 
 template <typename T>

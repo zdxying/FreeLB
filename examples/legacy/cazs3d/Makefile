@@ -1,5 +1,5 @@
 
-TARGET = cazs3d
+TARGET = cazs3d.exe
 ROOT := ../../..
 
 # FLAGS += -march=native -ffast-math

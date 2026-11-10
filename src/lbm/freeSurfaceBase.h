@@ -71,6 +71,8 @@
 #pragma once
 
 #include "utils/alias.h"
+// TypePack
+#include "utils/tmp.h"
 
 
 // namespace olbfs: openlb's implementation of free surface model

@@ -21,6 +21,8 @@
 #include "freelb.h"
 #include "freelb.hh"
 
+#include "../../test_util.h"
+
 using T = FLOAT;
 
 using LatSet = D2Q9<T>;
@@ -117,23 +119,30 @@ int main() {
 	BaseConverter<T> BaseConv(LatSet::cs2);
 	BaseConv.SimplifiedConverterFromRT(Ni, T{1}, T{1});
 
-	using FIELDS = TypePack<TESTFIELD1, TESTFIELD2>;
+	using FIELDS = TypePack<TESTFIELD, TESTFIELD1, TESTFIELD2>;
 	using CELL = Cell<T, LatSet, FIELDS>;
-	ValuePack InitValues(T{2}, T{3});
+	ValuePack InitValues(T{1}, T{2}, T{3});
 
 	BFMCollection<T, LatSet, FIELDS> NSLattice(Geo, InitValues.values);
 
-	// get compiler error
+	// scalar field: get(0) == get<0>(0)
 	auto fvar0 = NSLattice.template getField<TESTFIELD>().getBlockField(0).get(0);
-	// correct
+	// vector field: component 1
 	auto fvar1 = NSLattice.template getField<TESTFIELD1>().getBlockField(0).template get<1>(0);
+	// population field: direction 3
 	auto fvar2 = NSLattice.template getField<TESTFIELD2>().getBlockField(0).template get<3>(0);
 
 	std::cout << fvar0 << std::endl;
 	std::cout << fvar1 << std::endl;
 	std::cout << fvar2 << std::endl;
 
+	// InitValues(T{1}, T{2}, T{3}) must land in the three field kinds:
+	// scalar, vector component 1, and population direction 3.
+	CHECK_NEAR(fvar0, T(1), 0.0);
+	CHECK_NEAR(fvar1, T(2), 0.0);
+	CHECK_NEAR(fvar2, T(3), 0.0);
+
+	return flbtest::summary("feature/fieldtemp");
 
 	// BlockLatticeManager<T, LatSet, FIELDS> NSLattice(Geo, InitValues, BaseConv);
-
 }

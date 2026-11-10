@@ -206,7 +206,7 @@ int main() {
   while (MainLoopTimer() < MaxStep && res > tol) {
 
     // NSLattice.ApplyCellDynamics<NSTask>(FlagFM);
-    NSLattice.CuDevApplyCellDynamics<NSTask>(FlagFM);
+    NSLattice.CuDevApplyCellDynamics<NSTask, CELL>(FlagFM);
     // NSLattice.CuDevApplyCellDynamics<collision::BGK<moment::rhoU<CELL>, equilibrium::SecondOrder<CELL>>>();
     
     // NSLattice.Stream();
@@ -219,7 +219,7 @@ int main() {
     ++OutputTimer;
 
     if (MainLoopTimer() % OutputStep == 0) {
-      NSLattice.CuDevApplyCellDynamics<TaskSelectorRhoU>(FlagFM);
+      NSLattice.CuDevApplyCellDynamics<TaskSelectorRhoU, CELL>(FlagFM);
       cudaDeviceSynchronize();
       NSLattice.getBlockLat(0).getField<RHO<T>>().copyToHost();
       NSLattice.getBlockLat(0).getField<VELOCITY<T, LatSet::d>>().copyToHost();
@@ -229,6 +229,17 @@ int main() {
       Printer::Print_Res<T>(res);
       Printer::Endl();
       NSWriter.WriteBinary(MainLoopTimer());
+    }
+  }
+
+  // an unchecked launch is what hid the sm_89 / -rdc failure on this machine:
+  // the run printed "Calculation Complete!" while every kernel had failed
+  {
+    cudaError_t err = cudaGetLastError();
+    if (err != cudaSuccess) {
+      std::cerr << "[cavity2d] kernel launch failed: " << cudaGetErrorString(err)
+                << std::endl;
+      return 3;
     }
   }
 

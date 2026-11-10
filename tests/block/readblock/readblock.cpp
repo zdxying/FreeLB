@@ -21,6 +21,8 @@
 #include "freelb.h"
 #include "freelb.hh"
 
+#include "../../test_util.h"
+
 using T = FLOAT;
 using LatSet = D3Q19<T>;
 
@@ -40,6 +42,8 @@ int main() {
 
   BlockGeometry2D<T> Geo2d(blockreader2d);
   BlockGeometry3D<T> Geo3d(blockreader3d);
+  CHECK_EQ(Geo2d.getTotalCellNum(), std::size_t(392));
+  CHECK_EQ(Geo3d.getTotalCellNum(), std::size_t(3456));
 
   BlockFieldManager<FlagField, T, 2> FlagFM2d(Geo2d, VoidFlag);
   BlockFieldManager<FlagField, T, 3> FlagFM3d(Geo3d, VoidFlag);
@@ -56,4 +60,6 @@ int main() {
   vtmwriter::vtmWriter<T, 3> GeoWriter3d("Geo3", Geo3d);
   GeoWriter3d.addWriterSet(Writer3d);
   GeoWriter3d.WriteBinary();
+
+  return flbtest::summary("block/readblock");
 }

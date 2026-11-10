@@ -41,6 +41,8 @@
  */
 
 
+#pragma once
+
 #include "offLattice/marchingCube.h"
 
 namespace offlat {

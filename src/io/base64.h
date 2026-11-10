@@ -44,6 +44,8 @@
 
 
 #include <iosfwd>
+#include <istream>
+#include <ostream>
 
 template <typename T>
 class Base64Encoder {

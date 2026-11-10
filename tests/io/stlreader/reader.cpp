@@ -23,6 +23,8 @@
 #include "freelb.h"
 #include "freelb.hh"
 
+#include "../../test_util.h"
+
 using T = FLOAT;
 using LatSet = D3Q27<T>;
 
@@ -54,6 +56,8 @@ int main() {
   GeoHelper.AdaptiveOptimization(4);
   GeoHelper.LoadBalancing();
   BlockGeometry3D<T> blockgeometry(GeoHelper);
+  CHECK_EQ(blockgeometry.getBlockNum(), 4);
+  CHECK_EQ(blockgeometry.getTotalCellNum(), std::size_t(52272));
   // BlockGeometry3D<T> blockgeometry(reader, 4);
   BlockFieldManager<FlagField, T, LatSet::d> FlagFM(blockgeometry, VoidFlag);
   FlagFM.ReadOctree(reader.getTree(), AABBFlag);
@@ -63,6 +67,8 @@ int main() {
   vtmwriter::vtmWriter<T, LatSet::d> GeoWriter("GeoFlag", blockgeometry);
   GeoWriter.addWriterSet(GeoFlagWriter);
   GeoWriter.WriteBinary();
+
+  return flbtest::summary("io/stlreader");
 
   
   // radius height centre
@@ -75,7 +81,4 @@ int main() {
   // geometry.setFlag(cylinder, 2);
   // AABB<T,3> cavity(Vector<T, 3>(T(-2), T(-2), T(-2)),
   //                Vector<T, 3>(T(80), T(40), T(80)));
-
-
-  return 0;
 }

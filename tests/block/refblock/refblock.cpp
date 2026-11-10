@@ -21,6 +21,8 @@
 #include "freelb.h"
 #include "freelb.hh"
 
+#include "../../test_util.h"
+
 
 using T = FLOAT;
 using LatSet = D2Q9<T>;
@@ -94,6 +96,13 @@ int main(int argc, char* argv[]) {
 
   // geometry
   BlockGeometry2D<T> Geo(GeoHelper);
+  // getTotalCellNum() is a collective (barrier + MPI_SUM reduce) that yields
+  // the global count only on rank 0, so assert there; every rank still runs it.
+  const std::size_t totalCells = Geo.getTotalCellNum();
+  CHECK(Geo.getBlockNum() > 0);  // every rank owns at least one block
+  if (mpi().getRank() == 0) {
+    CHECK_EQ(totalCells, std::size_t(7840));
+  }
 
   BlockFieldManager<RHO<T>, T, 2> FlagFM(Geo, VoidFlag);
   FlagFM.forEach([&](auto& field, std::size_t id) { field.SetField(id, mpi().getRank()); });
@@ -103,4 +112,6 @@ int main(int argc, char* argv[]) {
   vtmo::vtmWriter<T, 2> GeoWriter("GeoFlag", Geo, 1);
   GeoWriter.addWriterSet(FlagWriter);
   GeoWriter.WriteBinary();
+
+  return flbtest::summary("block/refblock");
 }

@@ -33,7 +33,16 @@
 
 #pragma once
 
-#include "data_struct/block_lattice.h"
+#include <algorithm>   // std::clamp
+#include <type_traits> // std::conditional_t
+
+#include "data_struct/Vector.h"
+// D2Q9 / D3Q27
+#include "lbm/lattice_set.h"
+// VOLUMEFRAC / STATE / FLAG / MASS ... field aliases
+#include "utils/alias.h"
+// util::isFlag, make_Array
+#include "utils/util.h"
 #include "lbm/freeSurfaceBase.h"
 
 

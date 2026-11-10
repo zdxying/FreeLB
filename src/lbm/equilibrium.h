@@ -24,15 +24,17 @@
 // lattice boltzmann method implementations
 
 // #include "data_struct/Vector.h"
+#include "data_struct/pop_policy.h"
 #include "lbm/lattice_set.h"
+// VELOCITY and other field aliases used below
+#include "utils/alias.h"
 
 template <typename T, typename LatSet, typename TypePack>
 class Cell;
 
-namespace cudev {
-  template <typename T, typename LatSet, typename TypePack>
-  class Cell;
-}  // namespace cudev
+// cudev::Cell is declared in data_struct/pop_policy.h together with its
+// default POPPOLICY (a default argument may be given only once), so that
+// data_struct does not need this lbm header to name the 3-argument form.
 
 // calc equilibrium distribution function
 // sum(feq_i) = rho, for both first and second order
@@ -76,6 +78,7 @@ struct Equilibrium {
 
 namespace equilibrium {
 
+// @cse
 template <typename CELL>
 struct SecondOrderImpl {
   using T = typename CELL::FloatType;

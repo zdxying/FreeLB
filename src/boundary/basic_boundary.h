@@ -24,12 +24,28 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstddef>
 #include <cstdint>
 #include <iomanip>
 #include <iostream>
+#include <utility>  // std::pair
+#include <vector>
 
-#include "data_struct/block_lattice.h"
+// Geometry / GenericArray aliases (fwd-declared there); no field machinery is
+// needed here -- data_struct/block_lattice.h used to be pulled in as a relay
+// for PopLattice and was never used directly.
 #include "utils/alias.h"
+// util::isFlag
+#include "utils/util.h"
+// latset::opp
+#include "lbm/lattice_set.h"
+// BasicCommSet / LatticeCommSet members of BlockCommBoundary below
+#include "parallel/communicator.h"
+
+// reference members only -- the definition is provided by whoever instantiates
+// these boundaries (data_struct/lattice.h)
+template <typename T, typename LatSet>
+class PopLattice;
 
 
 // fixed boundary cell structure

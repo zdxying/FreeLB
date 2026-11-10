@@ -20,6 +20,9 @@
 
 #include "freelb.h"
 #include "freelb.hh"
+// legacy PopLattice path (no longer wrapped by freelb.h/hh)
+#include "data_struct/lattice.h"
+#include "data_struct/lattice.hh"
 #include "lbm/buoyancy.h"
 
 using T = FLOAT;

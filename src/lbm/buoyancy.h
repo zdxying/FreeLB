@@ -22,6 +22,9 @@
 #pragma once
 
 #include "data_struct/lattice.h"
+#include "lbm/collision.h"   // legacy::BGK
+#include "lbm/moment.h"   // moment::Velocity
+#include "lbm/force.h"
 
 // buoyancy for basiclattice
 template <typename T, typename LatSet>

@@ -23,7 +23,9 @@
 #pragma once
 
 
-#include "lbm/moment.ur.h"
+#include "lbm/moment.h"          // moment::rhoU
+// equilibrium::SecondOrder used below
+#include "lbm/equilibrium.h"
 
 
 namespace mrtdata {

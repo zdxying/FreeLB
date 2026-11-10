@@ -241,8 +241,11 @@ class ZhuStefanescu3D {
   inline bool isFlag(int id, std::uint8_t flag) {
     return static_cast<bool>(Flag.get(id) & flag);
   }
-  void setType(int id, std::uint8_t type) { State.SetField(id, type); }
-  void setFlag(int id, std::uint8_t flag) { Flag.SetField(id, flag); }
+  // CAType/CAFlag are unscoped enums with fixed underlying type: std::uint8_t
+  // does NOT implicitly convert to them, so the cast is mandatory here (this
+  // used to be a latent compile error -- any TU including this header failed).
+  void setType(int id, std::uint8_t type) { State.SetField(id, static_cast<CAType>(type)); }
+  void setFlag(int id, std::uint8_t flag) { Flag.SetField(id, static_cast<CAFlag>(flag)); }
   bool hasNeighborType(int id, std::uint8_t type) {
     for (int i = 1; i < LatSet::q; ++i) {
       if (isType(id + Delta_Index[i], type)) return true;

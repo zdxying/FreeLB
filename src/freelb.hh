@@ -18,12 +18,18 @@
  * 
  */
 
+#pragma once
+
 // freelb.hh
 // include haeder files for LBM
 #include "geometry/geometry.hh"
 #include "lbm/unit_converter.hh"
 #include "data_struct/field_struct.hh"
-#include "data_struct/lattice.hh"
 #include "data_struct/block_lattice.hh"
 #include "parallel/mpi_manager.hh"
+// off-lattice geometry (STL) field initialization
+#include "offLattice/marchingCube.hh"
+// cellular automata (solidification) implementations
+#include "ca/zhu_stefanescu2d.hh"
+#include "ca/zhu_stefanescu3d.hh"
 

@@ -23,16 +23,33 @@ DEPS = $(SRCS:.$(SRC_EXT)=.d)
 
 FLAGS += -std=c++17
 
+# -flto is a host-compiler (g++) option; nvcc rejects it outright
+# ('Unknown option -flto'), so it must stay inside this guard. Every target
+# built with CXXC=nvcc compiles with this file, and any -flto on the nvcc
+# command line is a hard build failure.
 ifneq ($(CXXC),nvcc)
+FLAGS += -flto
 FLAGS += -fno-diagnostics-show-template-tree
 endif
 
 # linker flags
-LINKFLAGS := -L$(ROOT)/lib -lrt 
+# LINKFLAGS := -L$(ROOT)/lib -lrt 
 # use the following when compiling error: 
 # undefined reference to `tbb::detail::r1::execution_slot(tbb::detail::d1::execution_data const*)'
 # with -g -fopenmp flag
 # LINKFLAGS := -L$(ROOT)/lib -lrt -ltbb
+
+# xcore memory pool library (optional — falls back to std::allocator when absent)
+XCORE_LIB := $(ROOT)/src/xcore/build/install/lib/libxcore.a
+ifneq (,$(wildcard $(XCORE_LIB)))
+    LINKFLAGS := $(XCORE_LIB)
+    FLAGS += -DXCORE_ENABLED
+else
+    $(warning [FreeLB] xcore library not found at $(XCORE_LIB))
+    $(warning [FreeLB] Building without xcore — using std::allocator fallback.)
+    $(warning [FreeLB] Build xcore with: make -C $(ROOT)/src/xcore)
+    LINKFLAGS :=
+endif
 
 ifeq ($(CXXC),nvcc)
 	LINKFLAGS += -lcuda
@@ -40,11 +57,69 @@ endif
 
 all: $(TARGET)
 
-# ------------target----------------
-%.o: %.$(SRC_EXT)
-	$(CXXC) $(FLAGS) -I$(ROOT)/src/ -c $< -o $@
+# ------------cse code generation----------------
+# Examples built with -D_UNROLLFOR use the unrolled specializations.  Headers
+# listed in UR_CSE_BASES carry `// @cse` markers and are generated into
+# $(GEN_DIR) by the tools/cse/csegen source-to-source translator.
+#
+# lbm/lbm.h is the ONLY place that includes "lbm/*.ur.h", and only under
+# _FLB_UR_CSE -- which this file defines iff -D_UNROLLFOR is given AND the
+# csegen binary exists.  Therefore:
+#   * -D_UNROLLFOR + csegen   -> -D_FLB_UR_CSE -I$(GEN_DIR): the .ur.h
+#     includes in lbm.h resolve to the generated files in generated/lbm/
+#   * -D_UNROLLFOR, no csegen -> no _FLB_UR_CSE: lbm.h compiles the plain
+#     loop-based schemes (warned below)
+#   * no -D_UNROLLFOR         -> no ur path is touched at all
+# src/ur_fallback/lbm/*.ur.h (moment/equilibrium/force) are the frozen
+# hand-written comparison reference used by `tools/cse` (gen-refs / verify):
+# they are NEVER on the include path and are never overwritten.
+#
+# Key points for GEN_DIR handling:
+# - GEN_DIR is only used when csegen binary EXISTS (wildcard check)
+# - If csegen exists: pattern rule generates on-demand
+#   * Directory is auto-created by @mkdir -p in pattern rule
+#   * Timestamp-based regeneration if source header changes
+# - If csegen missing: NO -I$(GEN_DIR), NO pattern rule, NO _FLB_UR_CSE
+# - The existence of generated/ directory itself is irrelevant; it's created lazily
+ifneq (,$(findstring -D_UNROLLFOR,$(FLAGS)))
+CSEGEN := $(ROOT)/tools/cse/csegen
+ifneq (,$(wildcard $(CSEGEN)))
+# csegen found — enable code generation
+UR_CSE_BASES ?= lbm/moment lbm/equilibrium lbm/force
+GEN_DIR ?= $(ROOT)/generated
+UR_GEN_FILES := $(addprefix $(GEN_DIR)/,$(UR_CSE_BASES:%=%.ur.h))
+FLAGS += -D_FLB_UR_CSE -I$(GEN_DIR)
+else
+# csegen missing: -D_UNROLLFOR builds compile the plain loop-based schemes in
+# src/lbm (lbm.h skips the .ur.h includes when _FLB_UR_CSE is not defined).
+# src/ur_fallback/lbm/ holds the frozen hand-written reference copies of the
+# cse-covered headers (moment/equilibrium/force) and is NEVER on the include
+# path; the bounce-back / MRT unrolled specializations live in src/lbm as
+# regular headers (collision_unroll.h, collisionMRT_unroll.h).
+$(warning [FreeLB] csegen not found at $(CSEGEN) -- compiling without unrolled specializations)
+$(warning [FreeLB] Build csegen with: make -C $(ROOT)/tools/cse)
+endif
+endif
 
-$(TARGET): $(OBJS)
+ifneq (,$(strip $(UR_GEN_FILES)))
+$(GEN_DIR)/%.ur.h: $(ROOT)/src/%.h $(CSEGEN)
+	@mkdir -p $(dir $@)
+	$(CSEGEN) $< $@
+endif
+
+# ------------target----------------
+# -MMD -MP: write a header-dependency file next to the object.  -include
+%.o: %.$(SRC_EXT)
+	$(CXXC) $(FLAGS) -I$(ROOT)/src/ -MMD -MP -MF $(@:.o=.d) -c $< -o $@
+
+ifneq (,$(strip $(UR_GEN_FILES)))
+# rebuild objects whenever the generated specializations change
+$(OBJS): $(UR_GEN_FILES)
+endif
+
+# order-only: ensure generation runs first, but do not pass the .ur.h
+# headers to the linker
+$(TARGET): $(OBJS) | $(UR_GEN_FILES)
 	$(CXXC) $(FLAGS) -o $@ $^ $(LINKFLAGS)
 # $(CXXC) $(FLAGS) -o $@ $^ $(LDFLAGS) -lname
 -include $(DEPS)

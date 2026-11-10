@@ -23,6 +23,9 @@
 #pragma once
 
 #include "data_struct/lattice.h"
+// moment::Rho and legacy::BGK used in the implementations below
+#include "lbm/collision.h"
+#include "lbm/moment.h"
 
 template <typename T, typename LatSet>
 PopLattice<T, LatSet>::PopLattice(Geometry<T, LatSet::d>& geo, AbstractConverter<T>& conv,

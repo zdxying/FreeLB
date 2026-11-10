@@ -20,6 +20,8 @@
 
 // block_geometry3d.hh
 
+#include <iomanip>
+
 #include "geometry/block_geometry3d.h"
 
 template <typename T>

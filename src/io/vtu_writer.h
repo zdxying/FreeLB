@@ -26,7 +26,8 @@
 #include <functional>
 
 #include "data_struct/Vector.h"
-#include "data_struct/block_lattice.h"
+// BlockFieldManager (writers take it by const reference)
+#include "data_struct/field_struct.h"
 #include "io/base64.h"
 #include "io/basic_writer.h"
 

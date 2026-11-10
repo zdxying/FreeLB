@@ -22,12 +22,68 @@
 
 #pragma once
 
+// ---------------------------------------------------------------------------
+// Distribution-function container selection.
+//
+// The GPU block-lattice path resolves POP by *type* in GenericFieldBase, so the
+// alias inside namespace cudev and the alias at global scope must name the same
+// container.  Changing only one makes the lookup fail with "the type T in
+// std::get<T> must occur exactly once in the tuple".  The host and cudev
+// containers share their names, so a single selection macro drives both.
+//
+//   -DFREELB_POP_CYCLIC     -> CyclicArray
+//   default (CUDA)          -> CyclicArray
+//
+// Inside namespace cudev the name resolves to the device mirror, at global
+// scope to the host class, so one selection drives both -- and both must be
+// switched together, because POP is looked up by type.
+// ---------------------------------------------------------------------------
+#if defined(FREELB_POP_STREAMMAP)
+#  define FREELB_POP_ARRAY StreamMapArray
+#else
+#  define FREELB_POP_ARRAY CyclicArray
+#endif
+
+// POP storage element type: with FREELB_POP_FP16 (CUDA builds only) the
+// distributions are stored as __half while every computation stays float --
+// half the memory traffic, same arithmetic.  Identity mapping otherwise.
+#if defined(FREELB_POP_FP16) && defined(__CUDACC__)
+#include <cuda_fp16.h>
+#endif
+template <typename T>
+struct PopStorageTrait {
+  using type = T;
+};
+#if defined(FREELB_POP_FP16) && defined(__CUDACC__)
+template <>
+struct PopStorageTrait<float> {
+  using type = __half;
+};
+#endif
+template <typename T>
+using PopStorage = typename PopStorageTrait<T>::type;
+
 // std::array
 #include <array>
-// size_t, uint8_t
+// std::size_t, std::uint8_t
+#include <cstddef>
 #include <cstdint>
+// std::conditional_t
+#include <type_traits>
+// std::vector (buffer_type)
+#include <vector>
 
 #include "head.h"
+#include "xcore/src/memory/poolAllocator.h"
+
+// Buffer type used for MPI communication and population storage.
+// Uses xcore's pool allocator when available, std::allocator otherwise.
+template <typename T>
+#ifdef XCORE_ENABLED
+using buffer_type = std::vector<T, xcore::PoolAllocator<T>>;
+#else
+using buffer_type = std::vector<T>;
+#endif
 
 
 
@@ -108,9 +164,6 @@ template <typename T>
 class CyclicArray;
 
 template <typename T>
-class StreamArray;
-
-template <typename T>
 class StreamMapArray;
 
 namespace cudev {
@@ -129,9 +182,6 @@ class GenericArray;
 
 template <typename T>
 class CyclicArray;
-
-template <typename T>
-class StreamArray;
 
 template <typename T>
 class StreamMapArray;
@@ -160,7 +210,6 @@ using VectorFieldSoA = GenericFieldBase<GenericArray<T>, D>;
 
 template <typename T, unsigned int q>
 // using PopulationField = GenericFieldBase<StreamMapArray<T>, q>;
-// using PopulationField = GenericFieldBase<StreamArray<T>, q>;
 using PopulationField = GenericFieldBase<CyclicArray<T>, q>;
 
 
@@ -221,8 +270,7 @@ using CONSTFORCE = Data<Vector<T, D>, CONSTFORCEBase>;
 template <typename T>
 using SCALARCONSTFORCE = Data<T, SCALARCONSTFORCEBase>;
 template <typename T, unsigned int q>
-using POP = GenericField<StreamMapArray<T>, POPBase<q>>;
-// using POP = GenericField<StreamArray<T>, POPBase<q>>;
+using POP = GenericField<FREELB_POP_ARRAY<PopStorage<T>>, POPBase<q>>;
 // using POP = GenericField<CyclicArray<T>, POPBase<q>>;
 template <typename T>
 using RHOINIT = Data<T, RHOINITBase>;
@@ -295,12 +343,11 @@ using StrainRateMag = GenericField<GenericArray<T>, StrainRateMagBase>;
 
 #ifdef __CUDACC__
 template <typename T, unsigned int q>
-using POP = GenericField<StreamMapArray<T>, POPBase<q>>;
-// using POP = GenericField<StreamArray<T>, POPBase<q>>;
+using POP = GenericField<FREELB_POP_ARRAY<PopStorage<T>>, POPBase<q>>;
 // using POP = GenericField<CyclicArray<T>, POPBase<q>>;
 
 #else
-// we find that CyclicArray seems faster than StreamArray in benchmarks/cavity3d
+// CPU default POP container
 template <typename T, unsigned int q>
 using POP = GenericField<CyclicArray<T>, POPBase<q>>;
 // using POP = GenericField<StreamMapArray<T>, POPBase<q>>;

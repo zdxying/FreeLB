@@ -21,9 +21,13 @@
 /*Lattice Boltzmann Unit Converter*/
 #pragma once
 
+#include <cstdint>
 #include <iostream>
+#include <vector>
 
 #include "data_struct/Vector.h"
+// MPI_RANK / IF_MPI_RANK logging macros
+#include "parallel/mpi_manager.h"
 
 // Lattice_deltaX = 1   ->  Conv_L = deltaX
 // Lattice_deltaT = 1   ->  Conv_Time = deltaT

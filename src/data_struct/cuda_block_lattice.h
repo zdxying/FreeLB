@@ -24,6 +24,8 @@
 
 // Cell
 #include "data_struct/cell.h"
+// FindGenericRhoType (cudev set)
+#include "data_struct/generic_rho.h"
 // Block and BlockGeometry
 #include "utils/alias.h"
 
@@ -108,6 +110,18 @@ class BlockLatticeBase {
     return id + Delta_Index[dir];
   }
   __device__ const int* getDelta_Index() const { return Delta_Index; }
+
+  // Fill ptr_arr[i] with the address of the i-th distribution function of cell
+  // `id`, resolving the whole object graph once.  No longer used by the cell
+  // dynamics: cudev::Cell<..., RegPop> re-derives the address per direction
+  // inside its unrolled load/flush loops rather than pinning a q-sized pointer
+  // array in registers, which measured a much smaller register footprint
+  // (56 vs 96 for D3Q19) at the cost of some extra L1 address traffic.  Kept
+  // because it is the natural way to reach the q element addresses and works for
+  // any POP container that provides getdataPtr(): StreamMapArray and CyclicArray.
+  __device__ void getPopArray(std::size_t id, PopStorage<T>** ptr_arr) {
+    this->template getField<POP<T, LatSet::q>>().getArray(id, ptr_arr);
+  }
 };
 
 

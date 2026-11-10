@@ -23,6 +23,9 @@
 
 #include <omp.h>
 
+#include <cstdint>
+#include <vector>
+
 #include "data_struct/Vector.h"
 #include "head.h"
 

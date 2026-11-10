@@ -22,13 +22,19 @@
 
 #pragma once
 
+#include <array>
+#include <cstddef>
+#include <cstdint>
+#include <vector>
+
 #include "data_struct/cell.h"
+// ScalarField / PopulationField / VectorFieldAOS are aliases of
+// GenericFieldBase, whose definition lives in field.h; the members below are
+// held by value (cell.h used to relay this transitively)
+#include "data_struct/field.h"
 #include "geometry/geometry2d.h"
 #include "geometry/geometry3d.h"
 #include "lbm/unit_converter.h"
-#include "lbm/collision.h"
-#include "lbm/moment.h"
-#include "lbm/force.h"
 #include "utils/alias.h"
 
 // TODO: use a unified geometry reference like BasicBlock

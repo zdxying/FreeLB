@@ -73,13 +73,14 @@ void BlockField<FieldType, FloatType, Dim>::constructInDevice() {
 #ifdef MPI_ENABLED
 
 template <typename FieldType, typename FloatType, unsigned int Dim>
+template <typename buffer_type>
 void BlockField<FieldType, FloatType, Dim>::mpiNormalSend(
-  std::vector<MPI_Request>& SendRequests, std::vector<std::vector<datatype>>& SendBuffers,
+  std::vector<MPI_Request>& SendRequests, std::vector<buffer_type>& SendBuffers,
   const std::vector<DistributedComm>& MPISends) {
   // add to send buffer
   for (std::size_t i = 0; i < MPISends.size(); ++i) {
     const DistributedComm& comm = MPISends[i];
-    std::vector<datatype>& buffer = SendBuffers[i];
+    buffer_type& buffer = SendBuffers[i];
     buffer.resize(comm.Cells.size() * array_dim);
     const std::vector<std::size_t>& sends = comm.Cells;
     std::size_t bufidx{};
@@ -99,14 +100,15 @@ void BlockField<FieldType, FloatType, Dim>::mpiNormalSend(
 }
 
 template <typename FieldType, typename FloatType, unsigned int Dim>
+template <typename buffer_type>
 void BlockField<FieldType, FloatType, Dim>::mpiAverSend(
-  std::vector<MPI_Request>& SendRequests, std::vector<std::vector<datatype>>& SendBuffers,
+  std::vector<MPI_Request>& SendRequests, std::vector<buffer_type>& SendBuffers,
   const std::vector<DistributedComm>& MPISends) {
   static constexpr std::size_t SendSize = Dim == 2 ? 4 : 8;
   // add to send buffer
   for (std::size_t i = 0; i < MPISends.size(); ++i) {
     const DistributedComm& comm = MPISends[i];
-    std::vector<datatype>& buffer = SendBuffers[i];
+    buffer_type& buffer = SendBuffers[i];
     buffer.resize(comm.Cells.size() / SendSize * array_dim);
     const std::vector<std::size_t>& sends = comm.Cells;
     std::size_t bufidx{};
@@ -126,14 +128,15 @@ void BlockField<FieldType, FloatType, Dim>::mpiAverSend(
 }
 
 template <typename FieldType, typename FloatType, unsigned int Dim>
+template <typename buffer_type>
 void BlockField<FieldType, FloatType, Dim>::mpiIntpSend(
-  std::vector<MPI_Request>& SendRequests, std::vector<std::vector<datatype>>& SendBuffers,
+  std::vector<MPI_Request>& SendRequests, std::vector<buffer_type>& SendBuffers,
   const std::vector<DistributedComm>& MPISends) {
   static constexpr std::size_t SendSize = Dim == 2 ? 4 : 8;
   // add to send buffer
   for (int i = 0; i < MPISends.size(); ++i) {
     const DistributedComm& comm = MPISends[i];
-    std::vector<datatype>& buffer = SendBuffers[i];
+    buffer_type& buffer = SendBuffers[i];
     buffer.resize(comm.Cells.size() / SendSize * array_dim);
     const std::vector<std::size_t>& sends = comm.Cells;
     std::size_t bufidx{};
@@ -152,13 +155,14 @@ void BlockField<FieldType, FloatType, Dim>::mpiIntpSend(
 }
 
 template <typename FieldType, typename FloatType, unsigned int Dim>
+template <typename buffer_type>
 void BlockField<FieldType, FloatType, Dim>::mpiRecv(
-  std::vector<MPI_Request>& RecvRequests, std::vector<std::vector<datatype>>& RecvBuffers,
+  std::vector<MPI_Request>& RecvRequests, std::vector<buffer_type>& RecvBuffers,
   const std::vector<DistributedComm>& MPIRecvs) {
   // non-blocking recv
   for (std::size_t i = 0; i < MPIRecvs.size(); ++i) {
     const DistributedComm& comm = MPIRecvs[i];
-    std::vector<datatype>& buffer = RecvBuffers[i];
+    buffer_type& buffer = RecvBuffers[i];
     buffer.resize(comm.Cells.size() * array_dim);
     MPI_Request request;
     mpi().iRecv(
@@ -168,15 +172,16 @@ void BlockField<FieldType, FloatType, Dim>::mpiRecv(
 }
 
 template <typename FieldType, typename FloatType, unsigned int Dim>
+template <typename buffer_type>
 void BlockField<FieldType, FloatType, Dim>::mpiSet(int& reqidx,
   std::vector<MPI_Request>& RecvRequests,
-  const std::vector<std::vector<datatype>>& RecvBuffers,
+  const std::vector<buffer_type>& RecvBuffers,
   const std::vector<DistributedComm>& MPIRecvs) {
   // wait and set field data
   for (std::size_t i = 0; i < MPIRecvs.size(); ++i) {
     MPI_Wait(&RecvRequests[i + reqidx], MPI_STATUS_IGNORE);
     const DistributedComm& comm = MPIRecvs[i];
-    const std::vector<datatype>& buffer = RecvBuffers[i];
+    const buffer_type& buffer = RecvBuffers[i];
     const std::vector<std::size_t>& recvs = comm.Cells;
     std::size_t bufidx{};
     for (unsigned int iArr = 0; iArr < array_dim; ++iArr) {
@@ -652,10 +657,10 @@ void BlockFieldManager<FieldType, FloatType, Dim>::forEach(
 template <typename FieldType, typename FloatType, unsigned int Dim>
 void BlockFieldManager<FieldType, FloatType, Dim>::MPINormalCommunicate() {
   mpi().barrier();
-  std::vector<std::vector<std::vector<datatype>>> SendBuffers(
-    _Fields.size(), std::vector<std::vector<datatype>>{});
-  std::vector<std::vector<std::vector<datatype>>> RecvBuffers(
-    _Fields.size(), std::vector<std::vector<datatype>>{});
+  std::vector<std::vector<buffer_type>> SendBuffers(
+    _Fields.size(), std::vector<buffer_type>{});
+  std::vector<std::vector<buffer_type>> RecvBuffers(
+    _Fields.size(), std::vector<buffer_type>{});
   std::size_t iblock{};
   // --- send data ---
   std::vector<MPI_Request> SendRequests;
@@ -663,7 +668,7 @@ void BlockFieldManager<FieldType, FloatType, Dim>::MPINormalCommunicate() {
     if (blockF.getBlock().getCommunicator()._NeedMPIComm) {
       const std::vector<DistributedComm>& Sends =
         blockF.getBlock().getCommunicator().MPIComm.Sends;
-      SendBuffers[iblock].resize(Sends.size(), std::vector<datatype>{});
+      SendBuffers[iblock].resize(Sends.size(), buffer_type{});
       blockF.mpiNormalSend(SendRequests, SendBuffers[iblock], Sends);
     }
     ++iblock;
@@ -675,7 +680,7 @@ void BlockFieldManager<FieldType, FloatType, Dim>::MPINormalCommunicate() {
     if (blockF.getBlock().getCommunicator()._NeedMPIComm) {
       std::vector<DistributedComm>& Recvs =
         blockF.getBlock().getCommunicator().MPIComm.Recvs;
-      RecvBuffers[iblock].resize(Recvs.size(), std::vector<datatype>{});
+      RecvBuffers[iblock].resize(Recvs.size(), buffer_type{});
       blockF.mpiRecv(RecvRequests, RecvBuffers[iblock], Recvs);
     }
     ++iblock;
@@ -795,10 +800,10 @@ template <typename FieldType, typename FloatType, unsigned int Dim>
 void BlockFieldManager<FieldType, FloatType, Dim>::MPINormalCommunicate(
   std::int64_t count) {
   mpi().barrier();
-  std::vector<std::vector<std::vector<datatype>>> SendBuffers(
-    _Fields.size(), std::vector<std::vector<datatype>>{});
-  std::vector<std::vector<std::vector<datatype>>> RecvBuffers(
-    _Fields.size(), std::vector<std::vector<datatype>>{});
+  std::vector<std::vector<buffer_type>> SendBuffers(
+    _Fields.size(), std::vector<buffer_type>{});
+  std::vector<std::vector<buffer_type>> RecvBuffers(
+    _Fields.size(), std::vector<buffer_type>{});
   std::size_t iblock{};
   // --- send data ---
   std::vector<MPI_Request> SendRequests;
@@ -809,7 +814,7 @@ void BlockFieldManager<FieldType, FloatType, Dim>::MPINormalCommunicate(
         blockF.getBlock().getCommunicator()._NeedMPIComm) {
       const std::vector<DistributedComm>& Sends =
         blockF.getBlock().getCommunicator().MPIComm.Sends;
-      SendBuffers[iblock].resize(Sends.size(), std::vector<datatype>{});
+      SendBuffers[iblock].resize(Sends.size(), buffer_type{});
       blockF.mpiNormalSend(SendRequests, SendBuffers[iblock], Sends);
     }
     ++iblock;
@@ -824,7 +829,7 @@ void BlockFieldManager<FieldType, FloatType, Dim>::MPINormalCommunicate(
         blockF.getBlock().getCommunicator()._NeedMPIComm) {
       std::vector<DistributedComm>& Recvs =
         blockF.getBlock().getCommunicator().MPIComm.Recvs;
-      RecvBuffers[iblock].resize(Recvs.size(), std::vector<datatype>{});
+      RecvBuffers[iblock].resize(Recvs.size(), buffer_type{});
       blockF.mpiRecv(RecvRequests, RecvBuffers[iblock], Recvs);
     }
     ++iblock;

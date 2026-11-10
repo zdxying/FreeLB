@@ -22,6 +22,8 @@
 
 #pragma once
 
+// GenericvectorManager used by FixedBoundaryHelper::Setup
+#include "data_struct/field_struct.h"
 #include "boundary/bounce_back_boundary.h"
 #include "boundary/periodic_boundary.h"
 
