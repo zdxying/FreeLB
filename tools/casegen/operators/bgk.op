@@ -1,0 +1,15 @@
+# BGK collision: moments, second-order equilibrium, relaxation.
+# Mirrors collision::BGK<moment::rhoU<CELL>, equilibrium::SecondOrder<CELL>>.
+operator bgk {
+  var rho: scalar
+  var u: vector
+  var feq: array
+  body {
+    rho = moment0(f)
+    u = moment1(f, rho)
+    for i in q {
+      feq[i] = feq2(rho, u, i)
+      f[i] = omega * feq[i] + (1 - omega) * f[i]
+    }
+  }
+}

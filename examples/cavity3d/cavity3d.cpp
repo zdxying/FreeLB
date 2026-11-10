@@ -118,7 +118,7 @@ int main(int argc, char* argv[]) {
 
   mpi().init(&argc, &argv);
 
-  MPI_DEBUG_WAIT
+  MPI_DEBUG_WAIT;
 
   Printer::Print_BigBanner(std::string("Initializing..."));
 

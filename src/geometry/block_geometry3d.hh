@@ -23,6 +23,14 @@
 #include <iomanip>
 
 #include "geometry/block_geometry3d.h"
+// on-demand same-level link enumeration (no global Block3D/Communicator copy)
+#include "geometry/block_link_meta.h"
+// DirTag / FullTag / AllTag
+#include "parallel/comm_plan.h"
+// shared coarse->fine stencil enumeration (local + MPI paths)
+#include "geometry/intp_stencil.h"
+// shared fine->coarse averaging enumeration (local + MPI paths)
+#include "geometry/aver_stencil.h"
 
 template <typename T>
 Block3D<T>::Block3D(const BasicBlock<T, 3> &baseblock, int olap)
@@ -173,25 +181,29 @@ BlockGeometry3D<T>::BlockGeometry3D(int Nx, int Ny, int Nz, int blocknum,
 }
 
 template <typename T>
-BlockGeometry3D<T>::BlockGeometry3D(BlockGeometryHelper3D<T> &GeoHelper, bool useHelperOlap)
+BlockGeometry3D<T>::BlockGeometry3D(BlockGeometryHelper3D<T> &GeoHelper)
     : BasicBlock<T, 3>(GeoHelper), _BaseBlock(GeoHelper.getBaseBlock()), 
       _overlap(GeoHelper.getOverlap()), _MaxLevel(GeoHelper.getMaxLevel()) {
-  // create blocks from GeoHelper
+  // The rank-local pointer table is derived state built by LoadBalancing().
+  // A decomposition that only replaces getAllBasicBlocks() leaves it empty;
+  // fail loudly instead of iterating an empty/stale table.
+  if (!GeoHelper.getAllBasicBlocks().empty() &&
+      GeoHelper.getAllBlockIndexPtrs().empty()) {
+    std::cerr << "[BlockGeometry3D]: call LoadBalancing() after the block "
+                 "decomposition before constructing the geometry"
+              << std::endl;
+    exit(1);
+  }
+  // create blocks from GeoHelper; same overlap rule as Init(), so a rebuild
+  // does not shift the ghost-cell indices
   for (BasicBlock<T, 3> *baseblock : GeoHelper.getBasicBlocks()) {
-    int overlap{};
-    if (useHelperOlap) {
-      overlap = _overlap;
-    } else {
-      overlap = (baseblock->getLevel() != std::uint8_t(0)) ? 2 : 1;
-    }
-    _Blocks.emplace_back(*baseblock, overlap);
+    _Blocks.emplace_back(*baseblock, _overlap);
     _BasicBlocks.emplace_back(*baseblock);
   }
   BuildBlockIndexMap();
   SetupNbrs();
   InitAllComm();
 #ifdef MPI_ENABLED
-  GeoHelper.InitBlockGeometry3D(useHelperOlap);
   InitAllMPIComm(GeoHelper);
 #endif
   PrintInfo();
@@ -258,12 +270,23 @@ void BlockGeometry3D<T>::PrintInfo() const {
 
 template <typename T>
 void BlockGeometry3D<T>::Init(BlockGeometryHelper3D<T> &GeoHelper) {
+  // The rank-local pointer table is derived state built by LoadBalancing(); a
+  // rebuild from an empty table would silently create no blocks.
+  if (!GeoHelper.getAllBasicBlocks().empty() &&
+      GeoHelper.getAllBlockIndexPtrs().empty()) {
+    std::cerr << "[BlockGeometry3D]: call LoadBalancing() after the block "
+                 "decomposition before rebuilding the geometry"
+              << std::endl;
+    exit(1);
+  }
   ;
   _Blocks.clear();
   _BasicBlocks.clear();
-  // create blocks from GeoHelper
+  // create blocks from GeoHelper.  Overlap comes from the helper, not from the
+  // refinement level: the constructor and Init must use the same rule, or a
+  // rebuild shifts every ghost-cell index.
   for (BasicBlock<T, 3> *baseblock : GeoHelper.getBasicBlocks()) {
-    int overlap = (baseblock->getLevel() != std::uint8_t(0)) ? 2 : 1;
+    int overlap = _overlap;
     _Blocks.emplace_back(*baseblock, overlap);
     _BasicBlocks.emplace_back(*baseblock);
   }
@@ -271,9 +294,10 @@ void BlockGeometry3D<T>::Init(BlockGeometryHelper3D<T> &GeoHelper) {
   SetupNbrs();
   InitAllComm();
 #ifdef MPI_ENABLED
-// GeoHelper.InitBlockGeometry3D();
   InitAllMPIComm(GeoHelper);
 #endif
+  // New blocks and communicators: plans built against the old set are stale.
+  ++_geometryGeneration;
   PrintInfo();
 }
 
@@ -282,11 +306,31 @@ template <typename T>
 template <typename FieldType>
 void BlockGeometry3D<T>::InitVoxelMap(FieldType& FieldM, std::uint8_t voidflag) {
   #ifdef _VOX_ENABLED
+  ++_geometryGeneration;
   std::size_t TotalRemoved{};
+  std::size_t TotalSharedPairs{};
+  std::size_t TotalMpiCells{};
   std::size_t TotalvoxNum{};
+  std::size_t TotalOwnedNum{};
   int iblock{};
   for (Block3D<T>& block : _Blocks) {
     auto& field = FieldM.getBlockField(iblock).getFieldType().getField(0);
+    // A same-level shared link packs Scell, Rcell: the even slot indexes the
+    // SEND block (comm.SendBlockId), the odd slot this block.  Testing the send
+    // slot against this block's field prunes live pairs whenever the two masks
+    // disagree at the same local index.
+    auto peerField = [&](const SharedComm& comm) -> decltype(auto) {
+      if (!hasBlock(comm.SendBlockId)) {
+        std::cerr << "[BlockGeometry3D<T>::InitVoxelMap]: send block "
+                  << comm.SendBlockId << " of block " << block.getBlockId()
+                  << " is not in this geometry" << std::endl;
+        exit(1);
+      }
+      return FieldM
+        .getBlockField(static_cast<int>(findBlockIndex(comm.SendBlockId)))
+        .getFieldType()
+        .getField(0);
+    };
     std::size_t N = block.getN();
     std::size_t voxNum{};
     std::vector<std::size_t> vox_to_aabb;
@@ -300,133 +344,74 @@ void BlockGeometry3D<T>::InitVoxelMap(FieldType& FieldM, std::uint8_t voidflag) 
     }
     TotalvoxNum += voxNum;
 
-    block.getVoxelMap().Init(voxNum);
-    std::size_t* vox_aabb = block.getVoxelMap().getVox_to_AABB();
+    const BasicBlock<T, 3>& base = block.getBaseBlock();
+    const Vector<int, 3> baseMesh = base.getMesh();
+    const int overlap = block.getOverlap();
+    block.getVoxelMap().Init(N, voxNum);
     for (std::size_t idx = 0; idx < voxNum; ++idx) {
-      vox_aabb[idx] = vox_to_aabb[idx];
+      const std::size_t id = vox_to_aabb[idx];
+      const Vector<int, 3> loc = block.getLoc(id);
+      const bool owned =
+        loc[0] >= overlap && loc[0] < overlap + baseMesh[0] &&
+        loc[1] >= overlap && loc[1] < overlap + baseMesh[1] &&
+        loc[2] >= overlap && loc[2] < overlap + baseMesh[2];
+      block.getVoxelMap().setSlot(idx, id, owned);
     }
+    TotalOwnedNum += block.getVoxelMap().getOwnedNum();
 
     // remove void cells from communicator
-    // remove void cells from communicator
     Communicator& COMM = block.getCommunicator();
-    // comm
-    std::vector<SharedComm>& comms = COMM.Comm.Comms;
-    for (SharedComm& comm : comms) {
-      // because indices are ordered as: Scell0, Rcell0; Scell1, Rcell1, ...
-      // use iterator seems complex, we create a new vector instead
-      std::vector<std::size_t> newSendRecvs;
-      newSendRecvs.reserve(comm.SendRecvCells.size());
-      for (std::size_t i = 0; i < comm.SendRecvCells.size(); i += 2) {
-        if (field[comm.SendRecvCells[i+1]] != voidflag) {
-          newSendRecvs.emplace_back(comm.SendRecvCells[i]);
-          newSendRecvs.emplace_back(comm.SendRecvCells[i+1]);
+    auto pruneSharedPairs = [&](std::vector<SharedComm>& comms) {
+      for (SharedComm& comm : comms) {
+        // because indices are ordered as: Scell0, Rcell0; Scell1, Rcell1, ...
+        // use iterator seems complex, we create a new vector instead
+        const auto& sendField = peerField(comm);
+        std::vector<std::size_t> newSendRecvs;
+        newSendRecvs.reserve(comm.SendRecvCells.size());
+        for (std::size_t i = 0; i < comm.SendRecvCells.size(); i += 2) {
+          if (sendField[comm.SendRecvCells[i]] != voidflag &&
+              field[comm.SendRecvCells[i+1]] != voidflag) {
+            newSendRecvs.emplace_back(comm.SendRecvCells[i]);
+            newSendRecvs.emplace_back(comm.SendRecvCells[i+1]);
+          }
+        }
+        if (newSendRecvs.size() != comm.SendRecvCells.size()) {
+          const std::size_t removed =
+            (comm.SendRecvCells.size() - newSendRecvs.size()) / 2;
+          TotalRemoved += removed;
+          TotalSharedPairs += removed;
+          comm.SendRecvCells = newSendRecvs;
+          comm.SendRecvCells.shrink_to_fit();
         }
       }
-      if (newSendRecvs.size() != comm.SendRecvCells.size()) {
-        comm.SendRecvCells = newSendRecvs;
-        comm.SendRecvCells.shrink_to_fit();
-      }
-    }
-    // all comm
-    std::vector<SharedComm>& allcomms = COMM.AllComm.Comms;
-    for (SharedComm& comm : allcomms) {
-      // because indices are ordered as: Scell0, Rcell0; Scell1, Rcell1, ...
-      // use iterator seems complex, we create a new vector instead
-      std::vector<std::size_t> newSendRecvs;
-      newSendRecvs.reserve(comm.SendRecvCells.size());
-      for (std::size_t i = 0; i < comm.SendRecvCells.size(); i += 2) {
-        if (field[comm.SendRecvCells[i+1]] != voidflag) {
-          newSendRecvs.emplace_back(comm.SendRecvCells[i]);
-          newSendRecvs.emplace_back(comm.SendRecvCells[i+1]);
-        }
-      }
-      if (newSendRecvs.size() != comm.SendRecvCells.size()) {
-        TotalRemoved += (comm.SendRecvCells.size() - newSendRecvs.size()) / 2;
-        comm.SendRecvCells = newSendRecvs;
-        comm.SendRecvCells.shrink_to_fit();
-      }
-    }
+    };
+    pruneSharedPairs(COMM.Comm.Comms);
+    pruneSharedPairs(COMM.AllComm.Comms);
 
   #ifdef MPI_ENABLED
 
-    std::vector<DistributedComm>& Recvs = COMM.MPIComm.Recvs;
-    for (DistributedComm& comm : Recvs) {
-      std::vector<std::size_t> newcells;
-      newcells.reserve(comm.Cells.size());
-      for (std::size_t id : comm.Cells) {
-        if (field[id] != voidflag) newcells.emplace_back(id);
+    auto pruneMpiCells = [&](std::vector<DistributedComm>& comms) {
+      for (DistributedComm& comm : comms) {
+        std::vector<std::size_t> newcells;
+        newcells.reserve(comm.Cells.size());
+        for (std::size_t id : comm.Cells) {
+          if (field[id] != voidflag) newcells.emplace_back(id);
+        }
+        if (newcells.size() != comm.Cells.size()) {
+          const std::size_t removed = comm.Cells.size() - newcells.size();
+          TotalRemoved += removed;
+          TotalMpiCells += removed;
+          comm.Cells = newcells;
+          comm.Cells.shrink_to_fit();
+        }
       }
-      if (newcells.size() != comm.Cells.size()) {
-        comm.Cells = newcells;
-        comm.Cells.shrink_to_fit();
-      }
-    }
-
-    std::vector<DistributedComm>& Sends = COMM.MPIComm.Sends;
-    for (DistributedComm& comm : Sends) {
-      std::vector<std::size_t> newcells;
-      newcells.reserve(comm.Cells.size());
-      for (std::size_t id : comm.Cells) {
-        if (field[id] != voidflag) newcells.emplace_back(id);
-      }
-      if (newcells.size() != comm.Cells.size()) {
-        comm.Cells = newcells;
-        comm.Cells.shrink_to_fit();
-      }
-    }
-
-    std::vector<DistributedComm>& allRecvs = COMM.AllMPIComm.Recvs;
-    for (DistributedComm& comm : allRecvs) {
-      std::vector<std::size_t> newcells;
-      newcells.reserve(comm.Cells.size());
-      for (std::size_t id : comm.Cells) {
-        if (field[id] != voidflag) newcells.emplace_back(id);
-      }
-      if (newcells.size() != comm.Cells.size()) {
-        TotalRemoved += comm.Cells.size() - newcells.size();
-        comm.Cells = newcells;
-        comm.Cells.shrink_to_fit();
-      }
-    }
-
-    std::vector<DistributedComm>& allSends = COMM.AllMPIComm.Sends;
-    for (DistributedComm& comm : allSends) {
-      std::vector<std::size_t> newcells;
-      newcells.reserve(comm.Cells.size());
-      for (std::size_t id : comm.Cells) {
-        if (field[id] != voidflag) newcells.emplace_back(id);
-      }
-      if (newcells.size() != comm.Cells.size()) {
-        comm.Cells = newcells;
-        comm.Cells.shrink_to_fit();
-      }
-    }
-
-    std::vector<DistributedComm>& dirRecvs = COMM.DirRecvs;
-    for (DistributedComm& comm : dirRecvs) {
-      std::vector<std::size_t> newcells;
-      newcells.reserve(comm.Cells.size());
-      for (std::size_t id : comm.Cells) {
-        if (field[id] != voidflag) newcells.emplace_back(id);
-      }
-      if (newcells.size() != comm.Cells.size()) {
-        comm.Cells = newcells;
-        comm.Cells.shrink_to_fit();
-      }
-    }
-
-    std::vector<DistributedComm>& dirSends = COMM.DirSends;
-    for (DistributedComm& comm : dirSends) {
-      std::vector<std::size_t> newcells;
-      newcells.reserve(comm.Cells.size());
-      for (std::size_t id : comm.Cells) {
-        if (field[id] != voidflag) newcells.emplace_back(id);
-      }
-      if (newcells.size() != comm.Cells.size()) {
-        comm.Cells = newcells;
-        comm.Cells.shrink_to_fit();
-      }
-    }
+    };
+    pruneMpiCells(COMM.MPIComm.Recvs);
+    pruneMpiCells(COMM.MPIComm.Sends);
+    pruneMpiCells(COMM.AllMPIComm.Recvs);
+    pruneMpiCells(COMM.AllMPIComm.Sends);
+    pruneMpiCells(COMM.DirRecvs);
+    pruneMpiCells(COMM.DirSends);
 
   #endif
 
@@ -436,16 +421,142 @@ void BlockGeometry3D<T>::InitVoxelMap(FieldType& FieldM, std::uint8_t voidflag) 
   #ifdef MPI_ENABLED
     mpi().reduceAndBcast(TotalRemoved, MPI_SUM);
     mpi().reduceAndBcast(TotalvoxNum, MPI_SUM);
+    mpi().reduceAndBcast(TotalOwnedNum, MPI_SUM);
   #endif
+#ifdef MPI_ENABLED
+  mpi().reduceAndBcast(TotalSharedPairs, MPI_SUM);
+  mpi().reduceAndBcast(TotalMpiCells, MPI_SUM);
+#endif
+  _lastPrunedSharedPairs = TotalSharedPairs;
+  _lastPrunedMpiCells = TotalMpiCells;
 
   MPI_RANK(0)
   std::cout << "[BlockGeometry::InitVoxelMap]:\n"
-            << "  Total voxel number: " << TotalvoxNum << "\n"
-            << "  Removed: " << TotalRemoved << " cell pairs in Communicator" << std::endl;
+            << "  Active voxel number: " << TotalvoxNum << "\n"
+            << "  Owned voxel number:  " << TotalOwnedNum << "\n"
+            << "  Removed: " << TotalRemoved << " entries in Communicator ("
+            << TotalSharedPairs << " shared cell pairs, "
+            << TotalMpiCells << " MPI cells)" << std::endl;
   
   #endif
 }
 
+
+template <typename T>
+template <typename FieldType>
+std::size_t BlockGeometry3D<T>::getTotalActiveCellNum(const FieldType& FieldM,
+                                                      std::uint8_t voidflag) const {
+  std::size_t sum{};
+  for (std::size_t iblock = 0; iblock < _Blocks.size(); ++iblock) {
+    const auto& field =
+      FieldM.getBlockField(static_cast<int>(iblock)).getField(0);
+    for (std::size_t id = 0; id < field.size(); ++id) {
+      if (field[id] != voidflag) ++sum;
+    }
+  }
+#ifdef MPI_ENABLED
+  std::size_t result{};
+  mpi().barrier();
+  mpi().reduce(sum, result, MPI_SUM);
+  return result;
+#else
+  return sum;
+#endif
+}
+
+template <typename T>
+template <typename FieldType>
+std::size_t BlockGeometry3D<T>::getTotalOwnedCellNum(const FieldType& FieldM,
+                                                     std::uint8_t voidflag) const {
+  std::size_t sum{};
+  for (std::size_t iblock = 0; iblock < _Blocks.size(); ++iblock) {
+    const auto& field =
+      FieldM.getBlockField(static_cast<int>(iblock)).getField(0);
+    const Block3D<T>& block = _Blocks[iblock];
+    const Vector<int, 3> mesh = block.getBaseBlock().getMesh();
+    const int overlap = block.getOverlap();
+    for (int z = 0; z < mesh[2]; ++z) {
+      for (int y = 0; y < mesh[1]; ++y) {
+        for (int x = 0; x < mesh[0]; ++x) {
+          const std::size_t id =
+            block.getIndex(Vector<int, 3>{x + overlap, y + overlap, z + overlap});
+          if (field[id] != voidflag) ++sum;
+        }
+      }
+    }
+  }
+#ifdef MPI_ENABLED
+  std::size_t result{};
+  mpi().barrier();
+  mpi().reduce(sum, result, MPI_SUM);
+  return result;
+#else
+  return sum;
+#endif
+}
+
+template <typename T>
+template <typename FieldType>
+double BlockGeometry3D<T>::getFillRatio(const FieldType& FieldM,
+                                        std::uint8_t voidflag) const {
+  const std::size_t allocated = getTotalCellNum();
+  if (allocated == 0) return 0.;
+  return static_cast<double>(getTotalActiveCellNum(FieldM, voidflag)) /
+         static_cast<double>(allocated);
+}
+
+template <typename T>
+template <typename FieldType>
+double BlockGeometry3D<T>::getOwnedFillRatio(const FieldType& FieldM,
+                                             std::uint8_t voidflag) const {
+  const std::size_t allocated = getTotalCellNum();
+  if (allocated == 0) return 0.;
+  return static_cast<double>(getTotalOwnedCellNum(FieldM, voidflag)) /
+         static_cast<double>(allocated);
+}
+
+template <typename T>
+template <typename FieldType>
+void BlockGeometry3D<T>::PrintFillRatio(const FieldType& FieldM,
+                                        std::uint8_t voidflag) const {
+  std::size_t localActive{};
+  std::size_t localAllocated{};
+  double localMin{1.};
+  double localMax{};
+  for (std::size_t iblock = 0; iblock < _Blocks.size(); ++iblock) {
+    const auto& field =
+      FieldM.getBlockField(static_cast<int>(iblock)).getField(0);
+    std::size_t active{};
+    for (std::size_t id = 0; id < field.size(); ++id) {
+      if (field[id] != voidflag) ++active;
+    }
+    const std::size_t allocated = _Blocks[iblock].getN();
+    localActive += active;
+    localAllocated += allocated;
+    if (allocated > 0) {
+      const double f = static_cast<double>(active) / static_cast<double>(allocated);
+      localMin = std::min(localMin, f);
+      localMax = std::max(localMax, f);
+    }
+  }
+  const std::size_t active = getTotalActiveCellNum(FieldM, voidflag);
+  const std::size_t owned = getTotalOwnedCellNum(FieldM, voidflag);
+  const std::size_t allocated = getTotalCellNum();
+  const double fill = allocated ? static_cast<double>(active) / allocated : 0.;
+  const double ownedFill =
+    allocated ? static_cast<double>(owned) / allocated : 0.;
+  const double localAvg =
+    localAllocated ? static_cast<double>(localActive) / localAllocated : 0.;
+  MPI_RANK(0)
+  std::cout << "[BlockGeometry3D::PrintFillRatio]:\n"
+            << "  Allocated cells (block-local, halo included): " << allocated << "\n"
+            << "  Active cells    (block-local, halo included): " << active << "\n"
+            << "  Owned cells     (unique across blocks):      " << owned << "\n"
+            << "  Active fill ratio: " << fill << "\n"
+            << "  Owned fill ratio:  " << ownedFill << "\n"
+            << "  Block active fill (local): min " << localMin << ", avg " << localAvg
+            << ", max " << localMax << std::endl;
+}
 
 template <typename T>
 std::size_t BlockGeometry3D<T>::getTotalCellNum() const {
@@ -509,6 +620,8 @@ void BlockGeometry3D<T>::CreateBlocks(int blocknum, int blockXNum, int blockYNum
     _BasicBlocks.emplace_back(voxsize, aabb, blockaabb, blockid);
     blockid++;
   }
+  // The block set was replaced; plans built against the old one are stale.
+  ++_geometryGeneration;
 }
 
 template <typename T>
@@ -532,7 +645,6 @@ void BlockGeometry3D<T>::SetupNbrs() {
 
 template <typename T>
 void BlockGeometry3D<T>::InitComm() {
-  int Tag{};
   for (Block3D<T> &block : _Blocks) {
     // (inner) overlapped cell communicators
     std::vector<SharedComm> &Comms = block.getCommunicator().Comm.Comms;
@@ -540,8 +652,6 @@ void BlockGeometry3D<T>::InitComm() {
     std::vector<SharedComm> &AllComms = block.getCommunicator().AllComm.Comms;
     Comms.clear();
     AllComms.clear();
-    // get block with overlap 1, for Comms
-    BasicBlock<T, 3> baseblock_ext1 = block.getBaseBlock().getExtBlock(1);
     // get block with overlap = _overlap, for AllComms
     BasicBlock<T, 3> baseblock_exto = block.getSelfBlock();
 
@@ -550,46 +660,15 @@ void BlockGeometry3D<T>::InitComm() {
       // check if 2 blocks are of the same level
       if (nblock->getLevel() == blocklevel) {
         // ------ add to Comms
-        // get overlapped cells
-        std::vector<std::size_t> Recvs;
-        std::vector<std::size_t> Sends;
-        block.getCellIdx(baseblock_ext1, nblock->getBaseBlock(), Recvs);
-        nblock->getCellIdx(nblock->getBaseBlock(), baseblock_ext1, Sends);
-        // exclude corner cells
-        std::vector<std::size_t> CornerRecvs;
-        std::vector<std::size_t> CornerSends;
-        block.ExcludeCornerIdx(Recvs, Sends, CornerRecvs, CornerSends);
-        // exclude edge cells
-        std::vector<std::vector<std::size_t>> EdgeRecvs;
-        std::vector<std::vector<std::size_t>> EdgeSends;
-        block.ExcludeEdgeIdx(Recvs, Sends, EdgeRecvs, EdgeSends);
-        // avoid empty communicator
-        if (Recvs.size() > 0) {
-          Comms.emplace_back(nblock->getBlockId(), Tag);
-          ++Tag;
-          SharedComm &comm = Comms.back();
-          comm.setRecvSendIdx(Recvs, Sends);
-          comm.Direction = getFaceNbrDirection(block.whichFace(comm.SendRecvCells[1]));
-        }
-        if (CornerRecvs.size() > 0) {
-          // add corner cells to communicators and find direction
-          for (std::size_t i = 0; i < CornerRecvs.size(); ++i) {
-            Comms.emplace_back(nblock->getBlockId(), Tag);
-            ++Tag;
-            SharedComm &commcorner = Comms.back();
-            commcorner.SendRecvCells = {CornerSends[i], CornerRecvs[i]};
-            commcorner.Direction = getCornerNbrDirection<3>(block.whichCorner(CornerRecvs[i]));
-          }
-        }
-        // add edge cells to communicators and find direction
-        for (std::size_t i = 0; i < EdgeRecvs.size(); ++i) {
-          if (EdgeRecvs[i].size() > 0) {
-            Comms.emplace_back(nblock->getBlockId(), Tag);
-            ++Tag;
-            SharedComm &commedge = Comms.back();
-            commedge.setRecvSendIdx(EdgeRecvs[i], EdgeSends[i]);
-            commedge.Direction = getEdgeNbrDirection<3>(block.whichEdge(EdgeRecvs[i][0]));
-          }
+        // Face/corner/edge split is owned by the receiver.
+        auto links = flbgeo::BuildSameLevelLinks(
+          block.getBaseBlock(), block.getOverlap(),
+          nblock->getBaseBlock(), nblock->getOverlap());
+        for (const flbgeo::SameLevelLink& link : links) {
+          Comms.emplace_back(nblock->getBlockId());
+          SharedComm& comm = Comms.back();
+          comm.setRecvSendIdx(link.Recv, link.PeerSend);
+          comm.Direction = link.Direction;
         }
         // ------ add to AllComms
         // here we will NOT consider direction in ALLComms for now
@@ -673,77 +752,45 @@ void BlockGeometry3D<T>::InitAllComm() {
 #ifdef MPI_ENABLED
 
 template <typename T>
-BlockGeometry3D<T>::BlockGeometry3D(BlockGeometryHelper3D<T> &GeoHelper, 
-std::vector<BasicBlock<T, 3>>& BasicBlocks, bool useHelperOlap)
-    : BasicBlock<T, 3>(GeoHelper), _BaseBlock(GeoHelper.getBaseBlock()), 
-      _overlap(GeoHelper.getOverlap()), _MaxLevel(GeoHelper.getMaxLevel()) {
-  // create blocks from GeoHelper
-  for (BasicBlock<T, 3>& baseblock : BasicBlocks) {
-    int overlap{};
-    if (useHelperOlap) {
-      overlap = _overlap;
-    } else {
-      overlap = (baseblock.getLevel() != std::uint8_t(0)) ? 2 : 1;
-    }
-    _Blocks.emplace_back(baseblock, overlap);
-    _BasicBlocks.emplace_back(baseblock);
-  }
-  BuildBlockIndexMap();
-  SetupNbrs();
-  // this uses all blocks of the same level to init shared communicators
-  // for mpi communication with direction info 
-  InitComm();
-}
-
-template <typename T>
 void BlockGeometry3D<T>::InitMPIComm(BlockGeometryHelper3D<T> &GeoHelper) {
-  // mpi efficient send/recv using direction info for pop communication
-  const BlockGeometry3D<T>& HelperBlockGeometry = GeoHelper.getBlockGeometry3D();
+  // Dir links are built on demand from the receiver's BasicBlock and the
+  // sender's BasicBlock; see the 2D counterpart for why the receiver owns the
+  // split and both ranks call its enumeration.
   for (Block3D<T> &block : _Blocks) {
     // efficient MPI Recvs/Sends using direction info for pop communication
     std::vector<DistributedComm>& Recvs = block.getCommunicator().DirRecvs;
     std::vector<DistributedComm>& Sends = block.getCommunicator().DirSends;
     Recvs.clear();
     Sends.clear();
-    // find hblock in HelperBlockGeometry with:
-    // the same blockid as block or
-    // the same sendblockid in hblock's communicator
-    for (const Block3D<T> &hblock : HelperBlockGeometry.getBlocks()) {
-      // get all normal communicators of hblock
-      const std::vector<SharedComm>& hComms = hblock.getCommunicator().Comm.Comms;
+    const int selfId = block.getBlockId();
+    for (const std::pair<int, int>& nbr : GeoHelper.getMPIBlockNbrs(selfId)) {
+      const BasicBlock<T, 3>& nbaseblock =
+        GeoHelper.getAllBasicBlock(static_cast<std::size_t>(nbr.second));
+      if (nbaseblock.getLevel() != block.getLevel()) continue;
+      const int peerRank = nbr.first;
+      const int peerId = nbaseblock.getBlockId();
 
-      if (hblock.getBlockId() == block.getBlockId()) {
-        // find if nbr block of hblock is NOT in _Blocks(not in this rank)
-        bool UseMPIComm = false;
-        std::vector<const SharedComm*> SendhComms;
-        for(const SharedComm& hComm : hComms) {
-          if (!hasBlock(hComm.SendBlockId)) {
-            UseMPIComm = true;
-            SendhComms.push_back(&hComm);
-          }
-        }
-        if (UseMPIComm) {
-          // init MPI communicators
-          for (const SharedComm* SendhComm : SendhComms) {
-            Recvs.emplace_back(GeoHelper.whichRank(SendhComm->SendBlockId), SendhComm->SendBlockId, SendhComm->Tag);
-            DistributedComm& mpirecv = Recvs.back();
-            mpirecv.Direction = SendhComm->Direction;
-            SendhComm->getRecvvector(mpirecv.Cells);
-          }
-        }
-      } else {
-        // find if hblock is NOT in _Blocks(not in this rank)
-        if (!hasBlock(hblock.getBlockId())) {
-          // find if block is the target of hblock's communicator
-          for(const SharedComm& hComm : hComms) {
-            if (hComm.SendBlockId == block.getBlockId()) {
-              Sends.emplace_back(GeoHelper.whichRank(hblock.getBlockId()), hblock.getBlockId(), hComm.Tag);
-              DistributedComm& mpisend = Sends.back();
-              mpisend.Direction = hComm.Direction;
-              hComm.getSendvector(mpisend.Cells);
-            }
-          }
-        }
+      // This block is the receiver.
+      auto recvLinks = flbgeo::BuildSameLevelLinks(
+        block.getBaseBlock(), block.getOverlap(), nbaseblock, GeoHelper.getOverlap());
+      for (const flbgeo::SameLevelLink& link : recvLinks) {
+        Recvs.emplace_back(peerRank, peerId);
+        DistributedComm& mpirecv = Recvs.back();
+        mpirecv.Direction = link.Direction;
+        mpirecv.Order = link.Order;
+        mpirecv.Cells = link.Recv;
+      }
+
+      // The peer is the receiver; PeerSend is this block's send list in its
+      // own coordinates.
+      auto sendLinks = flbgeo::BuildSameLevelLinks(
+        nbaseblock, GeoHelper.getOverlap(), block.getBaseBlock(), block.getOverlap());
+      for (const flbgeo::SameLevelLink& link : sendLinks) {
+        Sends.emplace_back(peerRank, peerId);
+        DistributedComm& mpisend = Sends.back();
+        mpisend.Direction = link.Direction;
+        mpisend.Order = link.Order;
+        mpisend.Cells = link.PeerSend;
       }
     }
   }
@@ -798,7 +845,6 @@ for (Block3D<T> &block : _Blocks) {
         // get overlapped recv/send cells
         block.getCellIdx(baseblock, nbaseblock_exto, allmpisend.Cells);
 
-        block.getCommunicator()._NeedMPIComm = true;
       }
     }
   }
@@ -872,61 +918,46 @@ void BlockGeometry3D<T>::InitMPIAverComm(BlockGeometryHelper3D<T> &GeoHelper) {
     AllMPIComm.AverRecvs.clear();
     AllMPIComm.AverSends.clear();
 
-    // base block of block
-    const BasicBlock<T, 3> &baseblock = block.getBaseBlock();
-    // get block with overlap 1, for Comms
-    BasicBlock<T, 3> baseblock_ext1 = baseblock.getExtBlock(1);
-    // get block with overlap = _overlap, for AllComms
-    BasicBlock<T, 3> baseblock_exto = block.getSelfBlock();
-
     std::uint8_t blocklevel = block.getLevel();
     std::vector<std::pair<int, int>> &nbrs = GeoHelper.getMPIBlockNbrs(block.getBlockId());
 
     for (const std::pair<int, int> &nbr : nbrs) {
       const BasicBlock<T, 3> &nbaseblock = GeoHelper.getAllBasicBlock(static_cast<std::size_t>(nbr.second));
       if (nbaseblock.getLevel() == blocklevel + 1) {
-        // init receiver
+        // init receiver: this block is the COARSE side; it receives averaged
+        // populations for the coarse cells of the shared support
         MPIComm.AverRecvs.emplace_back(nbr.first, nbaseblock.getBlockId());
         DistributedComm &recver = MPIComm.AverRecvs.back();
-        block.getCellIdx(baseblock_ext1, nbaseblock, recver.Cells);
-
         AllMPIComm.AverRecvs.emplace_back(nbr.first, nbaseblock.getBlockId());
         DistributedComm &Allrecver = AllMPIComm.AverRecvs.back();
-        block.getCellIdx(baseblock_exto, nbaseblock, Allrecver.Cells);
 
-        block.getCommunicator()._NeedMPIComm = true;
+        recver.Cells.reserve(512);
+        Allrecver.Cells.reserve(512);
+        // both sides enumerate the same support via aver::BuildAverStencil,
+        // so recv == send / 8 by construction (docs §15.2 / §16); overlaps
+        // come from the constructed blocks (the level rule is the
+        // constructor's decision, not ours)
+        aver::BuildAverStencil<3>(block.getBaseBlock(), nbaseblock,
+                                    block.getOverlap(), block.getOverlap(),
+                                    nullptr, nullptr, &recver.Cells);
+        Allrecver.Cells = recver.Cells;
+
       } else if (nbaseblock.getLevel() == blocklevel - 1) {
-        // init sender
-        // virtual coarse block
-        BasicBlock<T, 3> Cblock = block.getCoasenedBlock();
-
-        BasicBlock<T, 3> nbaseblock_ext1 = nbaseblock.getExtBlock(1);
-        int noverlap = nbaseblock.getLevel() == std::uint8_t(0) ? 1 : 2;
-        BasicBlock<T, 3> nbaseblock_exto = nbaseblock.getExtBlock(noverlap);
-
+        // init sender: this block is the FINE side; it sends the fine cells
+        // of the shared support
         MPIComm.AverSends.emplace_back(nbr.first, nbaseblock.getBlockId());
         DistributedComm &sender = MPIComm.AverSends.back();
-        std::vector<std::size_t> VSends;
-        Cblock.getCellIdx(baseblock, nbaseblock_ext1, VSends);
-        sender.Cells.reserve(VSends.size()*8);
-        for (std::size_t vid : VSends) {
-          std::vector<std::size_t> idxs;
-          Cblock.getRefinedCellIdx(vid, idxs);
-          sender.Cells.insert(sender.Cells.end(), idxs.begin(), idxs.end());          
-        }
-
         AllMPIComm.AverSends.emplace_back(nbr.first, nbaseblock.getBlockId());
         DistributedComm &allsender = AllMPIComm.AverSends.back();
-        std::vector<std::size_t> AllVSends;
-        Cblock.getCellIdx(baseblock, nbaseblock_exto, AllVSends);
-        allsender.Cells.reserve(AllVSends.size()*8);
-        for (std::size_t vid : AllVSends) {
-          std::vector<std::size_t> idxs;
-          Cblock.getRefinedCellIdx(vid, idxs);
-          allsender.Cells.insert(allsender.Cells.end(), idxs.begin(), idxs.end());          
-        }
 
-        block.getCommunicator()._NeedMPIComm = true;
+        sender.Cells.reserve(4096);
+        allsender.Cells.reserve(4096);
+        // same support as the receiver side enumerates
+        aver::BuildAverStencil<3>(nbaseblock, block.getBaseBlock(),
+                                    block.getOverlap(), block.getOverlap(),
+                                    nullptr, &sender.Cells, nullptr);
+        allsender.Cells = sender.Cells;
+
       } else if (nbaseblock.getLevel() > blocklevel + 1 ||
                  nbaseblock.getLevel() < blocklevel - 1) {
         std::cerr << "[BlockGeometry3D<T>::InitMPIAverComm] Error: block level "
@@ -949,189 +980,48 @@ void BlockGeometry3D<T>::InitMPIIntpComm(BlockGeometryHelper3D<T> &GeoHelper) {
     AllMPIComm.IntpRecvs.clear();
     AllMPIComm.IntpSends.clear();
 
-    // base block of block
-    const BasicBlock<T, 3> &baseblock = block.getBaseBlock();
-    // get block with overlap 1, for Comms
-    // BasicBlock<T, 3> baseblock_ext1 = baseblock.getExtBlock(1);
-    // get block with overlap = _overlap, for AllComms
-    // BasicBlock<T, 3> baseblock_exto = block.getSelfBlock();
-
     std::uint8_t blocklevel = block.getLevel();
     std::vector<std::pair<int, int>> &nbrs = GeoHelper.getMPIBlockNbrs(block.getBlockId());
 
     for (const std::pair<int, int> &nbr : nbrs) {
       const BasicBlock<T, 3> &nbaseblock = GeoHelper.getAllBasicBlock(static_cast<std::size_t>(nbr.second));
       if (nbaseblock.getLevel() == blocklevel - 1) {
-        // init receiver
-        // virtual coarse block
-        BasicBlock<T, 3> Cblock = block.getCoasenedBlock();
-
+        // init receiver: fine cells written by the coarse->fine stencils
         MPIComm.IntpRecvs.emplace_back(nbr.first, nbaseblock.getBlockId());
         DistributedComm &recver = MPIComm.IntpRecvs.back();
         AllMPIComm.IntpRecvs.emplace_back(nbr.first, nbaseblock.getBlockId());
         DistributedComm &allrecver = AllMPIComm.IntpRecvs.back();
 
-        std::vector<std::size_t> VRecvs;
-        Cblock.getCellIdx(block, nbaseblock, VRecvs);
+        std::vector<std::size_t>& Recvs = recver.Cells;
+        std::vector<std::size_t>& AllRecvs = allrecver.Cells;
+        Recvs.reserve(2048);
+        AllRecvs.reserve(2048);
+        // both sides enumerate the same stencil set from the same two base
+        // blocks (intp::BuildStencil), so recv == send / 8 by construction.
+        intp::BuildStencil<3>(block.getBaseBlock(), nbaseblock,
+                                block.getOverlap(), block.getOverlap(),
+                                nullptr, nullptr, &Recvs);
+        AllRecvs = Recvs;
 
-        recver.Cells.reserve(VRecvs.size()*8);
-        allrecver.Cells.reserve(VRecvs.size()*8);
-        for (std::size_t vid : VRecvs) {
-          std::vector<std::size_t> idxs;
-          Cblock.getRefinedCellIdx(vid, idxs);
-          recver.Cells.insert(recver.Cells.end(), idxs.begin(), idxs.end());
-          allrecver.Cells.insert(allrecver.Cells.end(), idxs.begin(), idxs.end());        
-        }
-
-        block.getCommunicator()._NeedMPIComm = true;
       } else if (nbaseblock.getLevel() == blocklevel + 1) {
-        // init sender
-        BasicBlock<T, 3> nbaseblock_ext2 = nbaseblock.getExtBlock(2);
-        
+        // init sender: the coarse sources of the coarse->fine stencils
         MPIComm.IntpSends.emplace_back(nbr.first, nbaseblock.getBlockId());
         DistributedComm &sender = MPIComm.IntpSends.back();
         AllMPIComm.IntpSends.emplace_back(nbr.first, nbaseblock.getBlockId());
         DistributedComm &allsender = AllMPIComm.IntpSends.back();
 
-        // vox size
-        const T Cvoxsize = block.getVoxelSize();
-        // get intersection
-        const AABB<T, 3> intsec = getIntersection(baseblock, nbaseblock_ext2);
-        // use coarse grid size here, convient for calculating coarse cell index
-        int CNx = static_cast<int>(std::round(intsec.getExtension()[0] / Cvoxsize));
-        int CNy = static_cast<int>(std::round(intsec.getExtension()[1] / Cvoxsize));
-        int CNz = static_cast<int>(std::round(intsec.getExtension()[2] / Cvoxsize));
-        // start index of intsec in block
-        Vector<T, 3> startC = intsec.getMin() - block.getMin();
-        // shift 1 voxel to left bottom for interpolation
-        int startCx = static_cast<int>(std::round(startC[0] / Cvoxsize)) - 1;
-        int startCy = static_cast<int>(std::round(startC[1] / Cvoxsize)) - 1;
-        int startCz = static_cast<int>(std::round(startC[2] / Cvoxsize)) - 1;
-
         std::vector<std::size_t>& Sends = sender.Cells;
         std::vector<std::size_t>& AllSends = allsender.Cells;
+        Sends.reserve(8192);
+        AllSends.reserve(8192);
+        // same stencil set as the receiver side enumerates; the -1 coarse
+        // shift is handled by clamping inside intp::BuildStencil, so the
+        // sent indices always stay inside the coarse block
+        intp::BuildStencil<3>(nbaseblock, block.getBaseBlock(),
+                                block.getOverlap(), block.getOverlap(),
+                                nullptr, &Sends, nullptr);
+        AllSends = Sends;
 
-        Sends.reserve(CNx * CNy * CNz * 64);
-        AllSends.reserve(CNx * CNy * CNz * 64);
-
-        std::size_t XY = block.getNx() * block.getNy();
-        for (int iz = 0; iz < CNz; ++iz) {
-          for (int iy = 0; iy < CNy; ++iy) {
-            for (int ix = 0; ix < CNx; ++ix) {
-              // original
-              std::size_t Cid0 = (iz + startCz) * XY + (iy + startCy) * block.getNx() + ix + startCx;
-              std::size_t Cid1 = Cid0 + 1;
-              std::size_t Cid2 = Cid0 + block.getNx();
-              std::size_t Cid3 = Cid2 + 1;
-              std::size_t Cid4 = Cid0 + XY;
-              std::size_t Cid5 = Cid4 + 1;
-              std::size_t Cid6 = Cid4 + block.getNx();
-              std::size_t Cid7 = Cid6 + 1;
-
-              // shift 1 voxel along +x direction
-              std::size_t Cid0_x = Cid0 + 1;
-              std::size_t Cid1_x = Cid1 + 1;
-              std::size_t Cid2_x = Cid2 + 1;
-              std::size_t Cid3_x = Cid3 + 1;
-              std::size_t Cid4_x = Cid4 + 1;
-              std::size_t Cid5_x = Cid5 + 1;
-              std::size_t Cid6_x = Cid6 + 1;
-              std::size_t Cid7_x = Cid7 + 1;
-
-              // shift 1 voxel along +y direction
-              std::size_t Cid0_y = Cid0 + block.getNx();
-              std::size_t Cid1_y = Cid1 + block.getNx();
-              std::size_t Cid2_y = Cid2 + block.getNx();
-              std::size_t Cid3_y = Cid3 + block.getNx();
-              std::size_t Cid4_y = Cid4 + block.getNx();
-              std::size_t Cid5_y = Cid5 + block.getNx();
-              std::size_t Cid6_y = Cid6 + block.getNx();
-              std::size_t Cid7_y = Cid7 + block.getNx();
-
-              // shift 1 voxel along +z direction
-              std::size_t Cid0_z = Cid0 + XY;
-              std::size_t Cid1_z = Cid1 + XY;
-              std::size_t Cid2_z = Cid2 + XY;
-              std::size_t Cid3_z = Cid3 + XY;
-              std::size_t Cid4_z = Cid4 + XY;
-              std::size_t Cid5_z = Cid5 + XY;
-              std::size_t Cid6_z = Cid6 + XY;
-              std::size_t Cid7_z = Cid7 + XY;
-
-              // 0
-              Sends.insert(Sends.end(), {Cid0, Cid1, Cid2, Cid3, Cid4, Cid5, Cid6, Cid7});
-              AllSends.insert(AllSends.end(), {Cid0, Cid1, Cid2, Cid3, Cid4, Cid5, Cid6, Cid7});
-
-              // 1
-              Sends.insert(Sends.end(), {Cid0_x, Cid1_x, Cid2_x, Cid3_x, Cid4_x, Cid5_x, Cid6_x, Cid7_x});
-              AllSends.insert(AllSends.end(), {Cid0_x, Cid1_x, Cid2_x, Cid3_x, Cid4_x, Cid5_x, Cid6_x, Cid7_x});
-
-              // 2
-              Sends.insert(Sends.end(), {Cid0_y, Cid1_y, Cid2_y, Cid3_y, Cid4_y, Cid5_y, Cid6_y, Cid7_y});
-              AllSends.insert(AllSends.end(), {Cid0_y, Cid1_y, Cid2_y, Cid3_y, Cid4_y, Cid5_y, Cid6_y, Cid7_y});
-
-              // 3
-              std::size_t Cid0_xy = Cid0_y + 1;
-              std::size_t Cid1_xy = Cid1_y + 1;
-              std::size_t Cid2_xy = Cid2_y + 1;
-              std::size_t Cid3_xy = Cid3_y + 1;
-              std::size_t Cid4_xy = Cid4_y + 1;
-              std::size_t Cid5_xy = Cid5_y + 1;
-              std::size_t Cid6_xy = Cid6_y + 1;
-              std::size_t Cid7_xy = Cid7_y + 1;
-
-              Sends.insert(Sends.end(), {Cid0_xy, Cid1_xy, Cid2_xy, Cid3_xy, Cid4_xy, Cid5_xy, Cid6_xy, Cid7_xy});
-              AllSends.insert(AllSends.end(), {Cid0_xy, Cid1_xy, Cid2_xy, Cid3_xy, Cid4_xy, Cid5_xy, Cid6_xy, Cid7_xy});
-
-              // 4
-              Sends.insert(Sends.end(), {Cid0_z, Cid1_z, Cid2_z, Cid3_z, Cid4_z, Cid5_z, Cid6_z, Cid7_z});
-              AllSends.insert(AllSends.end(), {Cid0_z, Cid1_z, Cid2_z, Cid3_z, Cid4_z, Cid5_z, Cid6_z, Cid7_z});
-
-              // 5
-              std::size_t Cid0_xz = Cid0_z + 1;
-              std::size_t Cid1_xz = Cid1_z + 1;
-              std::size_t Cid2_xz = Cid2_z + 1;
-              std::size_t Cid3_xz = Cid3_z + 1;
-              std::size_t Cid4_xz = Cid4_z + 1;
-              std::size_t Cid5_xz = Cid5_z + 1;
-              std::size_t Cid6_xz = Cid6_z + 1;
-              std::size_t Cid7_xz = Cid7_z + 1;
-
-              Sends.insert(Sends.end(), {Cid0_xz, Cid1_xz, Cid2_xz, Cid3_xz, Cid4_xz, Cid5_xz, Cid6_xz, Cid7_xz});
-              AllSends.insert(AllSends.end(), {Cid0_xz, Cid1_xz, Cid2_xz, Cid3_xz, Cid4_xz, Cid5_xz, Cid6_xz, Cid7_xz});
-
-              // 6
-              std::size_t Cid0_yz = Cid0_z + block.getNx();
-              std::size_t Cid1_yz = Cid1_z + block.getNx();
-              std::size_t Cid2_yz = Cid2_z + block.getNx();
-              std::size_t Cid3_yz = Cid3_z + block.getNx();
-              std::size_t Cid4_yz = Cid4_z + block.getNx();
-              std::size_t Cid5_yz = Cid5_z + block.getNx();
-              std::size_t Cid6_yz = Cid6_z + block.getNx();
-              std::size_t Cid7_yz = Cid7_z + block.getNx();
-
-              Sends.insert(Sends.end(), {Cid0_yz, Cid1_yz, Cid2_yz, Cid3_yz, Cid4_yz, Cid5_yz, Cid6_yz, Cid7_yz});
-              AllSends.insert(AllSends.end(), {Cid0_yz, Cid1_yz, Cid2_yz, Cid3_yz, Cid4_yz, Cid5_yz, Cid6_yz, Cid7_yz});
-
-              // 7
-              std::size_t Cid0_xyz = Cid0_yz + 1;
-              std::size_t Cid1_xyz = Cid1_yz + 1;
-              std::size_t Cid2_xyz = Cid2_yz + 1;
-              std::size_t Cid3_xyz = Cid3_yz + 1;
-              std::size_t Cid4_xyz = Cid4_yz + 1;
-              std::size_t Cid5_xyz = Cid5_yz + 1;
-              std::size_t Cid6_xyz = Cid6_yz + 1;
-              std::size_t Cid7_xyz = Cid7_yz + 1;
-
-              Sends.insert(Sends.end(), {
-                Cid0_xyz, Cid1_xyz, Cid2_xyz, Cid3_xyz, Cid4_xyz, Cid5_xyz, Cid6_xyz, Cid7_xyz});
-              AllSends.insert(AllSends.end(), {
-                Cid0_xyz, Cid1_xyz, Cid2_xyz, Cid3_xyz, Cid4_xyz, Cid5_xyz, Cid6_xyz, Cid7_xyz});
-              
-            }
-          }
-        }
-        block.getCommunicator()._NeedMPIComm = true;
       } else if (nbaseblock.getLevel() > blocklevel + 1 ||
                  nbaseblock.getLevel() < blocklevel - 1) {
         std::cerr << "[BlockGeometry3D<T>::InitMPIIntpComm] Error: block level "
@@ -1157,22 +1047,14 @@ const BasicBlock<T, 3>& baseblock_extx, Block3D<T>& block, Block3D<T> *nblock){
   // ------ add to Comms
   Comms.emplace_back(nblock->getBlockId());
   SharedComm &comm = Comms.back();
-  // virtual coarse nblock
-  BasicBlock<T, 3> nCblock = nblock->getCoasenedBlock();
-  // get overlapped coarse cells
-  std::vector<std::size_t> Recvs;
-  std::vector<std::size_t> VSends;
-  block.getCellIdx(baseblock_extx, nblock->getBaseBlock(), Recvs);
-  nCblock.getCellIdx(nblock->getBaseBlock(), baseblock_extx, VSends);
-  // get real send cell index
-  std::vector<std::size_t> RSends;
-  RSends.reserve(VSends.size()*8);
-  for(std::size_t vid : VSends){
-    std::vector<std::size_t> idxs;
-    nCblock.getRefinedCellIdx(vid, idxs);
-    RSends.insert(RSends.end(), idxs.begin(), idxs.end());
-  }
-  comm.setRecvSendIdx(Recvs, RSends);
+  // The support enumeration lives in aver::BuildAverStencil: one definition
+  // shared with the MPI path, so both sides of a cross-level exchange mean
+  // the same thing by "the fine cells that take part" -- including for block
+  // pairs whose intersection is not a whole multiple of the level ratio.
+  std::vector<std::size_t>& SendRecvs = comm.SendRecvCells;
+  SendRecvs.reserve(2048);
+  aver::BuildAverStencil<3>(block.getBaseBlock(), nblock->getBaseBlock(), block.getOverlap(),
+                            nblock->getOverlap(), &SendRecvs, nullptr, nullptr);
 }
 
 template <typename T>
@@ -1180,154 +1062,14 @@ void BlockGeometry3D<T>::AddtoSharedIntpComm(std::vector<SharedComm> &Comms, Blo
   // ------ add to Comms
   Comms.emplace_back(nblock->getBlockId());
   SharedComm &comm = Comms.back();
-  // vox size
-  const T Cvoxsize = nblock->getVoxelSize();
-  const T Fvoxsize = block.getVoxelSize();
-  // get intersection
-  const AABB<T, 3> intsec = getIntersection(block, nblock->getBaseBlock());
-  int CNx = static_cast<int>(std::round(intsec.getExtension()[0] / Cvoxsize));
-  int CNy = static_cast<int>(std::round(intsec.getExtension()[1] / Cvoxsize));
-  int CNz = static_cast<int>(std::round(intsec.getExtension()[2] / Cvoxsize));
-  // get start index of intsec in nblock
-  Vector<T, 3> startC = intsec.getMin() - nblock->getMin();
-  // shift 1 voxel to left bottom for interpolation
-  int startCx = static_cast<int>(std::round(startC[0] / Cvoxsize)) - 1;
-  int startCy = static_cast<int>(std::round(startC[1] / Cvoxsize)) - 1;
-  int startCz = static_cast<int>(std::round(startC[2] / Cvoxsize)) - 1;
-  // start index of intsec in FBlock
-  Vector<T, 3> startF = intsec.getMin() - block.getMin();
-  int startFx = static_cast<int>(std::round(startF[0] / Fvoxsize));
-  int startFy = static_cast<int>(std::round(startF[1] / Fvoxsize));
-  int startFz = static_cast<int>(std::round(startF[2] / Fvoxsize));
-
+  // The stencil enumeration lives in intp::BuildStencil: one definition
+  // shared with the MPI path, so both sides of a cross-level exchange mean
+  // the same thing by "the coarse cells that take part" (see the header for
+  // the layouts).
   std::vector<std::size_t>& SendRecvs = comm.SendRecvCells;
-  // (8 + 1) * 8
-  SendRecvs.reserve(CNx*CNy*CNz*72);
-
-  std::size_t XY = block.getNx() * block.getNy();
-  std::size_t nXY = nblock->getNx() * nblock->getNy();
-  for (int iz = 0; iz < CNz; ++iz) {
-    for (int iy = 0; iy < CNy; ++iy) {
-      for (int ix = 0; ix < CNx; ++ix) {
-        // original
-        std::size_t Cid0 = (iz + startCz) * nXY + (iy + startCy) * nblock->getNx() + ix + startCx;
-        std::size_t Cid1 = Cid0 + 1;
-        std::size_t Cid2 = Cid0 + nblock->getNx();
-        std::size_t Cid3 = Cid2 + 1;
-        std::size_t Cid4 = Cid0 + nXY;
-        std::size_t Cid5 = Cid4 + 1;
-        std::size_t Cid6 = Cid4 + nblock->getNx();
-        std::size_t Cid7 = Cid6 + 1;
-        std::size_t Fid = (iz * 2 + startFz) * XY + (iy * 2 + startFy) * block.getNx() + ix * 2 + startFx;
-
-        // shift 1 voxel along +x direction
-        std::size_t Cid0_x = Cid0 + 1;
-        std::size_t Cid1_x = Cid1 + 1;
-        std::size_t Cid2_x = Cid2 + 1;
-        std::size_t Cid3_x = Cid3 + 1;
-        std::size_t Cid4_x = Cid4 + 1;
-        std::size_t Cid5_x = Cid5 + 1;
-        std::size_t Cid6_x = Cid6 + 1;
-        std::size_t Cid7_x = Cid7 + 1;
-        std::size_t Fid_x = Fid + 1;
-
-        // shift 1 voxel along +y direction
-        std::size_t Cid0_y = Cid0 + nblock->getNx();
-        std::size_t Cid1_y = Cid1 + nblock->getNx();
-        std::size_t Cid2_y = Cid2 + nblock->getNx();
-        std::size_t Cid3_y = Cid3 + nblock->getNx();
-        std::size_t Cid4_y = Cid4 + nblock->getNx();
-        std::size_t Cid5_y = Cid5 + nblock->getNx();
-        std::size_t Cid6_y = Cid6 + nblock->getNx();
-        std::size_t Cid7_y = Cid7 + nblock->getNx();
-        std::size_t Fid_y = Fid + block.getNx();
-
-        // shift 1 voxel along +z direction
-        std::size_t Cid0_z = Cid0 + nXY;
-        std::size_t Cid1_z = Cid1 + nXY;
-        std::size_t Cid2_z = Cid2 + nXY;
-        std::size_t Cid3_z = Cid3 + nXY;
-        std::size_t Cid4_z = Cid4 + nXY;
-        std::size_t Cid5_z = Cid5 + nXY;
-        std::size_t Cid6_z = Cid6 + nXY;
-        std::size_t Cid7_z = Cid7 + nXY;
-        std::size_t Fid_z = Fid + XY;
-
-        // 0
-        SendRecvs.insert(SendRecvs.end(), {Cid0, Cid1, Cid2, Cid3, Cid4, Cid5, Cid6, Cid7});
-        SendRecvs.push_back(Fid);
-
-        // 1
-        SendRecvs.insert(SendRecvs.end(), {Cid0_x, Cid1_x, Cid2_x, Cid3_x, Cid4_x, Cid5_x, Cid6_x, Cid7_x});
-        SendRecvs.push_back(Fid_x);
-
-        // 2
-        SendRecvs.insert(SendRecvs.end(), {Cid0_y, Cid1_y, Cid2_y, Cid3_y, Cid4_y, Cid5_y, Cid6_y, Cid7_y});
-        SendRecvs.push_back(Fid_y);
-
-        // 3
-        std::size_t Cid0_xy = Cid0_y + 1;
-        std::size_t Cid1_xy = Cid1_y + 1;
-        std::size_t Cid2_xy = Cid2_y + 1;
-        std::size_t Cid3_xy = Cid3_y + 1;
-        std::size_t Cid4_xy = Cid4_y + 1;
-        std::size_t Cid5_xy = Cid5_y + 1;
-        std::size_t Cid6_xy = Cid6_y + 1;
-        std::size_t Cid7_xy = Cid7_y + 1;
-        std::size_t Fid_xy = Fid_y + 1;
-
-        SendRecvs.insert(SendRecvs.end(), {Cid0_xy, Cid1_xy, Cid2_xy, Cid3_xy, Cid4_xy, Cid5_xy, Cid6_xy, Cid7_xy});
-        SendRecvs.push_back(Fid_xy);
-
-        // 4
-        SendRecvs.insert(SendRecvs.end(), {Cid0_z, Cid1_z, Cid2_z, Cid3_z, Cid4_z, Cid5_z, Cid6_z, Cid7_z});
-        SendRecvs.push_back(Fid_z);
-
-        // 5
-        std::size_t Cid0_xz = Cid0_z + 1;
-        std::size_t Cid1_xz = Cid1_z + 1;
-        std::size_t Cid2_xz = Cid2_z + 1;
-        std::size_t Cid3_xz = Cid3_z + 1;
-        std::size_t Cid4_xz = Cid4_z + 1;
-        std::size_t Cid5_xz = Cid5_z + 1;
-        std::size_t Cid6_xz = Cid6_z + 1;
-        std::size_t Cid7_xz = Cid7_z + 1;
-        std::size_t Fid_xz = Fid_z + XY;
-
-        SendRecvs.insert(SendRecvs.end(), {Cid0_xz, Cid1_xz, Cid2_xz, Cid3_xz, Cid4_xz, Cid5_xz, Cid6_xz, Cid7_xz});
-        SendRecvs.push_back(Fid_xz);
-
-        // 6
-        std::size_t Cid0_yz = Cid0_z + nblock->getNx();
-        std::size_t Cid1_yz = Cid1_z + nblock->getNx();
-        std::size_t Cid2_yz = Cid2_z + nblock->getNx();
-        std::size_t Cid3_yz = Cid3_z + nblock->getNx();
-        std::size_t Cid4_yz = Cid4_z + nblock->getNx();
-        std::size_t Cid5_yz = Cid5_z + nblock->getNx();
-        std::size_t Cid6_yz = Cid6_z + nblock->getNx();
-        std::size_t Cid7_yz = Cid7_z + nblock->getNx();
-        std::size_t Fid_yz = Fid_z + XY;
-
-        SendRecvs.insert(SendRecvs.end(), {Cid0_yz, Cid1_yz, Cid2_yz, Cid3_yz, Cid4_yz, Cid5_yz, Cid6_yz, Cid7_yz});
-        SendRecvs.push_back(Fid_yz);
-
-        // 7
-        std::size_t Cid0_xyz = Cid0_yz + 1;
-        std::size_t Cid1_xyz = Cid1_yz + 1;
-        std::size_t Cid2_xyz = Cid2_yz + 1;
-        std::size_t Cid3_xyz = Cid3_yz + 1;
-        std::size_t Cid4_xyz = Cid4_yz + 1;
-        std::size_t Cid5_xyz = Cid5_yz + 1;
-        std::size_t Cid6_xyz = Cid6_yz + 1;
-        std::size_t Cid7_xyz = Cid7_yz + 1;
-        std::size_t Fid_xyz = Fid_yz + 1;
-
-        SendRecvs.insert(SendRecvs.end(), {
-        Cid0_xyz, Cid1_xyz, Cid2_xyz, Cid3_xyz, Cid4_xyz, Cid5_xyz, Cid6_xyz, Cid7_xyz});
-        SendRecvs.push_back(Fid_xyz);
-      }
-    }
-  }
+  SendRecvs.reserve(2048);
+  intp::BuildStencil<3>(block.getBaseBlock(), nblock->getBaseBlock(), block.getOverlap(),
+                        nblock->getOverlap(), &SendRecvs, nullptr, nullptr);
 }
 
 template <typename T>
@@ -1416,6 +1158,7 @@ BlockGeometryHelper3D<T>::BlockGeometryHelper3D(int Nx, int Ny, int Nz,
     std::vector<BasicBlock<T, 3>> &BasicBlocks = getAllOldBasicBlocks();
     BasicBlocks.clear();
     _Exchanged = !_Exchanged;
+  InvalidateBlockIndexPtrs();
     BasicBlocks.push_back(_BaseBlock);
   }
 }
@@ -1512,6 +1255,7 @@ BlockGeometryHelper3D<T>::BlockGeometryHelper3D(const StlReader<T>& reader, int 
     std::vector<BasicBlock<T, 3>> &BasicBlocks = getAllOldBasicBlocks();
     BasicBlocks.clear();
     _Exchanged = !_Exchanged;
+  InvalidateBlockIndexPtrs();
     BasicBlocks.push_back(_BaseBlock);
   }
 }
@@ -1526,6 +1270,7 @@ BlockGeometryHelper3D<T>::BlockGeometryHelper3D(const BlockReader<T,3>& blockrea
   BasicBlocks.clear();
   // now old blocks become new blocks
   _Exchanged = !_Exchanged;
+  InvalidateBlockIndexPtrs();
   // create blocks from Block Reader
   int iblock{};
   for (const BasicBlock<T, 3> &baseblock : blockreader.getBlocks()) {
@@ -1617,6 +1362,7 @@ void BlockGeometryHelper3D<T>::CreateBlocks(bool CreateFromInsideTag, bool outpu
   BasicBlocks.clear();
   // now old blocks become new blocks
   _Exchanged = !_Exchanged;
+  InvalidateBlockIndexPtrs();
   // get max refine level
   // int maxlevel = 0;
   // for (const BasicBlock<T, 3>& block : _BlockCells) {
@@ -1748,6 +1494,7 @@ void BlockGeometryHelper3D<T>::CreateBlocks(int blockXNum, int blockYNum, int bl
   BasicBlocks.clear();
   // now old blocks become new blocks
   _Exchanged = !_Exchanged;
+  InvalidateBlockIndexPtrs();
   // divide blocks manually
   DivideBlock3D(_BaseBlock, blockXNum, blockYNum, blockZNum, BasicBlocks);
 }
@@ -1890,6 +1637,7 @@ void BlockGeometryHelper3D<T>::Optimize(std::vector<BasicBlock<T, 3>> &Blocks,
   for (std::size_t i = 0; i < Blocks.size(); ++i) {
     Blocks[i].setBlockId(i);
   }
+  InvalidateBlockIndexPtrs();
 }
 
 // only for movable neighbor blocks with face overlap
@@ -2288,6 +2036,7 @@ T BlockGeometryHelper3D<T>::IterateAndOptimizeImp(int ProcNum, int BlockCellLen)
       ForcedMergeSmallBlocks(Blocks, NbrInfos, ProcNum);
     else
       MergeSmallBlocks(Blocks, NbrInfos);
+    InvalidateBlockIndexPtrs();
   // 6. divide blocks again, this time enforce exactly ProcNum parts
     Optimize(ProcNum, true, false);
   //    and remove unused cells using _FlagField
@@ -2556,6 +2305,9 @@ void BlockGeometryHelper3D<T>::RCBOptimization(int ProcNum, bool verbose) {
     BasicBlocks.push_back(_BaseBlock);
     BasicBlocks[0].setBlockId(0);
     RemoveUnusedCells(std::uint8_t{1}, true);
+    // Derived from the previous block set; LoadBalancing() rebuilds it.
+    _BlockIndexPtr0.clear();
+    _BlockIndexPtr1.clear();
     return;
   }
   // 1. check if the ProcNum is power of 2 
@@ -2588,6 +2340,9 @@ void BlockGeometryHelper3D<T>::RCBOptimization(int ProcNum, bool verbose) {
   std::vector<BasicBlock<T, 3>> &BasicBlocks = getAllBasicBlocks();
   BasicBlocks.clear();
   BasicBlocks = divideBlocks;
+  // Derived from the previous block set; LoadBalancing() rebuilds it.
+  _BlockIndexPtr0.clear();
+  _BlockIndexPtr1.clear();
 
   // 4. update block id
   for (std::size_t i = 0; i < BasicBlocks.size(); ++i) {
@@ -2647,6 +2402,9 @@ void BlockGeometryHelper3D<T>::TRCBOptimization(int ProcNum, bool verbose) {
   std::vector<BasicBlock<T, 3>> &BasicBlocks = getAllBasicBlocks();
   BasicBlocks.clear();
   BasicBlocks = divideBlocks;
+  // Derived from the previous block set; LoadBalancing() rebuilds it.
+  _BlockIndexPtr0.clear();
+  _BlockIndexPtr1.clear();
 
   // 5. remove unused cells
   RemoveUnusedCells(std::uint8_t{1}, false);
@@ -2654,7 +2412,6 @@ void BlockGeometryHelper3D<T>::TRCBOptimization(int ProcNum, bool verbose) {
   for (std::size_t i = 0; i < BasicBlocks.size(); ++i) {
     BasicBlocks[i].setBlockId(i);
   }
-
   // 6. output info
   T stddev = ComputeBlockNStdDev(BasicBlocks, _FlagField);
   IF_MPI_RANK(0) {
@@ -2667,6 +2424,7 @@ void BlockGeometryHelper3D<T>::TRCBOptimization(int ProcNum, bool verbose) {
 template <typename T>
 void BlockGeometryHelper3D<T>::LoadOptimization(int maxiter, T tolstddev, bool outputinfo) {
   std::vector<BasicBlock<T, 3>> &originBlocks = getAllBasicBlocks();
+  InvalidateBlockIndexPtrs();
   if (originBlocks.size() == 1) return;
   // copy Blocks to a buffer vector
   std::vector<BasicBlock<T, 3>> Blocks = originBlocks;
@@ -2911,6 +2669,7 @@ void BlockGeometryHelper3D<T>::Init(int blockcelllen) {
   // clear all vectors
   _BasicBlocks0.clear();
   _BasicBlocks1.clear();
+  InvalidateBlockIndexPtrs();
   static_cast<BasicBlock<T, 3>&>(*this) = BasicBlock<T, 3>(
     _Reader->getVoxelSize(), 
     _Reader->getMesh().getAABB().getExtended((_Overlap+_Ext) * _Reader->getVoxelSize()),
@@ -3047,6 +2806,7 @@ void BlockGeometryHelper3D<T>::LoadBalancing(int ProcessNum) {
 
 template <typename T>
 void BlockGeometryHelper3D<T>::SetupMPINbrs() {
+  flbcomm::checkTagBudget(mpi().getTagUpperBound());
   _MPIBlockNbrs.clear();
   _MPIBlockNbrs.resize(getAllBasicBlocks().size(), std::vector<std::pair<int, int>>{});
   for (std::size_t iRank = 0; iRank < getAllBlockIndices().size(); ++iRank) {
@@ -3066,11 +2826,6 @@ void BlockGeometryHelper3D<T>::SetupMPINbrs() {
       }
     }
   }
-}
-
-template <typename T>
-void BlockGeometryHelper3D<T>::InitBlockGeometry3D(bool useHelperOlap) {
-  _BlockGeometry3D = std::make_unique<BlockGeometry3D<T>>(*this, getAllBasicBlocks(), useHelperOlap);
 }
 
 template <typename T>

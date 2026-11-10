@@ -21,4 +21,7 @@ ifeq ($(FP16),1)
 FLAGS += -DFREELB_POP_FP16
 endif
 
+# checkpoint files the test writes to its own directory
+OUTPUT += ckpt
+
 include $(ROOT)/make.mk

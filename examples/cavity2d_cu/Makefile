@@ -4,18 +4,16 @@ ROOT := ../..
 CXXC := nvcc
 
 # ---------------------------------------------------------------------------
-# 2026-09-27: same failure mode as benchmarks/cavity3d_cu (fixed there first).
+# CUDA build arch.
 #
-# `FLAGS += -gencode arch=compute_89,code=sm_89` produced a binary whose only
-# embedded image is sm_89 SASS with no PTX, so on an sm_86 GPU (RTX 3060
-# Laptop) no kernel could ever be launched.  `-rdc=true` compounded it: make.mk
-# links -lcuda but not -lcudadevrt, so the first D2H in the VTK path failed
-# with "named symbol not found" (the launch errors themselves were silent --
-# launches were never checked before cavity3d.cu got cudaGetLastError()).
-#
-# -arch=native lets nvcc pick for whatever device is present; override with
-# e.g. `make ARCH=86` to cross-build.  Do NOT re-add -rdc without also adding
-# -lcudadevrt.
+# Correct: -arch=native, or a cross-build that keeps PTX in the image:
+#     -gencode arch=compute_$(ARCH),code=[sm_$(ARCH),compute_$(ARCH)]
+# Wrong:   -gencode arch=compute_$(ARCH),code=sm_$(ARCH)   (SASS only; the
+#          binary then fails on any other device with "no kernel image").
+# Wrong:   -rdc=true.  Nothing here needs relocatable device code.
+# Wrong:   unchecked launches.  Call cudaGetLastError() after the main loop
+#          (see the end of main), or a dead kernel run still prints
+#          "Calculation Complete!".
 # ---------------------------------------------------------------------------
 ARCH ?= native
 ifeq ($(ARCH),native)
@@ -36,7 +34,7 @@ FLAGS += --expt-relaxed-constexpr
 # ---------------------------------------------------------------------------
 # FP16 POP storage (FP32 compute): traffic halves, ~2x MLUPS.
 # NOTE: FP16 is only verified on the register-resident path; the baseline
-# PopRef path produces NaN with FP16 storage (see docs/FP16_PLAN.md).
+# PopRef path produces NaN with FP16 storage.
 FP16 ?= 0
 ifeq ($(FP16),1)
 FLAGS += -DFREELB_POP_FP16

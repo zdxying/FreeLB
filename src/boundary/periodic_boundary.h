@@ -193,10 +193,8 @@ class FixedPeriodicBoundaryManager {
 
         if (box0in && box1in) {
 
-          // known bugs(25.03.14): emplace_back() leads to reallocation of memory,
-          // which invalidates the reference to the element in the vector: BaseCommSet.Recvs and BaseCommSet.Sends
-          // current FixedPeriodicBoundaryManager does not support MPI
-          // in this case, we may consider using Communicator like Block<T, D> to store the communication info (TODO)
+          // BasicCommSet stores BasicComm in a std::deque, so the
+          // LatticeComm references taken below survive later appends.
 
           // 2 boxes are in the same block
           BaseCommSet.Recvs.emplace_back(&block);

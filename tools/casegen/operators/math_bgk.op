@@ -1,0 +1,32 @@
+# BGK with the extended DSL surface: scalar math, vector components and fields.
+# The Smagorinsky coefficient and the velocity magnitude set a bounded eddy
+# contribution to omega; the directional term uses w, c and dot so that all of
+# them are exercised numerically.  The extra term is zero-sum by lattice
+# symmetry, so it does not change the cell mass.
+#
+# The operator is named `bgk` on purpose: the generator builds the rho/U pass
+# from the catalogue operator names, so a custom collision overrides one of
+# them (as cavity2d_dsl does) instead of inventing a new task kind.
+operator bgk {
+  var s: scalar
+  var rho: scalar
+  var u: vector
+  var speed: scalar
+  var shear: scalar
+  var nu: scalar
+  var omega_eff: scalar
+  var feq: array
+  body {
+    s = field(SMAGORINSKY)
+    rho = moment0(f)
+    u = moment1(f, rho)
+    speed = sqrt(abs(min(dot(u, u), norm2(u))))
+    shear = abs(u[0])
+    nu = clamp(s * max(speed, shear), 0, 0.05)
+    omega_eff = clamp(omega / (1 + 2 * nu), max(0.05, s), min(1.8, 1.9))
+    for i in q {
+      feq[i] = feq2(rho, u, i)
+      f[i] = omega_eff * feq[i] + (1 - omega_eff) * f[i] + s * w(i) * dot(u, c(i))
+    }
+  }
+}

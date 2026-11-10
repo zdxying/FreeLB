@@ -18,9 +18,11 @@
  * 
  */
 
-// basic_geometry.hh
-
 #include "geometry/basic_geometry.h"
+// util::isFlag used in NbrDirection helpers
+#include "utils/util.h"
+// MPI_RANK logging macro used in BlockIndex exchange helpers
+#include "parallel/mpi_manager.h"
 
 template <typename T, unsigned int D>
 template <typename S>
@@ -1234,4 +1236,38 @@ void BasicBlock<T, D>::getRefinedCellIdx(std::size_t idx, std::vector<std::size_
     
     refinedIdx = {id0, id1, id2, id3, id4, id5, id6, id7};
   }
+}
+// --------------------------------------------------------------------
+// BlockGeometryHelperBase mpi()-dependent accessors
+// (defined here where MpiManager is a complete type)
+// --------------------------------------------------------------------
+
+template <typename T, unsigned int D>
+std::vector<BasicBlock<T, D>*>& BlockGeometryHelperBase<T, D>::getBasicBlocks() {
+  return getAllBlockIndexPtrs()[mpi().getRank()];
+}
+
+template <typename T, unsigned int D>
+BasicBlock<T, D>& BlockGeometryHelperBase<T, D>::getBasicBlock(int id) {
+  return *(getBasicBlocks()[id]);
+}
+
+template <typename T, unsigned int D>
+const BasicBlock<T, D>& BlockGeometryHelperBase<T, D>::getBasicBlock(int id) const {
+  return *(getBasicBlocks()[id]);
+}
+
+template <typename T, unsigned int D>
+std::vector<BasicBlock<T, D>*>& BlockGeometryHelperBase<T, D>::getOldBasicBlocks() {
+  return getAllOldBlockIndexPtrs()[mpi().getRank()];
+}
+
+template <typename T, unsigned int D>
+BasicBlock<T, D>& BlockGeometryHelperBase<T, D>::getOldBasicBlock(int id) {
+  return *(getOldBasicBlocks()[id]);
+}
+
+template <typename T, unsigned int D>
+const BasicBlock<T, D>& BlockGeometryHelperBase<T, D>::getOldBasicBlock(int id) const {
+  return *(getOldBasicBlocks()[id]);
 }

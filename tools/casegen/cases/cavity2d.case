@@ -1,0 +1,84 @@
+# cavity2d: Phase 1 acceptance case for tools/casegen.
+#
+# Single-block 32x32 D2Q9 lid-driven cavity, 1000 steps, tol = 0.  The pinned
+# checksums are the ones tests/regression/cavity2d uses for the same setup:
+# POP sumsq 7728.702031 and RHO sumsq 1155.971535 (relative 1e-6).
+
+[case]
+name = cavity2d
+dim = 2
+float = double
+latset = D2Q9
+
+[fields]
+list = RHO, VELOCITY, POP
+
+[flags]
+void = 1
+bulk = 2
+wall = 4
+moving_wall = 8
+
+[grid]
+n = 32, 32
+cell_len = 1
+block_cell_len = 10
+thread_num = 1
+decompose = single
+
+[physics]
+converter = simplified
+char_u = 0.1
+rt = 0.56
+rho_init = 1
+init_u = 0, 0
+
+[region.cavity]
+shape = aabb
+box = 0, 0, 32, 32
+action = paint
+flag = bulk
+
+[region.walls]
+shape = aabb
+box = 0, 0, 32, 32
+action = boundary
+flag = wall
+
+[region.lid]
+shape = aabb
+box = 1, 31, 31, 32
+action = paint
+flag = moving_wall
+only_if = wall
+
+[region.lid_velocity]
+shape = aabb
+box = 1, 31, 31, 32
+action = set_velocity
+flag = moving_wall
+value = 0.1, 0
+
+[tasks]
+bulk = bgk
+wall = normal
+moving_wall = movingwall
+
+[schedule]
+type = hidden
+steps = 1000
+output_step = 1000
+tol = 0
+checkpoint_step = 0
+restart = 0
+restart_dir = ./ckpt
+
+[output]
+writers = rho, velocity
+flag_writer = 0
+
+[checksum]
+enable = 1
+expect_pop = 7728.702031
+expect_rho = 1155.971535
+tol = 1e-6

@@ -40,14 +40,35 @@ void MpiManager::init(int* argc, char*** argv) {
   MPI_Initialized(&ok0);
   if (ok0) return;
 
-  int ok1 = MPI_Init(argc, argv);
+  // The code calls MPI only from the thread that enters the step; packs and
+  // unpacks run in OpenMP but never inside an MPI call.  FUNNELED is therefore
+  // the level the hybrid build needs.
+  int provided = MPI_THREAD_SINGLE;
+  int ok1 = MPI_Init_thread(argc, argv, MPI_THREAD_FUNNELED, &provided);
   int ok2 = MPI_Comm_rank(MPI_COMM_WORLD, &taskId);
   int ok3 = MPI_Comm_size(MPI_COMM_WORLD, &numTasks);
   int ok4 = MPI_Comm_set_errhandler(MPI_COMM_WORLD, MPI_ERRORS_ARE_FATAL);
   ok = (ok1 == MPI_SUCCESS && ok2 == MPI_SUCCESS && ok3 == MPI_SUCCESS && ok4 == MPI_SUCCESS);
+  if (ok && provided < MPI_THREAD_FUNNELED) {
+    if (taskId == 0) {
+      std::cerr << "[MpiManager] MPI_THREAD_FUNNELED is required, got "
+                << provided << std::endl;
+    }
+    MPI_Abort(MPI_COMM_WORLD, 1);
+  }
   if (taskId == 0) {
     std::cout << "Sucessfully initialized, ProcessNum = " << getSize() << std::endl;
   }
+}
+
+int MpiManager::getTagUpperBound() const {
+  if (!ok) return std::numeric_limits<int>::max();
+  int flag = 0;
+  int* value = nullptr;
+  MPI_Comm_get_attr(MPI_COMM_WORLD, MPI_TAG_UB, &value, &flag);
+  // MPI guarantees at least 32767; an implementation that does not expose the
+  // attribute still has to honour that minimum.
+  return (flag && value) ? *value : 32767;
 }
 
 template <>

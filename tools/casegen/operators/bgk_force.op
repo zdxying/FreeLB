@@ -1,0 +1,20 @@
+# BGK collision with a Guo force term.
+# Mirrors collision::BGKForce<moment::forcerhoU<CELL, force::Force<CELL>>,
+# equilibrium::SecondOrder<CELL>, force::Force<CELL>>.
+operator bgk_force {
+  var rho: scalar
+  var u: vector
+  var F: vector
+  var feq: array
+  var fi: array
+  body {
+    F = force()
+    rho = moment0(f)
+    u = moment1_force(f, F)
+    fi = force_term(u, F)
+    for i in q {
+      feq[i] = feq2(rho, u, i)
+      f[i] = omega * feq[i] + (1 - omega) * f[i] + fomega * fi[i]
+    }
+  }
+}

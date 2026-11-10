@@ -4,8 +4,11 @@
 // phase breakdown.  Build with _HIDDEN_PROFILE (the Makefile does) to get the
 // breakdown; the timers are compiled out of normal builds.
 //
-//   ./hidden_comm_bench2d.exe [Ni] [blocksPerSide] [steps]
-//   mpirun -np 2 ./hidden_comm_bench2d.exe 120 10 3000
+//   ./hidden_comm_bench2d.exe [Ni] [blocksPerSide] [steps] [mode] [scheme]
+//   mpirun -np 2 ./hidden_comm_bench2d.exe 120 10 3000 full hidden
+//
+// mode:   partial | full | all | field
+// scheme: hidden  | plain
 //
 // The block grid is fixed (CreateBlocks is rank independent); LoadBalancing
 // decides which rank owns which block, so the same command works for any -np.
@@ -14,6 +17,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <map>
+#include <string>
 
 #include "freelb.h"
 #include "freelb.hh"
@@ -34,6 +38,27 @@ using BBTask = tmp::Key_TypePair<BouncebackFlag, collision::BounceBack<CELL>>;
 using BBMVTask = tmp::Key_TypePair<BBMovingWallFlag, collision::BounceBackMovingWall<CELL>>;
 using TaskCollection = tmp::TupleWrapper<BulkTask, BBTask, BBMVTask>;
 using NSTask = tmp::TaskSelector<TaskCollection, std::uint8_t, CELL>;
+using VelField = BlockFieldManager<VELOCITY<T, LatSet::d>, T, LatSet::d>;
+
+enum class Mode { Partial, Full, All, Field };
+
+static Mode parseMode(const char* s) {
+  const std::string m = s ? s : "partial";
+  if (m == "full") return Mode::Full;
+  if (m == "all") return Mode::All;
+  if (m == "field") return Mode::Field;
+  return Mode::Partial;
+}
+
+static const char* modeName(Mode m) {
+  switch (m) {
+    case Mode::Partial: return "partial";
+    case Mode::Full: return "full";
+    case Mode::All: return "all";
+    case Mode::Field: return "field";
+  }
+  return "?";
+}
 
 // Lid-driven cavity on a fixed block grid.  Only the hidden-communication step
 // is timed; the setup is identical to tests/feature/hidden_comm.
@@ -43,15 +68,17 @@ struct Sim {
   BlockGeometryHelper2D<T> GeoHelper;
   BlockGeometry2D<T>* Geo;
   BlockFieldManager<FLAG, T, LatSet::d>* FlagFM;
+  VelField* VelFM;
   BaseConverter<T> Conv;
   BlockLatticeManager<T, LatSet, FIELDS>* Lattice;
 
-  Sim(int Ni, int Nj, int bx, int by)
+  Sim(int Ni, int Nj, int bx, int by, bool withField)
       : cavity(Vector<T, 2>{}, Vector<T, 2>{T(Ni), T(Nj)}),
         toplid(T(1), T(Nj - 1), T(Ni - 1), T(Nj)),
         GeoHelper(Ni, Nj, cavity, T(1), 20),
         Geo(nullptr),
         FlagFM(nullptr),
+        VelFM(nullptr),
         Conv(LatSet::cs2),
         Lattice(nullptr) {
     GeoHelper.CreateBlocks(bx, by);
@@ -74,16 +101,84 @@ struct Sim {
     Lattice->getField<VELOCITY<T, LatSet::d>>().forEach(
       toplid, *FlagFM, BBMovingWallFlag,
       [&](auto& field, std::size_t id) { field.SetField(id, LatU_Wall); });
+
+    if (withField) {
+      VelFM = new VelField(*Geo, Vector<T, LatSet::d>{});
+      for (auto& bf : VelFM->getBlockFields()) {
+        const double b0 = 0.01 * bf.getBlock().getBlockId();
+        auto& arr = bf.getField(0);
+        for (std::size_t i = 0; i < arr.size(); ++i)
+          arr[i] = Vector<T, LatSet::d>{T(b0 + 1e-3), T(-b0 - 1e-6 * double(i))};
+      }
+    }
   }
   ~Sim() {
     delete Lattice;
+    delete VelFM;
     delete FlagFM;
     delete Geo;
   }
 
-  void step() {
-    Lattice->Stream();
-    Lattice->template ApplyCellDynamicsWithHiddenComm<NSTask>(*FlagFM);
+  void updateField() {
+    for (auto& bf : VelFM->getBlockFields()) {
+      auto& arr = bf.getField(0);
+      for (std::size_t i = 0; i < arr.size(); ++i) {
+        arr[i] = Vector<T, LatSet::d>{T(0.5) * arr[i][0] + T(1e-4),
+                                      T(0.5) * arr[i][1] - T(1e-4)};
+      }
+    }
+  }
+
+  template <Mode M>
+  void stepHidden() {
+    if constexpr (M == Mode::Field) {
+      updateField();
+      VelFM->PostNormalCommunicate();
+      Lattice->Stream();
+      Lattice->template ApplyCellDynamicsWithHiddenComm<NSTask>(*FlagFM);
+      VelFM->FinishNormalCommunicate();
+    } else {
+      Lattice->Stream();
+      if constexpr (M == Mode::Partial) {
+        Lattice->template ApplyCellDynamicsWithHiddenComm<NSTask>(*FlagFM);
+      } else if constexpr (M == Mode::Full) {
+        Lattice->template ApplyCellDynamicsWithHiddenComm<
+          NSTask, flbcomm::CommMode::Full>(*FlagFM);
+      } else {
+        Lattice->template ApplyCellDynamicsWithHiddenComm<
+          NSTask, flbcomm::CommMode::All>(*FlagFM);
+      }
+    }
+  }
+
+  template <Mode M>
+  void stepPlain() {
+    if constexpr (M == Mode::Field) {
+      updateField();
+      VelFM->NormalCommunicate();
+      Lattice->Stream();
+      Lattice->template ApplyCellDynamics<NSTask>(*FlagFM);
+      Lattice->NormalCommunicate();
+    } else {
+      Lattice->Stream();
+      Lattice->template ApplyCellDynamics<NSTask>(*FlagFM);
+      if constexpr (M == Mode::Partial) {
+        Lattice->NormalCommunicate();
+      } else if constexpr (M == Mode::Full) {
+        Lattice->NormalFullCommunicate();
+      } else {
+        Lattice->NormalAllCommunicate();
+      }
+    }
+  }
+
+  void step(Mode m, bool hidden) {
+    switch (m) {
+      case Mode::Partial: hidden ? stepHidden<Mode::Partial>() : stepPlain<Mode::Partial>(); break;
+      case Mode::Full: hidden ? stepHidden<Mode::Full>() : stepPlain<Mode::Full>(); break;
+      case Mode::All: hidden ? stepHidden<Mode::All>() : stepPlain<Mode::All>(); break;
+      case Mode::Field: hidden ? stepHidden<Mode::Field>() : stepPlain<Mode::Field>(); break;
+    }
   }
 
   std::size_t localCells() const {
@@ -98,8 +193,10 @@ int main(int argc, char** argv) {
   const int Ni = argc > 1 ? std::atoi(argv[1]) : 120;
   const int bx = argc > 2 ? std::atoi(argv[2]) : 10;
   const int steps = argc > 3 ? std::atoi(argv[3]) : 3000;
+  const Mode mode = parseMode(argc > 4 ? argv[4] : nullptr);
+  const bool hidden = argc > 5 ? std::string(argv[5]) != "plain" : true;
 
-  Sim sim(Ni, Ni, bx, bx);
+  Sim sim(Ni, Ni, bx, bx, mode == Mode::Field);
 
   // Message layout: the communicators the geometry produces, and how they are
   // coalesced into one message per target rank.  Most of the raw communicators
@@ -117,8 +214,8 @@ int main(int argc, char** argv) {
     }
   }
   if (mpi().getRank() == 0) {
-    std::printf("[config] Ni=%d blocks=%dx%d ranks=%d steps=%d\n", Ni, bx, bx, mpi().getSize(),
-                steps);
+    std::printf("[config] Ni=%d blocks=%dx%d ranks=%d steps=%d mode=%s scheme=%s\n", Ni, bx, bx,
+                mpi().getSize(), steps, modeName(mode), hidden ? "hidden" : "plain");
     std::printf("[layout] local blocks=%zu  communicators/step=%zu  cells/comm=%.1f\n", blocks,
                 entries, entries ? double(cells) / entries : 0.0);
     std::printf("[layout] comm size histogram (cells x count):");
@@ -128,14 +225,14 @@ int main(int argc, char** argv) {
                 perRank.empty() ? 0.0 : double(cells) / perRank.size());
   }
 
-  for (int i = 0; i < 100; ++i) sim.step();  // warmup
+  for (int i = 0; i < 100; ++i) sim.step(mode, hidden);  // warmup
   mpi().barrier();
 
   double best = 1e30;
   for (int rep = 0; rep < 3; ++rep) {
     mpi().barrier();
     const auto t0 = std::chrono::steady_clock::now();
-    for (int i = 0; i < steps; ++i) sim.step();
+    for (int i = 0; i < steps; ++i) sim.step(mode, hidden);
     const auto t1 = std::chrono::steady_clock::now();
     const double s = std::chrono::duration<double>(t1 - t0).count();
     if (s < best) best = s;

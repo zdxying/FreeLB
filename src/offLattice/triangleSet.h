@@ -45,6 +45,8 @@
 #include <string>
 
 #include "offLattice/triangle.h"
+// mpi().reduce/getSize/barrier (MpiManager complete type)
+#include "parallel/mpi_manager.h"
 #include "utils/directories.h"
 
 namespace offlat {

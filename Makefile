@@ -23,4 +23,9 @@ test:
 test-cpu:
 	bash tests/run_tests.sh --no-cuda
 
-.PHONY: all lib tools libclean tools-clean test test-cpu
+# generator unit tests + the golden casegen cases; the CUDA golden is skipped
+# when the toolchain or a GPU is unavailable (no xcore/csegen needed).
+test-casegen:
+	bash tools/casegen/check.sh
+
+.PHONY: all lib tools libclean tools-clean test test-cpu test-casegen

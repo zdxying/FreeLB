@@ -46,43 +46,18 @@ class Vector;
 #endif  // #ifdef MPI_ENABLED
 
 #include <array>
+#include <cstdint>
 #include <iostream>
+#include <limits>
 #include <string>
 // usleep
 #include <unistd.h>
 // type check
 #include <type_traits>
 
-#ifdef MPI_ENABLED
-
-#define MPI_RANK(x)           \
-  if (mpi().getRank() != x) { \
-    return;                   \
-  }
-// followed by a enclosing brace
-#define IF_MPI_RANK(x) if (mpi().getRank() == x)
-
-#ifdef MPI_DEBUG
-#define MPI_DEBUG_WAIT        \
-  if (mpi().getRank() == 0) { \
-    int mpiwait = 1;                \
-    while (mpiwait == 1) {          \
-      sleep(1);               \
-    }                         \
-  }                           \
-  mpi().barrier();
-#else
-#define MPI_DEBUG_WAIT
-#endif  // #ifdef MPI_DEBUG
-
-#else  // #ifdef MPI_ENABLED
-
-#define MPI_RANK(x)
-#define IF_MPI_RANK(x)
-#define MPI_DEBUG_WAIT
-
-#endif  // #ifdef MPI_ENABLED
-
+// MPI_RANK / IF_MPI_RANK / MPI_DEBUG_WAIT macros + flb:: helpers
+// (kept in a leaf header so utils only need the macros, not MpiManager)
+#include "utils/mpi_macros.h"
 
 #ifdef MPI_ENABLED
 
@@ -154,6 +129,9 @@ class MpiManager {
     if (!ok) return 0.;
     return MPI_Wtime();
   }
+  /// Largest tag this MPI implementation accepts (MPI_TAG_UB), or the standard
+  /// minimum when the attribute is unavailable.
+  int getTagUpperBound() const;
 
   /// Synchronizes the processes
   void barrier(MPI_Comm comm = MPI_COMM_WORLD) {
@@ -355,6 +333,8 @@ class MpiManager {
   int bossId() const { return 0; }
   /// Tells whether current processor is main processor
   bool isMainProcessor() const { return true; }
+  /// No MPI, so every tag fits.
+  int getTagUpperBound() const { return std::numeric_limits<int>::max(); }
 
   /// Synchronizes the processes
   void barrier() const {};
@@ -365,3 +345,20 @@ class MpiManager {
 #endif
 
 MpiManager& mpi();
+
+// flb:: helper definitions for the MPI_RANK / IF_MPI_RANK macros
+// (mpi_macros.h declares them; defined inline here, where MpiManager is
+// complete, so any TU that includes this header provides the definitions)
+namespace flb {
+inline bool is_rank(int r) { return mpi().getRank() == r; }
+inline int size() { return mpi().getSize(); }
+inline void debug_wait() {
+  if (mpi().getRank() == 0) {
+    int mpiwait = 1;
+    while (mpiwait == 1) {
+      sleep(1);
+    }
+  }
+  mpi().barrier();
+}
+}  // namespace flb

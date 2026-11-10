@@ -37,7 +37,7 @@
 // dir name
 #include <string>
 // MPI_RANK(x)
-#include "parallel/mpi_manager.h"
+#include "utils/mpi_macros.h"
 
 struct DirCreator {
   // use: DirCreator::Create_Dir("./dir"); or use absolute path

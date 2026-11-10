@@ -28,6 +28,8 @@
 #include "data_struct/Vector.h"
 // BasicBlock (block extents of the written image data)
 #include "geometry/basic_geometry.h"
+// GenericFieldBase / GenericArray writer parameters
+#include "data_struct/field.h"
 #include "io/base64.h"
 #include "io/basic_writer.h"
 

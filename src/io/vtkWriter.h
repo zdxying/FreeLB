@@ -27,6 +27,8 @@
 #include "data_struct/Vector.h"
 #include "lbm/unit_converter.h"
 #include "geometry/geometry.h"
+// GenericArray / GenericFieldBase writer parameters
+#include "data_struct/field.h"
 #include "io/basic_writer.h"
 
 // BasicTree (leaf blocks written as geometry points)

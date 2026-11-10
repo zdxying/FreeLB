@@ -15,4 +15,7 @@ FLAGS += -DThread_Num=1
 FLAGS += -DMPI_ENABLED
 CXXC := mpic++
 
+# checkpoint files the test writes to its own directory
+OUTPUT += ckpt_decomp
+
 include $(ROOT)/make.mk

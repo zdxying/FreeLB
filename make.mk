@@ -152,6 +152,11 @@ mpi: FLAGS += -DMPI_ENABLED
 mpi: CXXC := mpic++
 mpi: all
 
+#-------------hybrid (MPI + OpenMP)----------------
+hybrid: FLAGS += -DMPI_ENABLED -fopenmp
+hybrid: CXXC := mpic++
+hybrid: all
+
 #-------------time----------------
 time: 
 	@echo "Starting timed compilation..."

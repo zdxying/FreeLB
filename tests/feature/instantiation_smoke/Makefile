@@ -26,6 +26,11 @@ $(MPI_OBJ): instantiation.cpp
 $(MPI_TARGET): $(MPI_OBJ)
 	mpic++ $(FLAGS) -DMPI_ENABLED -o $@ $^ $(LINKFLAGS)
 
+# make.mk's `clean` only removes $(OBJS)/$(TARGET)/$(OUTPUT), none of which
+# lists the MPI variant, so chain it here.  run_tests.sh calls `make clean`
+# before every build, and a stale *.o would otherwise survive it.
+clean: clean-mpi
+
 clean-mpi:
 	$(RM) $(MPI_OBJ) $(MPI_OBJ:.o=.d) $(MPI_TARGET)
 

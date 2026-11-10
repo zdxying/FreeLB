@@ -190,7 +190,14 @@ void readParam(std::vector<T>& refThold, std::vector<T>& coaThold) {
             << "----------------------------------------------" << std::endl;
 }
 
-int main() {
+int main(int argc, char* argv[]) {
+  // MPI_Comm_size() is what LoadBalancing() divides the blocks over, so the
+  // manager has to be initialised before the geometry is built.  Without this
+  // the size is whatever the uninitialised member happened to hold (0), and
+  // LoadBalancing(0) indexed an empty vector.
+  mpi().init(&argc, &argv);
+  MPI_DEBUG_WAIT;
+
   constexpr std::uint8_t VoidFlag = std::uint8_t(1);
   constexpr std::uint8_t AABBFlag = std::uint8_t(2);
   constexpr std::uint8_t BouncebackFlag = std::uint8_t(4);

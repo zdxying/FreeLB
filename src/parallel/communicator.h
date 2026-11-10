@@ -22,9 +22,12 @@
 
 #pragma once
 
+#include <deque>
 #include <vector>
 
+#include "utils/nbr_direction.h"
 #include "parallel/mpi_manager.h"
+#include "parallel/link_key.h"
 #include "utils/alias.h"
 // getIntpWeight<T, Dim>() interpolation weights (also used by data_struct/field.h)
 #include "data_struct/interpolation.h"
@@ -36,25 +39,9 @@
 #endif
 
 
-// neighbor block direction relative to current block
-enum NbrDirection : std::uint8_t {
-  // not a neighbor
-  NONE = 0,
-  // x-negative
-  XN = 1,
-  // x-positive
-  XP = 2,
-  // y-negative
-  YN = 4,
-  // y-positive
-  YP = 8,
-  // z-negative
-  ZN = 16,
-  // z-positive
-  ZP = 32
-};
+// NbrDirection lives in utils/nbr_direction.h (geometry-level concept)
 
-NbrDirection getOpposite(NbrDirection direction) {
+inline NbrDirection getOpposite(NbrDirection direction) {
   std::uint8_t opp{};
   if (util::isFlag(direction, NbrDirection::XN)) {
     opp |= NbrDirection::XP;
@@ -245,7 +232,7 @@ NbrDirection getEdgeNbrDirection(int edge) {
 }
 
 // refer to int BasicBlock<T, D>::whichFace()
-NbrDirection getFaceNbrDirection(int face) {
+inline NbrDirection getFaceNbrDirection(int face) {
   if (face == -1) {
     return NbrDirection::NONE;
   }
@@ -312,7 +299,7 @@ NbrDirection getNbrDirection(const AABB<T, D>& refAABB, const AABB<T, D>& nbrAAB
   return static_cast<NbrDirection>(direction);
 }
 
-std::vector<int> getCornerIdxFromNbr(std::vector<std::size_t>& cornerId, const std::vector<std::size_t>& allcornerIdx, const std::vector<NbrDirection>& nbrdirs) {
+inline std::vector<int> getCornerIdxFromNbr(std::vector<std::size_t>& cornerId, const std::vector<std::size_t>& allcornerIdx, const std::vector<NbrDirection>& nbrdirs) {
   std::vector<int> corners{};
   const int size = allcornerIdx.size();
   cornerId.clear();
@@ -382,8 +369,11 @@ struct BasicComm {
 // a collection of BasicComm for one block
 template <typename T, unsigned int D>
 struct BasicCommSet {
-  std::vector<BasicComm<T, D>> Sends;
-  std::vector<BasicComm<T, D>> Recvs;
+  // LatticeComm keeps a reference to the BasicComm it wraps, so the storage
+  // must not move elements when a new comm is appended.  A deque guarantees
+  // that references stay valid; a vector would dangle on reallocation.
+  std::deque<BasicComm<T, D>> Sends;
+  std::deque<BasicComm<T, D>> Recvs;
 
   // find the BasicComm with the given BlockId
   const BasicComm<T, D>& getSendComm(int BlockId) const { 
@@ -458,11 +448,8 @@ struct SharedComm {
   int SendBlockId;
   // neighbor direction
   NbrDirection Direction;
-  // tag for efficient MPI send/recv with direction info
-  int Tag;
 
-  SharedComm(int blockid) : SendBlockId(blockid), Direction(NbrDirection::NONE), Tag(0) {}
-  SharedComm(int blockid, int tag) : SendBlockId(blockid), Direction(NbrDirection::NONE), Tag(tag) {}
+  SharedComm(int blockid) : SendBlockId(blockid), Direction(NbrDirection::NONE) {}
 
   void setRecvSendIdx(const std::vector<std::size_t>& recvs, const std::vector<std::size_t>& sends) {
     const std::size_t RecvCellNum = recvs.size();
@@ -519,16 +506,16 @@ struct DistributedComm {
   std::vector<std::size_t> Cells;
   // send / recv rank
   int TargetRank;
-  // send / recv block id, could be used as mpi tag when 2 blocks has only 2 send/recv pairs
+  // send / recv block id; also the peer block in the plan's LinkKey
   int TargetBlockId;
   // neighbor direction
   NbrDirection Direction;
-  // tag for efficient MPI send/recv with direction info
-  int Tag;
+  // Stable order of this link inside a coalesced plan.  The sender and the
+  // receiver derive it from the receiver's block ids and link kind/index, so
+  // the refs can be packed in the same order without exchanging it.
+  flbcomm::LinkKey Order{};
 
-  DistributedComm(int rank, int blockid) : TargetRank(rank), TargetBlockId(blockid), Direction(NbrDirection::NONE), Tag(0) {}
-  DistributedComm(int rank, int blockid, int tag) : 
-  TargetRank(rank), TargetBlockId(blockid), Direction(NbrDirection::NONE), Tag(tag) {}
+  DistributedComm(int rank, int blockid) : TargetRank(rank), TargetBlockId(blockid), Direction(NbrDirection::NONE) {}
 };
 
 // a simple collection of SharedComm for one block
@@ -564,8 +551,6 @@ struct Communicator {
   SharedCommSet AllComm;
   
 #ifdef MPI_ENABLED
-  // distributed communicators
-  bool _NeedMPIComm = false;
   // MPI rank
   int _Rank;
   // first layer of overlapped cells' MPI communicator, from inside to outside
@@ -641,8 +626,8 @@ void Interpolation(ArrayType& Arr, const ArrayType& nArr,
   }
 }
 
-template <typename FloatType, unsigned int Dim, typename ArrayType>
-void Interpolation(std::vector<typename ArrayType::value_type>& Buffer, std::size_t& Bidx, 
+template <typename FloatType, unsigned int Dim, typename ArrayType, typename BufferType>
+void Interpolation(BufferType& Buffer, std::size_t& Bidx, 
 ArrayType& Arr, const std::vector<std::size_t>& Sends, std::size_t& idx) {
   if constexpr (Dim == 2) {
     Buffer[Bidx++] = getInterpolation<0, FloatType, Dim>(Arr, idx     , Sends);

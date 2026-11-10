@@ -38,11 +38,13 @@ struct Sim {
   BaseConverter<T> Conv;
   using FIELDS = TypePack<RHO<T>, VELOCITY<T, LatSet::d>, POP<T, LatSet::q>>;
   using cudevFIELDS = typename ExtractCudevFieldPack<FIELDS>::cudev_pack;
-  // The POP storage strategy is a template parameter of cudev::Cell.  With
-  // FREELB_POP_FP16 the DirectPop policy does not compile (moment.h has no
-  // Vector * PopRef), which is why the FP16 benchmark path uses RegCell; see
-  // benchmarks/cavity3d_cu/cavity3d.cu.  FP32 keeps the DirectPop policy used
-  // by examples/cavity2d_cu.
+  // The POP storage strategy is a template parameter of cudev::Cell.  Under
+  // FREELB_POP_FP16 the loop-based moment schemes do not compile with DirectPop
+  // (moment.h computes `latset::c * cell[i]` and there is no Vector * PopRef);
+  // the CSE-generated moment.ur.h hoists each cell[i] into a const T first, so
+  // DirectPop+FP16 does build with -D_UNROLLFOR (benchmarks/cavity3d_cu does).
+  // This target compiles the loop path, so it selects RegCell; FP32 keeps the
+  // DirectPop policy used by examples/cavity2d_cu.
 #if defined(FREELB_POP_FP16)
   using DevCELL = cudev::RegCell<T, LatSet, cudevFIELDS>;
 #else

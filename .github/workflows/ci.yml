@@ -1,0 +1,75 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+
+# Four gates. The engine job catches a submodule bump that builds but
+# miscompiles; the unrollfor job is the only one that exercises the generated
+# `.ur.h` headers at all; the cpu-tests job runs the engine suite on the
+# default CPU build; the casegen job is the only one that rebuilds the
+# generated golden cases from their specs.
+jobs:
+  engine:
+    # The cse engine ships its own suite (FLOP pins, numerical verifiers, a
+    # round-trip/idempotence sweep). Running it here means a pointer bump is
+    # validated from the consumer side, not only in the engine's repository.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: Build and test the pinned engine
+        run: make -C third_party/cse test
+
+  unrollfor:
+    # `-D_UNROLLFOR` is the only path that consumes the generated headers, and
+    # make.mk:84 falls back to the loop-based schemes *silently* when csegen is
+    # missing. A successful build therefore proves nothing on its own; the
+    # dry-run assertion below is what makes this gate real.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: Build the engine, xcore and csegen
+        run: make
+      - name: Verify the generated specializations numerically
+        run: make -C tools/cse verify
+      - name: Assert the generated headers are on the include path
+        run: |
+          make -C examples/cavity3d clean
+          make -C examples/cavity3d -n > /tmp/dry.txt
+          grep -q -- '-D_FLB_UR_CSE' /tmp/dry.txt
+          grep -q -- '-I../../generated' /tmp/dry.txt
+      - name: Build an example with -D_UNROLLFOR and xcore
+        run: make -C examples/cavity3d
+      - name: Build an example with -D_UNROLLFOR without xcore
+        run: |
+          make -C examples/cavity3d clean
+          make -C examples/cavity3d XCORE_LIB=/nonexistent
+
+  cpu-tests:
+    # The CPU suite: block/feature/io/regression plus the casegen goldens.
+    # `make test-cpu` passes --no-cuda, and tests/run_tests.sh skips MPI
+    # targets when mpic++ is unavailable (the runner does not install MPI).
+    # The tests build with -O2 and without -D_UNROLLFOR, so neither the cse
+    # submodule nor a prebuilt xcore library is required.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build and run the CPU tests
+        run: make test-cpu
+
+  casegen:
+    # The golden cases regenerate from their `.case` specs with --check, so a
+    # spec/output drift fails the build. They use -O2 without -D_UNROLLFOR, so
+    # neither xcore nor csegen is needed and no submodule checkout is required;
+    # the CUDA golden skips itself when the runner has no GPU.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Unit-test the generator
+        run: python3 -m unittest discover -s tools/casegen/tests
+      - name: Build and run the golden cases
+        run: make test-casegen

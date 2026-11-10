@@ -27,7 +27,7 @@
 
 #include "data_struct/Vector.h"
 // MPI_RANK / IF_MPI_RANK logging macros
-#include "parallel/mpi_manager.h"
+#include "utils/mpi_macros.h"
 
 // Lattice_deltaX = 1   ->  Conv_L = deltaX
 // Lattice_deltaT = 1   ->  Conv_Time = deltaT
@@ -410,8 +410,11 @@ struct ConcConverter final : public AbstractConverter<T> {
     // normalized concentration
     T Lattice_Conc = (Conc_phys - Cl) / Conv_dC;
     if (Lattice_Conc < 0 || Lattice_Conc > 1) {
-      MPI_RANK(0)
-      std::cout << "Error: Lattice_Conc out of range [0,1]" << std::endl;
+      // IF_MPI_RANK, not MPI_RANK: the latter expands to a bare `return`, which
+      // is illegal here because the function returns T.
+      IF_MPI_RANK(0) {
+        std::cout << "Error: Lattice_Conc out of range [0,1]" << std::endl;
+      }
       exit(-1);
     }
     return Lattice_Conc;

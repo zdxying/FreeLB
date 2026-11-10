@@ -27,6 +27,8 @@
 #include "lbm/unit_converter.h"
 
 #include "data_struct/voxel_map.h"
+// coalesced plain-communication plans
+#include "parallel/comm_plan.h"
 
 #ifdef _HIDDEN_PROFILE
 // Instrumentation for benchmarks/hidden_comm.  Compiled out unless
@@ -176,6 +178,24 @@ class BlockLattice : public BlockLatticeBase<T, LatSet, TypePack> {
   void packNormalSend(std::size_t commIdx, buffer_type& buffer, std::size_t offset);
   template <typename buffer_type>
   void unpackNormalRecv(std::size_t commIdx, const buffer_type& buffer, std::size_t offset);
+
+  // Same, for the full-direction exchanges (MPIComm when all is false, the
+  // wider AllMPIComm when it is true).
+  std::size_t fullSendSize(std::size_t commIdx, bool all) const {
+    return (all ? this->getBlock().getCommunicator().AllMPIComm.Sends[commIdx].Cells.size()
+                : this->getBlock().getCommunicator().MPIComm.Sends[commIdx].Cells.size()) *
+           LatSet::q;
+  }
+  std::size_t fullRecvSize(std::size_t commIdx, bool all) const {
+    return (all ? this->getBlock().getCommunicator().AllMPIComm.Recvs[commIdx].Cells.size()
+                : this->getBlock().getCommunicator().MPIComm.Recvs[commIdx].Cells.size()) *
+           LatSet::q;
+  }
+  template <typename buffer_type>
+  void packFullSend(std::size_t commIdx, buffer_type& buffer, std::size_t offset, bool all);
+  template <typename buffer_type>
+  void unpackFullRecv(std::size_t commIdx, const buffer_type& buffer, std::size_t offset,
+                      bool all);
 #endif
 
   template <typename DYNAMICS, typename elementType>
@@ -196,7 +216,7 @@ class BlockLattice : public BlockLatticeBase<T, LatSet, TypePack> {
   // (cudev::DirectPop streams from global memory, cudev::RegPop keeps the q
   // populations in registers for the duration of the dynamics).  The block size
   // is derived from the strategy: the register footprint wants a multiple of the
-  // warp size rather than THREADS_PER_BLOCK.  See docs/CELL_POLICY_PLAN.md.
+  // warp size rather than THREADS_PER_BLOCK.
   template <typename CELLDYNAMICS, typename CELLTYPE, typename ArrayType>
   void CuDevApplyCellDynamics(ArrayType& flagarr);
 
@@ -216,43 +236,29 @@ class BlockLattice : public BlockLatticeBase<T, LatSet, TypePack> {
 
 #ifdef MPI_ENABLED
 
-  template <typename buffer_type>
-  void mpiNormalSend(std::vector<MPI_Request>& SendRequests, 
-  std::vector<buffer_type>& SendBuffers, const std::vector<DistributedComm>& MPISends);
+  // Elements this block contributes to a cross-level message.  Aver and Intp
+  // pack the same layout: AverSrcNum source cells per q values.
+  std::size_t crossSendSize(const DistributedComm& comm) const {
+    return flbcomm::crossSendElements(comm.Cells.size(), LatSet::d, LatSet::q);
+  }
+  std::size_t crossRecvSize(const DistributedComm& comm) const {
+    return flbcomm::crossRecvElements(comm.Cells.size(), LatSet::q);
+  }
 
   template <typename buffer_type>
-  void mpiNormalFullSend(std::vector<MPI_Request>& SendRequests, 
-  std::vector<buffer_type>& SendBuffers, const std::vector<DistributedComm>& MPISends);
-
-  void mpiAverSend(std::vector<MPI_Request>& SendRequests,
-  std::vector<std::vector<T>>& SendBuffers, const std::vector<DistributedComm>& MPISends);
-
-  void mpiIntpSend(std::vector<MPI_Request>& SendRequests, 
-  std::vector<std::vector<T>>& SendBuffers, const std::vector<DistributedComm>& MPISends);
-
+  void packAverSend(const DistributedComm& comm, buffer_type& buffer,
+                    std::size_t offset);
   template <typename buffer_type>
-  void mpiNormalRecv(std::vector<MPI_Request>& RecvRequests, 
-  std::vector<buffer_type>& RecvBuffers, const std::vector<DistributedComm>& MPIRecvs);
-
+  void packIntpSend(const DistributedComm& comm, buffer_type& buffer,
+                    std::size_t offset);
   template <typename buffer_type>
-  void mpiFullRecv(std::vector<MPI_Request>& RecvRequests, 
-  std::vector<buffer_type>& RecvBuffers, const std::vector<DistributedComm>& MPIRecvs);
+  void unpackCrossRecv(const DistributedComm& comm, const buffer_type& buffer,
+                       std::size_t offset);
 
-  template <typename buffer_type>
-  void mpiNormalSet(int& reqidx, std::vector<MPI_Request>& RecvRequests,
-  const std::vector<buffer_type>& RecvBuffers, const std::vector<DistributedComm>& MPIRecvs);
-
-  template <typename buffer_type>
-  void mpiNormalFullSet(int& reqidx, std::vector<MPI_Request>& RecvRequests,
-  const std::vector<buffer_type>& RecvBuffers, const std::vector<DistributedComm>& MPIRecvs);
-
-  void mpiAverIntpSet(int& reqidx, std::vector<MPI_Request>& RecvRequests,
-  const std::vector<std::vector<T>>& RecvBuffers, const std::vector<DistributedComm>& MPIRecvs);
-
-  template <unsigned int D>
+  template <unsigned int D, typename buffer_type>
   void popIntp(T OmegaC, const std::vector<std::size_t>& sends, 
   const GenericArray<T>& RhoArr, const GenericArray<Vector<T, LatSet::d>>& UArr, std::size_t i,
-  std::vector<T>& buffer, std::size_t& bufidx);
+  buffer_type& buffer, std::size_t& bufidx);
   
 #endif
 };
@@ -273,7 +279,6 @@ __global__ void CuDevStreamKernel(cudev::BlockLattice<T, LatSet, TypePack>* bloc
 // whether the populations stream from global memory (DirectPop) or stay in
 // registers for the whole dynamics (RegPop).  Cell::flush() is a no-op under
 // DirectPop, which is what allows the unconditional call below.
-// See docs/CELL_POLICY_PLAN.md.
 template <typename T, typename LatSet, typename TypePack, typename CELLTYPE,
           typename CELLDYNAMICS, typename ArrayType>
 __global__ void CuDevApplyCellDynamicsKernel(
@@ -326,28 +331,55 @@ class BlockLatticeManager : public BlockLatticeManagerBase<T, LatSet, TypePack> 
   using buffer_type = ::buffer_type<T>;
 
 #ifdef MPI_ENABLED
-  // One coalesced message per target rank.  The refs are ordered by (rank, MPI
-  // tag); the tag is unique per message, so the sender and the receiver derive
-  // the same packing order from the same HelperBlockGeometry tags.  Tag of a
-  // group is the smallest tag in it.
-  struct NormalCommRef {
-    std::size_t Block{};
-    std::size_t Comm{};
-    std::size_t Offset{};
-    int Rank{};  // target rank for sends, source rank for receives
-    int Tag{};
-  };
-  struct NormalCommGroup {
-    int TargetRank{};
-    int Tag{};
-    std::vector<NormalCommRef> Refs;
-    buffer_type Buffer;
-  };
-  std::vector<NormalCommGroup> _normalSendGroups;
-  std::vector<NormalCommGroup> _normalRecvGroups;
-  bool _normalCommGroupsReady = false;
-  void initNormalCommGroups();
+  // Coalesced plans, one vector entry per active depth (see
+  // flbcomm::activeDepth()).  Index maxLevel is the unfiltered exchange; the
+  // lower indices are what the level-filtered (count) overloads use, and each
+  // is built on first use.
+  //
+  // Dir: shared by the plain NormalCommunicate() and the hidden-communication
+  // step (both exchange exactly the same links).  One message per target rank,
+  // refs ordered by the receiver-derived Order; the group tag is DirTag.
+  //
+  // Full/All: the group tag is FullTag/AllTag; these order the refs by the
+  // (receiver block, sender block) pair instead.
+  std::vector<flbcomm::CommPlan<buffer_type>> _dirPlans;
+  std::vector<flbcomm::CommPlan<buffer_type>> _fullPlans;
+  std::vector<flbcomm::CommPlan<buffer_type>> _allPlans;
+  // Cross-level Aver/Intp plans, one entry per active depth.  They use the
+  // offset-based pack/unpack and the AverTag/IntpTag slots.
+  std::vector<flbcomm::CommPlan<buffer_type>> _averPlans;
+  std::vector<flbcomm::CommPlan<buffer_type>> _intpPlans;
+  // Geometry generation a plan was built against lives on the plan itself
+  // (flbcomm::CommPlan::Generation).  A manager-wide value would be shared by
+  // every depth and exchange, so building one plan would vouch for the older
+  // ones -- exactly the stale plan that InitVoxelMap() used to let through.
+  void checkPlanGeneration(const flbcomm::CommPlan<buffer_type>& plan) const {
+    flbcomm::checkPlanStamp(plan.Generation,
+                            this->BlockGeo.getGeometryGeneration(),
+                            "BlockLatticeManager");
+  }
+  void initDirPlan(std::size_t depth);
+  void initFullPlan(bool all, std::size_t depth);
+  void initCrossPlan(flbcomm::CrossMode mode, std::size_t depth);
+  void runCrossPlan(flbcomm::CrossMode mode, std::size_t depth);
+  const std::vector<DistributedComm>& crossComms(flbcomm::CrossMode mode,
+                                                 std::size_t block, bool send);
+  // Post the receives/sends of a plan, and wait/unpack the receives.  Split so
+  // the plain path can run the shared-memory copy while the messages are in
+  // flight; hidden uses the same pieces around its collision split.
+  void postPlanExchange(flbcomm::CommPlan<buffer_type>& plan, flbcomm::CommMode Mode,
+                        std::vector<MPI_Request>& sendRequests,
+                        std::vector<MPI_Request>& recvRequests);
+  void finishPlanExchange(flbcomm::CommPlan<buffer_type>& plan, flbcomm::CommMode Mode,
+                          std::vector<MPI_Request>& recvRequests);
 #endif
+
+  // Shared copy + MPI exchange.  The plan is posted first, then the local halo
+  // is refreshed while the messages are in flight, then the receives are
+  // waited/unpacked.  `depth` is the sub-cycled depth (maxLevel for the
+  // unfiltered call).
+  template <flbcomm::CommMode Mode>
+  void normalCommunicateOverlapped(std::size_t depth);
 
  public:
   template <typename... FIELDPTRTYPES>
@@ -361,6 +393,14 @@ class BlockLatticeManager : public BlockLatticeManagerBase<T, LatSet, TypePack> 
   template <typename... InitValues>
   void Init(BlockGeometryHelper<T, LatSet::d>& GeoHelper,
             const std::tuple<InitValues...>& initvalues);
+
+#ifdef MPI_ENABLED
+  // Plan lookup, used by the exchange paths.  Public so a test or a diagnostic
+  // can inspect the geometry generation a plan was built against; the plan is
+  // built lazily on first use for that depth.
+  flbcomm::CommPlan<buffer_type>& planFor(flbcomm::CommMode Mode, std::size_t depth);
+  flbcomm::CommPlan<buffer_type>& crossPlanFor(flbcomm::CrossMode mode, std::size_t depth);
+#endif
 
   template <typename Func>
   void ForEachField(Func&& func) {
@@ -447,7 +487,7 @@ class BlockLatticeManager : public BlockLatticeManagerBase<T, LatSet, TypePack> 
 
   // Forwards to BlockLattice::CuDevApplyCellDynamics, threading CELLTYPE (the
   // cell the task selector was built around) through so that the POP storage
-  // strategy reaches the kernel.  See docs/CELL_POLICY_PLAN.md.
+  // strategy reaches the kernel.
   template <typename CELLDYNAMICS, typename CELLTYPE, typename FieldType>
   void CuDevApplyCellDynamics(BlockFieldManager<FieldType, T, LatSet::d>& BFM);
 
@@ -476,15 +516,6 @@ class BlockLatticeManager : public BlockLatticeManagerBase<T, LatSet, TypePack> 
 
 #ifdef MPI_ENABLED
 
-  void MPINormalCommunicate();
-  void MPINormalCommunicate(std::int64_t count);
-
-  void MPINormalFullCommunicate();
-  void MPINormalFullCommunicate(std::int64_t count);
-
-  void MPINormalAllCommunicate();
-  void MPINormalAllCommunicate(std::int64_t count);
-
   void MPIAverageCommunicate();
   void MPIAverageCommunicate(std::int64_t count);
 
@@ -494,8 +525,15 @@ class BlockLatticeManager : public BlockLatticeManagerBase<T, LatSet, TypePack> 
 #endif
 
 
-  // ApplyCellDynamics with hidden communicate, no barrier
-  template <typename CELLDYNAMICS, typename FieldType>
+  // ApplyCellDynamics with hidden communicate, no barrier.  Mode selects the
+  // communicator set that is overlapped with the collision: Partial is the
+  // direction-filtered exchange, Full/All the full-population ones.  The
+  // collision split and the send/pack order are identical for all three.
+  // Full is the default: Partial refreshes only a direction-filtered subset and
+  // is equivalent to Full only under narrow conditions, so it must be requested
+  // explicitly.
+  template <typename CELLDYNAMICS, flbcomm::CommMode Mode = flbcomm::CommMode::Full,
+            typename FieldType>
   void ApplyCellDynamicsWithHiddenComm(const BlockFieldManager<FieldType, T, LatSet::d>& BFM);
 
 
@@ -571,17 +609,20 @@ class BlockLatManagerCoupling {
         const std::size_t voxNum = blocklat0.getVoxNum();
         #ifdef _VOX_ENABLED
         const VoxelMap& map = blocklat0.getBlock().getVoxelMap();
+        if (map.isInitialized()) {
+          for (std::size_t id = 0; id < voxNum; ++id) {
+            const std::size_t cellId = map[id];
+            cell0.setId(cellId);
+            cell1.setId(cellId);
+            CELLDYNAMICS::Execute(flagArray[cellId], cell0, cell1);
+          }
+          continue;
+        }
         #endif
         for (std::size_t id = 0; id < voxNum; ++id) {
-          #ifdef _VOX_ENABLED
-          cell0.setId(map[id]);
-          cell1.setId(map[id]);
-          CELLDYNAMICS::Execute(flagArray[map[id]], cell0, cell1);
-          #else
           cell0.setId(id);
           cell1.setId(id);
           CELLDYNAMICS::Execute(flagArray[id], cell0, cell1);
-          #endif
         }
       }
     }
@@ -600,17 +641,20 @@ class BlockLatManagerCoupling {
       const std::size_t voxNum = blocklat0.getVoxNum();
       #ifdef _VOX_ENABLED
       const VoxelMap& map = blocklat0.getBlock().getVoxelMap();
+      if (map.isInitialized()) {
+        for (std::size_t id = 0; id < voxNum; ++id) {
+          const std::size_t cellId = map[id];
+          cell0.setId(cellId);
+          cell1.setId(cellId);
+          CELLDYNAMICS::Execute(flagArray[cellId], cell0, cell1);
+        }
+        continue;
+      }
       #endif
       for (std::size_t id = 0; id < voxNum; ++id) {
-        #ifdef _VOX_ENABLED
-        cell0.setId(map[id]);
-        cell1.setId(map[id]);
-        CELLDYNAMICS::Execute(flagArray[map[id]], cell0, cell1);
-        #else
         cell0.setId(id);
         cell1.setId(id);
         CELLDYNAMICS::Execute(flagArray[id], cell0, cell1);
-        #endif
       }
     }
   }
@@ -627,15 +671,19 @@ class BlockLatManagerCoupling {
       const std::size_t voxNum = blocklat0.getVoxNum();
       #ifdef _VOX_ENABLED
       const VoxelMap& map = blocklat0.getBlock().getVoxelMap();
+      if (map.isInitialized()) {
+        for (std::size_t id = 0; id < voxNum; ++id) {
+          const std::size_t cellId = map[id];
+          cell0.setId(cellId);
+          cell1.setId(cellId);
+          DYNAMICS::apply(cell0, cell1);
+        }
+        continue;
+      }
       #endif
       for (std::size_t id = 0; id < voxNum; ++id) {
-        #ifdef _VOX_ENABLED
-        cell0.setId(map[id]);
-        cell1.setId(map[id]);
-        #else
         cell0.setId(id);
         cell1.setId(id);
-        #endif
         DYNAMICS::apply(cell0, cell1);
       }
     }

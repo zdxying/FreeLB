@@ -26,32 +26,18 @@ The author also used files modified from [palabos](https://palabos.unige.ch/) pr
   > - 'src/offLattice/marchingCube.h' 
   > - 'src/offLattice/marchingCube.hh'
 
-This code is written in C++ for clarity and efficiency, methods of LB and CA are stored in classes in ./src folder, specificlly, the declaration of the methods are in .h files and the implementations are in .hh files. To implement the simulation, one should prepare an .ini file storing simulation parameters and write his/her own .cpp/.cu file which calls the methods of this code, also, defines the initial and boundary conditions. There are some examples in ./examples folder, which can be used as a reference.
+This code is written in C++ for clarity and efficiency. LB and CA methods are stored in classes
+under `./src`; declarations are in `.h` files and implementations in `.hh` files. To run a
+simulation, prepare an `.ini` file with the parameters and write a `.cpp`/`.cu` file that calls
+the methods and defines the initial and boundary conditions. See `./examples` for reference. The
+module map, data model and dependency direction are in `docs/ARCHITECTURE.md`.
 
 ### Umbrella headers: `freelb.h` / `freelb.hh`
 
-`freelb.h` (declarations) and `freelb.hh` (implementations) wrap all **active**
-FreeLB modules: a simulation `.cpp` normally needs only these two includes (see
-`examples/cavity3d`).  Covered: the core single-phase LBM path, free surface
-(`lbm/freeSurface.h`), STL geometry to field (`offLattice/marchingCube.h(.hh)`),
-the BlockLattice-based CA solidification (`ca/zhu_stefanescu*.h(.hh)`, used by
-`examples/cazsblock2d` / `examples/cazsAref2d`), `io/plot_writer.h` and
-`utils/field_checksum.h`.
-
-The **legacy PopLattice path** is not usable through the umbrella:
-`data_struct/lattice.hh` (the PopLattice/RhoLattice method definitions),
-`lbm/buoyancy.h` and `lbm/cell_dynamics.h` (a dead header with zero consumers)
-are not wrapped, so legacy simulations include them directly
-(`examples/legacy/*`).  What still reaches the umbrella is declaration-only:
-`data_struct/lattice.h` and the PopLattice-based `CA::ZhuStefanescu2D/3D` class
-definitions arrive transitively through `ca/zhu_stefanescu*.h`, which the active
-BlockLattice CA path needs, and the unused `legacy::` schemes come with
-`lbm/collision.h`.  All of it is pending removal together with
-`examples/legacy/`.
-
-Every header is self-contained (compiles on its own).  Two dead headers with
-zero references, `data_struct/tree.h` and `utils/exception.h`, were removed
-rather than wrapped.
+`freelb.h` (declarations) and `freelb.hh` (implementations) wrap all active modules (core LBM, free surface, STL, BlockLattice CA, checkpoint, writers, field checksum); a simulation `.cpp` normally needs only these two includes (see `examples/cavity3d`).
+The legacy PopLattice path is not wrapped and is frozen; `examples/legacy/*` include its headers (`data_struct/lattice.h(hh)`, `lbm/buoyancy.h`, `lbm/legacy_collision.h`, `ca/zhu_stefanescu*_legacy.h(hh)`) directly.
+Every header compiles on its own except the two baseline entries in `tools/check_headers.sh` (`utils/cuda_device.h` needs `nvcc`; `parallel/mpi_manager.h` misses `<cstdint>` under `-DMPI_ENABLED`).
+File-by-file module map: `docs/ARCHITECTURE.md` §3.
 
 
 OpenMP and MPI is enabled through the code. Cuda for multi-block structure is not supported for now
@@ -77,22 +63,22 @@ Quick Start works without them):
 git submodule update --init third_party/cse
 ```
 
-### Quick Start (no xcore/csegen required)
+### Quick Start (no optional tools)
 ```bash
 cd ./examples/cavity2d
 make
 ```
 The executable file will be generated in the same directory with .exe extension (please note that .exe extension is used to make the executable file recognized by .gitignore, the author did NOT test the code on Windows, but WSL is OK!)
 
-### Full Build (with xcore memory pool + CSE code generation)
-For optimal performance, build the xcore library and CSE tools first from the root directory:
+### Full Build (with xcore pool allocator + csegen)
+For optimal performance, build the optional `xcore` library and `csegen` tool first from the root directory:
 ```bash
 make              # builds xcore library + csegen tool
 cd ./examples/cavity2d
 make
 ```
-- **xcore** (`src/xcore/`): High-performance pool allocator. If not built, the build system automatically falls back to `std::allocator` (with a warning).
-- **csegen** (`tools/cse/`): CSE code generator for `-D_UNROLLFOR` examples. Without `-D_UNROLLFOR`, the plain loop-based schemes compile and no `.ur.h` is touched. With `-D_UNROLLFOR`, the cse-generated specializations in `generated/lbm/` are used; if csegen is missing, the build compiles the plain schemes too (with a warning) -- the hand-written copies in `src/ur_fallback/lbm/` are a comparison reference only and never compiled.
+- **xcore** (`src/xcore/`): pool allocator. If xcore is absent, the build system falls back to `std::allocator` (with a warning).
+- **csegen** (`tools/cse/`): CSE (common subexpression elimination) code generator. With `-D_UNROLLFOR`, the generated specializations (`.ur.h` files in `generated/lbm/`) are used; without the flag, the plain loop-based schemes compile and no `.ur.h` is touched. If csegen is missing while the flag is set, the build falls back to the plain schemes with a warning. `src/ur_fallback/lbm/` is a comparison reference only and is never compiled.
 
 You can also build xcore and csegen separately:
 ```bash
@@ -133,15 +119,7 @@ equilibrium or boundary treatment will (intentionally) fail it.
 
 ## Checkpoint / Restart
 
-A run can be stopped and continued later, or resumed after a crash, without
-losing progress.  The solver itself is untouched: a new io module
-(`src/io/checkpoint.{h,hh}`, namespace `flbckpt`) serializes **every field of
-every lattice/flag manager plus the step counter**; the geometry, boundary
-conditions and task definitions are re-created by the example's own setup code,
-so a restart assumes **the same parameters and the same MPI size**.
-
-Enabled per example through three optional keys in `[Simulation_Settings]`
-(absent = off, so older `.ini` files keep working):
+A run can write its state periodically and resume later, including after a crash. Enable it per example with three optional keys in `[Simulation_Settings]`; absent keys mean off, so older `.ini` files keep working:
 
 ```ini
 Restart = 0            ; 0 = fresh run, 1 = resume from the newest checkpoint
@@ -149,42 +127,24 @@ CheckpointStep = 0     ; > 0: write a checkpoint every N steps (and at normal ex
 RestartDir = ./ckpt    ; checkpoint directory
 ```
 
-Wired up so far: `examples/cavity2d`, `examples/cavity3d` (CPU) and
-`examples/cavity2d_cu` (GPU, single block).  The CA / runtime-AMR examples
-(`cazsAref2d`) are a later phase.
+A checkpoint stores every field of every lattice/flag manager and the step counter. The geometry, boundary conditions and task definitions are re-created by the example's own setup, so a restart assumes the same parameters and the same block set; the rank count may differ (see below). Wired up: `examples/cavity2d`, `examples/cavity3d` (CPU) and `examples/cavity2d_cu` (GPU, single block). CA and runtime-AMR examples are not wired yet.
 
-Resuming with a **different number of ranks** works too: the reader matches
-blocks by their global `blockid` across every rank's file and restores only the
-blocks it owns (`tests/block/checkpoint_decomp`).  This needs a block set that
-does not depend on the rank count -- `AdaptiveOptimization(mpi().getSize())`
-re-splits the domain per process count and is therefore refused on a rank-count
-change; split the domain with `GeoHelper.CreateBlocks(bx, by[, bz])` +
-`LoadBalancing(np)` instead.
+Resuming with a different number of ranks works when the block set does not depend on the rank count: blocks are matched by global `blockid`. `AdaptiveOptimization(mpi().getSize())` re-splits the domain per process count and is refused on a rank-count change; use `GeoHelper.CreateBlocks(bx, by[, bz])` + `LoadBalancing(np)` instead.
 
-Layout (one binary per rank, written atomically through a temporary file plus a
-rename; `latest` is written last, so a partially written checkpoint is never
-picked up):
+Checkpoints are written atomically under `RestartDir`: `latest` marks the newest complete step, and old `step_<s>` directories are not deleted automatically. A resumed run reproduces an uninterrupted one step-for-step, bit-exact (`tests/feature/checkpoint`, `tests/cuda/checkpoint`, the latter also with `make FP16=1`). A checkpoint with a different geometry, block set or POP storage precision is rejected with an error, not silently mismatched.
 
-```
-ckpt/
-  latest                  # step number of the newest complete checkpoint
-  step_<s>/
-    rank<r>.ck            # per-rank binary: block table + field metadata + payload
-```
+## MPI communication
 
-Restoring normalizes the population container's rotation state -- on the GPU it
-also re-uploads the device mirror object, because `cudev::CyclicArray` caches
-`start[]` inside the object and `copyToDevice()` does not push it -- and
-re-seeds the convergence history, so a resumed run reproduces an uninterrupted
-one step-for-step (`tests/feature/checkpoint` on the CPU, `tests/cuda/checkpoint`
-on the GPU, both bit-exact; the latter also runs with `make FP16=1` for `__half`
-POP storage).  A checkpoint taken with a different geometry, block set, or POP storage precision
-is **rejected with an error** rather than silently mismatched (a different rank
-count with a matching block set is accepted).
+Halo exchanges coalesce all links to one peer into **one message per peer rank per exchange**, so the message count follows the peers a rank talks to, not the number of blocks. The call sites do not change. Communication plans are rebuilt for every depth whenever the blocks or fields are rebuilt, and they reuse their buffers, so a step does not allocate. The level-filtered `(count)` overloads used by AMR sub-cycling coalesce the same way. The hidden-communication step uses the same coalesced plans (`CommMode` selects partial, full or all), and the cross-level `AverageCommunicate()` / `InterpolateCommunicate()` exchanges remain one message per communicator with the `MPI_Barrier()` that the sub-cycled path needs.
 
+**Known defect: partial exchange.** `NormalCommunicate()` refreshes only the populations selected by `getCommPopDir()` for each neighbour. The interior reads those from the halo, but the halo is collided too, and no proper subset of the populations is closed under collision; `Stream()` then carries the unrefreshed slots around the ring, including parts that no exchange writes. `NormalFullCommunicate()` is the correct reference (a single-block run agrees with it). In the measured 2-D same-level runs with `Collide → Stream → Communicate`, partial is bit-identical on the block interfaces, with the residual confined to domain-boundary cells; with the repository's `Stream → Collide → Communicate` order it diverges from the interfaces inward within a few steps. 3-D has no consistency evidence, and AMR is not supported. Affected: `cazsAref2d` and `openboundary2d` (partial), `cavity2d`/`cavity3d` (hidden step built on partial); `couette2d`/`cavref2d` use full. Usable range: [docs/PARTIAL_COMM_PLAN.md](docs/PARTIAL_COMM_PLAN.md); rejected subsets: §7 there ("被否决的方案" / Rejected options); defect and unfixed scope: [docs/INTP_COMM_OVERFLOW_BUG.md](docs/INTP_COMM_OVERFLOW_BUG.md) §18 ("同层级 partial 通信" / Same-level partial communication).
+
+Field exchanges use a separate tag range, so a decomposition must stay below 16384 blocks. An Aver/Intp cell index outside its block aborts through `flbcomm::checkCellIndex()` instead of writing past the block; a refined block clipped at the domain edge can produce one ([docs/INTP_COMM_OVERFLOW_BUG.md](docs/INTP_COMM_OVERFLOW_BUG.md)).
+
+Coalescing is measured by `benchmarks/plain_comm` (2-D 120×120, 10×10 blocks, 2 ranks, exchange only): build with `make -C benchmarks/plain_comm`, then run `mpirun -np 2 benchmarks/plain_comm/2d/plain_comm_bench2d.exe 120 10 <steps>`. The output reports exchange time per step and the communicator/message layout; the reference run (2026-10-18) coalesced 226 communicators per step into 1 message. The 3-D 4×4×4 grid on 2 ranks reports 300 communicators per step, also coalesced into one message.
 
 ## Benchmark
-The following table shows the performance of FreeLB in simulating the lid-driven cavity flow problem(/benchmarks/cavity3d and /benchmarks/cavity3d_cu) with D3Q19 lattice set on a 100x100x100 lattice grid(in million lattice updates per second, MLUPs).
+The table gives the lid-driven cavity flow benchmark (`benchmarks/cavity3d` and `benchmarks/cavity3d_cu`): D3Q19, 100×100×100, FP32, in million lattice updates per second (MLUPs). CPU command: `cd benchmarks/cavity3d && make && ./cavity3d.exe`; GPU: the same under `benchmarks/cavity3d_cu`. Entries date from 2024-08 – 2025-05 and were measured on the device shown; compare only on the same machine.
 
 | Device | Platform | FP32 MLUPs |
 | :----- | :---- | :---- |

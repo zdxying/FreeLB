@@ -4,23 +4,17 @@ ROOT := ../..
 CXXC := nvcc
 
 # ---------------------------------------------------------------------------
-# 2026-09-26: this target did not run at all on an sm_86 part.
+# CUDA build arch.
 #
-# `FLAGS += -gencode arch=compute_89,code=sm_89` produced a binary whose only
-# embedded image is sm_89 SASS with no PTX (confirmed with
-# `cuobjdump --list-elf` / `--list-ptx`), so on an sm_86 GPU (RTX 3060 Laptop)
-# no kernel could ever be launched.  `-rdc=true` compounded it: make.mk links
-# -lcuda but not -lcudadevrt, so every launch failed with "named symbol not
-# found".
-#
-# Neither failure was visible, because the launches were never checked: the run
-# printed "Calculation Complete!" and a plausible-looking
-# "Time Elapsed: 0.001 s" for 1000 steps.  cavity3d.cu now checks
-# cudaGetLastError() after the main loop.
-#
-# -arch=native lets nvcc pick for whatever device is present; override with
-# e.g. `make ARCH=86` to cross-build.  Do NOT re-add -rdc without also adding
-# -lcudadevrt.
+# Correct: -arch=native, or a cross-build that keeps PTX in the image:
+#     -gencode arch=compute_$(ARCH),code=[sm_$(ARCH),compute_$(ARCH)]
+# Wrong:   -gencode arch=compute_$(ARCH),code=sm_$(ARCH)   (SASS only; the
+#          binary then fails on any other device with "no kernel image
+#          available for execution on the device").
+# Wrong:   -rdc=true.  Nothing here needs relocatable device code.
+# Wrong:   unchecked launches.  Call cudaGetLastError() after the main loop
+#          (see the end of main), or a dead kernel run still prints
+#          "Calculation Complete!".
 # ---------------------------------------------------------------------------
 ARCH ?= native
 ifeq ($(ARCH),native)

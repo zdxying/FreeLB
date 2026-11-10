@@ -8,6 +8,4 @@ ROOT := ../../..
 # FLAGS        += -D_FLB_DEBUG
 FLAGS  += -DFLOAT_TYPE=double
 
-OUTPUT += vtkoutput STLoutput
-
 include $(ROOT)/make.mk

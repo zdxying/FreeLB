@@ -25,6 +25,8 @@
 #include "geometry/basic_geometry.h"
 // GenericFieldBase / GenericArray flag fields are held by value below
 #include "data_struct/field.h"
+// Communicator member
+#include "parallel/communicator.h"
 #include "io/stlreader.h"
 #include "io/block_reader.h"
 
@@ -97,7 +99,9 @@ class Block3D : public BasicBlock<T, 3> {
   #endif
   std::size_t getVoxNum() const {
     #ifdef _VOX_ENABLED
-    return _VoxMap.getVoxNum() > std::size_t{} ? _VoxMap.getVoxNum() : this->getN();
+    // A built-but-empty map means a fully void block: iterate zero cells.
+    // Returning getN() there would index a zero-length map in the cell loop.
+    return _VoxMap.isInitialized() ? _VoxMap.getVoxNum() : this->getN();
     #else
     return this->getN();
     #endif
@@ -125,14 +129,21 @@ class BlockGeometry3D : public BasicBlock<T, 3> {
   int _overlap;
   // max level
   std::uint8_t _MaxLevel;
+  // bumped whenever the active mask or voxel map changes
+  std::uint64_t _geometryGeneration = 0;
+  // diagnostics of the last InitVoxelMap(): pruned shared send/recv pairs and
+  // pruned MPI cells, kept apart because they are different kinds of link
+  std::size_t _lastPrunedSharedPairs = 0;
+  std::size_t _lastPrunedMpiCells = 0;
 
  public:
   // construct uniform blockgeometry
   BlockGeometry3D(int Nx, int Ny, int Nz, int blocknum, const AABB<T, 3>& block,
                   T voxelSize = T(1), int overlap = 1,
                   int blockXNum = 0, int blockYNum = 0, int blockZNum = 0);
-  // construct uniform/ refined blockgeometry from GeoHelper
-  BlockGeometry3D(BlockGeometryHelper3D<T>& GeoHelper, bool useHelperOlap = true);
+  // construct uniform/ refined blockgeometry from GeoHelper; the block overlap
+  // always comes from the helper, so a rebuild (Init) keeps the same geometry
+  BlockGeometry3D(BlockGeometryHelper3D<T>& GeoHelper);
   // construct blockgeometry from blockreader
   BlockGeometry3D(const BlockReader<T,3>& blockreader, bool useReaderOlap = true);
   // construct blockgeometry from stlreader, 
@@ -145,6 +156,23 @@ class BlockGeometry3D : public BasicBlock<T, 3> {
 
   template <typename FieldType>
   void InitVoxelMap(FieldType& FieldM, std::uint8_t voidflag = std::uint8_t{1});
+
+  // Fill-ratio diagnostics: block-local active cells include the overlap halo.
+  template <typename FieldType>
+  std::size_t getTotalActiveCellNum(const FieldType& FieldM,
+                                    std::uint8_t voidflag = std::uint8_t{1}) const;
+  template <typename FieldType>
+  std::size_t getTotalOwnedCellNum(const FieldType& FieldM,
+                                   std::uint8_t voidflag = std::uint8_t{1}) const;
+  template <typename FieldType>
+  double getFillRatio(const FieldType& FieldM,
+                      std::uint8_t voidflag = std::uint8_t{1}) const;
+  template <typename FieldType>
+  double getOwnedFillRatio(const FieldType& FieldM,
+                           std::uint8_t voidflag = std::uint8_t{1}) const;
+  template <typename FieldType>
+  void PrintFillRatio(const FieldType& FieldM,
+                      std::uint8_t voidflag = std::uint8_t{1}) const;
 
   const BasicBlock<T, 3>& getSelfBlock() const { return *this; }
   const BasicBlock<T, 3>& getBaseBlock() const { return _BaseBlock; }
@@ -170,6 +198,11 @@ class BlockGeometry3D : public BasicBlock<T, 3> {
   }
 
   inline std::uint8_t getMaxLevel() const { return _MaxLevel; }
+  std::uint64_t getGeometryGeneration() const { return _geometryGeneration; }
+  void bumpGeometryGeneration() { ++_geometryGeneration; }
+  // Pruning diagnostics of the last InitVoxelMap(), summed over all ranks.
+  std::size_t getLastPrunedSharedPairs() const { return _lastPrunedSharedPairs; }
+  std::size_t getLastPrunedMpiCells() const { return _lastPrunedMpiCells; }
 
   int getBlockNum() const { return _Blocks.size(); }
   // get total number of cells, overlapped cells included
@@ -193,11 +226,6 @@ class BlockGeometry3D : public BasicBlock<T, 3> {
 
 // --- mpi communication ---
 #ifdef MPI_ENABLED
-  // construct uniform/ refined blockgeometry from GeoHelper and a vector of BasicBlock<T, 2>
-  // for mpi communication with direction info 
-  BlockGeometry3D(BlockGeometryHelper3D<T>& GeoHelper, 
-  std::vector<BasicBlock<T, 3>>& BasicBlocks, bool useHelperOlap = true);
-
   void InitMPIComm(BlockGeometryHelper3D<T>& GeoHelper);
   // Low level block(coarse) get info from High level block(fine) using average
   void InitMPIAverComm(BlockGeometryHelper3D<T>& GeoHelper);
@@ -459,8 +487,6 @@ class BlockGeometryHelper3D : public BasicBlock<T, 3> {
 #ifdef MPI_ENABLED
   // mpi neighbors: first: rank, second: blockid
   std::vector<std::vector<std::pair<int, int>>> _MPIBlockNbrs;
-  // for mpi direction communication init
-  std::unique_ptr<BlockGeometry3D<T>> _BlockGeometry3D;
 #endif
 
   // pointer to stlreader
@@ -564,7 +590,6 @@ class BlockGeometryHelper3D : public BasicBlock<T, 3> {
   std::vector<std::pair<int, int>>& getMPIBlockNbrs(int blockid) {
     return _MPIBlockNbrs[blockid];
   }
-  const BlockGeometry3D<T>& getBlockGeometry3D() const { return *_BlockGeometry3D; }
 #endif
 
   GeometryFlagField<T>& getFlagField() { return _FlagField; }
@@ -617,6 +642,8 @@ class BlockGeometryHelper3D : public BasicBlock<T, 3> {
   // recursive coordinate bisection along longest axis based on _FlagField
   // geometry is divided into exactly ProcNum blocks, ProcNum should be power of 2 for simplicity
   // this will NOT use the _BlockCells
+  // replaces the basic blocks only; call LoadBalancing(...) before BlockGeometry3D(helper),
+  // like the other decomposition steps
   void RCBOptimization(int ProcNum, bool verbose = false);
 
   // (triple) recursive coordinate bisection along z - y - x axis based on _FlagField
@@ -624,6 +651,8 @@ class BlockGeometryHelper3D : public BasicBlock<T, 3> {
   // to get the minimal communication overhead
   // geometry is divided into exactly ProcNum blocks, ProcNum should be power of 8 for best result
   // this will NOT use the _BlockCells
+  // replaces the basic blocks only; call LoadBalancing(...) before BlockGeometry3D(helper),
+  // like the other decomposition steps
 	void TRCBOptimization(int ProcNum, bool verbose = false);
 
 	// optimize block's geometry to make each block has similar number of cells
@@ -642,10 +671,15 @@ class BlockGeometryHelper3D : public BasicBlock<T, 3> {
 #ifdef MPI_ENABLED
   // call this after LoadBalancing()
   void SetupMPINbrs();
-  // construct BlockGeometry2D from BlockGeometryHelper2D's this pointer
-  void InitBlockGeometry3D(bool useHelperOlap = true);
   // find which rank the block belongs to
   int whichRank(int blockid);
 #endif
 
+ private:
+  // The rank-local pointer table is derived from getAllBasicBlocks() and is
+  // rebuilt by LoadBalancing().  Every block replacement must clear it.
+  void InvalidateBlockIndexPtrs() {
+    _BlockIndexPtr0.clear();
+    _BlockIndexPtr1.clear();
+  }
 };

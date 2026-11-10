@@ -24,13 +24,13 @@
 //include haeder files for LBM
 //
 // NOTE: the legacy PopLattice path is not usable through this umbrella --
-// data_struct/lattice.hh (the PopLattice/RhoLattice method definitions),
-// lbm/buoyancy.h and lbm/cell_dynamics.h (zero consumers) are NOT wrapped;
-// include them directly if you need them (examples/legacy/*).  Declaration
-// only leftovers still reach the umbrella transitively: data_struct/lattice.h
-// and the PopLattice-based CA classes via ca/zhu_stefanescu*.h, and the
-// unused legacy:: schemes via lbm/collision.h.  All pending removal together
-// with examples/legacy.
+// data_struct/lattice.h(hh) (PopLattice/RhoLattice, method definitions),
+// lbm/buoyancy.h, lbm/legacy_collision.h (legacy::BGK) and the PopLattice-path
+// CA::ZhuStefanescu* in ca/zhu_stefanescu*_legacy.h(hh) are NOT wrapped;
+// include them directly if you need them (examples/legacy/*).
+// The active BlockLattice-path CA declarations (ca/zhu_stefanescu2d.h,
+// wrapped by freelb.hh) no longer pull in data_struct/lattice.h.  The legacy
+// path is pending removal together with examples/legacy.
 
 // timer
 #include "utils/timer.h"

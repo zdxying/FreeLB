@@ -21,8 +21,8 @@
 
 // lattice Boltzmann method coupled with cellular automata(CA) for 2D solidification
 
-#include "ca/zhu_stefanescu2d.h"
-#include "ca/zhu_stefanescu2d.hh"
+#include "ca/zhu_stefanescu2d_legacy.h"
+#include "ca/zhu_stefanescu2d_legacy.hh"
 #include "freelb.h"
 #include "freelb.hh"
 // legacy PopLattice path (no longer wrapped by freelb.h/hh)

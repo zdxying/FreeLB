@@ -22,7 +22,10 @@
 
 #pragma once
 
+#include <cassert>
+
 #include "data_struct/field.h"
+#include "parallel/comm_plan.h"
 #include "parallel/communicator.h"
 #include "utils/alias.h"
 
@@ -76,30 +79,29 @@ class BlockField : public FieldType {
 #endif
 
 #ifdef MPI_ENABLED
-  // send data for mpi normal communication
+  // Pack one communicator (all array_dim components) into a coalesced buffer.
+  // all selects the wider AllMPIComm cell set.
   template <typename buffer_type>
-  void mpiNormalSend(std::vector<MPI_Request>& SendRequests, 
-    std::vector<buffer_type>& SendBuffers, const std::vector<DistributedComm>& MPISends);
+  void packSend(std::size_t commIdx, buffer_type& buffer, std::size_t offset, bool all);
+  template <typename buffer_type>
+  void unpackRecv(std::size_t commIdx, const buffer_type& buffer, std::size_t offset, bool all);
 
-  // send data for mpi average communication
-  template <typename buffer_type>
-  void mpiAverSend(std::vector<MPI_Request>& SendRequests,
-    std::vector<buffer_type>& SendBuffers, const std::vector<DistributedComm>& MPISends);
+  // Elements this block contributes to a cross-level message.
+  std::size_t crossSendSize(const DistributedComm& comm) const {
+    return flbcomm::crossSendElements(comm.Cells.size(), Dim, array_dim);
+  }
+  std::size_t crossRecvSize(const DistributedComm& comm) const {
+    return flbcomm::crossRecvElements(comm.Cells.size(), array_dim);
+  }
 
-  // send data for mpi interp communication
+  // Aver (Coarse == true) and Intp (Coarse == false) pack the same layout with
+  // a different per-cell conversion.
+  template <bool Coarse, typename buffer_type>
+  void packCrossSend(const DistributedComm& comm, buffer_type& buffer,
+                     std::size_t offset);
   template <typename buffer_type>
-  void mpiIntpSend(std::vector<MPI_Request>& SendRequests, 
-    std::vector<buffer_type>& SendBuffers, const std::vector<DistributedComm>& MPISends);
-  
-  // recv data for mpi communication
-  template <typename buffer_type>
-  void mpiRecv(std::vector<MPI_Request>& RecvRequests, 
-    std::vector<buffer_type>& RecvBuffers, const std::vector<DistributedComm>& MPIRecvs);
-
-  // set data for mpi communication
-  template <typename buffer_type>
-  void mpiSet(int& reqidx, std::vector<MPI_Request>& RecvRequests,
-    const std::vector<buffer_type>& RecvBuffers, const std::vector<DistributedComm>& MPIRecvs);
+  void unpackCrossRecv(const DistributedComm& comm, const buffer_type& buffer,
+                       std::size_t offset);
 #endif
 
   // copy assignment operator
@@ -124,11 +126,77 @@ class BlockField : public FieldType {
 template <typename FieldType, typename FloatType, unsigned int Dim>
 class BlockFieldManager {
  private:
+  using buffer_type = ::buffer_type<typename FieldType::value_type>;
+
   // block fields
   std::vector<BlockField<FieldType, FloatType, Dim>> _Fields;
   // blockstructure
   // obj of _BlockGeo should not be destroyed
   BlockGeometry<FloatType, Dim>& _BlockGeo;
+  // MPI tag range owned by this manager: the normal and all plans use
+  // _tagBase + 0/1.  Bases are allocated in construction order; see
+  // flbcomm::allocateFieldTagBase().
+  int _tagBase{};
+
+#ifdef MPI_ENABLED
+  // Coalesced plans for the plain normal/all exchange:
+  // one message per peer.  Same ordering rule as the lattice full exchange --
+  // the refs are ordered by (receiver block, sender block) -- but each manager
+  // owns a tag range (_tagBase + 0/1) so that a field exchange can be in flight
+  // while another field or a lattice exchange is posted.
+  //
+  // One plan per active depth (flbcomm::activeDepth()), like the lattice: the
+  // (count) overloads use the lower entries, the unfiltered calls the last.
+  std::vector<flbcomm::CommPlan<buffer_type>> _normalPlans;
+  std::vector<flbcomm::CommPlan<buffer_type>> _allPlans;
+  // Cross-level Aver/Intp plans, one entry per active depth.
+  std::vector<flbcomm::CommPlan<buffer_type>> _averPlans;
+  std::vector<flbcomm::CommPlan<buffer_type>> _intpPlans;
+  std::vector<flbcomm::CommPlan<buffer_type>> _allAverPlans;
+  std::vector<flbcomm::CommPlan<buffer_type>> _allIntpPlans;
+  // The stamp lives on each plan (flbcomm::CommPlan::Generation); a manager-wide
+  // value would be shared by every depth and exchange, so one build would
+  // vouch for plans it left untouched.
+  void checkPlanGeneration(const flbcomm::CommPlan<buffer_type>& plan) const {
+    flbcomm::checkPlanStamp(plan.Generation, _BlockGeo.getGeometryGeneration(),
+                            "BlockFieldManager");
+  }
+  flbcomm::CommPlan<buffer_type>& planFor(bool all, std::size_t depth);
+  flbcomm::CommPlan<buffer_type>& crossPlanFor(flbcomm::CrossMode mode, std::size_t depth);
+  void initFieldPlan(bool all, std::size_t depth);
+  void initCrossPlan(flbcomm::CrossMode mode, std::size_t depth);
+  void runFieldPlan(flbcomm::CommPlan<buffer_type>& plan, bool all);
+  void runCrossPlan(flbcomm::CrossMode mode, std::size_t depth);
+  const std::vector<DistributedComm>& crossComms(flbcomm::CrossMode mode,
+                                                 std::size_t block, bool send);
+  // Split form used by PostNormalCommunicate() / FinishNormalCommunicate() and
+  // the All variants.  The request vectors stay alive between the two calls.
+  void postFieldPlan(flbcomm::CommPlan<buffer_type>& plan, bool all,
+                     std::vector<MPI_Request>& sendRequests,
+                     std::vector<MPI_Request>& recvRequests);
+  void finishFieldPlan(flbcomm::CommPlan<buffer_type>& plan, bool all,
+                       std::vector<MPI_Request>& sendRequests,
+                       std::vector<MPI_Request>& recvRequests);
+  std::vector<MPI_Request> _normalSendRequests, _normalRecvRequests;
+  std::vector<MPI_Request> _allSendRequests, _allRecvRequests;
+  bool _normalPosted = false;
+  bool _allPosted = false;
+  // The plans index into _Fields, so any rebuild invalidates them.
+  void resetCommPlans() {
+    _normalPlans.clear();
+    _allPlans.clear();
+    _averPlans.clear();
+    _intpPlans.clear();
+    _allAverPlans.clear();
+    _allIntpPlans.clear();
+    _normalSendRequests.clear();
+    _normalRecvRequests.clear();
+    _allSendRequests.clear();
+    _allRecvRequests.clear();
+    _normalPosted = false;
+    _allPosted = false;
+  }
+#endif
 
 #ifdef __CUDACC__
   using cudev_FieldType = typename FieldType::cudev_FieldType;
@@ -274,7 +342,6 @@ class BlockFieldManager {
 
 #ifdef MPI_ENABLED
 
-  void MPINormalCommunicate();
   void MPIAverCommunicate();
   void MPIIntpCommunicate();
 
@@ -282,15 +349,23 @@ class BlockFieldManager {
   void MPIAverCommunicate(std::int64_t count);
   void MPIIntpCommunicate(std::int64_t count);
 
-  void AllMPINormalCommunicate();
   void AllMPIAverCommunicate();
   void AllMPIIntpCommunicate();
 
   void AllMPINormalCommunicate(std::int64_t count);
   void AllMPIAverCommunicate(std::int64_t count);
   void AllMPIIntpCommunicate(std::int64_t count);
-  
+
 #endif
+
+  // Split form of the plain exchange.  Post packs the send buffers and posts
+  // the non-blocking messages; Finish waits and unpacks.  Anything that does
+  // not touch this field may run between them.  The two calls must not be
+  // interleaved with another exchange on the same manager.
+  void PostNormalCommunicate();
+  void FinishNormalCommunicate();
+  void PostAllNormalCommunicate();
+  void FinishAllNormalCommunicate();
 
   void NormalCommunicate();
   void AverCommunicate();
@@ -318,6 +393,9 @@ class BlockFieldManager {
       _Fields = blockFManager._Fields;
       _BlockGeo = blockFManager._BlockGeo;
     }
+#ifdef MPI_ENABLED
+    resetCommPlans();
+#endif
 #ifdef __CUDACC__
     device_to_device(dev_Fields, blockFManager.dev_Fields, _Fields.size());
 #endif
@@ -329,15 +407,14 @@ class BlockFieldManager {
       _Fields = std::move(blockFManager._Fields);
       _BlockGeo = blockFManager._BlockGeo;
     }
+#ifdef MPI_ENABLED
+    resetCommPlans();
+#endif
 #ifdef __CUDACC__
     dev_Fields = blockFManager.dev_Fields;
 #endif
     return *this;
   }
-
- private:
-  using buffer_type = ::buffer_type<datatype>;
-
 };
 
 

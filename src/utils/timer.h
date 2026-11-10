@@ -29,8 +29,8 @@
 
 // Thread_Num
 #include "head.h"
-// MPI_RANK(x), mpi().getSize()
-#include "parallel/mpi_manager.h"
+// MPI_RANK(x), flb::size()
+#include "utils/mpi_macros.h"
 
 // timer and counters
 
@@ -97,7 +97,44 @@ struct Timer : public Counter {
     std::cout << "MLUPs/Thread:  " << MLUPs / Thread_Num << std::endl;
 #endif
 #ifdef MPI_ENABLED
-    std::cout << "MLUPs/Process: " << MLUPs / mpi().getSize() << std::endl;
+    std::cout << "MLUPs/Process: " << MLUPs / flb::size() << std::endl;
+#endif
+  }
+
+  // n is the allocated (AABB) cell count; active is the number of cells the
+  // solver actually visits.  The raw rate is the usual per-allocated-cell
+  // figure; the effective rate divides by active work and makes void cells
+  // visible instead of inflating the number when a compaction path is on.
+  void Print_MainLoopPerformance(std::size_t n, std::size_t active) {
+    MPI_RANK(0)
+    END_TIMER();
+    std::int64_t count = this->operator()();
+    const std::int64_t ms = GetDurationCount();
+    const double MLUPs = static_cast<double>(count) * static_cast<double>(n) /
+                         static_cast<double>(ms) / double(1000);
+    const double effective = static_cast<double>(count) * static_cast<double>(active) /
+                             static_cast<double>(ms) / double(1000);
+    const double fill = n ? static_cast<double>(active) / static_cast<double>(n) : 0.;
+    std::cout << "[Main_Loop Performance]:"
+              << "\n"
+              << "Time Elapsed:  " << GetTimeElapsed_Only() << " s"
+              << "\n"
+              << "Total Step:    " << count
+              << "\n"
+              << "Allocated Cells: " << n
+              << "\n"
+              << "Active Cells:    " << active
+              << "\n"
+              << "Fill Ratio:      " << fill
+              << "\n"
+              << "Average_MLUPs:   " << MLUPs
+              << "\n"
+              << "Effective_MLUPs: " << effective << std::endl;
+#ifdef _OPENMP
+    std::cout << "MLUPs/Thread:  " << MLUPs / Thread_Num << std::endl;
+#endif
+#ifdef MPI_ENABLED
+    std::cout << "MLUPs/Process: " << MLUPs / flb::size() << std::endl;
 #endif
   }
 
@@ -109,6 +146,24 @@ struct Timer : public Counter {
     std::cout << "[Step: " << count << "]  "
               << "MLUPs: " << MLUPs << "  ";
     // this->reset();
+    START_TIMER();
+  }
+
+  // n is allocated, active is visited; see Print_MainLoopPerformance(n, active).
+  void Print_InnerLoopPerformance(std::size_t n, std::size_t active,
+                                  std::size_t steps) {
+    MPI_RANK(0)
+    std::int64_t count = this->operator()();
+    const std::int64_t ms = GetDurationCount();
+    const double MLUPs = static_cast<double>(steps) * static_cast<double>(n) /
+                         static_cast<double>(ms) / double(1000);
+    const double effective = static_cast<double>(steps) * static_cast<double>(active) /
+                             static_cast<double>(ms) / double(1000);
+    const double fill = n ? static_cast<double>(active) / static_cast<double>(n) : 0.;
+    std::cout << "[Step: " << count << "]  "
+              << "MLUPs: " << MLUPs << "  "
+              << "Effective_MLUPs: " << effective << "  "
+              << "Fill: " << fill << "  ";
     START_TIMER();
   }
 };

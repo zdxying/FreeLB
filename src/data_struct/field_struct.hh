@@ -23,6 +23,8 @@
 #pragma once
 
 #include "data_struct/field_struct.h"
+// shared plan post/wait/unpack runner
+#include "parallel/plan_runner.h"
 
 
 // BlockField
@@ -74,125 +76,73 @@ void BlockField<FieldType, FloatType, Dim>::constructInDevice() {
 
 template <typename FieldType, typename FloatType, unsigned int Dim>
 template <typename buffer_type>
-void BlockField<FieldType, FloatType, Dim>::mpiNormalSend(
-  std::vector<MPI_Request>& SendRequests, std::vector<buffer_type>& SendBuffers,
-  const std::vector<DistributedComm>& MPISends) {
-  // add to send buffer
-  for (std::size_t i = 0; i < MPISends.size(); ++i) {
-    const DistributedComm& comm = MPISends[i];
-    buffer_type& buffer = SendBuffers[i];
-    buffer.resize(comm.Cells.size() * array_dim);
-    const std::vector<std::size_t>& sends = comm.Cells;
-    std::size_t bufidx{};
-    for (unsigned int iArr = 0; iArr < array_dim; ++iArr) {
-      const auto& Array = FieldType::getField(iArr);
-      for (std::size_t id : sends) {
-        buffer[bufidx] = Array[id];
-        ++bufidx;
-      }
+void BlockField<FieldType, FloatType, Dim>::packSend(
+  std::size_t commIdx, buffer_type& buffer, std::size_t offset, bool all) {
+  const std::vector<DistributedComm>& sends =
+    all ? _Block.getCommunicator().AllMPIComm.Sends : _Block.getCommunicator().MPIComm.Sends;
+  const std::vector<std::size_t>& cells = sends[commIdx].Cells;
+  for (unsigned int iArr = 0; iArr < array_dim; ++iArr) {
+    const auto& Array = FieldType::getField(iArr);
+    for (std::size_t id : cells) {
+      buffer[offset] = Array[id];
+      ++offset;
     }
-    // non-blocking send
-    MPI_Request request;
-    mpi().iSend(
-      buffer.data(), buffer.size(), comm.TargetRank, &request, comm.TargetBlockId);
-    SendRequests.push_back(request);
   }
 }
 
 template <typename FieldType, typename FloatType, unsigned int Dim>
 template <typename buffer_type>
-void BlockField<FieldType, FloatType, Dim>::mpiAverSend(
-  std::vector<MPI_Request>& SendRequests, std::vector<buffer_type>& SendBuffers,
-  const std::vector<DistributedComm>& MPISends) {
-  static constexpr std::size_t SendSize = Dim == 2 ? 4 : 8;
-  // add to send buffer
-  for (std::size_t i = 0; i < MPISends.size(); ++i) {
-    const DistributedComm& comm = MPISends[i];
-    buffer_type& buffer = SendBuffers[i];
-    buffer.resize(comm.Cells.size() / SendSize * array_dim);
-    const std::vector<std::size_t>& sends = comm.Cells;
-    std::size_t bufidx{};
-    for (unsigned int iArr = 0; iArr < array_dim; ++iArr) {
-      const auto& Array = FieldType::getField(iArr);
+void BlockField<FieldType, FloatType, Dim>::unpackRecv(
+  std::size_t commIdx, const buffer_type& buffer, std::size_t offset, bool all) {
+  const std::vector<DistributedComm>& recvs =
+    all ? _Block.getCommunicator().AllMPIComm.Recvs : _Block.getCommunicator().MPIComm.Recvs;
+  const std::vector<std::size_t>& cells = recvs[commIdx].Cells;
+  for (unsigned int iArr = 0; iArr < array_dim; ++iArr) {
+    auto& Array = FieldType::getField(iArr);
+    for (std::size_t id : cells) {
+      Array[id] = buffer[offset];
+      ++offset;
+    }
+  }
+}
+
+template <typename FieldType, typename FloatType, unsigned int Dim>
+template <bool Coarse, typename buffer_type>
+void BlockField<FieldType, FloatType, Dim>::packCrossSend(
+  const DistributedComm& comm, buffer_type& buffer, std::size_t offset) {
+  // Aver packs the 2^Dim-cell average of each coarse cell, Intp the
+  // interpolated value of each refined cell; the layout is the same.
+  static constexpr std::size_t SendSize = flbcomm::AverSrcNum(Dim);
+  const std::vector<std::size_t>& sends = comm.Cells;
+  std::size_t bufidx = offset;
+  for (unsigned int iArr = 0; iArr < array_dim; ++iArr) {
+    const auto& Array = FieldType::getField(iArr);
+    if constexpr (Coarse) {
       for (std::size_t id = 0; id < sends.size(); id += SendSize) {
         buffer[bufidx] = getAverage<FloatType, Dim>(Array, id, sends);
         ++bufidx;
       }
-    }
-    // non-blocking send
-    MPI_Request request;
-    mpi().iSend(
-      buffer.data(), buffer.size(), comm.TargetRank, &request, comm.TargetBlockId);
-    SendRequests.push_back(request);
-  }
-}
-
-template <typename FieldType, typename FloatType, unsigned int Dim>
-template <typename buffer_type>
-void BlockField<FieldType, FloatType, Dim>::mpiIntpSend(
-  std::vector<MPI_Request>& SendRequests, std::vector<buffer_type>& SendBuffers,
-  const std::vector<DistributedComm>& MPISends) {
-  static constexpr std::size_t SendSize = Dim == 2 ? 4 : 8;
-  // add to send buffer
-  for (int i = 0; i < MPISends.size(); ++i) {
-    const DistributedComm& comm = MPISends[i];
-    buffer_type& buffer = SendBuffers[i];
-    buffer.resize(comm.Cells.size() / SendSize * array_dim);
-    const std::vector<std::size_t>& sends = comm.Cells;
-    std::size_t bufidx{};
-    for (unsigned int iArr = 0; iArr < array_dim; ++iArr) {
-      const auto& Array = FieldType::getField(iArr);
+    } else {
       for (std::size_t id = 0; id < sends.size();) {
         Interpolation<FloatType, Dim>(buffer, bufidx, Array, sends, id);
       }
     }
-    // non-blocking send
-    MPI_Request request;
-    mpi().iSend(
-      buffer.data(), buffer.size(), comm.TargetRank, &request, comm.TargetBlockId);
-    SendRequests.push_back(request);
   }
 }
 
 template <typename FieldType, typename FloatType, unsigned int Dim>
 template <typename buffer_type>
-void BlockField<FieldType, FloatType, Dim>::mpiRecv(
-  std::vector<MPI_Request>& RecvRequests, std::vector<buffer_type>& RecvBuffers,
-  const std::vector<DistributedComm>& MPIRecvs) {
-  // non-blocking recv
-  for (std::size_t i = 0; i < MPIRecvs.size(); ++i) {
-    const DistributedComm& comm = MPIRecvs[i];
-    buffer_type& buffer = RecvBuffers[i];
-    buffer.resize(comm.Cells.size() * array_dim);
-    MPI_Request request;
-    mpi().iRecv(
-      buffer.data(), buffer.size(), comm.TargetRank, &request, _Block.getBlockId());
-    RecvRequests.push_back(request);
-  }
-}
-
-template <typename FieldType, typename FloatType, unsigned int Dim>
-template <typename buffer_type>
-void BlockField<FieldType, FloatType, Dim>::mpiSet(int& reqidx,
-  std::vector<MPI_Request>& RecvRequests,
-  const std::vector<buffer_type>& RecvBuffers,
-  const std::vector<DistributedComm>& MPIRecvs) {
-  // wait and set field data
-  for (std::size_t i = 0; i < MPIRecvs.size(); ++i) {
-    MPI_Wait(&RecvRequests[i + reqidx], MPI_STATUS_IGNORE);
-    const DistributedComm& comm = MPIRecvs[i];
-    const buffer_type& buffer = RecvBuffers[i];
-    const std::vector<std::size_t>& recvs = comm.Cells;
-    std::size_t bufidx{};
-    for (unsigned int iArr = 0; iArr < array_dim; ++iArr) {
-      auto& Array = FieldType::getField(iArr);
-      for (std::size_t id : recvs) {
-        Array[id] = buffer[bufidx];
-        ++bufidx;
-      }
+void BlockField<FieldType, FloatType, Dim>::unpackCrossRecv(
+  const DistributedComm& comm, const buffer_type& buffer, std::size_t offset) {
+  const std::vector<std::size_t>& recvs = comm.Cells;
+  std::size_t bufidx = offset;
+  for (unsigned int iArr = 0; iArr < array_dim; ++iArr) {
+    auto& Array = FieldType::getField(iArr);
+    for (std::size_t id : recvs) {
+      Array[id] = buffer[bufidx];
+      ++bufidx;
     }
   }
-  reqidx += MPIRecvs.size();
 }
 
 #endif
@@ -203,7 +153,7 @@ void BlockField<FieldType, FloatType, Dim>::mpiSet(int& reqidx,
 template <typename FieldType, typename FloatType, unsigned int Dim>
 BlockFieldManager<FieldType, FloatType, Dim>::BlockFieldManager(
   BlockGeometry<FloatType, Dim>& blockgeometry)
-    : _BlockGeo(blockgeometry) {
+    : _BlockGeo(blockgeometry), _tagBase(flbcomm::allocateFieldTagBase()) {
   for (Block<FloatType, Dim>& block : _BlockGeo.getBlocks()) {
     _Fields.emplace_back(block);
   }
@@ -213,7 +163,7 @@ BlockFieldManager<FieldType, FloatType, Dim>::BlockFieldManager(
 template <typename FieldType, typename FloatType, unsigned int Dim>
 BlockFieldManager<FieldType, FloatType, Dim>::BlockFieldManager(
   BlockGeometry<FloatType, Dim>& blockgeometry, datatype initvalue)
-    : _BlockGeo(blockgeometry) {
+    : _BlockGeo(blockgeometry), _tagBase(flbcomm::allocateFieldTagBase()) {
   for (Block<FloatType, Dim>& block : _BlockGeo.getBlocks()) {
     _Fields.emplace_back(block, initvalue);
   }
@@ -223,7 +173,8 @@ BlockFieldManager<FieldType, FloatType, Dim>::BlockFieldManager(
 template <typename FieldType, typename FloatType, unsigned int Dim>
 BlockFieldManager<FieldType, FloatType, Dim>::BlockFieldManager(
   const BlockFieldManager& blockFManager)
-    : _Fields(blockFManager._Fields), _BlockGeo(blockFManager._BlockGeo) {
+    : _Fields(blockFManager._Fields), _BlockGeo(blockFManager._BlockGeo),
+      _tagBase(blockFManager._tagBase) {
 #ifdef __CUDACC__
   std::size_t FieldNum = _Fields.size();
   dev_Fields = cuda_malloc<cudev_BlockFieldType*>(FieldNum);
@@ -235,7 +186,8 @@ BlockFieldManager<FieldType, FloatType, Dim>::BlockFieldManager(
 template <typename FieldType, typename FloatType, unsigned int Dim>
 BlockFieldManager<FieldType, FloatType, Dim>::BlockFieldManager(
   BlockFieldManager&& blockFManager) noexcept
-    : _Fields(std::move(blockFManager._Fields)), _BlockGeo(blockFManager._BlockGeo) {
+    : _Fields(std::move(blockFManager._Fields)), _BlockGeo(blockFManager._BlockGeo),
+      _tagBase(blockFManager._tagBase) {
 #ifdef __CUDACC__
   dev_Fields = blockFManager.dev_Fields;
   constructInDevice();
@@ -308,6 +260,9 @@ void BlockFieldManager<FieldType, FloatType, Dim>::InitAndComm(
 
 template <typename FieldType, typename FloatType, unsigned int Dim>
 void BlockFieldManager<FieldType, FloatType, Dim>::Init() {
+#ifdef MPI_ENABLED
+  resetCommPlans();
+#endif
   _Fields.clear();
   for (Block<FloatType, Dim>& block : _BlockGeo.getBlocks()) {
     _Fields.emplace_back(block);
@@ -316,6 +271,9 @@ void BlockFieldManager<FieldType, FloatType, Dim>::Init() {
 
 template <typename FieldType, typename FloatType, unsigned int Dim>
 void BlockFieldManager<FieldType, FloatType, Dim>::Init(datatype initvalue) {
+#ifdef MPI_ENABLED
+  resetCommPlans();
+#endif
   _Fields.clear();
   for (Block<FloatType, Dim>& block : _BlockGeo.getBlocks()) {
     _Fields.emplace_back(block, initvalue);
@@ -324,6 +282,9 @@ void BlockFieldManager<FieldType, FloatType, Dim>::Init(datatype initvalue) {
 
 template <typename FieldType, typename FloatType, unsigned int Dim>
 void BlockFieldManager<FieldType, FloatType, Dim>::NonFieldInit(datatype initvalue) {
+#ifdef MPI_ENABLED
+  resetCommPlans();
+#endif
   _Fields.clear();
   for (Block<FloatType, Dim>& block : _BlockGeo.getBlocks()) {
     _Fields.emplace_back(block, initvalue);
@@ -340,6 +301,9 @@ void BlockFieldManager<FieldType, FloatType, Dim>::Init(
   // data transfer
   FieldDataTransfer(GeoHelper, NewFields);
   _Fields.swap(NewFields);
+#ifdef MPI_ENABLED
+  resetCommPlans();
+#endif
 }
 
 template <typename FieldType, typename FloatType, unsigned int Dim>
@@ -352,6 +316,9 @@ void BlockFieldManager<FieldType, FloatType, Dim>::Init(
   // data transfer
   FieldDataTransfer(GeoHelper, NewFields);
   _Fields.swap(NewFields);
+#ifdef MPI_ENABLED
+  resetCommPlans();
+#endif
 }
 
 template <typename FieldType, typename FloatType, unsigned int Dim>
@@ -376,6 +343,9 @@ void BlockFieldManager<FieldType, FloatType, Dim>::InitCopy(
   // data transfer
   FieldDataCopyTransfer(GeoHelper, NewFields);
   _Fields.swap(NewFields);
+#ifdef MPI_ENABLED
+  resetCommPlans();
+#endif
 }
 
 template <typename FieldType, typename FloatType, unsigned int Dim>
@@ -654,641 +624,268 @@ void BlockFieldManager<FieldType, FloatType, Dim>::forEach(
 
 #ifdef MPI_ENABLED
 
+// Build the coalesced plan for the plain normal (all == false) or all
+// (all == true) exchange.  Same ordering rule as the lattice
+// full exchange: the links are keyed by (receiver block, sender block), which
+// is the same pair on both ends and unique per link.  The tag comes from this
+// manager's reserved range, so the plan can be in flight while another field
+// or a lattice exchange is pending.
 template <typename FieldType, typename FloatType, unsigned int Dim>
-void BlockFieldManager<FieldType, FloatType, Dim>::MPINormalCommunicate() {
-  mpi().barrier();
-  std::vector<std::vector<buffer_type>> SendBuffers(
-    _Fields.size(), std::vector<buffer_type>{});
-  std::vector<std::vector<buffer_type>> RecvBuffers(
-    _Fields.size(), std::vector<buffer_type>{});
-  std::size_t iblock{};
-  // --- send data ---
-  std::vector<MPI_Request> SendRequests;
-  for (BlockField<FieldType, FloatType, Dim>& blockF : _Fields) {
-    if (blockF.getBlock().getCommunicator()._NeedMPIComm) {
-      const std::vector<DistributedComm>& Sends =
-        blockF.getBlock().getCommunicator().MPIComm.Sends;
-      SendBuffers[iblock].resize(Sends.size(), buffer_type{});
-      blockF.mpiNormalSend(SendRequests, SendBuffers[iblock], Sends);
-    }
-    ++iblock;
-  }
-  // --- receive data ---
-  iblock = 0;
-  std::vector<MPI_Request> RecvRequests;
-  for (BlockField<FieldType, FloatType, Dim>& blockF : _Fields) {
-    if (blockF.getBlock().getCommunicator()._NeedMPIComm) {
-      std::vector<DistributedComm>& Recvs =
-        blockF.getBlock().getCommunicator().MPIComm.Recvs;
-      RecvBuffers[iblock].resize(Recvs.size(), buffer_type{});
-      blockF.mpiRecv(RecvRequests, RecvBuffers[iblock], Recvs);
-    }
-    ++iblock;
-  }
-  // wait for all send requests to complete
-  MPI_Waitall(SendRequests.size(), SendRequests.data(), MPI_STATUSES_IGNORE);
-  // MPI_Waitall(RecvRequests.size(), RecvRequests.data(), MPI_STATUSES_IGNORE);
-  // --- wait and set field data ---
-  iblock = 0;
-  int reqidx{};
-  for (BlockField<FieldType, FloatType, Dim>& blockF : _Fields) {
-    if (blockF.getBlock().getCommunicator()._NeedMPIComm) {
-      const std::vector<DistributedComm>& Recvs =
-        blockF.getBlock().getCommunicator().MPIComm.Recvs;
-      blockF.mpiSet(reqidx, RecvRequests, RecvBuffers[iblock], Recvs);
-    }
-    ++iblock;
-  }
+void BlockFieldManager<FieldType, FloatType, Dim>::initFieldPlan(bool all,
+                                                                std::size_t depth) {
+  auto commsOf = [&](std::size_t bi, bool send) -> const std::vector<DistributedComm>& {
+    const auto& comm = _Fields[bi].getBlock().getCommunicator();
+    if (all) return send ? comm.AllMPIComm.Sends : comm.AllMPIComm.Recvs;
+    return send ? comm.MPIComm.Sends : comm.MPIComm.Recvs;
+  };
+  // Field exchanges use their own tag range so that a field exchange may be
+  // in flight while a lattice exchange is posted (the hidden step): both are
+  // then pending on MPI_COMM_WORLD, and MPI matches on (communicator, source,
+  // tag) alone.  Each manager owns two slots; normal and all use +0/+1, so two
+  // field managers can also be in flight at the same time.
+  flbcomm::CommPlan<buffer_type>& plan = all ? _allPlans[depth] : _normalPlans[depth];
+  flbcomm::buildPlan<buffer_type>(
+    _Fields.size(), static_cast<std::size_t>(_BlockGeo.getMaxLevel()), depth,
+    _BlockGeo.getGeometryGeneration(),
+    [&](std::size_t bi) { return _Fields[bi].getBlock().getLevel(); },
+    [&](std::size_t bi, bool send, std::vector<flbcomm::CommRef>& refs) {
+      const std::vector<DistributedComm>& comms = commsOf(bi, send);
+      const int self = _Fields[bi].getBlock().getBlockId();
+      for (std::size_t ci = 0; ci < comms.size(); ++ci) {
+        const int peerBlock = comms[ci].TargetBlockId;
+        const int tag = _tagBase + (all ? 1 : 0);
+        const int receiver = send ? peerBlock : self;
+        const int sender = send ? self : peerBlock;
+        refs.push_back(flbcomm::CommRef{
+          bi, ci, 0, comms[ci].TargetRank, tag,
+          flbcomm::LinkKey{receiver, sender, 0, 0},
+          comms[ci].Cells.size() * FieldType::array_dim});
+      }
+    },
+    plan);
+}
+
+// Same lazy per-depth lookup as the lattice: grow the vector up to `depth` on
+// first use and build that entry once.
+template <typename FieldType, typename FloatType, unsigned int Dim>
+flbcomm::CommPlan<typename BlockFieldManager<FieldType, FloatType, Dim>::buffer_type>&
+BlockFieldManager<FieldType, FloatType, Dim>::planFor(bool all, std::size_t depth) {
+  std::vector<flbcomm::CommPlan<buffer_type>>& plans = all ? _allPlans : _normalPlans;
+  const std::size_t maxDepth = static_cast<std::size_t>(_BlockGeo.getMaxLevel());
+  if (depth > maxDepth) depth = maxDepth;
+  if (plans.size() <= depth) plans.resize(depth + 1);
+  flbcomm::CommPlan<buffer_type>& plan = plans[depth];
+  if (!plan.Ready) initFieldPlan(all, depth);
+  checkPlanGeneration(plan);
+  return plan;
 }
 
 template <typename FieldType, typename FloatType, unsigned int Dim>
-void BlockFieldManager<FieldType, FloatType, Dim>::MPIAverCommunicate() {
-  mpi().barrier();
-  std::vector<std::vector<std::vector<datatype>>> SendBuffers(
-    _Fields.size(), std::vector<std::vector<datatype>>{});
-  std::vector<std::vector<std::vector<datatype>>> RecvBuffers(
-    _Fields.size(), std::vector<std::vector<datatype>>{});
-  std::size_t iblock{};
-  // --- send data ---
-  std::vector<MPI_Request> SendRequests;
-  for (BlockField<FieldType, FloatType, Dim>& blockF : _Fields) {
-    if (blockF.getBlock().getCommunicator()._NeedMPIComm) {
-      const std::vector<DistributedComm>& Sends =
-        blockF.getBlock().getCommunicator().MPIComm.AverSends;
-      SendBuffers[iblock].resize(Sends.size(), std::vector<datatype>{});
-      blockF.mpiAverSend(SendRequests, SendBuffers[iblock], Sends);
-    }
-    ++iblock;
-  }
-  // --- receive data ---
-  iblock = 0;
-  std::vector<MPI_Request> RecvRequests;
-  for (BlockField<FieldType, FloatType, Dim>& blockF : _Fields) {
-    if (blockF.getBlock().getCommunicator()._NeedMPIComm) {
-      std::vector<DistributedComm>& Recvs =
-        blockF.getBlock().getCommunicator().MPIComm.AverRecvs;
-      RecvBuffers[iblock].resize(Recvs.size(), std::vector<datatype>{});
-      blockF.mpiRecv(RecvRequests, RecvBuffers[iblock], Recvs);
-    }
-    ++iblock;
-  }
-  // wait for all send requests to complete
-  MPI_Waitall(SendRequests.size(), SendRequests.data(), MPI_STATUSES_IGNORE);
-  // MPI_Waitall(RecvRequests.size(), RecvRequests.data(), MPI_STATUSES_IGNORE);
-  // --- wait and set field data ---
-  iblock = 0;
-  int reqidx{};
-  for (BlockField<FieldType, FloatType, Dim>& blockF : _Fields) {
-    if (blockF.getBlock().getCommunicator()._NeedMPIComm) {
-      const std::vector<DistributedComm>& Recvs =
-        blockF.getBlock().getCommunicator().MPIComm.AverRecvs;
-      blockF.mpiSet(reqidx, RecvRequests, RecvBuffers[iblock], Recvs);
-    }
-    ++iblock;
-  }
+void BlockFieldManager<FieldType, FloatType, Dim>::postFieldPlan(
+  flbcomm::CommPlan<buffer_type>& plan, bool all,
+  std::vector<MPI_Request>& sendRequests, std::vector<MPI_Request>& recvRequests) {
+  flbcomm::postPlan(
+    plan, sendRequests, recvRequests,
+    [&](const flbcomm::CommRef& r, buffer_type& buffer, std::size_t offset) {
+      _Fields[r.Block].packSend(r.Comm, buffer, offset, all);
+    });
 }
 
 template <typename FieldType, typename FloatType, unsigned int Dim>
-void BlockFieldManager<FieldType, FloatType, Dim>::MPIIntpCommunicate() {
-  mpi().barrier();
-  std::vector<std::vector<std::vector<datatype>>> SendBuffers(
-    _Fields.size(), std::vector<std::vector<datatype>>{});
-  std::vector<std::vector<std::vector<datatype>>> RecvBuffers(
-    _Fields.size(), std::vector<std::vector<datatype>>{});
-  std::size_t iblock{};
-  // --- send data ---
-  std::vector<MPI_Request> SendRequests;
-  for (BlockField<FieldType, FloatType, Dim>& blockF : _Fields) {
-    if (blockF.getBlock().getCommunicator()._NeedMPIComm) {
-      const std::vector<DistributedComm>& Sends =
-        blockF.getBlock().getCommunicator().MPIComm.IntpSends;
-      SendBuffers[iblock].resize(Sends.size(), std::vector<datatype>{});
-      blockF.mpiIntpSend(SendRequests, SendBuffers[iblock], Sends);
-    }
-    ++iblock;
-  }
-  // --- receive data ---
-  iblock = 0;
-  std::vector<MPI_Request> RecvRequests;
-  for (BlockField<FieldType, FloatType, Dim>& blockF : _Fields) {
-    if (blockF.getBlock().getCommunicator()._NeedMPIComm) {
-      std::vector<DistributedComm>& Recvs =
-        blockF.getBlock().getCommunicator().MPIComm.IntpRecvs;
-      RecvBuffers[iblock].resize(Recvs.size(), std::vector<datatype>{});
-      blockF.mpiRecv(RecvRequests, RecvBuffers[iblock], Recvs);
-    }
-    ++iblock;
-  }
-  // wait for all send requests to complete
-  MPI_Waitall(SendRequests.size(), SendRequests.data(), MPI_STATUSES_IGNORE);
-  // MPI_Waitall(RecvRequests.size(), RecvRequests.data(), MPI_STATUSES_IGNORE);
-  // --- wait and set field data ---
-  iblock = 0;
-  int reqidx{};
-  for (BlockField<FieldType, FloatType, Dim>& blockF : _Fields) {
-    if (blockF.getBlock().getCommunicator()._NeedMPIComm) {
-      const std::vector<DistributedComm>& Recvs =
-        blockF.getBlock().getCommunicator().MPIComm.IntpRecvs;
-      blockF.mpiSet(reqidx, RecvRequests, RecvBuffers[iblock], Recvs);
-    }
-    ++iblock;
-  }
+void BlockFieldManager<FieldType, FloatType, Dim>::finishFieldPlan(
+  flbcomm::CommPlan<buffer_type>& plan, bool all,
+  std::vector<MPI_Request>& sendRequests, std::vector<MPI_Request>& recvRequests) {
+  flbcomm::waitSends(sendRequests);
+  flbcomm::finishRecvs(
+    plan, recvRequests,
+    [&](const flbcomm::CommRef& r, const buffer_type& buffer, std::size_t offset) {
+      _Fields[r.Block].unpackRecv(r.Comm, buffer, offset, all);
+    });
+  sendRequests.clear();
 }
 
+template <typename FieldType, typename FloatType, unsigned int Dim>
+void BlockFieldManager<FieldType, FloatType, Dim>::runFieldPlan(
+  flbcomm::CommPlan<buffer_type>& plan, bool all) {
+  std::vector<MPI_Request> sendRequests, recvRequests;
+  postFieldPlan(plan, all, sendRequests, recvRequests);
+  finishFieldPlan(plan, all, sendRequests, recvRequests);
+}
 
 template <typename FieldType, typename FloatType, unsigned int Dim>
 void BlockFieldManager<FieldType, FloatType, Dim>::MPINormalCommunicate(
   std::int64_t count) {
-  mpi().barrier();
-  std::vector<std::vector<buffer_type>> SendBuffers(
-    _Fields.size(), std::vector<buffer_type>{});
-  std::vector<std::vector<buffer_type>> RecvBuffers(
-    _Fields.size(), std::vector<buffer_type>{});
-  std::size_t iblock{};
-  // --- send data ---
-  std::vector<MPI_Request> SendRequests;
-  for (BlockField<FieldType, FloatType, Dim>& blockF : _Fields) {
-    const int deLevel =
-      static_cast<int>(_BlockGeo.getMaxLevel() - blockF.getBlock().getLevel());
-    if ((count % (static_cast<int>(std::pow(2, deLevel))) == 0) &&
-        blockF.getBlock().getCommunicator()._NeedMPIComm) {
-      const std::vector<DistributedComm>& Sends =
-        blockF.getBlock().getCommunicator().MPIComm.Sends;
-      SendBuffers[iblock].resize(Sends.size(), buffer_type{});
-      blockF.mpiNormalSend(SendRequests, SendBuffers[iblock], Sends);
-    }
-    ++iblock;
+  const std::size_t depth =
+    flbcomm::activeDepth(count, static_cast<std::size_t>(_BlockGeo.getMaxLevel()));
+  runFieldPlan(planFor(false, depth), false);
+}
+
+
+
+
+// Aver (fine -> coarse) and Intp (coarse -> fine) differ only in the conversion
+// and the direction of the level filter.  The plan shape matches the lattice:
+// one message per peer, refs keyed by (receiver block, sender block), a fixed
+// tag, and independent send/receive level filters.
+template <typename FieldType, typename FloatType, unsigned int Dim>
+const std::vector<DistributedComm>&
+BlockFieldManager<FieldType, FloatType, Dim>::crossComms(flbcomm::CrossMode mode,
+                                                         std::size_t block, bool send) {
+  const auto& comm = _Fields[block].getBlock().getCommunicator();
+  const bool aver = flbcomm::crossIsAver(mode);
+  const bool all = flbcomm::crossIsAll(mode);
+  if (aver) {
+    return all ? (send ? comm.AllMPIComm.AverSends : comm.AllMPIComm.AverRecvs)
+               : (send ? comm.MPIComm.AverSends : comm.MPIComm.AverRecvs);
   }
-  // --- receive data ---
-  iblock = 0;
-  std::vector<MPI_Request> RecvRequests;
-  for (BlockField<FieldType, FloatType, Dim>& blockF : _Fields) {
-    const int deLevel =
-      static_cast<int>(_BlockGeo.getMaxLevel() - blockF.getBlock().getLevel());
-    if ((count % (static_cast<int>(std::pow(2, deLevel))) == 0) &&
-        blockF.getBlock().getCommunicator()._NeedMPIComm) {
-      std::vector<DistributedComm>& Recvs =
-        blockF.getBlock().getCommunicator().MPIComm.Recvs;
-      RecvBuffers[iblock].resize(Recvs.size(), buffer_type{});
-      blockF.mpiRecv(RecvRequests, RecvBuffers[iblock], Recvs);
-    }
-    ++iblock;
-  }
-  // wait for all send requests to complete
-  MPI_Waitall(SendRequests.size(), SendRequests.data(), MPI_STATUSES_IGNORE);
-  // MPI_Waitall(RecvRequests.size(), RecvRequests.data(), MPI_STATUSES_IGNORE);
-  // --- wait and set field data ---
-  iblock = 0;
-  int reqidx{};
-  for (BlockField<FieldType, FloatType, Dim>& blockF : _Fields) {
-    const int deLevel =
-      static_cast<int>(_BlockGeo.getMaxLevel() - blockF.getBlock().getLevel());
-    if ((count % (static_cast<int>(std::pow(2, deLevel))) == 0) &&
-        blockF.getBlock().getCommunicator()._NeedMPIComm) {
-      const std::vector<DistributedComm>& Recvs =
-        blockF.getBlock().getCommunicator().MPIComm.Recvs;
-      blockF.mpiSet(reqidx, RecvRequests, RecvBuffers[iblock], Recvs);
-    }
-    ++iblock;
-  }
+  return all ? (send ? comm.AllMPIComm.IntpSends : comm.AllMPIComm.IntpRecvs)
+             : (send ? comm.MPIComm.IntpSends : comm.MPIComm.IntpRecvs);
+}
+
+template <typename FieldType, typename FloatType, unsigned int Dim>
+void BlockFieldManager<FieldType, FloatType, Dim>::initCrossPlan(flbcomm::CrossMode mode,
+                                                                std::size_t depth) {
+  const bool aver = flbcomm::crossIsAver(mode);
+  const bool all = flbcomm::crossIsAll(mode);
+  std::vector<flbcomm::CommPlan<buffer_type>>& plans =
+    aver ? (all ? _allAverPlans : _averPlans)
+         : (all ? _allIntpPlans : _intpPlans);
+  flbcomm::CommPlan<buffer_type>& plan = plans[depth];
+  const std::size_t maxLevel = static_cast<std::size_t>(_BlockGeo.getMaxLevel());
+  const int tag = _tagBase + flbcomm::fieldTagSlot(mode);
+  flbcomm::buildPlan<buffer_type>(
+    _Fields.size(), _BlockGeo.getGeometryGeneration(),
+    [&](std::size_t bi, bool send) {
+      const int deLevel = static_cast<int>(maxLevel - _Fields[bi].getBlock().getLevel());
+      if (aver) {
+        return send ? (deLevel + 1 <= static_cast<int>(depth) &&
+                       _Fields[bi].getBlock().getLevel() != 0)
+                    : (deLevel <= static_cast<int>(depth));
+      }
+      return send ? (deLevel - 1 <= static_cast<int>(depth) && deLevel != 0)
+                  : (deLevel <= static_cast<int>(depth));
+    },
+    [&](std::size_t bi, bool send, std::vector<flbcomm::CommRef>& refs) {
+      const std::vector<DistributedComm>& comms = crossComms(mode, bi, send);
+      const int self = _Fields[bi].getBlock().getBlockId();
+      for (std::size_t ci = 0; ci < comms.size(); ++ci) {
+        const int peerBlock = comms[ci].TargetBlockId;
+        const int receiver = send ? peerBlock : self;
+        const int sender = send ? self : peerBlock;
+        refs.push_back(flbcomm::CommRef{
+          bi, ci, 0, comms[ci].TargetRank, tag,
+          flbcomm::LinkKey{receiver, sender, 0, 0},
+          send ? _Fields[bi].crossSendSize(comms[ci])
+               : _Fields[bi].crossRecvSize(comms[ci])});
+      }
+    },
+    plan);
+}
+
+template <typename FieldType, typename FloatType, unsigned int Dim>
+flbcomm::CommPlan<typename BlockFieldManager<FieldType, FloatType, Dim>::buffer_type>&
+BlockFieldManager<FieldType, FloatType, Dim>::crossPlanFor(flbcomm::CrossMode mode,
+                                                           std::size_t depth) {
+  const bool aver = flbcomm::crossIsAver(mode);
+  const bool all = flbcomm::crossIsAll(mode);
+  std::vector<flbcomm::CommPlan<buffer_type>>& plans =
+    aver ? (all ? _allAverPlans : _averPlans)
+         : (all ? _allIntpPlans : _intpPlans);
+  const std::size_t maxDepth = static_cast<std::size_t>(_BlockGeo.getMaxLevel());
+  if (depth > maxDepth) depth = maxDepth;
+  if (plans.size() <= depth) plans.resize(depth + 1);
+  flbcomm::CommPlan<buffer_type>& plan = plans[depth];
+  if (!plan.Ready) initCrossPlan(mode, depth);
+  checkPlanGeneration(plan);
+  return plan;
+}
+
+template <typename FieldType, typename FloatType, unsigned int Dim>
+void BlockFieldManager<FieldType, FloatType, Dim>::runCrossPlan(flbcomm::CrossMode mode,
+                                                                std::size_t depth) {
+  flbcomm::CommPlan<buffer_type>& plan = crossPlanFor(mode, depth);
+  const bool aver = flbcomm::crossIsAver(mode);
+  flbcomm::runPlan(
+    plan,
+    [&](const flbcomm::CommRef& r, buffer_type& buffer, std::size_t offset) {
+      const auto& comms = crossComms(mode, r.Block, true);
+      if (aver) {
+        _Fields[r.Block].template packCrossSend<true>(comms[r.Comm], buffer, offset);
+      } else {
+        _Fields[r.Block].template packCrossSend<false>(comms[r.Comm], buffer, offset);
+      }
+    },
+    [&](const flbcomm::CommRef& r, const buffer_type& buffer, std::size_t offset) {
+      const auto& comms = crossComms(mode, r.Block, false);
+      _Fields[r.Block].unpackCrossRecv(comms[r.Comm], buffer, offset);
+    });
+}
+
+template <typename FieldType, typename FloatType, unsigned int Dim>
+void BlockFieldManager<FieldType, FloatType, Dim>::MPIAverCommunicate() {
+  runCrossPlan(flbcomm::CrossMode::Aver,
+               static_cast<std::size_t>(_BlockGeo.getMaxLevel()));
 }
 
 template <typename FieldType, typename FloatType, unsigned int Dim>
 void BlockFieldManager<FieldType, FloatType, Dim>::MPIAverCommunicate(
   std::int64_t count) {
-  mpi().barrier();
-  std::vector<std::vector<std::vector<datatype>>> SendBuffers(
-    _Fields.size(), std::vector<std::vector<datatype>>{});
-  std::vector<std::vector<std::vector<datatype>>> RecvBuffers(
-    _Fields.size(), std::vector<std::vector<datatype>>{});
-  std::size_t iblock{};
-  // --- send data --- send data to lower level, deLevel+1
-  std::vector<MPI_Request> SendRequests;
-  for (BlockField<FieldType, FloatType, Dim>& blockF : _Fields) {
-    const int deLevel =
-      static_cast<int>(_BlockGeo.getMaxLevel() - blockF.getBlock().getLevel()) + 1;
-    if (blockF.getBlock().getLevel() != std::uint8_t(0)) {
-      if ((count % (static_cast<int>(std::pow(2, deLevel))) == 0) &&
-          blockF.getBlock().getCommunicator()._NeedMPIComm) {
-        const std::vector<DistributedComm>& Sends =
-          blockF.getBlock().getCommunicator().MPIComm.AverSends;
-        SendBuffers[iblock].resize(Sends.size(), std::vector<datatype>{});
-        blockF.mpiAverSend(SendRequests, SendBuffers[iblock], Sends);
-      }
-    }
-    ++iblock;
-  }
-  // --- receive data ---
-  iblock = 0;
-  std::vector<MPI_Request> RecvRequests;
-  for (BlockField<FieldType, FloatType, Dim>& blockF : _Fields) {
-    const int deLevel =
-      static_cast<int>(_BlockGeo.getMaxLevel() - blockF.getBlock().getLevel());
-    if ((count % (static_cast<int>(std::pow(2, deLevel))) == 0) &&
-        blockF.getBlock().getCommunicator()._NeedMPIComm) {
-      std::vector<DistributedComm>& Recvs =
-        blockF.getBlock().getCommunicator().MPIComm.AverRecvs;
-      RecvBuffers[iblock].resize(Recvs.size(), std::vector<datatype>{});
-      blockF.mpiRecv(RecvRequests, RecvBuffers[iblock], Recvs);
-    }
-    ++iblock;
-  }
-  // wait for all send requests to complete
-  MPI_Waitall(SendRequests.size(), SendRequests.data(), MPI_STATUSES_IGNORE);
-  // MPI_Waitall(RecvRequests.size(), RecvRequests.data(), MPI_STATUSES_IGNORE);
-  // --- wait and set field data ---
-  iblock = 0;
-  int reqidx{};
-  for (BlockField<FieldType, FloatType, Dim>& blockF : _Fields) {
-    const int deLevel =
-      static_cast<int>(_BlockGeo.getMaxLevel() - blockF.getBlock().getLevel());
-    if ((count % (static_cast<int>(std::pow(2, deLevel))) == 0) &&
-        blockF.getBlock().getCommunicator()._NeedMPIComm) {
-      const std::vector<DistributedComm>& Recvs =
-        blockF.getBlock().getCommunicator().MPIComm.AverRecvs;
-      blockF.mpiSet(reqidx, RecvRequests, RecvBuffers[iblock], Recvs);
-    }
-    ++iblock;
-  }
+  runCrossPlan(flbcomm::CrossMode::Aver,
+               flbcomm::activeDepth(count, static_cast<std::size_t>(_BlockGeo.getMaxLevel())));
+}
+
+template <typename FieldType, typename FloatType, unsigned int Dim>
+void BlockFieldManager<FieldType, FloatType, Dim>::MPIIntpCommunicate() {
+  runCrossPlan(flbcomm::CrossMode::Intp,
+               static_cast<std::size_t>(_BlockGeo.getMaxLevel()));
 }
 
 template <typename FieldType, typename FloatType, unsigned int Dim>
 void BlockFieldManager<FieldType, FloatType, Dim>::MPIIntpCommunicate(
   std::int64_t count) {
-  mpi().barrier();
-  std::vector<std::vector<std::vector<datatype>>> SendBuffers(
-    _Fields.size(), std::vector<std::vector<datatype>>{});
-  std::vector<std::vector<std::vector<datatype>>> RecvBuffers(
-    _Fields.size(), std::vector<std::vector<datatype>>{});
-  std::size_t iblock{};
-  // --- send data --- send data to higher level, deLevel-1
-  std::vector<MPI_Request> SendRequests;
-  for (BlockField<FieldType, FloatType, Dim>& blockF : _Fields) {
-    const int deLevel =
-      static_cast<int>(_BlockGeo.getMaxLevel() - blockF.getBlock().getLevel()) - 1;
-    if (deLevel != -1) {
-      if ((count % (static_cast<int>(std::pow(2, deLevel))) == 0) &&
-          blockF.getBlock().getCommunicator()._NeedMPIComm) {
-        const std::vector<DistributedComm>& Sends =
-          blockF.getBlock().getCommunicator().MPIComm.IntpSends;
-        SendBuffers[iblock].resize(Sends.size(), std::vector<datatype>{});
-        blockF.mpiIntpSend(SendRequests, SendBuffers[iblock], Sends);
-      }
-    }
-    ++iblock;
-  }
-  // --- receive data ---
-  iblock = 0;
-  std::vector<MPI_Request> RecvRequests;
-  for (BlockField<FieldType, FloatType, Dim>& blockF : _Fields) {
-    const int deLevel =
-      static_cast<int>(_BlockGeo.getMaxLevel() - blockF.getBlock().getLevel());
-    if ((count % (static_cast<int>(std::pow(2, deLevel))) == 0) &&
-        blockF.getBlock().getCommunicator()._NeedMPIComm) {
-      std::vector<DistributedComm>& Recvs =
-        blockF.getBlock().getCommunicator().MPIComm.IntpRecvs;
-      RecvBuffers[iblock].resize(Recvs.size(), std::vector<datatype>{});
-      blockF.mpiRecv(RecvRequests, RecvBuffers[iblock], Recvs);
-    }
-    ++iblock;
-  }
-  // wait for all send requests to complete
-  MPI_Waitall(SendRequests.size(), SendRequests.data(), MPI_STATUSES_IGNORE);
-  // MPI_Waitall(RecvRequests.size(), RecvRequests.data(), MPI_STATUSES_IGNORE);
-  // --- wait and set field data ---
-  iblock = 0;
-  int reqidx{};
-  for (BlockField<FieldType, FloatType, Dim>& blockF : _Fields) {
-    const int deLevel =
-      static_cast<int>(_BlockGeo.getMaxLevel() - blockF.getBlock().getLevel());
-    if ((count % (static_cast<int>(std::pow(2, deLevel))) == 0) &&
-        blockF.getBlock().getCommunicator()._NeedMPIComm) {
-      const std::vector<DistributedComm>& Recvs =
-        blockF.getBlock().getCommunicator().MPIComm.IntpRecvs;
-      blockF.mpiSet(reqidx, RecvRequests, RecvBuffers[iblock], Recvs);
-    }
-    ++iblock;
-  }
-}
-
-
-template <typename FieldType, typename FloatType, unsigned int Dim>
-void BlockFieldManager<FieldType, FloatType, Dim>::AllMPINormalCommunicate() {
-  mpi().barrier();
-  std::vector<std::vector<std::vector<datatype>>> SendBuffers(
-    _Fields.size(), std::vector<std::vector<datatype>>{});
-  std::vector<std::vector<std::vector<datatype>>> RecvBuffers(
-    _Fields.size(), std::vector<std::vector<datatype>>{});
-  std::size_t iblock{};
-  // --- send data ---
-  std::vector<MPI_Request> SendRequests;
-  for (BlockField<FieldType, FloatType, Dim>& blockF : _Fields) {
-    if (blockF.getBlock().getCommunicator()._NeedMPIComm) {
-      const std::vector<DistributedComm>& Sends =
-        blockF.getBlock().getCommunicator().AllMPIComm.Sends;
-      SendBuffers[iblock].resize(Sends.size(), std::vector<datatype>{});
-      blockF.mpiNormalSend(SendRequests, SendBuffers[iblock], Sends);
-    }
-    ++iblock;
-  }
-  // --- receive data ---
-  iblock = 0;
-  std::vector<MPI_Request> RecvRequests;
-  for (BlockField<FieldType, FloatType, Dim>& blockF : _Fields) {
-    if (blockF.getBlock().getCommunicator()._NeedMPIComm) {
-      std::vector<DistributedComm>& Recvs =
-        blockF.getBlock().getCommunicator().AllMPIComm.Recvs;
-      RecvBuffers[iblock].resize(Recvs.size(), std::vector<datatype>{});
-      blockF.mpiRecv(RecvRequests, RecvBuffers[iblock], Recvs);
-    }
-    ++iblock;
-  }
-  // wait for all send requests to complete
-  MPI_Waitall(SendRequests.size(), SendRequests.data(), MPI_STATUSES_IGNORE);
-  // MPI_Waitall(RecvRequests.size(), RecvRequests.data(), MPI_STATUSES_IGNORE);
-  // --- wait and set field data ---
-  iblock = 0;
-  int reqidx{};
-  for (BlockField<FieldType, FloatType, Dim>& blockF : _Fields) {
-    if (blockF.getBlock().getCommunicator()._NeedMPIComm) {
-      const std::vector<DistributedComm>& Recvs =
-        blockF.getBlock().getCommunicator().AllMPIComm.Recvs;
-      blockF.mpiSet(reqidx, RecvRequests, RecvBuffers[iblock], Recvs);
-    }
-    ++iblock;
-  }
+  runCrossPlan(flbcomm::CrossMode::Intp,
+               flbcomm::activeDepth(count, static_cast<std::size_t>(_BlockGeo.getMaxLevel())));
 }
 
 template <typename FieldType, typename FloatType, unsigned int Dim>
 void BlockFieldManager<FieldType, FloatType, Dim>::AllMPIAverCommunicate() {
-  mpi().barrier();
-  std::vector<std::vector<std::vector<datatype>>> SendBuffers(
-    _Fields.size(), std::vector<std::vector<datatype>>{});
-  std::vector<std::vector<std::vector<datatype>>> RecvBuffers(
-    _Fields.size(), std::vector<std::vector<datatype>>{});
-  std::size_t iblock{};
-  // --- send data ---
-  std::vector<MPI_Request> SendRequests;
-  for (BlockField<FieldType, FloatType, Dim>& blockF : _Fields) {
-    if (blockF.getBlock().getCommunicator()._NeedMPIComm) {
-      const std::vector<DistributedComm>& Sends =
-        blockF.getBlock().getCommunicator().AllMPIComm.AverSends;
-      SendBuffers[iblock].resize(Sends.size(), std::vector<datatype>{});
-      blockF.mpiAverSend(SendRequests, SendBuffers[iblock], Sends);
-    }
-    ++iblock;
-  }
-  // --- receive data ---
-  iblock = 0;
-  std::vector<MPI_Request> RecvRequests;
-  for (BlockField<FieldType, FloatType, Dim>& blockF : _Fields) {
-    if (blockF.getBlock().getCommunicator()._NeedMPIComm) {
-      std::vector<DistributedComm>& Recvs =
-        blockF.getBlock().getCommunicator().AllMPIComm.AverRecvs;
-      RecvBuffers[iblock].resize(Recvs.size(), std::vector<datatype>{});
-      blockF.mpiRecv(RecvRequests, RecvBuffers[iblock], Recvs);
-    }
-    ++iblock;
-  }
-  // wait for all send requests to complete
-  MPI_Waitall(SendRequests.size(), SendRequests.data(), MPI_STATUSES_IGNORE);
-  // MPI_Waitall(RecvRequests.size(), RecvRequests.data(), MPI_STATUSES_IGNORE);
-  // --- wait and set field data ---
-  iblock = 0;
-  int reqidx{};
-  for (BlockField<FieldType, FloatType, Dim>& blockF : _Fields) {
-    if (blockF.getBlock().getCommunicator()._NeedMPIComm) {
-      const std::vector<DistributedComm>& Recvs =
-        blockF.getBlock().getCommunicator().AllMPIComm.AverRecvs;
-      blockF.mpiSet(reqidx, RecvRequests, RecvBuffers[iblock], Recvs);
-    }
-    ++iblock;
-  }
+  runCrossPlan(flbcomm::CrossMode::AllAver,
+               static_cast<std::size_t>(_BlockGeo.getMaxLevel()));
 }
 
 template <typename FieldType, typename FloatType, unsigned int Dim>
 void BlockFieldManager<FieldType, FloatType, Dim>::AllMPIIntpCommunicate() {
-  mpi().barrier();
-  std::vector<std::vector<std::vector<datatype>>> SendBuffers(
-    _Fields.size(), std::vector<std::vector<datatype>>{});
-  std::vector<std::vector<std::vector<datatype>>> RecvBuffers(
-    _Fields.size(), std::vector<std::vector<datatype>>{});
-  std::size_t iblock{};
-  // --- send data ---
-  std::vector<MPI_Request> SendRequests;
-  for (BlockField<FieldType, FloatType, Dim>& blockF : _Fields) {
-    if (blockF.getBlock().getCommunicator()._NeedMPIComm) {
-      const std::vector<DistributedComm>& Sends =
-        blockF.getBlock().getCommunicator().AllMPIComm.IntpSends;
-      SendBuffers[iblock].resize(Sends.size(), std::vector<datatype>{});
-      blockF.mpiIntpSend(SendRequests, SendBuffers[iblock], Sends);
-    }
-    ++iblock;
-  }
-  // --- receive data ---
-  iblock = 0;
-  std::vector<MPI_Request> RecvRequests;
-  for (BlockField<FieldType, FloatType, Dim>& blockF : _Fields) {
-    if (blockF.getBlock().getCommunicator()._NeedMPIComm) {
-      std::vector<DistributedComm>& Recvs =
-        blockF.getBlock().getCommunicator().AllMPIComm.IntpRecvs;
-      RecvBuffers[iblock].resize(Recvs.size(), std::vector<datatype>{});
-      blockF.mpiRecv(RecvRequests, RecvBuffers[iblock], Recvs);
-    }
-    ++iblock;
-  }
-  // wait for all send requests to complete
-  MPI_Waitall(SendRequests.size(), SendRequests.data(), MPI_STATUSES_IGNORE);
-  // MPI_Waitall(RecvRequests.size(), RecvRequests.data(), MPI_STATUSES_IGNORE);
-  // --- wait and set field data ---
-  iblock = 0;
-  int reqidx{};
-  for (BlockField<FieldType, FloatType, Dim>& blockF : _Fields) {
-    if (blockF.getBlock().getCommunicator()._NeedMPIComm) {
-      const std::vector<DistributedComm>& Recvs =
-        blockF.getBlock().getCommunicator().AllMPIComm.IntpRecvs;
-      blockF.mpiSet(reqidx, RecvRequests, RecvBuffers[iblock], Recvs);
-    }
-    ++iblock;
-  }
+  runCrossPlan(flbcomm::CrossMode::AllIntp,
+               static_cast<std::size_t>(_BlockGeo.getMaxLevel()));
 }
 
 
 template <typename FieldType, typename FloatType, unsigned int Dim>
 void BlockFieldManager<FieldType, FloatType, Dim>::AllMPINormalCommunicate(
   std::int64_t count) {
-  mpi().barrier();
-  std::vector<std::vector<std::vector<datatype>>> SendBuffers(
-    _Fields.size(), std::vector<std::vector<datatype>>{});
-  std::vector<std::vector<std::vector<datatype>>> RecvBuffers(
-    _Fields.size(), std::vector<std::vector<datatype>>{});
-  std::size_t iblock{};
-  // --- send data ---
-  std::vector<MPI_Request> SendRequests;
-  for (BlockField<FieldType, FloatType, Dim>& blockF : _Fields) {
-    const int deLevel =
-      static_cast<int>(_BlockGeo.getMaxLevel() - blockF.getBlock().getLevel());
-    if ((count % (static_cast<int>(std::pow(2, deLevel))) == 0) &&
-        blockF.getBlock().getCommunicator()._NeedMPIComm) {
-      const std::vector<DistributedComm>& Sends =
-        blockF.getBlock().getCommunicator().AllMPIComm.Sends;
-      SendBuffers[iblock].resize(Sends.size(), std::vector<datatype>{});
-      blockF.mpiNormalSend(SendRequests, SendBuffers[iblock], Sends);
-    }
-    ++iblock;
-  }
-  // --- receive data ---
-  iblock = 0;
-  std::vector<MPI_Request> RecvRequests;
-  for (BlockField<FieldType, FloatType, Dim>& blockF : _Fields) {
-    const int deLevel =
-      static_cast<int>(_BlockGeo.getMaxLevel() - blockF.getBlock().getLevel());
-    if ((count % (static_cast<int>(std::pow(2, deLevel))) == 0) &&
-        blockF.getBlock().getCommunicator()._NeedMPIComm) {
-      std::vector<DistributedComm>& Recvs =
-        blockF.getBlock().getCommunicator().AllMPIComm.Recvs;
-      RecvBuffers[iblock].resize(Recvs.size(), std::vector<datatype>{});
-      blockF.mpiRecv(RecvRequests, RecvBuffers[iblock], Recvs);
-    }
-    ++iblock;
-  }
-  // wait for all send requests to complete
-  MPI_Waitall(SendRequests.size(), SendRequests.data(), MPI_STATUSES_IGNORE);
-  // MPI_Waitall(RecvRequests.size(), RecvRequests.data(), MPI_STATUSES_IGNORE);
-  // --- wait and set field data ---
-  iblock = 0;
-  int reqidx{};
-  for (BlockField<FieldType, FloatType, Dim>& blockF : _Fields) {
-    const int deLevel =
-      static_cast<int>(_BlockGeo.getMaxLevel() - blockF.getBlock().getLevel());
-    if ((count % (static_cast<int>(std::pow(2, deLevel))) == 0) &&
-        blockF.getBlock().getCommunicator()._NeedMPIComm) {
-      const std::vector<DistributedComm>& Recvs =
-        blockF.getBlock().getCommunicator().AllMPIComm.Recvs;
-      blockF.mpiSet(reqidx, RecvRequests, RecvBuffers[iblock], Recvs);
-    }
-    ++iblock;
-  }
+  const std::size_t depth =
+    flbcomm::activeDepth(count, static_cast<std::size_t>(_BlockGeo.getMaxLevel()));
+  runFieldPlan(planFor(true, depth), true);
 }
 
 template <typename FieldType, typename FloatType, unsigned int Dim>
 void BlockFieldManager<FieldType, FloatType, Dim>::AllMPIAverCommunicate(
   std::int64_t count) {
-  mpi().barrier();
-  std::vector<std::vector<std::vector<datatype>>> SendBuffers(
-    _Fields.size(), std::vector<std::vector<datatype>>{});
-  std::vector<std::vector<std::vector<datatype>>> RecvBuffers(
-    _Fields.size(), std::vector<std::vector<datatype>>{});
-  std::size_t iblock{};
-  // --- send data ---
-  std::vector<MPI_Request> SendRequests;
-  for (BlockField<FieldType, FloatType, Dim>& blockF : _Fields) {
-    const int deLevel =
-      static_cast<int>(_BlockGeo.getMaxLevel() - blockF.getBlock().getLevel());
-    if ((count % (static_cast<int>(std::pow(2, deLevel))) == 0) &&
-        blockF.getBlock().getCommunicator()._NeedMPIComm) {
-      const std::vector<DistributedComm>& Sends =
-        blockF.getBlock().getCommunicator().AllMPIComm.AverSends;
-      SendBuffers[iblock].resize(Sends.size(), std::vector<datatype>{});
-      blockF.mpiAverSend(SendRequests, SendBuffers[iblock], Sends);
-    }
-    ++iblock;
-  }
-  // --- receive data ---
-  iblock = 0;
-  std::vector<MPI_Request> RecvRequests;
-  for (BlockField<FieldType, FloatType, Dim>& blockF : _Fields) {
-    const int deLevel =
-      static_cast<int>(_BlockGeo.getMaxLevel() - blockF.getBlock().getLevel());
-    if ((count % (static_cast<int>(std::pow(2, deLevel))) == 0) &&
-        blockF.getBlock().getCommunicator()._NeedMPIComm) {
-      std::vector<DistributedComm>& Recvs =
-        blockF.getBlock().getCommunicator().AllMPIComm.AverRecvs;
-      RecvBuffers[iblock].resize(Recvs.size(), std::vector<datatype>{});
-      blockF.mpiRecv(RecvRequests, RecvBuffers[iblock], Recvs);
-    }
-    ++iblock;
-  }
-  // wait for all send requests to complete
-  MPI_Waitall(SendRequests.size(), SendRequests.data(), MPI_STATUSES_IGNORE);
-  // MPI_Waitall(RecvRequests.size(), RecvRequests.data(), MPI_STATUSES_IGNORE);
-  // --- wait and set field data ---
-  iblock = 0;
-  int reqidx{};
-  for (BlockField<FieldType, FloatType, Dim>& blockF : _Fields) {
-    const int deLevel =
-      static_cast<int>(_BlockGeo.getMaxLevel() - blockF.getBlock().getLevel());
-    if ((count % (static_cast<int>(std::pow(2, deLevel))) == 0) &&
-        blockF.getBlock().getCommunicator()._NeedMPIComm) {
-      const std::vector<DistributedComm>& Recvs =
-        blockF.getBlock().getCommunicator().AllMPIComm.AverRecvs;
-      blockF.mpiSet(reqidx, RecvRequests, RecvBuffers[iblock], Recvs);
-    }
-    ++iblock;
-  }
+  runCrossPlan(flbcomm::CrossMode::AllAver,
+               flbcomm::activeDepth(count, static_cast<std::size_t>(_BlockGeo.getMaxLevel())));
 }
 
 template <typename FieldType, typename FloatType, unsigned int Dim>
 void BlockFieldManager<FieldType, FloatType, Dim>::AllMPIIntpCommunicate(
   std::int64_t count) {
-  mpi().barrier();
-  std::vector<std::vector<std::vector<datatype>>> SendBuffers(
-    _Fields.size(), std::vector<std::vector<datatype>>{});
-  std::vector<std::vector<std::vector<datatype>>> RecvBuffers(
-    _Fields.size(), std::vector<std::vector<datatype>>{});
-  std::size_t iblock{};
-  // --- send data ---
-  std::vector<MPI_Request> SendRequests;
-  for (BlockField<FieldType, FloatType, Dim>& blockF : _Fields) {
-    const int deLevel =
-      static_cast<int>(_BlockGeo.getMaxLevel() - blockF.getBlock().getLevel());
-    if ((count % (static_cast<int>(std::pow(2, deLevel))) == 0) &&
-        blockF.getBlock().getCommunicator()._NeedMPIComm) {
-      const std::vector<DistributedComm>& Sends =
-        blockF.getBlock().getCommunicator().AllMPIComm.IntpSends;
-      SendBuffers[iblock].resize(Sends.size(), std::vector<datatype>{});
-      blockF.mpiIntpSend(SendRequests, SendBuffers[iblock], Sends);
-    }
-    ++iblock;
-  }
-  // --- receive data ---
-  iblock = 0;
-  std::vector<MPI_Request> RecvRequests;
-  for (BlockField<FieldType, FloatType, Dim>& blockF : _Fields) {
-    const int deLevel =
-      static_cast<int>(_BlockGeo.getMaxLevel() - blockF.getBlock().getLevel());
-    if ((count % (static_cast<int>(std::pow(2, deLevel))) == 0) &&
-        blockF.getBlock().getCommunicator()._NeedMPIComm) {
-      std::vector<DistributedComm>& Recvs =
-        blockF.getBlock().getCommunicator().AllMPIComm.IntpRecvs;
-      RecvBuffers[iblock].resize(Recvs.size(), std::vector<datatype>{});
-      blockF.mpiRecv(RecvRequests, RecvBuffers[iblock], Recvs);
-    }
-    ++iblock;
-  }
-  // wait for all send requests to complete
-  MPI_Waitall(SendRequests.size(), SendRequests.data(), MPI_STATUSES_IGNORE);
-  // MPI_Waitall(RecvRequests.size(), RecvRequests.data(), MPI_STATUSES_IGNORE);
-  // --- wait and set field data ---
-  iblock = 0;
-  int reqidx{};
-  for (BlockField<FieldType, FloatType, Dim>& blockF : _Fields) {
-    const int deLevel =
-      static_cast<int>(_BlockGeo.getMaxLevel() - blockF.getBlock().getLevel());
-    if ((count % (static_cast<int>(std::pow(2, deLevel))) == 0) &&
-        blockF.getBlock().getCommunicator()._NeedMPIComm) {
-      const std::vector<DistributedComm>& Recvs =
-        blockF.getBlock().getCommunicator().AllMPIComm.IntpRecvs;
-      blockF.mpiSet(reqidx, RecvRequests, RecvBuffers[iblock], Recvs);
-    }
-    ++iblock;
-  }
+  runCrossPlan(flbcomm::CrossMode::AllIntp,
+               flbcomm::activeDepth(count, static_cast<std::size_t>(_BlockGeo.getMaxLevel())));
 }
 #endif
 
 
 template <typename FieldType, typename FloatType, unsigned int Dim>
-void BlockFieldManager<FieldType, FloatType, Dim>::NormalCommunicate() {
+void BlockFieldManager<FieldType, FloatType, Dim>::PostNormalCommunicate() {
   static constexpr unsigned int ArrayDim = FieldType::array_dim;
 #pragma omp parallel for num_threads(Thread_Num)
   for (BlockField<FieldType, FloatType, Dim>& blockF : _Fields) {
@@ -1312,15 +909,34 @@ void BlockFieldManager<FieldType, FloatType, Dim>::NormalCommunicate() {
   }
 
 #ifdef MPI_ENABLED
-  MPINormalCommunicate();
+  assert(!_normalPosted);
+  postFieldPlan(planFor(false, static_cast<std::size_t>(_BlockGeo.getMaxLevel())), false,
+                _normalSendRequests, _normalRecvRequests);
+  _normalPosted = true;
 #endif
+}
+
+template <typename FieldType, typename FloatType, unsigned int Dim>
+void BlockFieldManager<FieldType, FloatType, Dim>::FinishNormalCommunicate() {
+#ifdef MPI_ENABLED
+  assert(_normalPosted);
+  finishFieldPlan(planFor(false, static_cast<std::size_t>(_BlockGeo.getMaxLevel())), false,
+                  _normalSendRequests, _normalRecvRequests);
+  _normalPosted = false;
+#endif
+}
+
+template <typename FieldType, typename FloatType, unsigned int Dim>
+void BlockFieldManager<FieldType, FloatType, Dim>::NormalCommunicate() {
+  PostNormalCommunicate();
+  FinishNormalCommunicate();
 }
 
 template <typename FieldType, typename FloatType, unsigned int Dim>
 void BlockFieldManager<FieldType, FloatType, Dim>::AverCommunicate() {
   static constexpr unsigned int ArrayDim = FieldType::array_dim;
-  static constexpr std::size_t SendRecvPairSize = Dim == 2 ? 5 : 9;
-  static constexpr std::size_t RecvOffset = Dim == 2 ? 4 : 8;
+  static constexpr std::size_t SendRecvPairSize = flbcomm::AverPairStride(Dim);
+  static constexpr std::size_t RecvOffset = flbcomm::AverSrcNum(Dim);
 #pragma omp parallel for num_threads(Thread_Num)
   for (BlockField<FieldType, FloatType, Dim>& blockF : _Fields) {
     // average communicate
@@ -1336,6 +952,9 @@ void BlockFieldManager<FieldType, FloatType, Dim>::AverCommunicate() {
         const auto& nArray = nblockF.getField(iArr);
         auto& Array = blockF.getField(iArr);
         for (std::size_t i = 0; i < size; i += SendRecvPairSize) {
+          flbcomm::checkCellIndex(comm.SendRecvCells[i + RecvOffset], blockF.getBlock().getN(),
+                                  block.getBlockId(), comm.SendBlockId,
+                                  "BlockFieldManager::AverCommunicate");
           Array[comm.SendRecvCells[i + RecvOffset]] =
             getAverage<FloatType, Dim>(nArray, i, comm.SendRecvCells);
         }
@@ -1351,8 +970,8 @@ void BlockFieldManager<FieldType, FloatType, Dim>::AverCommunicate() {
 template <typename FieldType, typename FloatType, unsigned int Dim>
 void BlockFieldManager<FieldType, FloatType, Dim>::IntpCommunicate() {
   static constexpr unsigned int ArrayDim = FieldType::array_dim;
-  static constexpr std::size_t SendRecvPairSize = Dim == 2 ? 5 : 9;
-  static constexpr std::size_t RecvOffset = Dim == 2 ? 4 : 8;
+  static constexpr std::size_t SendRecvPairSize = flbcomm::AverPairStride(Dim);
+  static constexpr std::size_t RecvOffset = flbcomm::AverSrcNum(Dim);
 #pragma omp parallel for num_threads(Thread_Num)
   for (BlockField<FieldType, FloatType, Dim>& blockF : _Fields) {
     // interp communicate
@@ -1368,6 +987,12 @@ void BlockFieldManager<FieldType, FloatType, Dim>::IntpCommunicate() {
         const auto& nArray = nblockF.getField(iArr);
         auto& Array = blockF.getField(iArr);
         for (std::size_t id = 0; id < size;) {
+          // Interpolation() writes through recvs[recvidx++], i.e. the slot right
+          // after the sources; check it before the call, the same slot the Aver
+          // path indexes explicitly.
+          flbcomm::checkCellIndex(comm.SendRecvCells[id + RecvOffset], block.getN(),
+                                  block.getBlockId(), comm.SendBlockId,
+                                  "BlockFieldManager::IntpCommunicate");
           Interpolation<FloatType, Dim>(Array, nArray, comm.SendRecvCells, id);
         }
       }
@@ -1422,8 +1047,8 @@ void BlockFieldManager<FieldType, FloatType, Dim>::NormalCommunicate(std::int64_
 template <typename FieldType, typename FloatType, unsigned int Dim>
 void BlockFieldManager<FieldType, FloatType, Dim>::AverCommunicate(std::int64_t count) {
   static constexpr unsigned int ArrayDim = FieldType::array_dim;
-  static constexpr std::size_t SendRecvPairSize = Dim == 2 ? 5 : 9;
-  static constexpr std::size_t RecvOffset = Dim == 2 ? 4 : 8;
+  static constexpr std::size_t SendRecvPairSize = flbcomm::AverPairStride(Dim);
+  static constexpr std::size_t RecvOffset = flbcomm::AverSrcNum(Dim);
   static constexpr FloatType weight = Dim == 2 ? FloatType(0.25) : FloatType(0.125);
 #pragma omp parallel for num_threads(Thread_Num)
   for (BlockField<FieldType, FloatType, Dim>& blockF : _Fields) {
@@ -1443,6 +1068,10 @@ void BlockFieldManager<FieldType, FloatType, Dim>::AverCommunicate(std::int64_t 
           const auto& nArray = nblockF.getField(iArr);
           auto& Array = blockF.getField(iArr);
           for (std::size_t i = 0; i < size; i += SendRecvPairSize) {
+            flbcomm::checkCellIndex(comm.SendRecvCells[i + RecvOffset],
+                                    blockF.getBlock().getN(), blockF.getBlock().getBlockId(),
+                                    comm.SendBlockId,
+                                    "BlockFieldManager::AverCommunicate(count)");
             Array[comm.SendRecvCells[i + RecvOffset]] =
               getAverage<FloatType, Dim>(nArray, i, comm.SendRecvCells);
           }
@@ -1459,8 +1088,8 @@ void BlockFieldManager<FieldType, FloatType, Dim>::AverCommunicate(std::int64_t 
 template <typename FieldType, typename FloatType, unsigned int Dim>
 void BlockFieldManager<FieldType, FloatType, Dim>::IntpCommunicate(std::int64_t count) {
   static constexpr unsigned int ArrayDim = FieldType::array_dim;
-  static constexpr std::size_t SendRecvPairSize = Dim == 2 ? 5 : 9;
-  static constexpr std::size_t RecvOffset = Dim == 2 ? 4 : 8;
+  static constexpr std::size_t SendRecvPairSize = flbcomm::AverPairStride(Dim);
+  static constexpr std::size_t RecvOffset = flbcomm::AverSrcNum(Dim);
 #pragma omp parallel for num_threads(Thread_Num)
   for (BlockField<FieldType, FloatType, Dim>& blockF : _Fields) {
     const int deLevel =
@@ -1479,6 +1108,9 @@ void BlockFieldManager<FieldType, FloatType, Dim>::IntpCommunicate(std::int64_t 
           const auto& nArray = nblockF.getField(iArr);
           auto& Array = blockF.getField(iArr);
           for (std::size_t id = 0; id < size;) {
+            flbcomm::checkCellIndex(comm.SendRecvCells[id + RecvOffset], block.getN(),
+                                    block.getBlockId(), comm.SendBlockId,
+                                    "BlockFieldManager::IntpCommunicate(count)");
             Interpolation<FloatType, Dim>(Array, nArray, comm.SendRecvCells, id);
           }
         }
@@ -1499,7 +1131,7 @@ void BlockFieldManager<FieldType, FloatType, Dim>::Communicate(std::int64_t coun
 }
 
 template <typename FieldType, typename FloatType, unsigned int Dim>
-void BlockFieldManager<FieldType, FloatType, Dim>::AllNormalCommunicate() {
+void BlockFieldManager<FieldType, FloatType, Dim>::PostAllNormalCommunicate() {
   static constexpr unsigned int ArrayDim = FieldType::array_dim;
 #pragma omp parallel for num_threads(Thread_Num)
   for (BlockField<FieldType, FloatType, Dim>& blockF : _Fields) {
@@ -1523,15 +1155,34 @@ void BlockFieldManager<FieldType, FloatType, Dim>::AllNormalCommunicate() {
   }
 
 #ifdef MPI_ENABLED
-  AllMPINormalCommunicate();
+  assert(!_allPosted);
+  postFieldPlan(planFor(true, static_cast<std::size_t>(_BlockGeo.getMaxLevel())), true,
+                _allSendRequests, _allRecvRequests);
+  _allPosted = true;
 #endif
+}
+
+template <typename FieldType, typename FloatType, unsigned int Dim>
+void BlockFieldManager<FieldType, FloatType, Dim>::FinishAllNormalCommunicate() {
+#ifdef MPI_ENABLED
+  assert(_allPosted);
+  finishFieldPlan(planFor(true, static_cast<std::size_t>(_BlockGeo.getMaxLevel())), true,
+                  _allSendRequests, _allRecvRequests);
+  _allPosted = false;
+#endif
+}
+
+template <typename FieldType, typename FloatType, unsigned int Dim>
+void BlockFieldManager<FieldType, FloatType, Dim>::AllNormalCommunicate() {
+  PostAllNormalCommunicate();
+  FinishAllNormalCommunicate();
 }
 
 template <typename FieldType, typename FloatType, unsigned int Dim>
 void BlockFieldManager<FieldType, FloatType, Dim>::AllAverCommunicate() {
   static constexpr unsigned int ArrayDim = FieldType::array_dim;
-  static constexpr std::size_t SendRecvPairSize = Dim == 2 ? 5 : 9;
-  static constexpr std::size_t RecvOffset = Dim == 2 ? 4 : 8;
+  static constexpr std::size_t SendRecvPairSize = flbcomm::AverPairStride(Dim);
+  static constexpr std::size_t RecvOffset = flbcomm::AverSrcNum(Dim);
 #pragma omp parallel for num_threads(Thread_Num)
   for (BlockField<FieldType, FloatType, Dim>& blockF : _Fields) {
     // average communicate
@@ -1547,6 +1198,9 @@ void BlockFieldManager<FieldType, FloatType, Dim>::AllAverCommunicate() {
         const auto& nArray = nblockF.getField(iArr);
         auto& Array = blockF.getField(iArr);
         for (std::size_t i = 0; i < size; i += SendRecvPairSize) {
+          flbcomm::checkCellIndex(comm.SendRecvCells[i + RecvOffset], blockF.getBlock().getN(),
+                                  blockF.getBlock().getBlockId(), comm.SendBlockId,
+                                  "BlockFieldManager::AllAverCommunicate");
           Array[comm.SendRecvCells[i + RecvOffset]] =
             getAverage<FloatType, Dim>(nArray, i, comm.SendRecvCells);
         }
@@ -1562,8 +1216,8 @@ void BlockFieldManager<FieldType, FloatType, Dim>::AllAverCommunicate() {
 template <typename FieldType, typename FloatType, unsigned int Dim>
 void BlockFieldManager<FieldType, FloatType, Dim>::AllIntpCommunicate() {
   static constexpr unsigned int ArrayDim = FieldType::array_dim;
-  static constexpr std::size_t SendRecvPairSize = Dim == 2 ? 5 : 9;
-  static constexpr std::size_t RecvOffset = Dim == 2 ? 4 : 8;
+  static constexpr std::size_t SendRecvPairSize = flbcomm::AverPairStride(Dim);
+  static constexpr std::size_t RecvOffset = flbcomm::AverSrcNum(Dim);
 #pragma omp parallel for num_threads(Thread_Num)
   for (BlockField<FieldType, FloatType, Dim>& blockF : _Fields) {
     // interp communicate
@@ -1579,6 +1233,9 @@ void BlockFieldManager<FieldType, FloatType, Dim>::AllIntpCommunicate() {
         const auto& nArray = nblockF.getField(iArr);
         auto& Array = blockF.getField(iArr);
         for (std::size_t id = 0; id < size;) {
+          flbcomm::checkCellIndex(comm.SendRecvCells[id + RecvOffset], block.getN(),
+                                  block.getBlockId(), comm.SendBlockId,
+                                  "BlockFieldManager::AllIntpCommunicate");
           Interpolation<FloatType, Dim>(Array, nArray, comm.SendRecvCells, id);
         }
       }
@@ -1635,8 +1292,8 @@ template <typename FieldType, typename FloatType, unsigned int Dim>
 void BlockFieldManager<FieldType, FloatType, Dim>::AllAverCommunicate(
   std::int64_t count) {
   static constexpr unsigned int ArrayDim = FieldType::array_dim;
-  static constexpr std::size_t SendRecvPairSize = Dim == 2 ? 5 : 9;
-  static constexpr std::size_t RecvOffset = Dim == 2 ? 4 : 8;
+  static constexpr std::size_t SendRecvPairSize = flbcomm::AverPairStride(Dim);
+  static constexpr std::size_t RecvOffset = flbcomm::AverSrcNum(Dim);
 #pragma omp parallel for num_threads(Thread_Num)
   for (BlockField<FieldType, FloatType, Dim>& blockF : _Fields) {
     const int deLevel =
@@ -1655,6 +1312,10 @@ void BlockFieldManager<FieldType, FloatType, Dim>::AllAverCommunicate(
           const auto& nArray = nblockF.getField(iArr);
           auto& Array = blockF.getField(iArr);
           for (std::size_t i = 0; i < size; i += SendRecvPairSize) {
+            flbcomm::checkCellIndex(comm.SendRecvCells[i + RecvOffset],
+                                    blockF.getBlock().getN(), blockF.getBlock().getBlockId(),
+                                    comm.SendBlockId,
+                                    "BlockFieldManager::AllAverCommunicate(count)");
             Array[comm.SendRecvCells[i + RecvOffset]] =
               getAverage<FloatType, Dim>(nArray, i, comm.SendRecvCells);
           }
@@ -1672,6 +1333,7 @@ template <typename FieldType, typename FloatType, unsigned int Dim>
 void BlockFieldManager<FieldType, FloatType, Dim>::AllIntpCommunicate(
   std::int64_t count) {
   static constexpr unsigned int ArrayDim = FieldType::array_dim;
+  static constexpr std::size_t RecvOffset = flbcomm::AverSrcNum(Dim);
 #pragma omp parallel for num_threads(Thread_Num)
   for (BlockField<FieldType, FloatType, Dim>& blockF : _Fields) {
     const int deLevel =
@@ -1690,6 +1352,9 @@ void BlockFieldManager<FieldType, FloatType, Dim>::AllIntpCommunicate(
           const auto& nArray = nblockF.getField(iArr);
           auto& Array = blockF.getField(iArr);
           for (std::size_t id = 0; id < size;) {
+            flbcomm::checkCellIndex(comm.SendRecvCells[id + RecvOffset], block.getN(),
+                                    block.getBlockId(), comm.SendBlockId,
+                                    "BlockFieldManager::AllIntpCommunicate(count)");
             Interpolation<FloatType, Dim>(Array, nArray, comm.SendRecvCells, id);
           }
         }

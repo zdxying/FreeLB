@@ -18,8 +18,8 @@
  *
  */
 
-#include "ca/zhu_stefanescu3d.h"
-#include "ca/zhu_stefanescu3d.hh"
+#include "ca/zhu_stefanescu3d_legacy.h"
+#include "ca/zhu_stefanescu3d_legacy.hh"
 #include "freelb.h"
 #include "freelb.hh"
 // legacy PopLattice path (no longer wrapped by freelb.h/hh)

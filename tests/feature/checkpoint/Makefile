@@ -16,4 +16,7 @@ FLAGS += -DFLOAT_TYPE=double
 # does not use omp-parallel dynamics)
 FLAGS += -DThread_Num=1
 
+# checkpoint files the test writes to its own directory
+OUTPUT += ckpt
+
 include $(ROOT)/make.mk

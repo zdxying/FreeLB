@@ -94,6 +94,11 @@ T Cl;  // char low conc
 int MaxStep;
 int OutputStep;
 
+// cells per block edge for the geometry helper; the original direct
+// construction divided the domain into Thread_Num equal blocks, this gives
+// a similar block size (300 / 20 = 15 blocks of 20x20 base cells)
+constexpr int kBlockCellLen = 20;
+
 std::string work_dir;
 
 void readParam() {
@@ -164,7 +169,11 @@ void readParam() {
             << "----------------------------------------------" << std::endl;
 }
 
-int main() {
+int main(int argc, char* argv[]) {
+  // LoadBalancing() divides the blocks over MPI_Comm_size(), so the manager
+  // has to be initialised before the geometry is built (same as cazsAref2d).
+  mpi().init(&argc, &argv);
+
   constexpr std::uint8_t VoidFlag = std::uint8_t(1);
   constexpr std::uint8_t AABBFlag = std::uint8_t(2);
   constexpr std::uint8_t BouncebackFlag = std::uint8_t(4);
@@ -202,7 +211,19 @@ int main() {
   AABB<T, 2> left(Vector<T, 2>{}, Vector<T, 2>(Cell_Len, T(Nj - 1) * Cell_Len));
   AABB<T, 2> right(Vector<T, 2>(T(Ni - 1) * Cell_Len, Cell_Len), Vector<T, 2>(T(Ni * Cell_Len), T(Nj - 1) * Cell_Len));
   // NS geometry
-  BlockGeometry2D<T> Geo(Ni, Nj, Thread_Num, cavity, Cell_Len);
+  // The helper + LoadBalancing path is the one that assigns blocks to ranks;
+  // the direct BlockGeometry2D(Ni, Nj, blocknum, ...) constructor has no rank
+  // assignment and leaves every rank with an empty block set under MPI.  On
+  // one process (plain OMP build) both paths are equivalent.
+  BlockGeometryHelper2D<T> GeoHelper(Ni, Nj, cavity, Cell_Len, kBlockCellLen);
+  GeoHelper.CreateBlocks();
+  // re-split so that the block count comfortably exceeds the rank count:
+  // LoadBalancing's greedy bin-packing degrades when blocks < ranks (one rank
+  // gets everything, the others none, and a Setup/Communicate on an empty
+  // block set segfaults)
+  GeoHelper.AdaptiveOptimization(mpi().getSize());
+  GeoHelper.LoadBalancing(mpi().getSize());
+  BlockGeometry2D<T> Geo(GeoHelper);
 
   // ------------------ define flag field ------------------
   BlockFieldManager<FLAG, T, 2> FlagFM(Geo, VoidFlag);

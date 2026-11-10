@@ -25,6 +25,8 @@
 #include "geometry/basic_geometry.h"
 // FlagField member (GenericFieldBase) is held by value below
 #include "data_struct/field.h"
+// latset::c neighbor offsets
+#include "lbm/lattice_set.h"
 #include "io/stlreader.h"
 
 

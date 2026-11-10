@@ -1,0 +1,85 @@
+# cavity2d_mrt: Phase 3 catalogue case for the D2Q9 MRT collision.
+#
+# Same 32x32 lid-driven cavity as cavity2d.case, bulk collision `mrt`.
+# MRT only has a D2Q9 transformation matrix, so the generator rejects it for
+# any other lattice.  200 steps, tol = 0; the pinned checksums are the
+# measured values of this exact configuration.
+
+[case]
+name = cavity2d_mrt
+dim = 2
+float = double
+latset = D2Q9
+
+[fields]
+list = RHO, VELOCITY, POP
+
+[flags]
+void = 1
+bulk = 2
+wall = 4
+moving_wall = 8
+
+[grid]
+n = 32, 32
+cell_len = 1
+block_cell_len = 10
+thread_num = 1
+decompose = single
+
+[physics]
+converter = simplified
+char_u = 0.1
+rt = 0.56
+rho_init = 1
+init_u = 0, 0
+
+[region.cavity]
+shape = aabb
+box = 0, 0, 32, 32
+action = paint
+flag = bulk
+
+[region.walls]
+shape = aabb
+box = 0, 0, 32, 32
+action = boundary
+flag = wall
+
+[region.lid]
+shape = aabb
+box = 1, 31, 31, 32
+action = paint
+flag = moving_wall
+only_if = wall
+
+[region.lid_velocity]
+shape = aabb
+box = 1, 31, 31, 32
+action = set_velocity
+flag = moving_wall
+value = 0.1, 0
+
+[tasks]
+bulk = mrt
+wall = normal
+moving_wall = movingwall
+
+[schedule]
+type = hidden
+steps = 200
+output_step = 200
+tol = 0
+checkpoint_step = 0
+restart = 0
+restart_dir = ./ckpt
+
+[output]
+writers = rho, velocity
+flag_writer = 0
+
+[checksum]
+enable = 1
+expect_pop = 586.534128
+expect_rho = 1155.984267
+tol = 1e-6

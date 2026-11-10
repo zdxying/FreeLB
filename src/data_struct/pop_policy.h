@@ -20,8 +20,6 @@
 // the default argument on the same side of the preprocessor boundary means a
 // CPU-visible mention of cudev::Cell<T, LatSet, TypePack> resolves to the same
 // type in a host build as in a device build.
-//
-// See docs/CELL_POLICY_PLAN.md.
 // ---------------------------------------------------------------------------
 
 namespace cudev {
@@ -58,8 +56,7 @@ class Cell;
 // The current eager load is the design's main weakness.  It happens *before*
 // the flag is inspected, so a void cell still pays the full q loads and q
 // stores -- 152 B/cell for D3Q19 at FP32 -- for dynamics that then do nothing
-// with them.  See the void-cell analysis in docs/GPU_MULTIBLOCK_PLAN.md (8.1,
-// 8.2).
+// with them.
 //
 // When that gets implemented it should be a third tag plus a third PopCache
 // specialisation and nothing else: csegen forwards POPPOLICY generically, so no

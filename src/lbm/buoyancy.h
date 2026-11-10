@@ -22,7 +22,7 @@
 #pragma once
 
 #include "data_struct/lattice.h"
-#include "lbm/collision.h"   // legacy::BGK
+#include "lbm/legacy_collision.h"  // legacy::BGK
 #include "lbm/moment.h"   // moment::Velocity
 #include "lbm/force.h"
 

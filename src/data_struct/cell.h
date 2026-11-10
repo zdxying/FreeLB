@@ -286,7 +286,7 @@ class GenericCell {
 // csegen needs no change to accommodate a new one.
 //
 // The two strategies attack different bottlenecks and are complementary --
-// measured on D3Q19/sm_86, see docs/CELL_POLICY_PLAN.md:
+// measured on D3Q19/sm_86:
 //   DirectPop  direct global loads/stores through the POP container; the
 //              CSE-generated arithmetic still applies.
 //   RegPop     the q populations are pulled into registers for the whole
@@ -532,7 +532,7 @@ class Cell : private PopCache<T, LatSet::q, POPPOLICY> {
 // specialisations as partial specialisations on the exact cell type
 // (`rhoUImpl<CELL<T, D3Q19<T>, TypePack, POPPOLICY>, W>`), and a derived type
 // would not match -- it would silently fall back to the loop-based primary
-// template.  See docs/CELL_POLICY_PLAN.md.
+// template.
 //
 // The task collection must still be rebuilt for this cell type
 // (tmp::RebindSelector), because every task bakes its own cell type in.

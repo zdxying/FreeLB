@@ -32,6 +32,7 @@
 // checkpoint / restart
 #include "io/checkpoint.hh"
 // cellular automata (solidification) implementations
+// (the legacy PopLattice-path CA::ZhuStefanescu3D lives in
+// ca/zhu_stefanescu3d_legacy.h(.hh), only used by examples/legacy/cazs3d)
 #include "ca/zhu_stefanescu2d.hh"
-#include "ca/zhu_stefanescu3d.hh"
 

@@ -19,10 +19,11 @@
  */
 
 // Zhu-Stefanescu (Z-S) model for dendrite growth, implementations
+// (legacy PopLattice path)
 
 #pragma once
 
-#include "ca/zhu_stefanescu3d.h"
+#include "ca/zhu_stefanescu3d_legacy.h"
 
 namespace CA {
 

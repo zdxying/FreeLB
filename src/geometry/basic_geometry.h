@@ -34,7 +34,8 @@
 #include <algorithm>
 
 #include "data_struct/Vector.h"
-#include "parallel/communicator.h"
+// NbrDirection: geometry-level concept, kept in a leaf header
+#include "utils/nbr_direction.h"
 
 // axis-aligned bounding box (AABB) class
 // all the voxels in the computational domain are inside the AABB
@@ -972,9 +973,6 @@ using CellTagType = std::uint8_t;
 enum BlockCellTag : CellTagType { none = 1, refine = 2, coarsen = 4, inside = 8 };
 
 
-class MpiManager;
-MpiManager& mpi();
-
 template <typename T, unsigned int D>
 class BlockGeometryHelperBase : public BasicBlock<T, D> {
   protected:
@@ -1049,25 +1047,21 @@ class BlockGeometryHelperBase : public BasicBlock<T, D> {
       return _BlockIndexPtr0;
   }
   // get basic blocks from std::vector<std::vector<BasicBlock<T, D>*>> _BlockIndexPtr
-  std::vector<BasicBlock<T, D>*>& getBasicBlocks() {
-    return getAllBlockIndexPtrs()[mpi().getRank()];
-  }
-  BasicBlock<T, D>& getBasicBlock(int id) { return *(getBasicBlocks()[id]); }
-  const BasicBlock<T, D>& getBasicBlock(int id) const { return *(getBasicBlocks()[id]); }
-
+  // the mpi()-dependent accessors below are declared here and defined
+  // out-of-line in basic_geometry.hh, where MpiManager is a complete type
   std::vector<std::vector<BasicBlock<T, D>*>>& getAllOldBlockIndexPtrs() {
     if (_IndexExchanged)
       return _BlockIndexPtr0;
     else
       return _BlockIndexPtr1;
   }
-  std::vector<BasicBlock<T, D>*>& getOldBasicBlocks() {
-    return getAllOldBlockIndexPtrs()[mpi().getRank()];
-  }
-  BasicBlock<T, D>& getOldBasicBlock(int id) { return *(getOldBasicBlocks()[id]); }
-  const BasicBlock<T, D>& getOldBasicBlock(int id) const {
-    return *(getOldBasicBlocks()[id]);
-  }
+  std::vector<BasicBlock<T, D>*>& getBasicBlocks();
+  BasicBlock<T, D>& getBasicBlock(int id);
+  const BasicBlock<T, D>& getBasicBlock(int id) const;
+
+  std::vector<BasicBlock<T, D>*>& getOldBasicBlocks();
+  BasicBlock<T, D>& getOldBasicBlock(int id);
+  const BasicBlock<T, D>& getOldBasicBlock(int id) const;
 
 
 };

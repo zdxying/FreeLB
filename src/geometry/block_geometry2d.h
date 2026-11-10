@@ -25,6 +25,9 @@
 #include "geometry/basic_geometry.h"
 #include "io/block_reader.h"
 
+// Communicator member
+#include "parallel/communicator.h"
+
 #include "data_struct/voxel_map.h"
 // basic block 2d structure, BasicBlock stores the original AABB and index AABB(not
 // extended)
@@ -88,7 +91,9 @@ class Block2D : public BasicBlock<T, 2> {
   #endif
   std::size_t getVoxNum() const {
     #ifdef _VOX_ENABLED
-    return _VoxMap.getVoxNum() > std::size_t{} ? _VoxMap.getVoxNum() : this->getN();
+    // A built-but-empty map means a fully void block: iterate zero cells.
+    // Returning getN() there would index a zero-length map in the cell loop.
+    return _VoxMap.isInitialized() ? _VoxMap.getVoxNum() : this->getN();
     #else
     return this->getN();
     #endif
@@ -115,14 +120,21 @@ class BlockGeometry2D : public BasicBlock<T, 2> {
   int _overlap;
   // max level
   std::uint8_t _MaxLevel;
+  // bumped whenever the active mask or voxel map changes
+  std::uint64_t _geometryGeneration = 0;
+  // diagnostics of the last InitVoxelMap(): pruned shared send/recv pairs and
+  // pruned MPI cells, kept apart because they are different kinds of link
+  std::size_t _lastPrunedSharedPairs = 0;
+  std::size_t _lastPrunedMpiCells = 0;
 
  public:
   // construct uniform blockgeometry
   BlockGeometry2D(int Nx, int Ny, int blocknum, const AABB<T, 2>& block,
                   T voxelSize = T(1), int overlap = 1, 
                   int blockXNum = 0, int blockYNum = 0);
-  // construct uniform/ refined blockgeometry from GeoHelper
-  BlockGeometry2D(BlockGeometryHelper2D<T>& GeoHelper, bool useHelperOlap = true);
+  // construct uniform/ refined blockgeometry from GeoHelper; the block overlap
+  // always comes from the helper, so a rebuild (Init) keeps the same geometry
+  BlockGeometry2D(BlockGeometryHelper2D<T>& GeoHelper);
   // construct blockgeometry from blockreader
   BlockGeometry2D(const BlockReader<T,2>& blockreader, bool useReaderOlap = true);
   ~BlockGeometry2D() = default;
@@ -132,6 +144,23 @@ class BlockGeometry2D : public BasicBlock<T, 2> {
 
   template <typename FieldType>
   void InitVoxelMap(FieldType& FieldM, std::uint8_t voidflag = std::uint8_t{1});
+
+  // Fill-ratio diagnostics: block-local active cells include the overlap halo.
+  template <typename FieldType>
+  std::size_t getTotalActiveCellNum(const FieldType& FieldM,
+                                    std::uint8_t voidflag = std::uint8_t{1}) const;
+  template <typename FieldType>
+  std::size_t getTotalOwnedCellNum(const FieldType& FieldM,
+                                   std::uint8_t voidflag = std::uint8_t{1}) const;
+  template <typename FieldType>
+  double getFillRatio(const FieldType& FieldM,
+                      std::uint8_t voidflag = std::uint8_t{1}) const;
+  template <typename FieldType>
+  double getOwnedFillRatio(const FieldType& FieldM,
+                           std::uint8_t voidflag = std::uint8_t{1}) const;
+  template <typename FieldType>
+  void PrintFillRatio(const FieldType& FieldM,
+                      std::uint8_t voidflag = std::uint8_t{1}) const;
   
   const BasicBlock<T, 2>& getSelfBlock() const { return *this; }
   const BasicBlock<T, 2>& getBaseBlock() const { return _BaseBlock; }
@@ -157,6 +186,11 @@ class BlockGeometry2D : public BasicBlock<T, 2> {
   }
 
   inline std::uint8_t getMaxLevel() const { return _MaxLevel; }
+  std::uint64_t getGeometryGeneration() const { return _geometryGeneration; }
+  void bumpGeometryGeneration() { ++_geometryGeneration; }
+  // Pruning diagnostics of the last InitVoxelMap(), summed over all ranks.
+  std::size_t getLastPrunedSharedPairs() const { return _lastPrunedSharedPairs; }
+  std::size_t getLastPrunedMpiCells() const { return _lastPrunedMpiCells; }
 
   int getBlockNum() const { return _Blocks.size(); }
   // get total number of cells, overlapped cells included
@@ -180,11 +214,6 @@ class BlockGeometry2D : public BasicBlock<T, 2> {
 
 // --- mpi communication ---
 #ifdef MPI_ENABLED
-  // construct uniform/ refined blockgeometry from GeoHelper and a vector of BasicBlock<T, 2>
-  // for mpi communication with direction info 
-  BlockGeometry2D(BlockGeometryHelper2D<T>& GeoHelper, 
-  std::vector<BasicBlock<T, 2>>& BasicBlocks);
-
   void InitMPIComm(BlockGeometryHelper2D<T>& GeoHelper);
   // Low level block(coarse) get info from High level block(fine) using average
   void InitMPIAverComm(BlockGeometryHelper2D<T>& GeoHelper);
@@ -243,8 +272,6 @@ class BlockGeometryHelper2D : public BasicBlock<T, 2> {
 #ifdef MPI_ENABLED
   // mpi neighbors: first: rank, second: blockid
   std::vector<std::vector<std::pair<int, int>>> _MPIBlockNbrs;
-  // for mpi direction communication init
-  std::unique_ptr<BlockGeometry2D<T>> _BlockGeometry2D;
 #endif
 
 
@@ -342,7 +369,6 @@ class BlockGeometryHelper2D : public BasicBlock<T, 2> {
   std::vector<std::pair<int, int>>& getMPIBlockNbrs(int blockid) {
     return _MPIBlockNbrs[blockid];
   }
-  const BlockGeometry2D<T>& getBlockGeometry2D() const { return *_BlockGeometry2D; }
 #endif
 
   void CreateBlockCells();
@@ -376,9 +402,13 @@ class BlockGeometryHelper2D : public BasicBlock<T, 2> {
 #ifdef MPI_ENABLED
   // call this after LoadBalancing()
   void SetupMPINbrs();
-  // construct BlockGeometry2D from BlockGeometryHelper2D's this pointer
-  void InitBlockGeometry2D();
   // find which rank the block belongs to
   int whichRank(int blockid);
 #endif
+
+ private:
+  void InvalidateBlockIndexPtrs() {
+    _BlockIndexPtr0.clear();
+    _BlockIndexPtr1.clear();
+  }
 };
