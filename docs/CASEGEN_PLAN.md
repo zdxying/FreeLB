@@ -128,6 +128,8 @@
   可复现。
 - **Geometry file（Phase 4）**：`[geometry]` 支持 `file`、`domain_flag`、`void_flag`、
   `band_width`、`origin`；`[geometry.source.*]` 支持 box/sphere/stl，按文件顺序应用。
+  `.geo` 另支持 `[patch.<name>]`（`entity`/`kind`/`box`），由 `tools/geometry_build` 写入
+  记录的 patch 表，供应用把 patch kind 绑定到边界条件；casegen 目前不生成 patch 段。
   casegen 生成 `.geo`，生成的 Makefile 调 `tools/geometry_build` 重建 `.flbgeo`。golden
   `casegen_geo_box3d` 为 16³、100 步；prebuilt `file` 模式保留。
 

@@ -24,6 +24,8 @@
 // The recipe is parsed by hand instead of with iniReader because the order of
 // [source.*] sections is part of the semantics: the builder applies sources in
 // that order, and a later solid may overwrite an earlier domain cell.
+// [patch.*] sections are applied after every source: entity/kind/box select
+// Domain cells of the surface band and the patch is stored in the record.
 
 #include <algorithm>
 #include <cerrno>
@@ -164,6 +166,7 @@ struct RawRecipe {
   int GeometryLine{0};
   Entries Geometry;
   std::vector<RawSource> Sources;
+  std::vector<RawSource> Patches;
 };
 
 const Entry& requiredEntry(const Entries& entries, const std::string& key,
@@ -185,6 +188,7 @@ RawRecipe parseRecipe(const std::string& path) {
   RawRecipe recipe;
   bool inGeometry = false;
   std::size_t currentSource = std::string::npos;
+  std::size_t currentPatch = std::string::npos;
 
   std::string line;
   int lineNumber = 0;
@@ -201,6 +205,7 @@ RawRecipe parseRecipe(const std::string& path) {
       const std::string name = trim(text.substr(1, text.size() - 2));
       inGeometry = false;
       currentSource = std::string::npos;
+      currentPatch = std::string::npos;
       if (name == "geometry") {
         if (recipe.HasGeometry) {
           fail(location(path, lineNumber) + ": duplicate [geometry] section");
@@ -222,6 +227,20 @@ RawRecipe parseRecipe(const std::string& path) {
         }
         recipe.Sources.push_back(RawSource{sourceName, lineNumber, {}});
         currentSource = recipe.Sources.size() - 1;
+      } else if (name.rfind("patch.", 0) == 0) {
+        const std::string patchName = trim(name.substr(6));
+        if (patchName.empty()) {
+          fail(location(path, lineNumber) + ": [patch.] needs a non-empty name");
+        }
+        for (const RawSource& patch : recipe.Patches) {
+          if (patch.Name == patchName) {
+            fail(location(path, lineNumber) + ": duplicate section [patch." +
+                 patchName + "] (first defined at line " +
+                 std::to_string(patch.Line) + ")");
+          }
+        }
+        recipe.Patches.push_back(RawSource{patchName, lineNumber, {}});
+        currentPatch = recipe.Patches.size() - 1;
       } else {
         fail(location(path, lineNumber) + ": unknown section [" + name + "]");
       }
@@ -237,6 +256,10 @@ RawRecipe parseRecipe(const std::string& path) {
       const RawSource& source = recipe.Sources[currentSource];
       where = location(path, source.Line) + ": [source." + source.Name + "]";
       entries = &recipe.Sources[currentSource].Values;
+    } else if (currentPatch != std::string::npos) {
+      const RawSource& patch = recipe.Patches[currentPatch];
+      where = location(path, patch.Line) + ": [patch." + patch.Name + "]";
+      entries = &recipe.Patches[currentPatch].Values;
     } else {
       fail(location(path, lineNumber) + ": key/value outside any section");
     }
@@ -480,6 +503,53 @@ SourceSpec parseSource(const RawSource& raw, const std::string& path) {
   return spec;
 }
 
+struct PatchSpec {
+  std::uint16_t Entity;
+  flbgeo::PatchKind Kind;
+  AABB<T, 3> Box;
+};
+
+PatchSpec parsePatch(const RawSource& raw, const std::string& path) {
+  const std::string section = "[patch." + raw.Name + "]";
+  const std::string where = location(path, raw.Line) + ": " + section;
+  checkAllowedKeys(raw.Values, {"entity", "kind", "box"}, {}, {}, path, section);
+
+  PatchSpec spec{};
+  const Entry& entityEntry = requiredEntry(raw.Values, "entity", where);
+  spec.Entity = parseU16(entityEntry.Value, "entity",
+                         location(path, entityEntry.Line));
+
+  const Entry& kindEntry = requiredEntry(raw.Values, "kind", where);
+  if (kindEntry.Value == "wall") {
+    spec.Kind = flbgeo::PatchKind::Wall;
+  } else if (kindEntry.Value == "inlet") {
+    spec.Kind = flbgeo::PatchKind::Inlet;
+  } else if (kindEntry.Value == "outlet") {
+    spec.Kind = flbgeo::PatchKind::Outlet;
+  } else if (kindEntry.Value == "symmetry") {
+    spec.Kind = flbgeo::PatchKind::Symmetry;
+  } else {
+    fail(location(path, kindEntry.Line) + ": " + section +
+         ": kind must be wall, inlet, outlet or symmetry, got '" +
+         kindEntry.Value + "'");
+  }
+
+  const Entry& boxEntry = requiredEntry(raw.Values, "box", where);
+  const std::vector<T> box = parseRealList(
+    boxEntry.Value, 6, location(path, boxEntry.Line) + ": box");
+  spec.Box = AABB<T, 3>(Vector<T, 3>{box[0], box[1], box[2]},
+                        Vector<T, 3>{box[3], box[4], box[5]});
+  const Vector<T, 3>& extent = spec.Box.getExtension();
+  for (int i = 0; i < 3; ++i) {
+    if (!(extent[i] > T(0))) {
+      fail(location(path, boxEntry.Line) +
+           ": patch box min must be below max on each axis, got " +
+           boxEntry.Value);
+    }
+  }
+  return spec;
+}
+
 std::filesystem::path resolveStlPath(const std::string& recipePath,
                                      const std::string& sourcePath) {
   const std::filesystem::path base =
@@ -565,6 +635,11 @@ int main(int argc, char* argv[]) {
     }
 
     recipe.Sources.push_back(std::move(recipeSource));
+  }
+
+  for (const RawSource& rawPatch : raw.Patches) {
+    const PatchSpec patch = parsePatch(rawPatch, recipePath);
+    builder.addPatch(patch.Entity, patch.Kind, patch.Box);
   }
 
   const flbgeo::VoxelGeometry<T> geometry = builder.build();

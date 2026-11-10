@@ -146,6 +146,9 @@ int main() {
   std::cout << "[feature/link_bc] links=" << ibb.getLinkCount()
             << " fractional=" << fractional << " fallback=" << fallback
             << " thin=" << thin << " entity=" << withEntity
+            << " fb_nosample=" << ibb.getFallbackNoSample()
+            << " fb_nocross=" << ibb.getFallbackNoCross()
+            << " fb_range=" << ibb.getFallbackOutOfRange()
             << " mass_before=" << before << " mass_after=" << after
             << " drift=" << drift << " max_u=" << maxU << std::endl;
 

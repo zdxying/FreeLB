@@ -124,6 +124,25 @@ int main(int argc, char* argv[]) {
 
   readParam();
 
+  // ------------------ geometry file ------------------
+  // The grid/domain/voxel size come from the repository recipe; [Mesh] must
+  // agree, otherwise the converter and the block geometry would describe a
+  // different lattice than the mask.
+  flbgeo::GeometryFile<T> geometryFile =
+    flbgeo::readGeometryFile<T>("cavity3d.flbgeo");
+  const flbgeo::VoxelGeometry<T>& record = geometryFile.Geometry;
+  if (Ni != record.getNx() || Nj != record.getNy() || Nk != record.getNz() ||
+      Cell_Len != record.getVoxelSize()) {
+    IF_MPI_RANK(0) {
+      std::cerr << "[cavity3d] geometry file " << record.getNx() << "x"
+                << record.getNy() << "x" << record.getNz() << " (cell "
+                << record.getVoxelSize() << ") does not match [Mesh] " << Ni
+                << "x" << Nj << "x" << Nk << " (cell " << Cell_Len << ")"
+                << std::endl;
+    }
+    return 1;
+  }
+
   // converters
   BaseConverter<T> BaseConv(LatSet::cs2);
   BaseConv.ConvertFromRT(Cell_Len, RT, rho_ref, Ni * Cell_Len, U_Max, Kine_Visc);
@@ -131,8 +150,7 @@ int main(int argc, char* argv[]) {
   ConvManager.Check_and_Print();
 
   // ------------------ define geometry ------------------
-  AABB<T, 3> cavity(
-    Vector<T, 3>{}, Vector<T, 3>{T(Ni * Cell_Len), T(Nj * Cell_Len), T(Nk * Cell_Len)});
+  AABB<T, 3> cavity = record.getDomain();
   AABB<T, 3> toplid(Vector<T, 3>{Cell_Len, Cell_Len, T((Nk - 1) * Cell_Len)},
     Vector<T, 3>{T((Ni - 1) * Cell_Len), T((Nj - 1) * Cell_Len), T(Nk * Cell_Len)});
 
@@ -150,12 +168,23 @@ int main(int argc, char* argv[]) {
 
   // ------------------ define flag field ------------------
   BlockFieldManager<FLAG, T, LatSet::d> FlagFM(Geo, VoidFlag);
-  FlagFM.forEach(
-    cavity, [&](FLAG& field, std::size_t id) { field.SetField(id, AABBFlag); });
+  // occupancy from the record: Domain cells are bulk, solid/outside are void
+  flbgeo::writeVoxelFlags(record, FlagFM, AABBFlag, VoidFlag);
+  // domain-edge walls have no surface band, so the cavity box still selects
+  // them; solid surfaces are selected by their patches below
   FlagFM.template SetupBoundary<LatSet>(cavity, BouncebackFlag);
   FlagFM.forEach(toplid, [&](FLAG& field, std::size_t id) {
     if (util::isFlag(field.get(id), BouncebackFlag)) field.SetField(id, BBMovingWallFlag);
   });
+  // the obstacle's Wall patch drives its bounce-back cells
+  flbbc::PatchFlagMap patchFlags;
+  patchFlags.wall = BouncebackFlag;
+  const flbbc::PatchBindStats patchStats =
+    flbbc::bindPatches(record, FlagFM, patchFlags, AABBFlag);
+  IF_MPI_RANK(0) {
+    std::cout << "[cavity3d] obstacle patch: " << patchStats.wall
+              << " cells, unmapped " << patchStats.unmappedCells << std::endl;
+  }
   // write flag field
   vtmo::ScalarWriter FlagWriter("flag", FlagFM);
   vtmo::vtmWriter<T, LatSet::d> GeoWriter("GeoFlag", Geo, 1);
@@ -196,14 +225,21 @@ int main(int argc, char* argv[]) {
   using BBTask = tmp::Key_TypePair<BouncebackFlag, collision::BounceBack<CELL>>;
   using BBMVTask =
     tmp::Key_TypePair<BBMovingWallFlag, collision::BounceBackMovingWall<CELL>>;
+  // a patch cell keeps its bulk bit and gains the wall bit
+  using BBPatchTask = tmp::Key_TypePair<std::uint8_t(AABBFlag | BouncebackFlag),
+                                        collision::BounceBack<CELL>>;
   // task collection
-  using TaskCollection = tmp::TupleWrapper<BulkTask, BBTask, BBMVTask>;
+  using TaskCollection =
+    tmp::TupleWrapper<BulkTask, BBTask, BBMVTask, BBPatchTask>;
   // task executor
   using NSTask = tmp::TaskSelector<TaskCollection, std::uint8_t, CELL>;
 
   // task: update rho and u
   using RhoUTask = tmp::Key_TypePair<AABBFlag, moment::rhoU<CELL, true>>;
-  using TaskCollectionRhoU = tmp::TupleWrapper<RhoUTask>;
+  using RhoUPatchTask =
+    tmp::Key_TypePair<std::uint8_t(AABBFlag | BouncebackFlag),
+                      moment::rhoU<CELL, true>>;
+  using TaskCollectionRhoU = tmp::TupleWrapper<RhoUTask, RhoUPatchTask>;
   using TaskSelectorRhoU = tmp::TaskSelector<TaskCollectionRhoU, std::uint8_t, CELL>;
 
   // ------------------ define writers ------------------
@@ -219,17 +255,19 @@ int main(int argc, char* argv[]) {
   NSWriter.addWriterSet(physRhoWriter, physVecWriter);
 
   // ------------------ restart: restore the snapshot ------------------
-  // Geometry, flags and BCs are replayed by the setup code above (same
-  // parameters); only the fields and the step count are overwritten here.
+  // The snapshot carries the geometry identity (B7a) and is validated against
+  // the record above; flags and BCs are replayed from the same file.
   // Must run before the main loop; the BC managers only hold references, so
   // nothing has to be rebuilt after a restore.
   Timer MainLoopTimer;
   if (Restart) {
-    if (!flbckpt::checkCompatible(RestartDir, -1, NSLattice, FlagFM)) {
+    if (!flbckpt::checkCompatibleWithGeometry(RestartDir, -1, record, NSLattice,
+                                              FlagFM)) {
       Printer::Print_BigBanner(std::string("Restart aborted: incompatible checkpoint"));
       return 1;
     }
-    MainLoopTimer.set(flbckpt::read(RestartDir, -1, NSLattice, FlagFM));
+    MainLoopTimer.set(
+      flbckpt::readWithGeometry(RestartDir, -1, record, NSLattice, FlagFM));
     // Re-seed the tolerance history: UOld/RhoOld are not part of the snapshot
     // (they are overwritten after every evaluation and do not affect the physics)
     NSLattice.EnableToleranceU();
@@ -279,14 +317,15 @@ int main(int argc, char* argv[]) {
 
       // Snapshot point: communication is done, before the next Stream (quiescent)
       if (CheckpointStep > 0 && MainLoopTimer() % CheckpointStep == 0)
-        flbckpt::write(RestartDir, MainLoopTimer(), NSLattice, FlagFM);
+        flbckpt::writeWithGeometry(RestartDir, MainLoopTimer(), record, NSLattice,
+                                   FlagFM);
     }
   }
 
   // Write one more at the end, so a run stopped early by the tolerance can resume
   if (CheckpointStep > 0) {
     NSLattice.NormalFullCommunicate();
-    flbckpt::write(RestartDir, MainLoopTimer(), NSLattice, FlagFM);
+    flbckpt::writeWithGeometry(RestartDir, MainLoopTimer(), record, NSLattice, FlagFM);
   }
 
 #ifdef XCORE_ENABLED

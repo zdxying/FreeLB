@@ -31,8 +31,8 @@ Target: replace staircase reflection with a surface-link boundary
   the link, and the apply path adds the moving-wall term to the same Bouzidi branches.  A second
   table of `WallMotion{center, axis, omega}` covers rigid rotation, where the speed depends on the
   wall position (`u_w = omega x (x_wall - center)`); it is evaluated once per link because a rigid
-  wall does not change in time.  Patches still do not drive tasks or boundary conditions beyond
-  these entity tables.
+  wall does not change in time.  Patches are bound to the task flags by `flbbc::bindPatches` (see
+  the global plan), not by the link manager.
 
 ## 2. Results
 
@@ -42,7 +42,8 @@ Helical duct (`tests/feature/link_bc`, 20 steps, one rank):
 | --- | --- |
 | Links | 7160 |
 | Fractional (`q != 0.5`) | 5190 |
-| Fallback (`q = 0.5`, normal did not cross) | 1596 |
+| Fallback (`q = 0.5`, normal did not cross) | 925 |
+| `q > 1` clamped to 1 (normal crosses beyond the link end) | 671 |
 | Thin (node behind outside/void) | 374 |
 | Links with an entity | 7160 |
 | Mass, one block | 1294 -> 1294 (drift 0) |
@@ -74,8 +75,8 @@ Curved-wall accuracy (`tests/feature/link_bc_curved`): Taylor-Couette between tw
 cylinders, inner r = 5 rotating as a rigid body (entity 2), outer r = 10 at rest (entity 3),
 periodic along z so the analytic profile has no end effects.  The two meshes are written as ASCII
 STL at run time; the caps sit outside the domain.  Against `v_theta(r) = A r + B/r` at the
-mid-plane: L2 = 0.0746 relative to the wall speed (threshold 0.10), split as 0.0967 on the moving
-inner half and 0.0561 on the static outer half.  6000 and 12000 steps agree to 1e-4, so the
+mid-plane: L2 = 0.0745 relative to the wall speed (threshold 0.10), split as 0.0967 on the moving
+inner half and 0.0560 on the static outer half.  6000 and 12000 steps agree to 1e-4, so the
 profile is converged.  This is the B4 curved-wall baseline and it also exercises
 position-dependent wall velocity on a curved surface.
 
@@ -86,14 +87,16 @@ one baseline `utils/cuda_device.h` entry remains).
 
 ## 3. Open items
 
-- **Moving-wall accuracy.** The per-entity tables and wall term are implemented; the flat Couette
-  L2 is 9.5% and the curved inner half is 9.7%, with the q=0.75 one-sided branch the main error.
-  Refine the diagonal-link/wall-term interpolation before using it for production moving walls.
-- **Entity/patch to BC binding.** Entity -> wall velocity (constant and rigid rotation) is wired;
-  patches still do not drive tasks or other boundary conditions.
-- **Fallback rate.** 1596/7160 duct links fall back to the half-way position because the nearest
-  band normal does not cross the link. The channel and Couette tests have periodic faces skipped
-  and no fallback in the measured profile; the duct fallback remains a visible risk for curved
-  walls with sharp features.
+- **Moving-wall accuracy.** The flat Couette L2 is 9.5% and the curved inner half is 9.7%.  A
+  least-squares fit over the moving test's profile gives a uniform slope deficit of 0.921 (the
+  profile stays linear; the error is not a near-wall kink), and the three coefficient variants tried
+  earlier were worse, so no scheme change is made.  Revisit with a finer wall-normal resolution or a
+  second-order wall-velocity closure.
+- **Fallback rate.** 925/7160 duct links still fall back to the half-way position because the band
+  normal does not cross the link.  A further 671 links with `q > 1` are now clamped to `q = 1`: the
+  void neighbour proves the wall is before the link end, so the clamp is geometric rather than a
+  guess.  This reduced the fallback count from 1596, kept the duct mass exact and moved the
+  curved-wall L2 from 0.07457 to 0.07453 (unchanged to two digits).  The 925 no-cross links are the
+  remaining risk.
 - **CUDA scope.** Host only. The device mirror would need a per-cell link table and a device
   apply path; B4 does not promise it.

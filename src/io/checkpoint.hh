@@ -47,12 +47,15 @@
 #include <fstream>
 #include <functional>
 #include <iostream>
+#include <map>
 #include <sstream>
 #include <string>
 #include <type_traits>
 #include <typeinfo>
 #include <utility>
 #include <vector>
+
+#include "geometry/voxel_geometry.h"
 
 #if defined(FREELB_POP_FP16) && defined(__CUDACC__)
 #include <cuda_fp16.h>
@@ -453,6 +456,144 @@ struct MetaCollector {
 
 }  // namespace detail
 
+namespace detail {
+
+// --- geometry identity block ------------------------------------------------
+// Optional: present == 0 keeps the file usable for 2D callers that have no
+// VoxelGeometry record, but then nothing can be validated on load.
+void writeGeometryRecord(std::ostream& os, const GeometryRecord& g) {
+  wVal<std::uint8_t>(os, g.present ? std::uint8_t{1} : std::uint8_t{0});
+  if (!g.present) return;
+  wVal<std::uint32_t>(os, g.nx);
+  wVal<std::uint32_t>(os, g.ny);
+  wVal<std::uint32_t>(os, g.nz);
+  for (int i = 0; i < 3; ++i) wVal<double>(os, g.origin[i]);
+  for (int i = 0; i < 3; ++i) wVal<double>(os, g.max[i]);
+  wVal<double>(os, g.voxelSize);
+  wVal<std::uint64_t>(os, g.digest);
+  wVal<std::uint64_t>(os, static_cast<std::uint64_t>(g.entity.size()));
+  for (std::uint16_t entity : g.entity) wVal<std::uint16_t>(os, entity);
+  wVal<std::uint32_t>(os, static_cast<std::uint32_t>(g.patches.size()));
+  for (const GeometryPatchRecord& patch : g.patches) {
+    wVal<std::uint16_t>(os, patch.entity);
+    wVal<std::uint8_t>(os, patch.kind);
+    wVal<std::uint8_t>(os, std::uint8_t{0});
+    wVal<std::uint64_t>(os, static_cast<std::uint64_t>(patch.cells.size()));
+    for (std::uint64_t cell : patch.cells) wVal<std::uint64_t>(os, cell);
+  }
+}
+
+void readGeometryRecord(std::istream& is, GeometryRecord& g) {
+  std::uint8_t present = 0;
+  rVal<std::uint8_t>(is, present);
+  if (!is) die("truncated header (geometry presence)");
+  g.present = present != 0;
+  if (!g.present) return;
+  rVal<std::uint32_t>(is, g.nx);
+  rVal<std::uint32_t>(is, g.ny);
+  rVal<std::uint32_t>(is, g.nz);
+  if (g.nx == 0 || g.ny == 0 || g.nz == 0)
+    die("geometry identity has a zero grid dimension");
+  for (int i = 0; i < 3; ++i) rVal<double>(is, g.origin[i]);
+  for (int i = 0; i < 3; ++i) rVal<double>(is, g.max[i]);
+  rVal<double>(is, g.voxelSize);
+  rVal<std::uint64_t>(is, g.digest);
+  const std::uint64_t cells = static_cast<std::uint64_t>(g.nx) * g.ny * g.nz;
+  std::uint64_t entityCount = 0;
+  rVal<std::uint64_t>(is, entityCount);
+  if (entityCount != cells)
+    die("geometry identity entity count " + std::to_string(entityCount) +
+        " does not match the grid (" + std::to_string(cells) + ")");
+  g.entity.resize(static_cast<std::size_t>(entityCount));
+  for (std::uint16_t& entity : g.entity) rVal<std::uint16_t>(is, entity);
+  std::uint32_t patchCount = 0;
+  rVal<std::uint32_t>(is, patchCount);
+  if (patchCount > entityCount)
+    die("geometry identity patch count " + std::to_string(patchCount) +
+        " exceeds the cell count");
+  g.patches.resize(patchCount);
+  for (GeometryPatchRecord& patch : g.patches) {
+    rVal<std::uint16_t>(is, patch.entity);
+    rVal<std::uint8_t>(is, patch.kind);
+    std::uint8_t pad = 0;
+    rVal<std::uint8_t>(is, pad);
+    std::uint64_t n = 0;
+    rVal<std::uint64_t>(is, n);
+    if (n > entityCount)
+      die("geometry identity patch holds more cells than the grid");
+    patch.cells.resize(static_cast<std::size_t>(n));
+    for (std::uint64_t& cell : patch.cells) {
+      rVal<std::uint64_t>(is, cell);
+      if (cell >= entityCount) die("geometry identity patch cell is outside the grid");
+    }
+  }
+  if (!is) die("truncated geometry identity block");
+}
+
+template <typename Geometry>
+GeometryRecord makeGeometryRecord(const Geometry& geometry) {
+  GeometryRecord record;
+  record.present = true;
+  record.nx = static_cast<std::uint32_t>(geometry.getNx());
+  record.ny = static_cast<std::uint32_t>(geometry.getNy());
+  record.nz = static_cast<std::uint32_t>(geometry.getNz());
+  const auto& min = geometry.getDomain().getMin();
+  const auto& max = geometry.getDomain().getMax();
+  for (int i = 0; i < 3; ++i) {
+    record.origin[i] = static_cast<double>(min[i]);
+    record.max[i] = static_cast<double>(max[i]);
+  }
+  record.voxelSize = static_cast<double>(geometry.getVoxelSize());
+  record.digest = flbgeo::geometryDigest(geometry);
+  record.entity.resize(geometry.size());
+  for (std::size_t id = 0; id < geometry.size(); ++id) {
+    record.entity[id] = geometry.getEntity(id);
+  }
+  record.patches.resize(geometry.getPatchCount());
+  for (std::size_t p = 0; p < geometry.getPatchCount(); ++p) {
+    const flbgeo::BoundaryPatch& patch = geometry.getPatch(p);
+    GeometryPatchRecord& out = record.patches[p];
+    out.entity = patch.Entity;
+    out.kind = static_cast<std::uint8_t>(patch.Kind);
+    out.cells.assign(patch.Cells.begin(), patch.Cells.end());
+  }
+  return record;
+}
+
+// two rank files must describe the same record; the digest covers
+// role/entity/material/patch/band, the rest is the grid and origin
+inline bool sameGeometryRecord(const GeometryRecord& a, const GeometryRecord& b) {
+  if (a.present != b.present) return false;
+  if (!a.present) return true;
+  return a.nx == b.nx && a.ny == b.ny && a.nz == b.nz && a.digest == b.digest &&
+         a.voxelSize == b.voxelSize && a.origin[0] == b.origin[0] &&
+         a.origin[1] == b.origin[1] && a.origin[2] == b.origin[2] &&
+         a.max[0] == b.max[0] && a.max[1] == b.max[1] && a.max[2] == b.max[2];
+}
+
+// empty string = the live record matches the one in the file
+inline std::string explainGeometryMismatch(const GeometryRecord& file,
+                                           const GeometryRecord& live) {
+  if (!file.present) return "";
+  if (file.digest != live.digest)
+    return "geometry digest mismatch: the record differs from the one that "
+           "wrote this checkpoint";
+  if (file.nx != live.nx || file.ny != live.ny || file.nz != live.nz)
+    return "geometry grid mismatch: file " + std::to_string(file.nx) + "x" +
+           std::to_string(file.ny) + "x" + std::to_string(file.nz) + ", live " +
+           std::to_string(live.nx) + "x" + std::to_string(live.ny) + "x" +
+           std::to_string(live.nz);
+  if (file.voxelSize != live.voxelSize)
+    return "geometry voxel size mismatch";
+  for (int i = 0; i < 3; ++i) {
+    if (file.origin[i] != live.origin[i] || file.max[i] != live.max[i])
+      return "geometry domain mismatch (origin or extent)";
+  }
+  return "";
+}
+
+}  // namespace detail
+
 // ---------------------------------------------------------------------------
 // file header
 // ---------------------------------------------------------------------------
@@ -465,6 +606,7 @@ void writeHeader(std::ostream& os, const CheckpointHeader& h) {
   wVal<std::int32_t>(os, h.rank);
   wVal<std::int32_t>(os, h.nranks);
   wVal<std::uint32_t>(os, h.dim);
+  writeGeometryRecord(os, h.geometry);
   wVal<std::uint64_t>(os, static_cast<std::uint64_t>(h.blocks.size()));
   for (const auto& b : h.blocks) {
     wVal<std::int32_t>(os, b.blockid);
@@ -504,6 +646,7 @@ void readHeaderFrom(std::istream& is, CheckpointHeader& h) {
     die("checkpoint format version " + std::to_string(h.version) +
         " is not supported by this build (expects " + std::to_string(kFormatVersion) +
         "); the file must be re-created");
+  readGeometryRecord(is, h.geometry);
   std::uint64_t nb = 0;
   rVal<std::uint64_t>(is, nb);
   h.blocks.resize(static_cast<std::size_t>(nb));
@@ -603,41 +746,47 @@ inline bool sameBlock(const BlockRecord& a, const BlockRecord& b) {
 
 // merge the block tables of all rank files and align them with the current
 // geometry by blockid:
-//   - every local block must appear exactly once, in exactly one file, with an
-//     identical geometric record
-//   - the total block count must equal the local one (same domain, different
-//     decomposition -- not a different domain)
+//   - the file holds one record per block id, matching the geometric record of
+//     the rank that owns that block
+//   - the total (global) block count must equal the run's; the ownership split
+//     may differ, so 2->1, 1->2 and 2->2 restarts are all allowed
 // outputs fileToLive[fileIdx][blockIdx] = local block index (-1 if not ours)
 std::string buildBlockMapping(const RankFileSet& files, const CheckpointHeader& live,
                               std::vector<std::vector<int>>& fileToLive) {
-  // collect the blocks of every file
-  std::vector<std::pair<std::size_t, std::size_t>> where;  // local block -> (fileIdx, blockIdx)
   std::vector<char> found(live.blocks.size(), 0);
-  std::size_t totalFileBlocks = 0;
+  std::map<std::int32_t, int> occurrences;  // block id -> number of files holding it
   fileToLive.assign(files.headers.size(), std::vector<int>{});
   for (std::size_t f = 0; f < files.headers.size(); ++f) {
     const auto& hdr = files.headers[f];
     fileToLive[f].assign(hdr.blocks.size(), -1);
     for (std::size_t b = 0; b < hdr.blocks.size(); ++b) {
-      ++totalFileBlocks;
+      const std::int32_t blockid = hdr.blocks[b].blockid;
+      if (++occurrences[blockid] > 1)
+        return "block " + std::to_string(blockid) +
+               " appears in more than one rank's checkpoint file";
       for (std::size_t l = 0; l < live.blocks.size(); ++l) {
         if (sameBlock(hdr.blocks[b], live.blocks[l])) {
-          if (found[l])
-            return "block " + std::to_string(live.blocks[l].blockid) +
-                   " appears in more than one rank's checkpoint file";
           found[l] = 1;
           fileToLive[f][b] = static_cast<int>(l);
-          where.emplace_back(f, b);
           break;
         }
       }
     }
   }
-  if (totalFileBlocks != live.blocks.size())
-    return "the checkpoint holds " + std::to_string(totalFileBlocks) +
-           " blocks in total, this run has " + std::to_string(live.blocks.size()) +
-           " (a block cannot be split, so only a coarser-to-same decomposition "
-           "can be resumed)";
+  // The files hold the whole block table; a rank file holds its owner's share.
+  // Count the distinct ids once locally and the live ids globally, so the
+  // comparison does not depend on how many ranks read the same file.
+  const std::size_t fileBlocks = occurrences.size();
+  unsigned long long localLive = live.blocks.size();
+  unsigned long long globalLive = localLive;
+#ifdef MPI_ENABLED
+  MPI_Allreduce(&localLive, &globalLive, 1, MPI_UNSIGNED_LONG_LONG, MPI_SUM,
+                MPI_COMM_WORLD);
+#endif
+  if (fileBlocks != globalLive)
+    return "the checkpoint holds " + std::to_string(fileBlocks) +
+           " blocks in total, this run has " + std::to_string(globalLive) +
+           " (the block table must match; only the rank assignment may differ)";
   for (std::size_t l = 0; l < live.blocks.size(); ++l) {
     if (!found[l])
       return "block " + std::to_string(live.blocks[l].blockid) +
@@ -661,7 +810,6 @@ std::string buildBlockMapping(const RankFileSet& files, const CheckpointHeader& 
       return "field " + std::to_string(ff.index) + " type mismatch: file '" + ff.name +
              "', live '" + lf->name + "'";
   }
-  (void)where;
   return "";
 }
 
@@ -747,8 +895,11 @@ std::int64_t latestStep(const std::string& dir) {
   return step;
 }
 
+// shared implementation; geometry == nullptr writes no identity block (the
+// caller has no VoxelGeometry record, e.g. a 2D case)
 template <typename... FMs>
-void write(const std::string& dir, std::int64_t step, FMs&... fms) {
+void writeImpl(const std::string& dir, std::int64_t step,
+               const GeometryRecord* geometry, FMs&... fms) {
   const int rank = mpi().getRank();
   const std::string stepdir = dir + "/step_" + std::to_string(step);
   DirCreator::Create_Dir(dir);
@@ -763,6 +914,7 @@ void write(const std::string& dir, std::int64_t step, FMs&... fms) {
   mc.live.step = step;
   mc.live.rank = rank;
   mc.live.nranks = mpi().getSize();
+  if (geometry != nullptr) mc.live.geometry = *geometry;
 
   // write a temporary file and rename it: a crash never leaves a partial
   // snapshot that looks complete
@@ -793,8 +945,23 @@ void write(const std::string& dir, std::int64_t step, FMs&... fms) {
   mpi().barrier();
 }
 
+// legacy path: no geometry identity is written
 template <typename... FMs>
-std::int64_t read(const std::string& dir, std::int64_t step, FMs&... fms) {
+void write(const std::string& dir, std::int64_t step, FMs&... fms) {
+  writeImpl(dir, step, nullptr, fms...);
+}
+
+// write the record's identity with the snapshot; readWithGeometry validates it
+template <typename Geometry, typename... FMs>
+void writeWithGeometry(const std::string& dir, std::int64_t step,
+                       const Geometry& geometry, FMs&... fms) {
+  const GeometryRecord record = detail::makeGeometryRecord(geometry);
+  writeImpl(dir, step, &record, fms...);
+}
+
+template <typename... FMs>
+std::int64_t readImpl(const std::string& dir, std::int64_t step,
+                      const GeometryRecord* expected, FMs&... fms) {
   if (step < 0) step = latestStep(dir);
   if (step < 0) detail::die("no checkpoint found in " + dir);
 
@@ -803,6 +970,34 @@ std::int64_t read(const std::string& dir, std::int64_t step, FMs&... fms) {
   // pick our blocks out of every rank file by blockid, so a different rank
   // count or a different decomposition can resume.
   detail::RankFileSet files = detail::openRankFiles(dir, step);
+
+  // ---- geometry identity ----
+  // Every rank writes the same record; a disagreement means the ranks built
+  // different geometries.  A file that carries an identity must be validated:
+  // a caller without a record cannot do that, so refuse rather than resume
+  // into a possibly different geometry.
+  const GeometryRecord& fileGeometry = files.headers[0].geometry;
+  for (std::size_t f = 1; f < files.headers.size(); ++f) {
+    if (!detail::sameGeometryRecord(fileGeometry, files.headers[f].geometry))
+      detail::die("rank files of checkpoint " + dir + "/step_" +
+                  std::to_string(step) + " disagree on the geometry identity");
+  }
+  if (fileGeometry.present) {
+    if (expected == nullptr)
+      detail::die("checkpoint " + dir + "/step_" + std::to_string(step) +
+                  " carries a geometry identity; restart it with readWithGeometry()");
+    const std::string why =
+      detail::explainGeometryMismatch(fileGeometry, *expected);
+    if (!why.empty())
+      detail::die("checkpoint " + dir + "/step_" + std::to_string(step) +
+                  " does not match this geometry: " + why);
+  } else if (expected != nullptr) {
+    IF_MPI_RANK(0) {
+      std::cerr << "[flbckpt] warning: checkpoint " << dir << "/step_" << step
+                << " has no geometry identity; the digest cannot be validated"
+                << std::endl;
+    }
+  }
 
   detail::MetaCollector mc;
   mc.mode = detail::MetaCollector::Mode::Read;
@@ -850,7 +1045,20 @@ std::int64_t read(const std::string& dir, std::int64_t step, FMs&... fms) {
 }
 
 template <typename... FMs>
-bool checkCompatible(const std::string& dir, std::int64_t step, FMs&... fms) {
+std::int64_t read(const std::string& dir, std::int64_t step, FMs&... fms) {
+  return readImpl(dir, step, nullptr, fms...);
+}
+
+template <typename Geometry, typename... FMs>
+std::int64_t readWithGeometry(const std::string& dir, std::int64_t step,
+                              const Geometry& geometry, FMs&... fms) {
+  const GeometryRecord record = detail::makeGeometryRecord(geometry);
+  return readImpl(dir, step, &record, fms...);
+}
+
+template <typename... FMs>
+bool checkCompatibleImpl(const std::string& dir, std::int64_t step,
+                         const GeometryRecord* expected, FMs&... fms) {
   if (step < 0) step = latestStep(dir);
   if (step < 0) return false;
 
@@ -862,6 +1070,45 @@ bool checkCompatible(const std::string& dir, std::int64_t step, FMs&... fms) {
   // open every rank file and run the same cross-decomposition validation
   // (without reading the payload)
   detail::RankFileSet files = detail::openRankFiles(dir, step, false);
+
+  const GeometryRecord& fileGeometry = files.headers[0].geometry;
+  for (std::size_t f = 1; f < files.headers.size(); ++f) {
+    if (!detail::sameGeometryRecord(fileGeometry, files.headers[f].geometry)) {
+      IF_MPI_RANK(0) {
+        std::cerr << "[flbckpt] incompatible checkpoint " << dir << "/step_"
+                  << std::to_string(step)
+                  << ": rank files disagree on the geometry identity" << std::endl;
+      }
+      return false;
+    }
+  }
+  if (fileGeometry.present) {
+    if (expected == nullptr) {
+      IF_MPI_RANK(0) {
+        std::cerr << "[flbckpt] checkpoint " << dir << "/step_"
+                  << std::to_string(step)
+                  << " carries a geometry identity; check it with "
+                     "checkCompatibleWithGeometry()" << std::endl;
+      }
+      return false;
+    }
+    const std::string why =
+      detail::explainGeometryMismatch(fileGeometry, *expected);
+    if (!why.empty()) {
+      IF_MPI_RANK(0) {
+        std::cerr << "[flbckpt] incompatible checkpoint " << dir << "/step_"
+                  << std::to_string(step) << ": " << why << std::endl;
+      }
+      return false;
+    }
+  } else if (expected != nullptr) {
+    IF_MPI_RANK(0) {
+      std::cerr << "[flbckpt] warning: checkpoint " << dir << "/step_" << step
+                << " has no geometry identity; the digest cannot be validated"
+                << std::endl;
+    }
+  }
+
   std::vector<std::vector<int>> fileToLive;
   const std::string why = detail::buildBlockMapping(files, mc.live, fileToLive);
   if (!why.empty()) {
@@ -872,6 +1119,18 @@ bool checkCompatible(const std::string& dir, std::int64_t step, FMs&... fms) {
     return false;
   }
   return true;
+}
+
+template <typename... FMs>
+bool checkCompatible(const std::string& dir, std::int64_t step, FMs&... fms) {
+  return checkCompatibleImpl(dir, step, nullptr, fms...);
+}
+
+template <typename Geometry, typename... FMs>
+bool checkCompatibleWithGeometry(const std::string& dir, std::int64_t step,
+                                 const Geometry& geometry, FMs&... fms) {
+  const GeometryRecord record = detail::makeGeometryRecord(geometry);
+  return checkCompatibleImpl(dir, step, &record, fms...);
 }
 
 }  // namespace flbckpt

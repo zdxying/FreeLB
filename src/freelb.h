@@ -39,6 +39,7 @@
 #include "geometry/voxel_geometry.h"
 // boundary
 #include "boundary/boundary.h"
+#include "boundary/patch_binding.h"
 // surface-link interpolated bounce-back (host-only manager)
 #include "boundary/link_bc.h"
 

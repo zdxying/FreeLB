@@ -262,7 +262,10 @@ int main() {
             << " inner_samples=" << innerSamples
             << " outer_samples=" << outerSamples
             << " moving_links=" << movingLinks
-            << " static_links=" << staticLinks << std::endl;
+            << " static_links=" << staticLinks
+            << " fb_nosample=" << ibb.getFallbackNoSample()
+            << " fb_nocross=" << ibb.getFallbackNoCross()
+            << " fb_range=" << ibb.getFallbackOutOfRange() << std::endl;
 
   for (int step = 0; step < Steps; ++step) {
     NSLattice.ApplyCellDynamics<NSTask>(flagFM);

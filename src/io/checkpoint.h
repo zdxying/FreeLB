@@ -22,8 +22,11 @@
 // declarations for checkpoint / restart
 //
 // Key points:
-//   - only "fields + step count" are serialized; the geometry is replayed by
-//     the example's own setup code (same parameters assumed);
+//   - fields and the step count are always serialized, plus an optional
+//     geometry identity (grid, origin, per-cell entity, patches, digest) when
+//     the caller passes a VoxelGeometry record; a restart validates the digest
+//     and rejects a different geometry.  The BC/task setup is still replayed
+//     by the example (same parameters assumed);
 //   - POP is exported through the container's **logical view**; the file holds
 //     no rotation state, which decouples it from the POP container;
 //   - every field manager (block-lattice or plain block-field) is written as a
@@ -59,7 +62,8 @@ namespace flbckpt {
 enum class ElemTag : std::uint32_t { f32 = 0, f64 = 1, u8 = 2, u16 = 3, half = 4 };
 
 // format version; bump on an incompatible change, old files are rejected
-constexpr std::uint32_t kFormatVersion = 1;
+// v2 adds the optional geometry identity block after the fixed header fields
+constexpr std::uint32_t kFormatVersion = 2;
 // binary file magic
 constexpr const char* kMagic = "FLBCKPT";
 
@@ -83,6 +87,31 @@ struct FieldRecord {
   std::vector<std::vector<std::uint64_t>> counts;
 };
 
+// one boundary patch of the geometry record (cells are record indices)
+struct GeometryPatchRecord {
+  std::uint16_t entity = std::uint16_t{0xFFFF};
+  std::uint8_t kind = 0;
+  std::vector<std::uint64_t> cells;
+};
+
+// geometry identity stored with the snapshot.  present == 0 for callers that
+// have no VoxelGeometry record (2D cases): the file still round-trips, but
+// nothing can be validated against it.
+struct GeometryRecord {
+  bool present = false;
+  std::uint32_t nx = 0;
+  std::uint32_t ny = 0;
+  std::uint32_t nz = 0;
+  // domain min (origin) and max (origin + extent), stored as double so the
+  // file does not depend on the build's float type
+  double origin[3] = {0., 0., 0.};
+  double max[3] = {0., 0., 0.};
+  double voxelSize = 0.;
+  std::uint64_t digest = 0;
+  std::vector<std::uint16_t> entity;  // nx * ny * nz, row-major
+  std::vector<GeometryPatchRecord> patches;
+};
+
 // file header + all metadata (no payload)
 struct CheckpointHeader {
   std::uint32_t version = 0;
@@ -90,6 +119,7 @@ struct CheckpointHeader {
   std::int32_t rank = 0;
   std::int32_t nranks = 1;
   std::uint32_t dim = 0;
+  GeometryRecord geometry;
   std::vector<BlockRecord> blocks;
   std::vector<FieldRecord> fields;
 };
@@ -113,6 +143,23 @@ std::int64_t read(const std::string& dir, std::int64_t step, FMs&... fms);
 // the current geometry
 template <typename... FMs>
 bool checkCompatible(const std::string& dir, std::int64_t step, FMs&... fms);
+
+// Geometry-aware variants.  The record is written with the snapshot; read and
+// check validate the grid/origin and the digest of the record against the
+// file, and a mismatch is a hard error (check returns false).  read() and
+// checkCompatible() refuse a file that carries a geometry identity because
+// they cannot validate it.
+template <typename Geometry, typename... FMs>
+void writeWithGeometry(const std::string& dir, std::int64_t step,
+                       const Geometry& geometry, FMs&... fms);
+
+template <typename Geometry, typename... FMs>
+std::int64_t readWithGeometry(const std::string& dir, std::int64_t step,
+                              const Geometry& geometry, FMs&... fms);
+
+template <typename Geometry, typename... FMs>
+bool checkCompatibleWithGeometry(const std::string& dir, std::int64_t step,
+                                 const Geometry& geometry, FMs&... fms);
 
 // read a snapshot header (no payload); returns false on failure
 bool readHeader(const std::string& dir, std::int64_t step, CheckpointHeader& hdr);

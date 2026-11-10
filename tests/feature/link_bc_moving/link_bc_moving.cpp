@@ -169,18 +169,29 @@ int main() {
   const auto& vel =
     NSLattice.getBlockLat(0).template getField<VELOCITY<T, LatSet::d>>();
   T err{};
+  // least-squares slope over the interior layers, relative to the analytic
+  // Couette slope: separates a uniform deficit from a near-wall kink
+  T n{}, sz{}, szz{}, su{}, szu{};
   for (int z = 0; z < Nz; ++z) {
     const T zc = ZDomain0 + T(z) + T(0.5);
     const T expected = Uw * (zc - Wall0) / (Wall1 - Wall0);
     const T d = (vel.get(cellId(8, 8, z))[0] - expected) / Uw;
     err += d * d;
+    const T u = vel.get(cellId(8, 8, z))[0];
+    n += T(1);
+    sz += zc;
+    szz += zc * zc;
+    su += u;
+    szu += zc * u;
   }
   err = std::sqrt(err / T(Nz));
+  const T slope = (n * szu - sz * su) / (n * szz - sz * sz);
+  const T slopeRatio = slope / (Uw / (Wall1 - Wall0));
 
   std::cout << "[feature/link_bc_moving] links=" << ibb.getLinkCount()
             << " bottom_q=" << bottomLink->Fraction
             << " top_q=" << topLink->Fraction << " profile_l2=" << err
-            << std::endl;
+            << " slope_ratio=" << slopeRatio << std::endl;
 
 
   CHECK(err < T(0.10));

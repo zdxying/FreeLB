@@ -168,6 +168,62 @@ class VoxelGeometry {
   std::vector<std::size_t> _bandIds;
 };
 
+// Stable record digest for consumers that must reject a restart against a
+// different geometry (checkpoint).  It covers role, entity, material, patches
+// and the surface band in a fixed order; the construction recipe is not part of
+// the record and is not hashed.  FNV-1a, so it is deterministic across runs and
+// ranks.
+constexpr std::uint64_t kDigestOffset = 14695981039346656037ull;
+constexpr std::uint64_t kDigestPrime = 1099511628211ull;
+
+inline std::uint64_t digestBytes(std::uint64_t hash, const void* data,
+                                 std::size_t n) {
+  const unsigned char* bytes = static_cast<const unsigned char*>(data);
+  for (std::size_t i = 0; i < n; ++i) {
+    hash ^= static_cast<std::uint64_t>(bytes[i]);
+    hash *= kDigestPrime;
+  }
+  return hash;
+}
+
+template <typename U>
+inline std::uint64_t digestValue(std::uint64_t hash, const U& value) {
+  return digestBytes(hash, &value, sizeof(U));
+}
+
+template <typename T>
+std::uint64_t geometryDigest(const VoxelGeometry<T>& geometry) {
+  std::uint64_t hash = kDigestOffset;
+  for (std::size_t id = 0; id < geometry.size(); ++id) {
+    hash = digestValue(hash, static_cast<std::uint8_t>(geometry.getRole(id)));
+  }
+  for (std::size_t id = 0; id < geometry.size(); ++id) {
+    hash = digestValue(hash, geometry.getEntity(id));
+  }
+  for (std::size_t id = 0; id < geometry.size(); ++id) {
+    hash = digestValue(hash, geometry.getMaterial(id));
+  }
+  hash = digestValue(hash, static_cast<std::uint32_t>(geometry.getPatchCount()));
+  for (std::size_t p = 0; p < geometry.getPatchCount(); ++p) {
+    const BoundaryPatch& patch = geometry.getPatch(p);
+    hash = digestValue(hash, patch.Entity);
+    hash = digestValue(hash, static_cast<std::uint8_t>(patch.Kind));
+    hash = digestValue(hash, static_cast<std::uint64_t>(patch.Cells.size()));
+    for (std::size_t id : patch.Cells) {
+      hash = digestValue(hash, static_cast<std::uint64_t>(id));
+    }
+  }
+  hash = digestValue(hash, static_cast<std::uint64_t>(geometry.getBandSize()));
+  for (std::size_t id : geometry.getBandCells()) {
+    const SurfaceSample<T>& sample = geometry.getSurfaceSample(id);
+    hash = digestValue(hash, static_cast<std::uint64_t>(id));
+    hash = digestValue(hash, sample.Distance);
+    for (int i = 0; i < 3; ++i) hash = digestValue(hash, sample.Normal[i]);
+    hash = digestValue(hash, sample.Entity);
+  }
+  return hash;
+}
+
 // Fills a 3D block field manager from the record: Domain cells get domainFlag,
 // Solid and Outside get voidFlag.  Positions outside the record's domain are
 // void.  FieldM is a template parameter so geometry does not include the field

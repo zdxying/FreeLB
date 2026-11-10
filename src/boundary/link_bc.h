@@ -116,6 +116,14 @@ class InterpolatedBBManager {
     return n;
   }
 
+  // Why a link fell back to the half-way position: no band sample at the
+  // fluid cell, the band normal does not cross the link, or q left (0, 1].
+  // Fallback links are valid but less accurate, so the split guides the
+  // curved-wall work.
+  std::size_t getFallbackNoSample() const { return _fallbackNoSample; }
+  std::size_t getFallbackNoCross() const { return _fallbackNoCross; }
+  std::size_t getFallbackOutOfRange() const { return _fallbackOutOfRange; }
+
   const std::vector<SurfaceLink<T>>& getLinks(int block) const {
     return _links[static_cast<std::size_t>(block)];
   }
@@ -193,8 +201,24 @@ class InterpolatedBBManager {
                               nFluid[2] * T(c[2]);
                 if (dot < -eps) {
                   q = wallDistance / (voxel * (-dot));
-                  fallback = !(q > T(0) && q <= T(1));
+                  if (q > T(1)) {
+                    // The void neighbour proves the wall is before the link
+                    // end; clamping is closer than collapsing to the half-way
+                    // position.  q <= 0 still means the sample is unusable.
+                    q = T(1);
+                    fallback = false;
+                    ++_fallbackOutOfRange;
+                  } else if (!(q > T(0))) {
+                    fallback = true;
+                    ++_fallbackOutOfRange;
+                  } else {
+                    fallback = false;
+                  }
+                } else {
+                  ++_fallbackNoCross;
                 }
+              } else {
+                ++_fallbackNoSample;
               }
               if (fallback) q = T(0.5);
               link.Fraction = q;
@@ -243,6 +267,9 @@ class InterpolatedBBManager {
   std::uint8_t _periodicFlag;
   const std::unordered_map<std::uint16_t, Vector<T, 3>>* _wallVelocities;
   const std::unordered_map<std::uint16_t, WallMotion<T>>* _wallMotions;
+  std::size_t _fallbackNoSample = 0;
+  std::size_t _fallbackNoCross = 0;
+  std::size_t _fallbackOutOfRange = 0;
   std::vector<std::vector<SurfaceLink<T>>> _links;
 };
 
