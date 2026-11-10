@@ -29,6 +29,8 @@
 #include "parallel/mpi_manager.hh"
 // off-lattice geometry (STL) field initialization
 #include "offLattice/marchingCube.hh"
+// checkpoint / restart
+#include "io/checkpoint.hh"
 // cellular automata (solidification) implementations
 #include "ca/zhu_stefanescu2d.hh"
 #include "ca/zhu_stefanescu3d.hh"

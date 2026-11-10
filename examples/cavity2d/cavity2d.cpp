@@ -55,6 +55,10 @@ Vector<T, LatSet::d> U_Wall;  // mm/s
 int MaxStep;
 int OutputStep;
 T tol;
+// checkpoint / restart
+int Restart;
+int CheckpointStep;
+std::string RestartDir;
 
 void readParam() {
   iniReader param_reader("cavity2d.ini");
@@ -81,12 +85,21 @@ void readParam() {
   MaxStep = param_reader.getValue<int>("Simulation_Settings", "TotalStep");
   OutputStep = param_reader.getValue<int>("Simulation_Settings", "OutputStep");
   tol = param_reader.getValue<T>("tolerance", "tol");
+  // checkpoint / restart: off by default, so old .ini files keep working
+  Restart = param_reader.getValueOr<int>("Simulation_Settings", "Restart", 0);
+  CheckpointStep =
+    param_reader.getValueOr<int>("Simulation_Settings", "CheckpointStep", 0);
+  RestartDir =
+    param_reader.getValueOr<std::string>("Simulation_Settings", "RestartDir", "./ckpt");
 
   MPI_RANK(0)
   std::cout << "------------Simulation Parameters:-------------\n" << std::endl;
   std::cout << "[Simulation_Settings]:" << "TotalStep:         " << MaxStep << "\n"
             << "OutputStep:        " << OutputStep << "\n"
             << "Tolerance:         " << tol << "\n"
+            << "Restart:           " << (Restart ? "on" : "off") << "\n"
+            << "CheckpointStep:    " << CheckpointStep << "\n"
+            << "RestartDir:        " << RestartDir << "\n"
 #ifdef _OPENMP
             << "Running on " << Thread_Num << " threads\n"
 #endif
@@ -199,8 +212,29 @@ int main(int argc, char* argv[]) {
   vtmo::vtmWriter<T, LatSet::d> NSWriter("cavity2d", Geo);
   NSWriter.addWriterSet(physRhoWriter, physVecWriter);
 
-  // count and timer
+  // ------------------ restart: restore the snapshot ------------------
+  // Geometry, flags and BCs are replayed by the setup code above (same
+  // parameters); only the fields and the step count are overwritten here.
+  // Must run before the main loop; the BC managers only hold references, so
+  // nothing has to be rebuilt after a restore.
   Timer MainLoopTimer;
+  if (Restart) {
+    if (!flbckpt::checkCompatible(RestartDir, -1, NSLattice, FlagFM)) {
+      Printer::Print_BigBanner(std::string("Restart aborted: incompatible checkpoint"));
+      return 1;
+    }
+    MainLoopTimer.set(flbckpt::read(RestartDir, -1, NSLattice, FlagFM));
+    // Re-seed the tolerance history: UOld/RhoOld are not part of the snapshot
+    // (they are overwritten after every evaluation and do not affect the
+    // physics); otherwise the first res after a resume is a meaningless
+    // initial value.
+    NSLattice.EnableToleranceU();
+    IF_MPI_RANK(0) {
+      std::cout << "[Restart] resumed at step " << MainLoopTimer() << std::endl;
+    }
+  }
+
+  // count and timer
   Timer OutputTimer;
 
   NSWriter.WriteBinary(MainLoopTimer());
@@ -238,7 +272,17 @@ int main(int argc, char* argv[]) {
       Printer::Print_Res<T>(res);
       Printer::Endl();
       // NSWriter.WriteBinary(MainLoopTimer());
+
+      // Snapshot point: communication is done, before the next Stream (quiescent)
+      if (CheckpointStep > 0 && MainLoopTimer() % CheckpointStep == 0)
+        flbckpt::write(RestartDir, MainLoopTimer(), NSLattice, FlagFM);
     }
+  }
+
+  // Write one more at the end, so a run stopped early by the tolerance can resume
+  if (CheckpointStep > 0) {
+    NSLattice.NormalFullCommunicate();
+    flbckpt::write(RestartDir, MainLoopTimer(), NSLattice, FlagFM);
   }
 
 #ifdef XCORE_ENABLED

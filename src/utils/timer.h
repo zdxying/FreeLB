@@ -40,6 +40,8 @@ struct Counter {
   ~Counter() = default;
   // reset count
   void reset() { count = 0; }
+  // set count directly (used when resuming from a checkpoint)
+  void set(std::int64_t n) { count = n; }
   // define ++ operator, use: Counter c; ++c; or c++;
   void operator++() { count++; }
   // get count

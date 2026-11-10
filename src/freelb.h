@@ -44,6 +44,8 @@
 #include "io/vtm_writer.h"
 #include "io/ini_reader.h"
 #include "io/vtu_writer.h"
+// checkpoint / restart; implementation follows in freelb.hh
+#include "io/checkpoint.h"
 
 #include "lbm/lattice_set.h"
 // block-field statistics (FieldStatistics; used by examples/dambreak*)

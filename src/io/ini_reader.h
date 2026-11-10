@@ -86,6 +86,28 @@ class iniReader {
     }
   }
 
+  // check whether a section exists
+  bool hasSection(const std::string& section) const {
+    return iniContent.find(section) != iniContent.end();
+  }
+  // check whether a key exists in a section
+  bool has(const std::string& section, const std::string& name) const {
+    auto it = iniContent.find(section);
+    if (it == iniContent.end()) return false;
+    return it->second.find(name) != it->second.end();
+  }
+
+  // get value from section and key, with a default when the key is absent.
+  // Preferred over getValue() for optional keys: getValue() exits on a missing
+  // key, which would break every pre-existing .ini the moment a new key is
+  // introduced.
+  template <typename T>
+  T getValueOr(const std::string& section, const std::string& name,
+               const T& defaultval) {
+    if (!has(section, name)) return defaultval;
+    return getValue<T>(section, name);
+  }
+
   // get value from section and key
   template <typename T>
   T getValue(const std::string& section, const std::string& name) {

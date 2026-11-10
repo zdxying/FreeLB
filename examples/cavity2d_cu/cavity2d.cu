@@ -62,6 +62,10 @@ int MaxStep;
 int OutputStep;
 T tol;
 std::string work_dir;
+// checkpoint / restart
+int Restart;
+int CheckpointStep;
+std::string RestartDir;
 
 void readParam() {
   iniReader param_reader("cavity2d.ini");
@@ -90,12 +94,21 @@ void readParam() {
   MaxStep = param_reader.getValue<int>("Simulation_Settings", "TotalStep");
   OutputStep = param_reader.getValue<int>("Simulation_Settings", "OutputStep");
   tol = param_reader.getValue<T>("tolerance", "tol");
+  // checkpoint / restart: off by default, so old .ini files keep working
+  Restart = param_reader.getValueOr<int>("Simulation_Settings", "Restart", 0);
+  CheckpointStep =
+    param_reader.getValueOr<int>("Simulation_Settings", "CheckpointStep", 0);
+  RestartDir =
+    param_reader.getValueOr<std::string>("Simulation_Settings", "RestartDir", "./ckpt");
 
 
   std::cout << "------------Simulation Parameters:-------------\n" << std::endl;
   std::cout << "[Simulation_Settings]:" << "TotalStep:         " << MaxStep << "\n"
             << "OutputStep:        " << OutputStep << "\n"
             << "Tolerance:         " << tol << "\n"
+            << "Restart:           " << (Restart ? "on" : "off") << "\n"
+            << "CheckpointStep:    " << CheckpointStep << "\n"
+            << "RestartDir:        " << RestartDir << "\n"
             << "----------------------------------------------" << std::endl;
 }
 
@@ -197,6 +210,24 @@ int main() {
 
   // count and timer
   Timer MainLoopTimer;
+
+  // ------------------ restart: restore the snapshot ------------------
+  // Geometry, flags and BCs are replayed by the setup code above (same
+  // parameters); the module handles the field H2D itself:
+  // D2H before writing, copyToDevice after reading, including POP rotation
+  // normalization and re-uploading the device mirror object.
+  if (Restart) {
+    if (!flbckpt::checkCompatible(RestartDir, -1, NSLattice, FlagFM)) {
+      std::cerr << "[cavity2d] Restart aborted: incompatible checkpoint" << std::endl;
+      return 1;
+    }
+    MainLoopTimer.set(flbckpt::read(RestartDir, -1, NSLattice, FlagFM));
+    // Re-seed the tolerance history: UOld is not part of the snapshot (it is
+    // overwritten after every evaluation and does not affect the physics)
+    NSLattice.EnableToleranceU();
+    std::cout << "[Restart] resumed at step " << MainLoopTimer() << std::endl;
+  }
+
   Timer OutputTimer;
   
   NSWriter.WriteBinary(MainLoopTimer());
@@ -229,8 +260,16 @@ int main() {
       Printer::Print_Res<T>(res);
       Printer::Endl();
       NSWriter.WriteBinary(MainLoopTimer());
+
+      // Snapshot point: this step's collision and streaming are done, before the
+      // next collision (quiescent)
+      if (CheckpointStep > 0 && MainLoopTimer() % CheckpointStep == 0)
+        flbckpt::write(RestartDir, MainLoopTimer(), NSLattice, FlagFM);
     }
   }
+
+  // Write one more at the end, so a run stopped early by the tolerance can resume
+  if (CheckpointStep > 0) flbckpt::write(RestartDir, MainLoopTimer(), NSLattice, FlagFM);
 
   // an unchecked launch is what hid the sm_89 / -rdc failure on this machine:
   // the run printed "Calculation Complete!" while every kernel had failed

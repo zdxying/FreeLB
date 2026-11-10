@@ -131,6 +131,58 @@ distribution-function checksum against a baseline; changing the LBM scheme,
 equilibrium or boundary treatment will (intentionally) fail it.
 
 
+## Checkpoint / Restart
+
+A run can be stopped and continued later, or resumed after a crash, without
+losing progress.  The solver itself is untouched: a new io module
+(`src/io/checkpoint.{h,hh}`, namespace `flbckpt`) serializes **every field of
+every lattice/flag manager plus the step counter**; the geometry, boundary
+conditions and task definitions are re-created by the example's own setup code,
+so a restart assumes **the same parameters and the same MPI size**.
+
+Enabled per example through three optional keys in `[Simulation_Settings]`
+(absent = off, so older `.ini` files keep working):
+
+```ini
+Restart = 0            ; 0 = fresh run, 1 = resume from the newest checkpoint
+CheckpointStep = 0     ; > 0: write a checkpoint every N steps (and at normal exit)
+RestartDir = ./ckpt    ; checkpoint directory
+```
+
+Wired up so far: `examples/cavity2d`, `examples/cavity3d` (CPU) and
+`examples/cavity2d_cu` (GPU, single block).  The CA / runtime-AMR examples
+(`cazsAref2d`) are a later phase.
+
+Resuming with a **different number of ranks** works too: the reader matches
+blocks by their global `blockid` across every rank's file and restores only the
+blocks it owns (`tests/block/checkpoint_decomp`).  This needs a block set that
+does not depend on the rank count -- `AdaptiveOptimization(mpi().getSize())`
+re-splits the domain per process count and is therefore refused on a rank-count
+change; split the domain with `GeoHelper.CreateBlocks(bx, by[, bz])` +
+`LoadBalancing(np)` instead.
+
+Layout (one binary per rank, written atomically through a temporary file plus a
+rename; `latest` is written last, so a partially written checkpoint is never
+picked up):
+
+```
+ckpt/
+  latest                  # step number of the newest complete checkpoint
+  step_<s>/
+    rank<r>.ck            # per-rank binary: block table + field metadata + payload
+```
+
+Restoring normalizes the population container's rotation state -- on the GPU it
+also re-uploads the device mirror object, because `cudev::CyclicArray` caches
+`start[]` inside the object and `copyToDevice()` does not push it -- and
+re-seeds the convergence history, so a resumed run reproduces an uninterrupted
+one step-for-step (`tests/feature/checkpoint` on the CPU, `tests/cuda/checkpoint`
+on the GPU, both bit-exact; the latter also runs with `make FP16=1` for `__half`
+POP storage).  A checkpoint taken with a different geometry, block set, or POP storage precision
+is **rejected with an error** rather than silently mismatched (a different rank
+count with a matching block set is accepted).
+
+
 ## Benchmark
 The following table shows the performance of FreeLB in simulating the lid-driven cavity flow problem(/benchmarks/cavity3d and /benchmarks/cavity3d_cu) with D3Q19 lattice set on a 100x100x100 lattice grid(in million lattice updates per second, MLUPs).
 

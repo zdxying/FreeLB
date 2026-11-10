@@ -28,6 +28,23 @@
 
 #include "data_struct/voxel_map.h"
 
+#ifdef _HIDDEN_PROFILE
+// Instrumentation for benchmarks/hidden_comm.  Compiled out unless
+// _HIDDEN_PROFILE is defined; the benchmark enables it and prints the breakdown.
+struct HiddenCommProfile {
+  double collideFirst{};
+  double send{};
+  double recv{};
+  double collideLast{};
+  double waitall{};
+  double shared{};
+  double set{};
+  long calls{};
+  long sendRequests{};
+};
+inline HiddenCommProfile g_hiddenCommProfile;
+#endif
+
 
 // block structure for refined lattice
 template <typename T, typename LatSet, typename TypePack>
@@ -52,8 +69,8 @@ class BlockLattice : public BlockLatticeBase<T, LatSet, TypePack> {
   std::vector<std::vector<unsigned int>> RecvDirection;
   std::vector<std::vector<unsigned int>> SendDirection;
 
-  std::vector<std::size_t> _firstSends;
-  std::vector<std::size_t> _lastSends;
+  std::vector<std::size_t> _collideFirst;
+  std::vector<std::size_t> _collideLast;
 
   void initHiddenCommunication();
 #endif
@@ -128,9 +145,37 @@ class BlockLattice : public BlockLatticeBase<T, LatSet, TypePack> {
   void ApplyCellDynamics(const Genericvector<std::size_t>& Idx);
 
 #ifdef MPI_ENABLED
-  template <typename CELLDYNAMICS, typename ArrayType, typename buffer_type>
-  void ApplyCellDynamicsWithHiddenComm(const ArrayType& flagarr, std::vector<MPI_Request>& SendRequests,
-    std::vector<MPI_Request>& RecvRequests, std::vector<buffer_type>& SendBuffers);
+  // Hidden communication is split in two halves so that the manager can run the
+  // shared-memory (same-rank neighbour) halo exchange in between: it has to
+  // happen after EVERY block has collided the cells adjacent to the overlap,
+  // otherwise the values copied would be pre-collision.
+  //
+  // First half: apply the dynamics to the cells adjacent to the overlap.  The
+  // manager then packs every block's outgoing values and posts one message per
+  // target rank.
+  template <typename CELLDYNAMICS, typename ArrayType>
+  void ApplyCellDynamicsWithHiddenCommFirst(const ArrayType& flagarr);
+
+  // Second half: apply the dynamics to the remaining interior cells.  The halo
+  // itself is refreshed afterwards by the manager (shared-memory copy, then the
+  // MPI receives), which is the same order a normal communicate uses.
+  template <typename CELLDYNAMICS, typename ArrayType>
+  void ApplyCellDynamicsWithHiddenCommLast(const ArrayType& flagarr);
+
+  // Packing helpers for the manager-level coalesced messages: the manager owns
+  // one buffer per target rank and asks each block to fill its slice.
+  std::size_t normalSendSize(std::size_t commIdx) const {
+    return this->getBlock().getCommunicator().DirSends[commIdx].Cells.size() *
+           SendDirection[commIdx].size();
+  }
+  std::size_t normalRecvSize(std::size_t commIdx) const {
+    return this->getBlock().getCommunicator().DirRecvs[commIdx].Cells.size() *
+           RecvDirection[commIdx].size();
+  }
+  template <typename buffer_type>
+  void packNormalSend(std::size_t commIdx, buffer_type& buffer, std::size_t offset);
+  template <typename buffer_type>
+  void unpackNormalRecv(std::size_t commIdx, const buffer_type& buffer, std::size_t offset);
 #endif
 
   template <typename DYNAMICS, typename elementType>
@@ -279,6 +324,30 @@ class BlockLatticeManager : public BlockLatticeManagerBase<T, LatSet, TypePack> 
   AbstractConverter<T>& Conv;
 
   using buffer_type = ::buffer_type<T>;
+
+#ifdef MPI_ENABLED
+  // One coalesced message per target rank.  The refs are ordered by (rank, MPI
+  // tag); the tag is unique per message, so the sender and the receiver derive
+  // the same packing order from the same HelperBlockGeometry tags.  Tag of a
+  // group is the smallest tag in it.
+  struct NormalCommRef {
+    std::size_t Block{};
+    std::size_t Comm{};
+    std::size_t Offset{};
+    int Rank{};  // target rank for sends, source rank for receives
+    int Tag{};
+  };
+  struct NormalCommGroup {
+    int TargetRank{};
+    int Tag{};
+    std::vector<NormalCommRef> Refs;
+    buffer_type Buffer;
+  };
+  std::vector<NormalCommGroup> _normalSendGroups;
+  std::vector<NormalCommGroup> _normalRecvGroups;
+  bool _normalCommGroupsReady = false;
+  void initNormalCommGroups();
+#endif
 
  public:
   template <typename... FIELDPTRTYPES>

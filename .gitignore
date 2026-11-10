@@ -73,3 +73,11 @@ __pycache__/
 # velocity-field comparison dumps (solver run outputs)
 benchmarks/cavity3d/profile_cpu.txt
 benchmarks/cavity3d_cu/profile_gpu.txt
+
+# checkpoint / restart output
+**/ckpt/
+ckpt/
+
+# cross-decomposition checkpoint test output
+**/ckpt_decomp/
+**/child_spawn.log

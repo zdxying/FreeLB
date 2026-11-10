@@ -659,6 +659,17 @@ class CyclicArray {
 #endif
   }
 
+  // Reset the rotation state to the unrotated view (shift = 0), keeping the
+  // data and Offset.  Used by the checkpoint loader (io/checkpoint.hh) so that
+  // a restored logical view maps 1:1 onto physical indices: the container's
+  // future evolution depends only on the logical view and Offset (rotate()
+  // applies Offset to shift, getPrevious() indexes by Offset), never on the
+  // absolute shift, so this normalization is behaviour preserving.
+  void normalize() {
+    shift = 0;
+    refresh();
+  }
+
   void Resize(std::size_t size) {
     if (size == count) return;
     delete[] data;
@@ -767,6 +778,20 @@ class CyclicArray {
   T* get_devptr() { return dev_data; }
   cudev::CyclicArray<T>* get_devObj() { return dev_CyclicArray; }
   const cudev::CyclicArray<T>* get_devObj() const { return dev_CyclicArray; }
+
+  // Re-upload the device mirror object.  The cudev mirror caches start[] inside
+  // the object itself (it is NOT one of the scalars copyToDevice() pushes), so
+  // a host-side normalize() -- which changes what start[] must be -- has to be
+  // re-pushed this way.  See io/checkpoint.hh.
+  void refreshDeviceObject() {
+#ifdef __CUDACC__
+    if (dev_CyclicArray) {
+      cuda_free(dev_CyclicArray);
+      dev_CyclicArray = nullptr;
+    }
+    constructInDevice();
+#endif
+  }
 
   void nullDeviceData() {
     dev_count = nullptr;
@@ -1125,6 +1150,12 @@ class StreamMapArray {
 #ifdef __CUDACC__
     copyToDevice();
 #endif
+  }
+
+  // see the note in CyclicArray::normalize()
+  void normalize() {
+    shift = 0;
+    set_start();
   }
 
   void Resize(std::size_t newcount) {

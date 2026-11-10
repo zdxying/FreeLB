@@ -22,6 +22,9 @@
 
 #pragma once
 
+#include <algorithm>
+#include <utility>
+
 #include "data_struct/block_lattice.h"
 // Equilibrium / equilibrium::SecondOrder used below (MPI refinement path)
 #include "lbm/equilibrium.h"
@@ -30,25 +33,19 @@
 template <typename T, typename LatSet, typename TypePack>
 void BlockLattice<T, LatSet, TypePack>::initHiddenCommunication() {
     if constexpr (LatSet::d == 2) {
-      // add to firstSends
+      // add to _collideFirst: the inner ring adjacent to the overlap
       std::array<int, 2> bdj{this->getOverlap(), this->getNy() - this->getOverlap()-1};
       std::array<int, 2> bdi{this->getOverlap(), this->getNx() - this->getOverlap()-1};
       for (int j = this->getOverlap(); j < this->getNy() - this->getOverlap(); ++j) {
         for (int i = this->getOverlap(); i < this->getNx() - this->getOverlap(); ++i) {
           std::size_t id = j * this->getNx() + i;
           if (j == bdj[0] || j == bdj[1] || i == bdi[0] || i == bdi[1]) {
-            _firstSends.push_back(id);
+            _collideFirst.push_back(id);
           }
         }
       }
-      // add to lastSends
-      for (int j = this->getOverlap()+1; j < this->getNy() - this->getOverlap()-1; ++j) {
-        for (int i = this->getOverlap()+1; i < this->getNx() - this->getOverlap()-1; ++i) {
-          _lastSends.push_back(j * this->getNx() + i);
-        }
-      }
   } else if constexpr (LatSet::d == 3) {
-    // add to firstSends
+    // add to _collideFirst: the inner ring adjacent to the overlap
     std::array<int, 2> bdk{this->getOverlap(), this->getNz() - this->getOverlap()-1};
     std::array<int, 2> bdj{this->getOverlap(), this->getNy() - this->getOverlap()-1};
     std::array<int, 2> bdi{this->getOverlap(), this->getNx() - this->getOverlap()-1};
@@ -57,19 +54,29 @@ void BlockLattice<T, LatSet, TypePack>::initHiddenCommunication() {
         for (int i = this->getOverlap(); i < this->getNx() - this->getOverlap(); ++i) {
           std::size_t id = k * this->getProjection()[2] + j * this->getProjection()[1] + i;
           if (k == bdk[0] || k == bdk[1] || j == bdj[0] || j == bdj[1] || i == bdi[0] || i == bdi[1]) {
-            _firstSends.push_back(id);
+            _collideFirst.push_back(id);
           }
         }
       }
     }
-    // add to lastSends
-    for (int k = this->getOverlap()+1; k < this->getNz() - this->getOverlap()-1; ++k) {
-      for (int j = this->getOverlap()+1; j < this->getNy() - this->getOverlap()-1; ++j) {
-        for (int i = this->getOverlap()+1; i < this->getNx() - this->getOverlap()-1; ++i) {
-          _lastSends.push_back(k * this->getProjection()[2] + j * this->getProjection()[1] + i);
-        }
-      }
-    }
+  }
+
+  // add to _collideLast: every cell that is not in the inner ring (the overlap
+  // included).
+  //
+  // The overlap cells next to a neighbour are refreshed by the communicate
+  // below, but the communicate only writes the directions the neighbour needs;
+  // the other directions keep whatever is in the cell.  The plain path has just
+  // collided them (it collides every cell), so these must be collided here too,
+  // otherwise the two paths differ in the overlap, and that difference reaches
+  // the fluid through the array rotation and the boundary conditions'
+  // getPrevious() (which reads a neighbour cell).  In other words: both paths
+  // must collide exactly the same set of cells; the only difference may be
+  // whether the collision or the halo refresh comes first.
+  std::vector<bool> isFirst(this->getN(), false);
+  for (std::size_t id : _collideFirst) isFirst[id] = true;
+  for (std::size_t id = 0; id < this->getN(); ++id) {
+    if (!isFirst[id]) _collideLast.push_back(id);
   }
 }
 #endif
@@ -177,33 +184,82 @@ void BlockLattice<T, LatSet, TypePack>::ApplyCellDynamics(const Genericvector<st
 }
 
 #ifdef MPI_ENABLED
+// First half of the hidden communication: collide the cells adjacent to the
+// overlap, then post this block's non-blocking MPI sends and receives.
+//
+// Only the cells adjacent to the overlap are collided here, and only the
+// population directions the neighbour actually needs are exchanged -- that is
+// what hides the MPI latency behind the collision of the interior cells.
 template <typename T, typename LatSet, typename TypePack>
-template <typename CELLDYNAMICS, typename ArrayType, typename buffer_type>
-void BlockLattice<T, LatSet, TypePack>::ApplyCellDynamicsWithHiddenComm(const ArrayType& flagarr,
-  std::vector<MPI_Request>& SendRequests, std::vector<MPI_Request>& RecvRequests, std::vector<buffer_type>& RecvBuffers) {
+template <typename CELLDYNAMICS, typename ArrayType>
+void BlockLattice<T, LatSet, TypePack>::ApplyCellDynamicsWithHiddenCommFirst(
+  const ArrayType& flagarr) {
   Cell<T, LatSet, TypePack> cell(0, *this);
+#ifdef _HIDDEN_PROFILE
+  const double _t0 = MPI_Wtime();
+#endif
   // apply first cell dynamics
-  for (std::size_t id : _firstSends) {
+  for (std::size_t id : _collideFirst) {
     cell.setId(id);
     CELLDYNAMICS::Execute(flagarr[id], cell);
   }
+#ifdef _HIDDEN_PROFILE
+  g_hiddenCommProfile.collideFirst += MPI_Wtime() - _t0;
+#endif
+}
 
-  // send data
-  // std::vector<MPI_Request> SendRequests;
-  const std::vector<DistributedComm>& Sends = this->getBlock().getCommunicator().DirSends;
-  std::vector<buffer_type> SendBuffers(Sends.size(), buffer_type{});
-  this->mpiNormalSend(SendRequests, SendBuffers, Sends);
+// Pack one communicator into the manager's per-rank send buffer.  The manager
+// computes the offset and guarantees the buffer outlives the MPI_Isend.
+template <typename T, typename LatSet, typename TypePack>
+template <typename buffer_type>
+void BlockLattice<T, LatSet, TypePack>::packNormalSend(
+  std::size_t commIdx, buffer_type& buffer, std::size_t offset) {
+  const std::vector<DistributedComm>& sends = this->getBlock().getCommunicator().DirSends;
+  const std::vector<std::size_t>& cells = sends[commIdx].Cells;
+  for (unsigned int iArr : SendDirection[commIdx]) {
+    const auto& Array = this->template getField<POP<T, LatSet::q>>().getField(iArr);
+    for (std::size_t id : cells) {
+      buffer[offset] = Array[id];
+      ++offset;
+    }
+  }
+}
 
-  // recv data
-  std::vector<DistributedComm>& Recvs = this->getBlock().getCommunicator().DirRecvs;
-  RecvBuffers.resize(Recvs.size(), buffer_type{});
-  this->mpiNormalRecv(RecvRequests, RecvBuffers, Recvs);
+// Unpack one communicator from the manager's per-rank receive buffer.
+template <typename T, typename LatSet, typename TypePack>
+template <typename buffer_type>
+void BlockLattice<T, LatSet, TypePack>::unpackNormalRecv(
+  std::size_t commIdx, const buffer_type& buffer, std::size_t offset) {
+  const std::vector<DistributedComm>& recvs = this->getBlock().getCommunicator().DirRecvs;
+  const std::vector<std::size_t>& cells = recvs[commIdx].Cells;
+  for (unsigned int iArr : RecvDirection[commIdx]) {
+    auto& Array = this->template getField<POP<T, LatSet::q>>().getField(iArr);
+    for (std::size_t id : cells) {
+      Array[id] = buffer[offset];
+      ++offset;
+    }
+  }
+}
 
-  // apply last cell dynamics
-  for (std::size_t id : _lastSends) {
+// Second half: collide the remaining interior cells.  The overlap is still
+// stale here -- exactly as in a normal communicate, where every cell is collided
+// before the halos are refreshed -- so the result does not depend on where the
+// halo refresh happens inside the step.
+template <typename T, typename LatSet, typename TypePack>
+template <typename CELLDYNAMICS, typename ArrayType>
+void BlockLattice<T, LatSet, TypePack>::ApplyCellDynamicsWithHiddenCommLast(
+  const ArrayType& flagarr) {
+  Cell<T, LatSet, TypePack> cell(0, *this);
+#ifdef _HIDDEN_PROFILE
+  const double _t0 = MPI_Wtime();
+#endif
+  for (std::size_t id : _collideLast) {
     cell.setId(id);
     CELLDYNAMICS::Execute(flagarr[id], cell);
   }
+#ifdef _HIDDEN_PROFILE
+  g_hiddenCommProfile.collideLast += MPI_Wtime() - _t0;
+#endif
 }
 #endif
 
@@ -772,6 +828,11 @@ BlockLatticeManager<T, LatSet, TypePack>::BlockLatticeManager(
 template <typename T, typename LatSet, typename TypePack>
 void BlockLatticeManager<T, LatSet, TypePack>::Init() {
   BlockLats.clear();
+#ifdef MPI_ENABLED
+  // The coalesced-communication plan refers to blocks and communicators that
+  // are about to be rebuilt.
+  _normalCommGroupsReady = false;
+#endif
   for (std::size_t i = 0; i < this->BlockGeo.getBlocks().size(); ++i) {
     BlockLats.emplace_back(this->BlockGeo.getBlock(i), Conv,
                            ExtractFieldPtrs<T, LatSet, TypePack>::getFieldPtrTuple(
@@ -806,6 +867,9 @@ void BlockLatticeManager<T, LatSet, TypePack>::Init(
       }
     });
   BlockLats.clear();
+#ifdef MPI_ENABLED
+  _normalCommGroupsReady = false;
+#endif
   for (std::size_t i = 0; i < this->BlockGeo.getBlocks().size(); ++i) {
     BlockLats.emplace_back(this->BlockGeo.getBlock(i), Conv,
                            ExtractFieldPtrs<T, LatSet, TypePack>::getFieldPtrTuple(
@@ -1498,36 +1562,146 @@ void BlockLatticeManager<T, LatSet, TypePack>::MPIInterpolateCommunicate(std::in
 
 #endif
 
+#ifdef MPI_ENABLED
+// Build the coalesced communication plan: one message per target rank.  Every
+// communicator of this rank is sorted by (target rank, MPI tag); the tag is
+// unique per message, so the sender and the receiver derive the same packing
+// order independently.  Called lazily because the manager has several
+// construction/Init paths.
+template <typename T, typename LatSet, typename TypePack>
+void BlockLatticeManager<T, LatSet, TypePack>::initNormalCommGroups() {
+  auto build = [&](bool send, std::vector<NormalCommGroup>& groups) {
+    std::vector<NormalCommRef> refs;
+    for (std::size_t bi = 0; bi < BlockLats.size(); ++bi) {
+      const std::vector<DistributedComm>& comms =
+        send ? BlockLats[bi].getBlock().getCommunicator().DirSends
+             : BlockLats[bi].getBlock().getCommunicator().DirRecvs;
+      for (std::size_t ci = 0; ci < comms.size(); ++ci) {
+        refs.push_back(NormalCommRef{bi, ci, 0, comms[ci].TargetRank, comms[ci].Tag});
+      }
+    }
+    std::sort(refs.begin(), refs.end(), [](const NormalCommRef& a, const NormalCommRef& b) {
+      return a.Rank != b.Rank ? a.Rank < b.Rank : a.Tag < b.Tag;
+    });
+    // Consecutive refs with the same rank form one message.
+    groups.clear();
+    for (std::size_t i = 0; i < refs.size();) {
+      std::size_t j = i + 1;
+      while (j < refs.size() && refs[j].Rank == refs[i].Rank) ++j;
+      NormalCommGroup group;
+      group.TargetRank = refs[i].Rank;
+      group.Tag = refs[i].Tag;  // smallest tag of the group
+      group.Refs.reserve(j - i);
+      std::size_t offset = 0;
+      for (std::size_t k = i; k < j; ++k) {
+        refs[k].Offset = offset;
+        offset += send ? BlockLats[refs[k].Block].normalSendSize(refs[k].Comm)
+                       : BlockLats[refs[k].Block].normalRecvSize(refs[k].Comm);
+        group.Refs.push_back(refs[k]);
+      }
+      group.Buffer.resize(offset);
+      groups.push_back(std::move(group));
+      i = j;
+    }
+  };
+  build(true, _normalSendGroups);
+  build(false, _normalRecvGroups);
+  _normalCommGroupsReady = true;
+}
+#endif
+
 template <typename T, typename LatSet, typename TypePack>
 template <typename CELLDYNAMICS, typename FieldType>
 void BlockLatticeManager<T, LatSet, TypePack>::ApplyCellDynamicsWithHiddenComm(
   const BlockFieldManager<FieldType, T, LatSet::d>& BFM) {
 
   #ifdef MPI_ENABLED
-  // std::vector<std::vector<buffer_type>> SendBuffers(
-    // BlockLats.size(), std::vector<buffer_type>{});
-  std::vector<std::vector<buffer_type>> RecvBuffers(
-    BlockLats.size(), std::vector<buffer_type>{});
+  if (!_normalCommGroupsReady) initNormalCommGroups();
 
-  // --- apply, send and recv data ---
-  std::vector<MPI_Request> SendRequests;
-  std::vector<MPI_Request> RecvRequests;
+  // --- 1. collide the cells adjacent to the overlap ---
+  // Every block does this before any halo is touched, so the values packed
+  // below are always post-collision values of the neighbour's inner cells.
   for (std::size_t i = 0; i < BlockLats.size(); ++i) {
-    BlockLats[i].template ApplyCellDynamicsWithHiddenComm<CELLDYNAMICS, typename FieldType::array_type>(
-      BFM.getBlockField(i).getField(0), SendRequests, RecvRequests, RecvBuffers[i]);
+    BlockLats[i].template ApplyCellDynamicsWithHiddenCommFirst<CELLDYNAMICS,
+      typename FieldType::array_type>(BFM.getBlockField(i).getField(0));
   }
-  
-  MPI_Waitall(SendRequests.size(), SendRequests.data(), MPI_STATUSES_IGNORE);
-  // --- wait and set field data ---
-  std::size_t iblock{};
-  int reqidx{};
-  for (BLOCKLATTICE& blat : BlockLats) {
-    if (blat.getBlock().getCommunicator()._NeedMPIComm) {
-      const std::vector<DistributedComm>& Recvs = blat.getBlock().getCommunicator().DirRecvs;
-      blat.mpiNormalSet(reqidx, RecvRequests, RecvBuffers[iblock], Recvs);
+
+  // --- 1b. pack every block's outgoing values, post one message per rank ---
+  // The buffers live in the manager (and are reused), so they outlive the
+  // non-blocking sends until the MPI_Waitall below.
+  std::vector<MPI_Request> SendRequests(_normalSendGroups.size());
+  std::vector<MPI_Request> RecvRequests(_normalRecvGroups.size());
+#ifdef _HIDDEN_PROFILE
+  const double _p0 = MPI_Wtime();
+#endif
+  for (std::size_t g = 0; g < _normalSendGroups.size(); ++g) {
+    NormalCommGroup& group = _normalSendGroups[g];
+    for (const NormalCommRef& r : group.Refs) {
+      BlockLats[r.Block].packNormalSend(r.Comm, group.Buffer, r.Offset);
     }
-    ++iblock;
+    mpi().iSend(group.Buffer.data(), group.Buffer.size(), group.TargetRank, &SendRequests[g],
+                group.Tag);
   }
+#ifdef _HIDDEN_PROFILE
+  g_hiddenCommProfile.send += MPI_Wtime() - _p0;
+  const double _r0 = MPI_Wtime();
+#endif
+  for (std::size_t g = 0; g < _normalRecvGroups.size(); ++g) {
+    NormalCommGroup& group = _normalRecvGroups[g];
+    mpi().iRecv(group.Buffer.data(), group.Buffer.size(), group.TargetRank, &RecvRequests[g],
+                group.Tag);
+  }
+#ifdef _HIDDEN_PROFILE
+  g_hiddenCommProfile.recv += MPI_Wtime() - _r0;
+#endif
+
+  // --- 2. collide the remaining interior cells ---
+  // The overlap is still stale at this point, exactly as with a normal
+  // communicate (all cells are collided before the halos are refreshed).
+  for (std::size_t i = 0; i < BlockLats.size(); ++i) {
+    BlockLats[i].template ApplyCellDynamicsWithHiddenCommLast<CELLDYNAMICS,
+      typename FieldType::array_type>(BFM.getBlockField(i).getField(0));
+  }
+
+#ifdef _HIDDEN_PROFILE
+  const double _w0 = MPI_Wtime();
+#endif
+  MPI_Waitall(SendRequests.size(), SendRequests.data(), MPI_STATUSES_IGNORE);
+#ifdef _HIDDEN_PROFILE
+  g_hiddenCommProfile.waitall += MPI_Wtime() - _w0;
+  g_hiddenCommProfile.sendRequests += static_cast<long>(SendRequests.size());
+  ++g_hiddenCommProfile.calls;
+  const double _h0 = MPI_Wtime();
+#endif
+
+  // --- 3. refresh the halos ---
+  // 3a. neighbours on THIS rank: shared-memory copy.  This was missing before,
+  //     which silently dropped every same-rank halo: a block whose neighbour
+  //     lives on the same rank never had its overlap refreshed, and the error
+  //     spread inward from there.  It went unnoticed because the configurations
+  //     exercised so far had exactly one block per rank.
+#ifndef SingleBlock_OMP
+#pragma omp parallel for num_threads(Thread_Num)
+#endif
+  for (int i = 0; i < static_cast<int>(BlockLats.size()); ++i) {
+    normalCommunicate(BlockLats[i]);
+  }
+#ifdef _HIDDEN_PROFILE
+  g_hiddenCommProfile.shared += MPI_Wtime() - _h0;
+  const double _s0 = MPI_Wtime();
+#endif
+
+  // 3b. neighbours on other ranks: wait for the coalesced messages and unpack
+  for (std::size_t g = 0; g < _normalRecvGroups.size(); ++g) {
+    MPI_Wait(&RecvRequests[g], MPI_STATUS_IGNORE);
+    const NormalCommGroup& group = _normalRecvGroups[g];
+    for (const NormalCommRef& r : group.Refs) {
+      BlockLats[r.Block].unpackNormalRecv(r.Comm, group.Buffer, r.Offset);
+    }
+  }
+#ifdef _HIDDEN_PROFILE
+  g_hiddenCommProfile.set += MPI_Wtime() - _s0;
+#endif
 
   #else
 
